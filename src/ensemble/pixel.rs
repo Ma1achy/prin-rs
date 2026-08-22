@@ -79,10 +79,13 @@ pub struct PixelOut {
     /// hide it (threatens BRIEF §8 experiments 1 and 3).
     pub sigma_e_0: f64,
     pub sigma_e_t: f64,
+    /// Built on the **maximum deviation** from the median, not the MAD. See
+    /// [`crate::ensemble::stats`] for why: MAD is robust to exactly the single wild copy this
+    /// field exists to flag, at a measured damaged/healthy separation of 1.06 against 59.51.
     pub error_ratio: f64,
-    /// `error_ratio` built on the maximum deviation rather than the MAD. Sensitive to a
-    /// single damaged copy, which the MAD-based one is not. Both are dumped.
-    pub error_ratio_range: f64,
+    /// The MAD-based ratio, BRIEF §4's original wording. Dumped so the change stays a
+    /// measured difference rather than a silent replacement.
+    pub error_ratio_mad: f64,
 
     pub switches: u32,
     /// Per-sync count of copies whose chosen reference body differs from the nominal copy's.
@@ -131,7 +134,7 @@ pub fn evaluate<T: Real>(slice: &Slice, idx: usize, cfg: &EnsembleCfg) -> PixelO
         .map(|o| energy::energy(&o.state.r, &o.state.v, &m, T::zero()))
         .collect();
     let (ratio, s0, st) = stats::error_ratio(&e0, &et);
-    let ratio_range = stats::error_ratio_range(&e0, &et);
+    let ratio_mad = stats::error_ratio_mad(&e0, &et);
 
     let shapes: Vec<[T; 3]> = outs
         .iter()
@@ -206,7 +209,7 @@ pub fn evaluate<T: Real>(slice: &Slice, idx: usize, cfg: &EnsembleCfg) -> PixelO
         sigma_e_0: s0.to_f64().unwrap(),
         sigma_e_t: st.to_f64().unwrap(),
         error_ratio: ratio.to_f64().unwrap(),
-        error_ratio_range: ratio_range.to_f64().unwrap(),
+        error_ratio_mad: ratio_mad.to_f64().unwrap(),
         switches: nom.switches,
         ref_disagree,
         n_nonfinite,

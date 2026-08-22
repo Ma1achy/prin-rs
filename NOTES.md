@@ -87,6 +87,27 @@ quantity and the acceptance test cannot distinguish them.
 
 ### 2.2 The `error_ratio` acceptance test is in tension with its own specification
 
+**Settled after PR #3, and the estimator changed with it.** §4's MAD requirement was chosen so the
+statistic survives a non-finite copy, which is sound; but robustness to outliers is the opposite of
+what a *detector* needs, and with 8 copies a single wild value sits above the median of eight
+deviations and is arithmetically invisible. Damaged/healthy separation measured 1.06 with MAD and
+59.51 with the maximum deviation from the median. `error_ratio` is now built on the maximum
+deviation — NaN-safe by construction, since a non-finite copy gives an infinite deviation, which is
+the correct answer where a std gives NaN. `error_ratio_mad` is dumped alongside.
+
+The tension below is resolved by gating the **healthy** population: a genuinely damaged pixel now
+reads five or six orders of magnitude above 1, as it should, so a grid-wide max is a measurement of
+the worst pixel rather than a correctness criterion. Measured healthy p99 1.0228, healthy max
+5.2087, bound set at 10.0. Median is 1.000000 on both populations.
+
+**One thing not to conflate.** §4's `max` *aggregation across* footprints (Spearman +0.956 against
++0.599) and the `max` *estimator within* a footprint are independent decisions arrived at
+separately. A per-pixel correlation of the two within-footprint estimators (measured −0.035 for
+MAD, +0.032 for max deviation) is a different measurement at a different level and is not evidence
+about the +0.956.
+
+The original observation, kept for the record:
+
 BRIEF.md §4 says `error_ratio` should be aggregated by `max`, treated as a **boolean flag**, and
 that **its magnitude is unstable**. BRIEF.md §5 then requires it to equal `1.0000` — four decimal
 places — as an acceptance test.
@@ -136,6 +157,15 @@ the ensemble diagnostic breaks early".
 Conditioning both sides also retired a negative result from PR #2: the `t=13` cross-check
 went from 1.930e-10 to **2.718e-13**, so BRIEF §9's `~1e-10` stands and the amendment
 proposed there was premature.
+
+**And a limit of the instrument that produced that wrong reading.** The divergence-vs-horizon
+table distinguishes *wrong algebra* (wrong intercept, or growth that is not exponential) from
+*amplified ulp noise* (exponential growth from an `O(1e-16)` intercept). It does **not**
+distinguish amplified ulp noise from a small error injected **repeatedly**. Branch-cut error at
+each of the 32 registrations produces the same signature: small intercept, exponential envelope.
+I read the curve as conclusive and it was under-determined. Keep the table — it is still the right
+diagnostic for the first distinction — but do not treat a healthy-looking curve as ruling out a
+per-step or per-sync error source.
 
 ---
 

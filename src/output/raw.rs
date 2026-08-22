@@ -20,7 +20,7 @@ pub const FIELDS: &[&str] = &[
     "energy_drift_nominal", "energy_drift_max", "gamma_max",
     "shape_x", "shape_y", "shape_z",
     "spread_shape", "svar", "spread_event", "ensemble_spread",
-    "sigma_e_0", "sigma_e_t", "error_ratio",
+    "sigma_e_0", "sigma_e_t", "error_ratio", "error_ratio_mad",
     "switches", "ref_disagree",
 ];
 
@@ -60,7 +60,7 @@ pub fn write<W: Write>(
     Ok(())
 }
 
-pub fn record(p: &PixelOut) -> [f64; 23] {
+pub fn record(p: &PixelOut) -> [f64; 24] {
     [
         p.legacy_class as f64,
         p.binary_id as f64,
@@ -83,6 +83,7 @@ pub fn record(p: &PixelOut) -> [f64; 23] {
         p.sigma_e_0,
         p.sigma_e_t,
         p.error_ratio,
+        p.error_ratio_mad,
         p.switches as f64,
         p.ref_disagree as f64,
     ]

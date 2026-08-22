@@ -76,11 +76,22 @@ GPU comes later. Correctness now.
 
 ## NON-NEGOTIABLES
 
-**`error_ratio` uses MAD internally, aggregates by max.**
-Internally: MAD (`1.4826 × median|x − median|`), not a standard deviation. A std returns NaN on
-precisely the pathological pixel the statistic exists to flag. Aggregate over pixels by **max**,
-not median — max tracks damage at Spearman +0.956 against +0.599 for median. Treat the result as a
-**boolean flag**; its magnitude is unstable.
+**`error_ratio` uses the maximum deviation internally, aggregates by max.**
+Internally: `max|x − median|`, with non-finite treated as an infinite deviation. Not a standard
+deviation, which returns NaN on precisely the pathological pixel the statistic exists to flag —
+and **not MAD**, which was the earlier answer to that and overshot. Robustness is the wrong
+property here: with 8 copies, one wild value sits above the median of eight deviations and is
+arithmetically invisible. Measured damaged/healthy separation **1.06 with MAD, 59.51 with max
+deviation**; a pixel whose worst copy drifted 120× the total energy read 1.1369 under MAD, inside
+the healthy p99 of 1.0756. Keep `error_ratio_mad` dumped; never gate on it.
+
+Aggregate over pixels by **max**, not median — max tracks damage at Spearman +0.956 against +0.599
+for median. **That is a separate decision from the one above**, at a different level: it compares
+`error_ratio_max` to `error_ratio_median` across footprints. A per-pixel correlation between the
+two within-footprint estimators is a different measurement and is not evidence about it. Both
+decisions land on the word "max" for unrelated reasons; do not collapse them.
+
+Treat the result as a **boolean flag**; its magnitude is unstable.
 
 **Never discard an ensemble copy.**
 Every pixel carries exactly `E+1` copies, always. A badly-integrated trajectory is a *measurement

@@ -167,3 +167,23 @@ about the symptom and wrong about the cause.
 - `examples/lc_cut_proximity.rs` — the registration-divergence measurement
 - `examples/lc_branch_effect.rs` — the integration-quality comparison, f64 and f32
 - `tools/xcheck/horizon.py [--lc-unstable]` — both cross-check paths
+
+
+---
+
+## Postscript: what the horizon table could not have told us
+
+PR #2 reported the `t=13` cross-check at 1.930e-10 and attributed the shortfall to chaotic
+amplification of ulp-level noise, on the strength of the divergence-vs-horizon curve: an
+`O(1e-16)` intercept with exponential growth. Conditioning both sides took the same comparison
+to **2.718e-13**, so that attribution was wrong.
+
+The curve was not misread — it was **under-determined**. It separates *wrong algebra* (wrong
+intercept, or growth that is not exponential) from *amplified ulp noise*. It does not separate
+amplified ulp noise from **a small error injected repeatedly**. A branch-cut error contributed
+at each of the 32 registrations gives the same small intercept and the same exponential
+envelope. Two mechanisms, one signature.
+
+The table stays, because the first distinction is the one it was built for and it makes it
+well. What it cannot do is certify the *absence* of a per-step or per-sync error source. That
+needs an independent handle — here, a conditioning measurement on the primitive itself.

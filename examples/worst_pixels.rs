@@ -15,7 +15,7 @@ fn main() {
     for &i in by_drift.iter().take(8) {
         let p = &px[i];
         println!("{i:>7}{:>13.3e}{:>13.4}{:>15.4e}{:>13.3e}",
-                 p.energy_drift_max, p.error_ratio, p.error_ratio_range, p.d_min_true);
+                 p.energy_drift_max, p.error_ratio_mad, p.error_ratio, p.d_min_true);
     }
 
     let mut d: Vec<f64> = px.iter().map(|p| p.energy_drift_max).filter(|x| x.is_finite()).collect();
@@ -29,9 +29,9 @@ fn main() {
     let mut rd: Vec<usize> = (0..px.len()).collect();
     rd.sort_by(|&a, &b| px[a].energy_drift_max.partial_cmp(&px[b].energy_drift_max).unwrap());
     let mut re: Vec<usize> = (0..px.len()).collect();
-    re.sort_by(|&a, &b| px[a].error_ratio.partial_cmp(&px[b].error_ratio).unwrap());
+    re.sort_by(|&a, &b| px[a].error_ratio_mad.partial_cmp(&px[b].error_ratio_mad).unwrap());
     let mut rr: Vec<usize> = (0..px.len()).collect();
-    rr.sort_by(|&a, &b| px[a].error_ratio_range.partial_cmp(&px[b].error_ratio_range).unwrap());
+    rr.sort_by(|&a, &b| px[a].error_ratio.partial_cmp(&px[b].error_ratio).unwrap());
     let mut rank_d = vec![0.0f64; px.len()];
     let mut rank_e = vec![0.0f64; px.len()];
     for (r, &i) in rd.iter().enumerate() { rank_d[i] = r as f64; }
@@ -70,8 +70,8 @@ fn main() {
     println!();
     println!("{:>16}{:>14}{:>14}{:>16}", "statistic", "damaged med", "healthy p99", "separation");
     for (name, f) in [
-        ("MAD", (|p: &prin_rs::ensemble::pixel::PixelOut| p.error_ratio) as fn(&_) -> f64),
-        ("max deviation", |p: &prin_rs::ensemble::pixel::PixelOut| p.error_ratio_range),
+        ("MAD", (|p: &prin_rs::ensemble::pixel::PixelOut| p.error_ratio_mad) as fn(&_) -> f64),
+        ("max deviation", |p: &prin_rs::ensemble::pixel::PixelOut| p.error_ratio),
     ] {
         let mut dv: Vec<f64> = damaged.iter().map(|&i| f(&px[i])).filter(|x| x.is_finite()).collect();
         let mut hv: Vec<f64> = healthy.iter().map(|&i| f(&px[i])).filter(|x| x.is_finite()).collect();

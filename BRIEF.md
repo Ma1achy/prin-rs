@@ -220,10 +220,33 @@ error_ratio = sigma_E(t) / sigma_E(0)      -- exactly 1.0 under exact dynamics
 
 Two requirements, both learned the hard way:
 
-- **Use a robust statistic inside it** (MAD, `1.4826 × median|x - median|`). A standard deviation
-  returns NaN the moment one copy is non-finite — precisely the pathological pixel it exists to flag.
+- **The statistic inside it must be NaN-safe *and* sensitive to a single wild copy.** Both halves
+  are required and they pull against each other. A standard deviation returns NaN the moment one
+  copy is non-finite — precisely the pathological pixel this field exists to flag. MAD
+  (`1.4826 × median|x - median|`) fixes that but overshoots: with `E+1 = 8` copies, one bad value
+  sits above the median of eight deviations and is arithmetically invisible, so an estimator that a
+  single wild copy cannot move is one that cannot *see* one. **Use the maximum deviation from the
+  median**, with non-finite treated as an infinite deviation — NaN-safe by construction, and the
+  correct answer rather than "could not compute".
+
+  Measured on near-field 32×32 at `t=13`, f64, over 23 damaged and 1001 healthy pixels — separation
+  is the damaged median over the healthy p99:
+
+  | estimator | damaged median | healthy p99 | separation |
+  |---|---|---|---|
+  | MAD | 1.1369 | 1.0756 | **1.06** |
+  | max deviation | 60.864 | 1.0228 | **59.51** |
+
+  A pixel whose worst copy drifted 120× the total energy read 1.1369 under MAD — inside the healthy
+  p99. Dump the MAD-based ratio alongside as `error_ratio_mad`; do not gate on it.
 - **Aggregate by `max` over pixels, not median.** Max-aggregation tracks damage at Spearman +0.956
   against +0.599 for median. Treat it as a **boolean flag**; its magnitude is unstable.
+
+  **These two bullets are independent decisions that both land on the word "max".** The +0.956 figure
+  compares `error_ratio_max` against `error_ratio_median` *across* footprints, correlated against
+  per-quad exponent damage. It says nothing about which estimator belongs *within* a footprint, and
+  a per-pixel correlation of the two within-footprint estimators is a different measurement
+  entirely (measured: −0.035 for MAD, +0.032 for max deviation — neither in tension with +0.956).
 
 **Do not build an `L_z` version.** Released from rest, `v = 0`, so `L_z = 0` for *every* copy and
 `sigma_Lz(0) = 0` — the ratio is `0/0`. Structurally undefined for this entire configuration family.
@@ -255,7 +278,7 @@ Three bugs in the reference work failed **silently** and looked like physics. Ea
 |---|---|
 | two-body radial collision (equal masses from rest, third body far away) | passes through `d_min < 1e-10` with `\|dE/E\| < 1e-12` |
 | gauge invariance: rescale ICs by `alpha in {0.25, 1, 4}`, rescale `t` by `alpha^{3/2}` | `shape_vec` spread **identical to ~10 decimals** |
-| energy control: `error_ratio` at `t=13`, near-field | `1.0000` |
+| energy control: `error_ratio` at `t=13`, near-field | median `1.0000`; max over **healthy** pixels bounded (measured max 5.21, bound 10.0) |
 | Burrau constants | `M=12`, `R=2.2361`, `E=-12.8167` |
 | **cross-check against the Python reference at f64** | agreement to `~1e-10` on a small grid |
 

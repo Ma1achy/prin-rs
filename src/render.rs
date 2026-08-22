@@ -43,10 +43,14 @@ pub fn render(slice: &Slice, cfg: &EnsembleCfg, precision: Precision) -> Vec<Pix
 
 /// Summary statistics over a rendered grid.
 ///
-/// `error_ratio` aggregates by **max**, per BRIEF §4 — max tracks damage at Spearman +0.956
-/// against +0.599 for median. Its magnitude is unstable, so it is a boolean flag; the median
-/// and p99 are reported alongside so the distribution is visible rather than reduced to a
-/// single number that cannot be trusted quantitatively.
+/// `error_ratio` aggregates **across pixels by max**, per BRIEF §4 — max tracks damage at
+/// Spearman +0.956 against +0.599 for median. That result is about this aggregation and
+/// nothing else; the separate choice of maximum deviation as the estimator *within* a
+/// footprint rests on its own measurement (see [`crate::ensemble::stats`]). Two decisions,
+/// both spelled "max", independently arrived at.
+///
+/// The magnitude is unstable, so it is a boolean flag; the median and p99 are reported
+/// alongside so the distribution is visible rather than reduced to one untrustworthy number.
 #[derive(Clone, Debug, Default)]
 pub struct Summary {
     pub n: usize,

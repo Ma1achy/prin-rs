@@ -43,6 +43,23 @@ step size is the tell.
 
 When drift is bad, the first question is never "smaller step?" — it is "which equation is wrong?"
 
+**The same signature, one level up: a diagnostic that gets WORSE as resolution improves is
+measuring the wrong thing.** This has now caught two separate bugs.
+
+- A co-moving softening length gave drift identical at `dt=1e-4` and `dt=2e-5`.
+- The `Gamma` residual, first normalised by `A*B`, read `3.9e-1` on a trajectory whose actual
+  drift was `1.1e-13`, and got *worse* as `eta` fell — because `A*B -> 0` at a collision, so
+  it blew up exactly where the integrator works hardest.
+
+Whenever a number moves the wrong way under refinement, suspect the definition before the
+implementation.
+
+**And do not read a scaling law off a single trajectory.** `d_min` near a collision is set by
+where a sample happens to land relative to the crossing. Its *scale* falls as `eta^2`, but
+the realisation scatter across phases is as wide as the shift between decades, so one
+trajectory can show a ratio of 1.0 across a 10x change in `eta` and mean nothing by it.
+Measure scalings over an ensemble.
+
 ---
 
 ## BUILD ORDER

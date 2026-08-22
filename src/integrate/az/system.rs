@@ -28,6 +28,9 @@ pub struct AzSystem<T> {
     pub k11: T,
     pub k12: T,
     pub k22: T,
+    /// Use the numerically stable inverse LC map. Default true; set false to reproduce the
+    /// reference's branch exactly.
+    pub lc_stable: bool,
 }
 
 impl<T: Real> AzSystem<T> {
@@ -48,7 +51,14 @@ impl<T: Real> AzSystem<T> {
             k11: mb * (ma + mc) / mtot,
             k22: mc * (ma + mb) / mtot,
             k12: -(mb * mc) / mtot,
+            lc_stable: true,
         }
+    }
+
+    /// Reproduce the reference's inverse LC branch exactly.
+    pub fn with_reference_lc(mut self) -> Self {
+        self.lc_stable = false;
+        self
     }
 
     /// Cartesian -> regularised. Returns the state and the frozen energy `E`.
@@ -61,8 +71,9 @@ impl<T: Real> AzSystem<T> {
         let p1v = v1 * self.k11 + v2 * self.k12;
         let p2v = v1 * self.k12 + v2 * self.k22;
 
-        let u1 = lc::u_of_rho(r1);
-        let u2 = lc::u_of_rho(r2);
+        let inv = if self.lc_stable { lc::u_of_rho } else { lc::u_of_rho_reference };
+        let u1 = inv(r1);
+        let u2 = inv(r2);
         let two = T::lit(2.0);
         let st = AzState {
             u1,

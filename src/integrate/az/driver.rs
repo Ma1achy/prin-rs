@@ -48,6 +48,26 @@ pub fn integrate_az<T: Real>(
     max_steps: usize,
     forced_refs: Option<&[u8]>,
 ) -> AzOut<T> {
+    integrate_az_lc(s0, m, t_max, n_sync, eta, max_steps, forced_refs, true)
+}
+
+/// As [`integrate_az`], with an explicit choice of inverse LC branch.
+///
+/// `lc_stable = false` reproduces the reference's branch exactly and is what the cross-check
+/// uses; `true` is the production kernel. The two produce genuinely different trajectories —
+/// the stable branch is more accurate, so it necessarily stops agreeing bit-for-bit with the
+/// reference. Keeping both makes that a measured difference rather than a lost gate.
+#[allow(clippy::too_many_arguments)]
+pub fn integrate_az_lc<T: Real>(
+    s0: Cart<T>,
+    m: &[T; 3],
+    t_max: T,
+    n_sync: usize,
+    eta: T,
+    max_steps: usize,
+    forced_refs: Option<&[u8]>,
+    lc_stable: bool,
+) -> AzOut<T> {
     let mut cart = s0;
     let e0 = energy::energy(&s0.r, &s0.v, m, T::zero());
     let mut t = T::zero();
@@ -82,7 +102,11 @@ pub fn integrate_az<T: Real>(
         }
 
         let (ab, bb, cb) = triple(a);
-        let sys = AzSystem::new(ab, bb, cb, *m);
+        let sys = if lc_stable {
+            AzSystem::new(ab, bb, cb, *m)
+        } else {
+            AzSystem::new(ab, bb, cb, *m).with_reference_lc()
+        };
         let (mut s, e) = sys.to_reg(&cart);
         let dt_left = t_target - t;
 

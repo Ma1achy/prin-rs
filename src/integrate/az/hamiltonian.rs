@@ -5,7 +5,9 @@
 //! alone is not sufficient: a sign error present in *both* `gamma` and `deriv` passes it
 //! silently. So `gamma` is independently anchored by the identity
 //!
-//!     Gamma(s, E) == A * B * (energy_phys(s) - E)
+//! ```text
+//! Gamma(s, E) == A * B * (energy_phys(s) - E)
+//! ```
 //!
 //! where `energy_phys` is itself anchored to the Cartesian energy, and thence to the Burrau
 //! constants. A sign error in `Gamma` cannot survive that chain. Only then does the FD test

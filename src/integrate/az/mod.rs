@@ -21,7 +21,7 @@ pub mod rk4;
 pub mod state;
 pub mod system;
 
-pub use driver::{integrate_az, integrate_with_policy, AzOut};
+pub use driver::{integrate_az, integrate_az_lc, integrate_with_policy, AzOut};
 pub use reference_body::RefPolicy;
 pub use state::AzState;
 pub use system::AzSystem;

@@ -69,6 +69,8 @@ fn radial_collision_passes_through_at_machine_precision() {
     let out = az::integrate_az(s0, &m, t_max, n_sync, eta, 20_000_000, None);
 
     println!("two-body radial collision, t_max = {t_max}, n_sync = {n_sync}, eta = {eta}");
+    println!("  NOTE: eta = 1e-4 is 100x finer than the production eta = 1e-2. This gate is");
+    println!("  not a production guarantee — see d_min_threshold_is_unreachable_at_production_eta.");
     println!("  d_min (regularised pairs) = {:.6e}", out.d_min_ref);
     println!("  d_min (all three pairs)   = {:.6e}", out.d_min_true);
     println!("  |dE/E|                    = {:.6e}", out.drift);
@@ -81,33 +83,73 @@ fn radial_collision_passes_through_at_machine_precision() {
     assert!(out.drift < 1e-12, "|dE/E| = {:e}, want < 1e-12", out.drift);
 }
 
-/// **d_min at an exact collision is a discretisation artefact, not a physical quantity.**
+/// **d_min at a near-collision is a phase-limited sampling artefact.**
 ///
-/// The true minimum separation of a radial two-body collision is zero. `d_min` records the
-/// closest *sampled* separation, and since `u` passes through zero roughly linearly in
-/// fictitious time while `|R1| = |u1|^2`, the sampled minimum falls like the square of the
-/// step. Which sample lands nearest the crossing is essentially a phase accident, so the
-/// scaling is noisy rather than clean.
+/// `u` crosses zero roughly linearly in fictitious time while `|R1| = |u1|^2`, so the closest
+/// *sampled* separation is `(|u'| * dphase)^2` where `dphase` is the distance from the
+/// crossing to the nearest sample — essentially a uniform draw in `[0, dtau/2]`.
 ///
-/// This matters for BRIEF §5: `d_min < 1e-10` is unreachable at the working `eta = 1e-2` —
-/// not because anything is wrong, but because the trajectory is not sampled that finely.
-/// The reference's quoted `1.35e-11` is likewise a property of its step size.
-///
-/// Reported, not asserted.
+/// The consequence matters more than the mechanism: the **scale** falls as `eta^2`, but any
+/// single realisation is dominated by where the sample happens to land and scatters over
+/// four or five orders. A scaling law read off one trajectory is therefore meaningless — the
+/// realisation scatter is as wide as the shift between decades. It needs an ensemble, which
+/// is what this test uses.
 #[test]
-fn d_min_at_collision_is_sampling_limited() {
-    let (_, m) = setup();
-    println!("{:>10}{:>14}{:>14}{:>14}{:>12}", "eta", "d_min", "|dE/E|", "gamma resid", "steps");
+fn d_min_at_collision_is_phase_limited() {
+    fn perturbed(d: f64) -> (Cart<f64>, [f64; 3]) {
+        (
+            Cart::new(
+                [Vec2::new(-0.5 * d, 0.0), Vec2::new(0.5 * d, 0.0), Vec2::new(0.0, 1000.0)],
+                [Vec2::zero(); 3],
+            ),
+            [1.0, 1.0, 1.0],
+        )
+    }
+    fn quantile(v: &mut Vec<f64>, q: f64) -> f64 {
+        v.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        v[((v.len() - 1) as f64 * q).round() as usize]
+    }
+
+    const N: usize = 64;
+    println!("d_min over {N} perturbed collision times (initial separation 1 + k*1e-3)");
+    println!("{:>8}{:>14}{:>14}{:>14}{:>16}", "eta", "p10", "median", "p90", "median ratio");
+    let mut prev: Option<f64> = None;
+    let mut ratios = Vec::new();
     for eta in [1e-2f64, 1e-3, 1e-4, 1e-5] {
-        let (s, _) = setup();
-        let o = az::integrate_az(s, &m, 1.0, 1, eta, 20_000_000, None);
-        println!(
-            "{eta:>10.0e}{:>14.3e}{:>14.3e}{:>14.3e}{:>12}",
-            o.d_min_ref, o.drift, o.gamma_max, o.steps
+        let mut ds = Vec::with_capacity(N);
+        for k in 0..N {
+            let (s, m) = perturbed(1.0 + (k as f64) * 1e-3);
+            ds.push(az::integrate_az(s, &m, 1.0, 1, eta, 40_000_000, None).d_min_ref);
+        }
+        let (p10, med, p90) = (quantile(&mut ds, 0.10), quantile(&mut ds, 0.50), quantile(&mut ds, 0.90));
+        let r = prev.map(|p| med / p);
+        if let Some(r) = r {
+            ratios.push(r);
+        }
+        let rs = r.map(|x| format!("{x:>16.3e}")).unwrap_or_else(|| format!("{:>16}", "-"));
+        println!("{eta:>8.0e}{p10:>14.3e}{med:>14.3e}{p90:>14.3e}{rs}");
+        prev = Some(med);
+    }
+    println!();
+    println!("eta^2 predicts a median ratio of 1e-2 per decade. The p10-p90 spread within a");
+    println!("single eta is wider than the shift between decades, which is exactly why a");
+    println!("single trajectory cannot establish the scaling.");
+
+    for r in &ratios {
+        assert!(
+            *r > 3e-3 && *r < 3e-2,
+            "median d_min ratio {r:e} is not consistent with eta^2 (predicts 1e-2)"
         );
     }
-    println!("\nd_min falls with eta; |dE/E| and the Gamma residual reach their roundoff");
-    println!("floor by eta = 1e-3 and stay there. Energy conservation is converged well");
-    println!("before d_min is, so the two halves of the acceptance test are not measuring");
-    println!("the same thing.");
+}
+
+/// At the **production** step size, the §5 threshold is out of reach by two orders. Not a
+/// defect — the trajectory simply is not sampled that finely.
+#[test]
+fn d_min_threshold_is_unreachable_at_production_eta() {
+    let (s, m) = setup();
+    let o = az::integrate_az(s, &m, 1.0, 1, 1e-2, 40_000_000, None);
+    println!("at production eta = 1e-2: d_min = {:.3e} (the §5 threshold is 1e-10)", o.d_min_ref);
+    println!("the gate above passes only at eta = 1e-4, 100x finer than production");
+    assert!(o.d_min_ref > 1e-10, "unexpectedly reached the threshold at production eta");
 }

@@ -79,7 +79,7 @@ fn n_sync_for(t_max: f64) -> usize {
 }
 
 /// Nominal copies only — `ens=0`, no RNG on either side. See `dump_ref.py:dump_az`.
-fn dump_az(name: &str, t_max: f64, path: &str) -> std::io::Result<()> {
+fn dump_az(name: &str, t_max: f64, path: &str, lc_stable: bool) -> std::io::Result<()> {
     let m = burrau::masses::<f64>();
     let n_sync = n_sync_for(t_max);
     let eta = 0.01f64;
@@ -105,7 +105,7 @@ fn dump_az(name: &str, t_max: f64, path: &str) -> std::io::Result<()> {
     )?;
 
     for i in 0..s.npix() {
-        let o = az::integrate_az(s.nominal::<f64>(i), &m, t_max, n_sync, eta, max_steps, None);
+        let o = az::integrate_az_lc(s.nominal::<f64>(i), &m, t_max, n_sync, eta, max_steps, None, lc_stable);
         write!(w, "{i}")?;
         for k in 0..3 {
             write!(w, "\t{:.17e}\t{:.17e}", o.state.r[k].x, o.state.r[k].y)?;
@@ -137,17 +137,20 @@ fn main() {
         eprintln!("usage: xcheck --case <name> --out <path>");
         std::process::exit(2);
     });
+    // The cross-check exists to reproduce the reference exactly, so it defaults to the
+    // reference's inverse LC branch. The production kernel uses the stable one.
+    let lc_stable = args.iter().any(|a| a == "--lc-stable");
     if let Some(dir) = std::path::Path::new(&out).parent() {
         let _ = std::fs::create_dir_all(dir);
     }
     let res = match case.as_str() {
         "algebra" => dump_algebra(&out),
-        "az_t0p5" => dump_az("az_t0p5", 0.5, &out),
-        "az_t1" => dump_az("az_t1", 1.0, &out),
-        "az_t2" => dump_az("az_t2", 2.0, &out),
-        "az_t4" => dump_az("az_t4", 4.0, &out),
-        "az_t8" => dump_az("az_t8", 8.0, &out),
-        "az_t13" => dump_az("az_t13", 13.0, &out),
+        "az_t0p5" => dump_az("az_t0p5", 0.5, &out, lc_stable),
+        "az_t1" => dump_az("az_t1", 1.0, &out, lc_stable),
+        "az_t2" => dump_az("az_t2", 2.0, &out, lc_stable),
+        "az_t4" => dump_az("az_t4", 4.0, &out, lc_stable),
+        "az_t8" => dump_az("az_t8", 8.0, &out, lc_stable),
+        "az_t13" => dump_az("az_t13", 13.0, &out, lc_stable),
         other => {
             eprintln!("unknown case: {other}");
             std::process::exit(2);

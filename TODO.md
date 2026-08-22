@@ -33,56 +33,60 @@ Status: `[ ]` not started · `[~]` in progress · `[x]` done · `[!]` blocked
 
 ## Step 3 — adaptive-dt integrator, unregularised · *no PR*
 
-- [ ] `src/integrate/leapfrog.rs` — `dt = eta·min_pairs(r^{3/2}/√(G(mi+mj)))`, KDK,
+- [x] `src/integrate/leapfrog.rs` — `dt = eta·min_pairs(r^{3/2}/√(G(mi+mj)))`, KDK,
       explicit `is_finite` in the loop condition
-- [ ] `tests/leapfrog_energy.rs` — near-field t=13
-- [ ] **gate:** drift **falls with `eta`** on tame pixels. Failure on close encounters is
+- [x] `tests/leapfrog_energy.rs` — near-field t=13
+- [x] **gate:** drift **falls with `eta`** on tame pixels. Failure on close encounters is
       expected — record which pixels and how many, don't tune around it
-- [ ] If drift is insensitive to `eta`, the equations are wrong. **Do not begin Step 4**
+- [x] If drift is insensitive to `eta`, the equations are wrong. **Do not begin Step 4**
 
 ## Step 4 — Aarseth–Zare · **FIRST PR**
 
-- [ ] `src/integrate/az/state.rs` — `[u1,p1,u2,p2,t]`, `to/from_array9`
-- [ ] `src/integrate/az/system.rs` — `to_reg`, `phys_from_state`, `energy_phys`, `to_cartesian`
-- [ ] `src/integrate/az/hamiltonian.rs` — **`gamma()` and `deriv()` adjacent**
+- [x] `src/integrate/az/state.rs` — `[u1,p1,u2,p2,t]`, `to/from_array9`
+- [x] `src/integrate/az/system.rs` — `to_reg`, `phys_from_state`, `energy_phys`, `to_cartesian`
+- [x] `src/integrate/az/hamiltonian.rs` — **`gamma()` and `deriv()` adjacent**
       (Γ exists only in the reference's docstring; write it)
-- [ ] `src/integrate/az/rk4.rs` — fixed `dtau`, `h = dtau*(!done)` **transcribed as-is**
-- [ ] `src/integrate/az/driver.rs` — sync loop, `dmin`, `switches`
-- [ ] `src/integrate/az/reference_body.rs` — `choose_reference`, `RefPolicy`, `ref_disagree`
-- [ ] `src/compat.rs` — `ReferenceQuirks` named booleans
+- [x] `src/integrate/az/rk4.rs` — fixed `dtau`, `h = dtau*(!done)` **transcribed as-is**
+- [x] `src/integrate/az/driver.rs` — sync loop, `dmin`, `switches`
+- [x] `src/integrate/az/reference_body.rs` — `choose_reference`, `RefPolicy`, `ref_disagree`
+- [x] `src/compat.rs` — `ReferenceQuirks` named booleans
 
 Transcription hazards (all silent):
-- [ ] `g1` carries `ma*mc`, `g2` carries `ma*mb` — cross mass pairs
-- [ ] `R3` sub-term **sign flips** between `g1` and `g2`
-- [ ] `_LmatT_apply(p1, L2p2)` — `p1` in the **matrix** slot, deliberate
-- [ ] `energy_phys` keeps the `P1·P2/ma` cross term
-- [ ] `dtau` fixed per sub-interval, **never** shrunk at close approach
-- [ ] `deriv` leaves `A`,`B` unfloored; `phys_from_state` floors them. Asymmetric — keep
-- [ ] Overshoot: clip the time accumulator only, leave state overshot
+- [x] `g1` carries `ma*mc`, `g2` carries `ma*mb` — cross mass pairs
+- [x] `R3` sub-term **sign flips** between `g1` and `g2`
+- [x] `_LmatT_apply(p1, L2p2)` — `p1` in the **matrix** slot, deliberate
+- [x] `energy_phys` keeps the `P1·P2/ma` cross term
+- [x] `dtau` fixed per sub-interval, **never** shrunk at close approach
+- [x] `deriv` leaves `A`,`B` unfloored; `phys_from_state` floors them. Asymmetric — keep
+- [x] Overshoot: clip the time accumulator only, leave state overshot
 
 Validation chain — **order matters, each link anchors the next**:
-- [ ] 1. Burrau constants anchor Cartesian `energy()` (Step 2)
-- [ ] 2. `energy_phys(to_reg(r,v)) == energy(r,v)`; `to_cartesian(to_reg(·))` round-trips
-- [ ] 3. **`gamma(s,E) == A·B·(energy_phys(s) − E)`** — a sign error in Γ cannot survive this
-- [ ] 4. FD: central-difference Γ vs analytic `deriv`, all 8 components
-  - [ ] assert error falls as **h²** (two step sizes)
-  - [ ] `#[should_panic]` sign-flipped variant, to prove the test has teeth
-- [ ] 5. Runtime monitor: `Γ ≡ 0` along the trajectory. Track `max|Γ|`, dump it
+- [x] 1. Burrau constants anchor Cartesian `energy()` (Step 2)
+- [x] 2. `energy_phys(to_reg(r,v)) == energy(r,v)`; `to_cartesian(to_reg(·))` round-trips
+- [x] 3. **`gamma(s,E) == A·B·(energy_phys(s) − E)`** — a sign error in Γ cannot survive this
+- [x] 4. FD: central-difference Γ vs analytic `deriv`, all 8 components
+  - [x] assert error falls as **h²** (two step sizes)
+  - [x] `#[should_panic]` sign-flipped variant, to prove the test has teeth
+- [x] 5. Runtime monitor: `Γ ≡ 0` along the trajectory. Track `max|Γ|`, dump it
 
 Gates (paste raw output into the PR):
-- [ ] (a) the chain above
-- [ ] (b) two-body radial collision: `d_min < 1e-10`, `|dE/E| < 1e-12`
-- [ ] (c) cross-check vs Python at f64, **nominal copies only**
-  - [ ] pin `n_sync=32, eta=0.01, max_steps=30000` explicitly
-  - [ ] row order `index = jy·nx + jx`, x fastest — unit-test against a hardcoded 3×2
-  - [ ] dump from `tb_az.integrate_az` directly, **not** `tb_all_az`
-  - [ ] **log the chosen reference body per sync as a compared column** — a near-tie broken
+- [x] (a) the chain above
+- [x] (b) two-body radial collision: `d_min < 1e-10`, `|dE/E| < 1e-12`
+- [x] (c) cross-check vs Python at f64, **nominal copies only**
+  - [x] pin `n_sync=32, eta=0.01, max_steps=30000` explicitly
+  - [x] row order `index = jy·nx + jx`, x fastest — unit-test against a hardcoded 3×2
+  - [x] dump from `tb_az.integrate_az` directly, **not** `tb_all_az`
+  - [x] **log the chosen reference body per sync as a compared column** — a near-tie broken
         differently by `argmax` fails the cross-check looking exactly like a transcription error
-  - [ ] hard-assert ≤1e-13 at `t≤2`, ≤1e-10 at `t=13`
-  - [ ] **divergence-vs-horizon table** `t ∈ {0.5,1,2,4,8,13}` — the curve shape is stronger
+  - [x] hard-assert ≤1e-13 at `t≤2` — **got bitwise identity at t≤1, 8.9e-16 at t=2**
+- [!] ≤1e-10 at `t=13` — **got 1.9e-10 absolute.** Exceeds the target, for reasons
+      unrelated to correctness; see the horizon table. Proposed as a BRIEF amendment
+  - [x] **divergence-vs-horizon table** `t ∈ {0.5,1,2,4,8,13}` — the curve shape is stronger
         evidence than a single pass/fail
-- [ ] Record the healthy-f64 `error_ratio` distribution → Step 5a's threshold comes from this
-- [ ] Benchmark `deriv`, extrapolate to 1024²×8 at t=13
+- [!] Record the healthy-f64 `error_ratio` distribution — **deferred to 5a**: error_ratio is
+      a cross-copy statistic and there is no ensemble until 5a. The drift distribution that
+      feeds it is recorded (near-field t=13 nominal: max |dE/E| = 1.7e-08)
+- [x] Benchmark `deriv`, extrapolate to 1024²×8 at t=13
 
 ## Step 5a — ensemble, fields, outputs · **SECOND PR**
 

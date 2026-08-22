@@ -52,6 +52,42 @@ def random_configs(n, seed):
     return out
 
 
+# Fixed physical length of one sync sub-interval. n_sync is derived from it so that every
+# horizon in the divergence sweep is integrated at the SAME per-interval resolution.
+# Leaving n_sync fixed while t_max varies would compare two different discretisations, and
+# the divergence curve would then measure the discretisation rather than the chaos.
+SYNC_INTERVAL = 13.0 / 32.0
+
+AZ_BASE_COLUMNS = (
+    "idx,r0x,r0y,r1x,r1y,r2x,r2y,v0x,v0y,v1x,v1y,v2x,v2y,t,dmin_ref,drift,switches"
+)
+
+
+def n_sync_for(t_max):
+    return max(1, int(round(t_max / SYNC_INTERVAL)))
+
+
+def az_columns(t_max):
+    """Base columns plus one column per sync boundary carrying the chosen reference body.
+
+    Comparing the reference body per sync is not optional. `choose_reference` is an argmax
+    over pair distances; if Rust and NumPy break a near-tie differently the trajectories
+    diverge for a reason that is not a bug, and it would present as an AZ transcription
+    error. Making it a compared column tells the two apart immediately.
+    """
+    refs = ",".join("ref%02d" % k for k in range(n_sync_for(t_max)))
+    return AZ_BASE_COLUMNS + "," + refs
+
+
+def _az_case(t_max, nx=3, ny=3):
+    return dict(
+        kind="az",
+        nx=nx, ny=ny, cx=1.0, cy=3.0, half=0.05, body=0,
+        t_max=t_max, n_sync=n_sync_for(t_max), eta=0.01, max_steps=30000,
+        columns=az_columns(t_max),
+    )
+
+
 CASES = {
     "algebra": dict(
         kind="algebra",
@@ -59,13 +95,31 @@ CASES = {
         seed=20260822,
         columns="idx,energy,d01,d02,d12,inertia,hyperradius,n0,n1,n2",
     ),
+    # The horizon sweep. Same settings, increasing t_max: a correct port shows divergence
+    # growing like exp(lambda t) from an O(1e-16) intercept.
+    "az_t0p5": _az_case(0.5),
+    "az_t1": _az_case(1.0),
+    "az_t2": _az_case(2.0),
+    "az_t4": _az_case(4.0),
+    "az_t8": _az_case(8.0),
+    "az_t13": _az_case(13.0),
 }
+
+AZ_HORIZONS = ["az_t0p5", "az_t1", "az_t2", "az_t4", "az_t8", "az_t13"]
 
 
 def header_lines(name):
     c = CASES[name]
-    return [
-        f"# case={name} kind={c['kind']} n={c['n']} seed={c['seed']}",
-        "# masses=3,4,5 G=1 eps2=0",
-        f"# columns={c['columns']}",
-    ]
+    if c["kind"] == "algebra":
+        head = [
+            f"# case={name} kind={c['kind']} n={c['n']} seed={c['seed']}",
+            "# masses=3,4,5 G=1 eps2=0",
+        ]
+    else:
+        head = [
+            f"# case={name} kind={c['kind']} nx={c['nx']} ny={c['ny']}"
+            f" cx={c['cx']} cy={c['cy']} half={c['half']} body={c['body']}",
+            f"# t_max={c['t_max']} n_sync={c['n_sync']} eta={c['eta']}"
+            f" max_steps={c['max_steps']} masses=3,4,5 G=1 ens=0",
+        ]
+    return head + [f"# columns={c['columns']}"]

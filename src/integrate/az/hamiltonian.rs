@@ -70,6 +70,10 @@ pub fn deriv<T: Real>(sys: &AzSystem<T>, s: &AzState<T>, e: T) -> AzState<T> {
 
     let four = T::lit(4.0);
     let two = T::lit(2.0);
+    // The reference writes `r3**3`, which numpy evaluates through `pow`, NOT as repeated
+    // multiplication — they differ by 1 ulp on some inputs (verified). `powf(3.0)` routes to
+    // the same libm call, removing one ulp-level divergence source from the cross-check.
+    let r3c = r3.powf(T::lit(3.0));
 
     // dGamma/dp1 and dGamma/dp2. `lt_apply(u1, l2p2)` is L(u1)^T applied to L(u2)p2.
     let du1 = s.p1 * (b / (four * sys.mu1)) + lc::lt_apply(s.u1, l2p2) / (four * sys.ma);
@@ -85,7 +89,7 @@ pub fn deriv<T: Real>(sys: &AzSystem<T>, s: &AzState<T>, e: T) -> AzState<T> {
         + lc::lt_apply(s.p1, l2p2) / (four * sys.ma)
         - s.u1 * (two * sys.ma * sys.mc)
         - (s.u1 * (two * b / r3)
-            + lc::lt_apply(s.u1, r3v) * (two * a * b / (r3 * r3 * r3)))
+            + lc::lt_apply(s.u1, r3v) * (two * a * b / r3c))
             * mbc
         - s.u1 * (two * e * b);
 
@@ -96,7 +100,7 @@ pub fn deriv<T: Real>(sys: &AzSystem<T>, s: &AzState<T>, e: T) -> AzState<T> {
         + lc::lt_apply(s.p2, l1p1) / (four * sys.ma)
         - s.u2 * (two * sys.ma * sys.mb)
         - (s.u2 * (two * a / r3)
-            - lc::lt_apply(s.u2, r3v) * (two * a * b / (r3 * r3 * r3)))
+            - lc::lt_apply(s.u2, r3v) * (two * a * b / r3c))
             * mbc
         - s.u2 * (two * e * a);
 
@@ -109,19 +113,61 @@ pub fn deriv<T: Real>(sys: &AzSystem<T>, s: &AzState<T>, e: T) -> AzState<T> {
     }
 }
 
+/// `Gamma` together with the magnitude of its largest term.
+///
+/// The scale matters: `Gamma` is a sum of terms that individually grow like `A*B*mb*mc/r3`,
+/// so a bare `|Gamma|` says nothing without knowing what it is being compared against.
+pub fn gamma_scaled<T: Real>(sys: &AzSystem<T>, s: &AzState<T>, e: T) -> (T, T) {
+    let a = s.a();
+    let b = s.b();
+    let r1 = lc::rho_of_u(s.u1);
+    let r2 = lc::rho_of_u(s.u2);
+    let r3 = (r2 - r1).norm().max(T::TINY);
+    let l1p1 = lc::l_apply(s.u1, s.p1);
+    let l2p2 = lc::l_apply(s.u2, s.p2);
+    let eight = T::lit(8.0);
+    let four = T::lit(4.0);
+
+    let terms = [
+        b * s.p1.norm_sq() / (eight * sys.mu1),
+        a * s.p2.norm_sq() / (eight * sys.mu2),
+        l1p1.dot(l2p2) / (four * sys.ma),
+        -(sys.ma * sys.mb * b),
+        -(sys.ma * sys.mc * a),
+        -(a * b * sys.mb * sys.mc / r3),
+        -(e * a * b),
+    ];
+    let mut sum = T::zero();
+    let mut scale = T::zero();
+    for t in terms {
+        sum += t;
+        let m = t.abs();
+        if m > scale {
+            scale = m;
+        }
+    }
+    (sum, scale)
+}
+
 /// A free integration-quality residual.
 ///
 /// `E` is the true energy at registration, so `Gamma == 0` along the exact trajectory. The
-/// residual is normalised to `|H - E| / |E|`, which puts it on the same footing as
-/// `energy_drift` and makes it directly comparable.
+/// residual is `|Gamma|` relative to the magnitude of its largest term — **not** divided by
+/// `A*B`.
 ///
-/// This is *not* the withdrawn claim that `Gamma` vanishes identically as a function — it
-/// does not, and `dGamma/du` is exactly what drives the motion. It vanishes only *along the
+/// Dividing by `A*B` is the obvious thing and it is wrong: `A*B -> 0` at a collision, so the
+/// quotient blows up exactly where the integrator is working hardest, and the "residual"
+/// then measures how closely the sampling approached collision rather than how well energy
+/// was conserved. Measured: it grew from 3.3e-6 to 3.9e-1 as `eta` fell from 1e-2 to 1e-6 on
+/// a trajectory whose actual energy drift *improved* from 5.4e-12 to 1.1e-13.
+///
+/// This is not the withdrawn claim that `Gamma` vanishes identically as a function — it does
+/// not, and `dGamma/du` is exactly what drives the motion. It vanishes only *along the
 /// trajectory*, which is what makes it a residual worth watching.
 pub fn gamma_residual<T: Real>(sys: &AzSystem<T>, s: &AzState<T>, e: T) -> T {
-    let ab = s.a() * s.b();
-    if !ab.is_finite() || ab <= T::zero() {
+    let (g, scale) = gamma_scaled(sys, s, e);
+    if scale <= T::zero() || !scale.is_finite() {
         return T::infinity();
     }
-    (gamma(sys, s, e) / ab).abs() / e.abs().max(T::DRIFT_FLOOR)
+    (g / scale).abs()
 }

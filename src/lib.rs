@@ -5,6 +5,8 @@
 
 pub mod real;
 pub mod vec2;
+pub mod grid;
+pub mod integrate;
 pub mod physics;
 pub mod rng;
 

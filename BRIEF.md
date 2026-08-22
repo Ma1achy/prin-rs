@@ -242,8 +242,17 @@ the gain is coverage and horizon-independence, not earliness.
 The `(state, detail)` encoding of §2.4 stays as the **outcome**, for classification and rendering.
 It is correct; it is simply not the spread contributor.
 
-Note also that the playhead value can *un*-fire, since the tightest-pair identity fluctuates. Dump
-`spread_event_max`, the running max over boundaries, alongside it.
+Note also that the playhead value can *un*-fire, since the tightest-pair identity fluctuates:
+within one `t = 13` run, 130 of the 165 pixels that ever disagree have re-agreed by the horizon.
+
+**Do not latch it unguarded.** Of those 130, **129 were at a near-tie** — second-tightest over
+tightest separation below 1.1, median 1.0030 — so the copies disagreed about which pair is
+*tightest* without having diverged. A running max lights 165 pixels where 35 have genuinely
+diverged. The tie ratio cannot be the guard either: genuine disagreements also sit near 1 (median
+1.0797). **Persistence is the guard** — artefacts last one boundary (median run 1, max 2), genuine
+divergence persists (median run 10) — and a run of 3 admits 0 of 130 artefacts. Dump
+`spread_event_max` (unguarded) and `spread_event_latched` (guarded, joined with the playhead value)
+alongside, and keep the playhead value as the field `ensemble_spread` uses.
 
 **`d_min` is primary; `r_coll` is a recorded parameter.** The collision label is *derived* from
 `d_min`, not the reverse. Measured on near-field 64×64: the collision fraction runs 0.0000 → 0.0242

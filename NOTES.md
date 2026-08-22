@@ -317,6 +317,58 @@ per-step or per-sync error source.
 
 ---
 
+## 3a. Standing rules, each promoted after it caught something
+
+### Never conclude "no effect" from an aggregate without the per-pixel distribution
+
+Three instances, two of them in a single PR:
+
+- The f64 `spread_shape` rows were **identical to five printed digits** between LC branches.
+  Checked per pixel: the branch changes **all 1024** pixels' drift, `spread_shape` and
+  `error_ratio`, with a worst per-pixel change of 6.7%. The distribution does not move; the
+  pixels do.
+- Shared references move the `spread_shape` **median by 1%**. Per pixel: 268 of 1024 change,
+  the worst by **1.86x** — an individual pixel nearly tripling.
+- NOTES §1 anticipated exactly this, which is why `ref_disagree` is dumped per pixel rather
+  than compared as a difference of aggregates.
+
+Both would have been reported as "no effect" from the summary line alone. An aggregate can
+only ever say the distribution did not move; it cannot say the pixels did not. Dump the
+per-pixel comparison before writing "inert".
+
+### A test that cannot fail is indistinguishable from a test that passes
+
+Three instances:
+
+- The `r_coll = 1e-2` label-flip count came back **zero** — but at that threshold every pixel
+  collides regardless, so the label is saturated and *cannot* flip. Zero there is not
+  reassurance, and the 152 flips at `1e-3` are the real answer.
+- The scale-invariance test at `t_max = 6` passed while measuring nothing: no pixel terminated,
+  every `t_end` was exactly the horizon, and the invariance was the rescaling's own arithmetic.
+  It now asserts that some pixel terminates early.
+- The finite-difference test on `Gamma` would have passed a sign error present in **both**
+  `Gamma` and `deriv`. That is why the chain anchors on
+  `gamma(s,E) == A*B*(energy_phys(s) - E)` first, and why a deliberately sign-flipped variant
+  is kept as a `#[should_panic]` case.
+
+The question that catches all three is the same: **what would have to be true for this test to
+fire?** If the answer is "nothing in this configuration", the test is decoration.
+
+### Where the "~4 time units earlier" figure came from
+
+Recorded because it could not be reproduced here and the reason matters more than the number.
+
+The figure was measured against an **escape-based** terminal criterion, where the terminal
+label genuinely lagged the event class. Here the terminal arm is *collision at `r_coll`*, and a
+collision **is** the tightest pair reaching threshold — so both fire at the same boundary by
+construction, and the measured lead is exactly zero on all 22 pixels where both fire.
+
+The lead time was never a property of the event class. It was a property of what it was being
+compared against. The justification that holds independently of the comparison is **coverage
+and horizon-independence**: 165 pixels against 22 at `t = 13`, strictly nested with none
+flagged by the terminal statistic alone, and 110 against 0 at `t_max = 8`. That is a stronger
+claim than the lead time ever was.
+
 ## 3. Smaller observations
 
 - `reference/tb_az.py` uses `eta=0.02` as its default; `tb_all_az` and the smoke test pass
@@ -455,3 +507,83 @@ Since Step 5b the nominal copy can terminate early, so its `refs` record is shor
 features met. Fixed by falling back to the per-copy choice past the nominal's last boundary:
 sharing applies where the nominal has a choice to share. Regression test in
 `tests/f32_precision.rs`.
+
+---
+
+## 5. Should `spread_event` latch? — measured, not judged
+
+The numpy work observed ensemble spread **falling 6x between `t=6` and `t=8`**
+(diverge-then-reconverge), which is why the divergence accumulator latches. The same shape
+appears here. But a **discrete** label has a failure mode a continuous divergence measure does
+not: if two pairs are near-equal in separation, copies can disagree about which is *tightest*
+without their trajectories having diverged at all, and a running max would latch that
+permanently.
+
+So: at the boundary where the copies first disagree, how close were the two tightest pairs?
+`tie_ratio_at_disagree` is the second-tightest over tightest separation, minimised over the 8
+copies. 1.0 is an exact tie. Near-field 32x32, `t = 13`, f64:
+
+| population | min | p10 | median | p90 | max | n |
+|---|---|---|---|---|---|---|
+| all that ever disagree | 1.0000 | 1.0006 | 1.0040 | 1.0884 | 2.3587 | 165 |
+| **un-fired** (disagreed, then re-agreed) | 1.0000 | 1.0006 | **1.0030** | 1.0193 | 1.1098 | 130 |
+| still disagreeing at the playhead | 1.0004 | 1.0066 | 1.0797 | 1.1636 | 2.3587 | 35 |
+
+**129 of the 130 un-fired pixels were at a near-tie** (below 1.1), median 1.0030 — essentially
+exact ties. An unguarded running max would light 165 of 1024 pixels where 35 have genuinely
+diverged: **79% of the firing pixels lit permanently for a labelling artefact.**
+
+**But the tie ratio cannot be the guard.** The two populations are shifted, not separated —
+genuine disagreements also sit near 1 (median 1.0797, p10 1.0066). A threshold at 1.1 would
+admit 14 pixels and drop most of the genuine ones. Reported rather than fitted.
+
+**Persistence separates them, and cleanly:**
+
+| population | `n_disagree` median | max | longest run median | max |
+|---|---|---|---|---|
+| un-fired | 1.0 | 3.0 | **1.0** | **2.0** |
+| still disagreeing | 10.0 | 10.0 | **10.0** | **10.0** |
+
+| latch requires a run of | genuine kept | artefacts admitted |
+|---|---|---|
+| >= 1 | 35/35 | **130/130** |
+| >= 2 | 22/35 | 1/130 |
+| >= 3 | 22/35 | **0/130** |
+| >= 4 | 22/35 | 0/130 |
+
+`LATCH_RUN = 3`, chosen from that table rather than by eye. The 13 genuine pixels a run guard
+alone misses are ones that began disagreeing within three boundaries of the horizon — censoring,
+not a false negative — so the field joins the guarded latch with the playhead value.
+`spread_event_latched` is then lit on **35/35 genuine and 0/130 artefact**.
+
+### The latch is a no-op on this slice, and that is the result
+
+Evaluated at every boundary of one `t = 13`, `n_sync = 32` run — nonzero pixels of 1024:
+
+| k | t | playhead | latched | unguarded max |
+|---|---|---|---|---|
+| 3 | 1.6250 | 0 | 0 | 0 |
+| 7 | 3.2500 | 0 | 0 | 26 |
+| 15 | 6.5000 | 0 | 0 | 26 |
+| 23 | 9.7500 | 22 | 22 | 165 |
+| 31 | 13.0000 | 35 | 35 | 165 |
+
+The guarded latch tracks the playhead value exactly. Every genuine disagreement on this slice
+persists to the horizon, so latching adds nothing here — it is cheap insurance for regions where
+one does re-agree, and it costs nothing to carry. The unguarded version over-reports by 4.7x.
+
+**Recommendation: keep `spread_event` (playhead) as the spec field and as what
+`ensemble_spread` uses. Do not adopt `spread_event_max`.** All three stay dumped.
+
+### A correction to my own evidence in PR #5
+
+I cited the `t_max` sweep — 110 nonzero pixels at `t_max = 8` against 35 at `t_max = 13` — as
+evidence that the playhead value un-fires. **That comparison is invalid.** `n_sync` is fixed
+while `t_max` varies, so the sync grid changes with the horizon, `dtau` changes with it, and the
+rows are different discretisations rather than one run truncated at different playheads. The
+unguarded running max across that sweep reads 109, 297, 110, 488, 165 at `t = 4, 6, 8, 10, 13` —
+a running max cannot fall, which proves the rows are not nested.
+
+The un-firing is real; the evidence I gave for it was not. The correct demonstration is within a
+single run: 130 of the 165 pixels that ever disagree have re-agreed by the horizon. Same
+cadence-dependence as the escape arm in PR #4, in a new place.

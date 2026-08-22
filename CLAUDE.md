@@ -156,6 +156,20 @@ sync slack is no slack at all (f32 uses `1e-6`). Also: `TINY*TINY` underflows at
 is a product of two floored quantities, so a doubly-degenerate state gives `dtau = inf` — caught
 by the explicit `is_finite` test, **not** by the floor. Know which guard is doing the work.
 
+**Never conclude "no effect" from an aggregate without the per-pixel distribution.**
+An aggregate can only say the distribution did not move; it cannot say the pixels did not.
+Measured twice in one PR: LC-branch `spread_shape` rows identical to five digits while **all
+1024** pixels moved, worst 6.7%; shared references moving the median 1% while 268 of 1024
+pixels moved, worst **1.86x**. Both would have been written up as "inert".
+
+**A test that cannot fail is indistinguishable from a test that passes.**
+Ask what would have to be true for the test to fire. Three catches: a label-flip count of zero
+at `r_coll = 1e-2`, where every pixel collides anyway so the label is *saturated*; a
+scale-invariance test at `t_max = 6` where nothing terminated, so `t_end` was the horizon and
+the invariance was the rescaling's own arithmetic; and an FD test on `Gamma` that a sign error
+shared by `Gamma` and `deriv` would have passed. If the answer is "nothing in this
+configuration", the test is decoration.
+
 **Test `is_finite` explicitly.**
 `NaN >= x` is `false`, so a diverged trajectory never satisfies a loop exit and burns its entire
 step budget. Measured: 354 s against 3 s nominal.

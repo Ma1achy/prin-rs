@@ -76,11 +76,22 @@ GPU comes later. Correctness now.
 
 ## NON-NEGOTIABLES
 
-**`error_ratio` uses MAD internally, aggregates by max.**
-Internally: MAD (`1.4826 × median|x − median|`), not a standard deviation. A std returns NaN on
-precisely the pathological pixel the statistic exists to flag. Aggregate over pixels by **max**,
-not median — max tracks damage at Spearman +0.956 against +0.599 for median. Treat the result as a
-**boolean flag**; its magnitude is unstable.
+**`error_ratio` uses the maximum deviation internally, aggregates by max.**
+Internally: `max|x − median|`, with non-finite treated as an infinite deviation. Not a standard
+deviation, which returns NaN on precisely the pathological pixel the statistic exists to flag —
+and **not MAD**, which was the earlier answer to that and overshot. Robustness is the wrong
+property here: with 8 copies, one wild value sits above the median of eight deviations and is
+arithmetically invisible. Measured damaged/healthy separation **1.06 with MAD, 59.51 with max
+deviation**; a pixel whose worst copy drifted 120× the total energy read 1.1369 under MAD, inside
+the healthy p99 of 1.0756. Keep `error_ratio_mad` dumped; never gate on it.
+
+Aggregate over pixels by **max**, not median — max tracks damage at Spearman +0.956 against +0.599
+for median. **That is a separate decision from the one above**, at a different level: it compares
+`error_ratio_max` to `error_ratio_median` across footprints. A per-pixel correlation between the
+two within-footprint estimators is a different measurement and is not evidence about it. Both
+decisions land on the word "max" for unrelated reasons; do not collapse them.
+
+Treat the result as a **boolean flag**; its magnitude is unstable.
 
 **Never discard an ensemble copy.**
 Every pixel carries exactly `E+1` copies, always. A badly-integrated trajectory is a *measurement
@@ -99,6 +110,20 @@ Two or more pairs below `r_coll`, not all three. By the triangle inequality `|AB
 `|AC| < r_coll` forces `|BC| < 2 r_coll`, so "exactly two pairs" is reachable and is already a
 near-triple. Requiring all three would silently misclassify it as an ordinary binary collision.
 `detail = 3` means "all three" for both arms — triple collision and triple ejection.
+
+**`deep interior` is a binary collision, not a triple.**
+BRIEF §2.6's warning predates AZ. Measured in both implementations: pair (0,2) closes to
+`2.28e-5`, pairs (0,1) and (1,2) never register even at `r_coll = R`, and it reaches `t = 13`
+in about a second with `|dE/E| ~ 1.4e-7`. The 190 s failure was the *unregularised* integrator.
+Do not restore a "this region is intractable" assumption — that has already produced one false
+finding in this project.
+
+**The escape arm contributes nothing at `t = 13`.**
+Burrau's escape happens later than the horizon: zero of 1024 near-field pixels fire at
+`t_max = 13`, 109 at `t_max = 20`. So `spread_event` and the outcome image at the project
+horizon are driven entirely by the collision arm — the one arm *with* a reference is the one
+that is silent. Escape is also sampled at sync boundaries and latches on first firing, both
+transcribed from the reference.
 
 **Test `is_finite` explicitly.**
 `NaN >= x` is `false`, so a diverged trajectory never satisfies a loop exit and burns its entire

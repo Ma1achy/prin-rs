@@ -43,10 +43,14 @@ pub fn render(slice: &Slice, cfg: &EnsembleCfg, precision: Precision) -> Vec<Pix
 
 /// Summary statistics over a rendered grid.
 ///
-/// `error_ratio` aggregates by **max**, per BRIEF §4 — max tracks damage at Spearman +0.956
-/// against +0.599 for median. Its magnitude is unstable, so it is a boolean flag; the median
-/// and p99 are reported alongside so the distribution is visible rather than reduced to a
-/// single number that cannot be trusted quantitatively.
+/// `error_ratio` aggregates **across pixels by max**, per BRIEF §4 — max tracks damage at
+/// Spearman +0.956 against +0.599 for median. That result is about this aggregation and
+/// nothing else; the separate choice of maximum deviation as the estimator *within* a
+/// footprint rests on its own measurement (see [`crate::ensemble::stats`]). Two decisions,
+/// both spelled "max", independently arrived at.
+///
+/// The magnitude is unstable, so it is a boolean flag; the median and p99 are reported
+/// alongside so the distribution is visible rather than reduced to one untrustworthy number.
 #[derive(Clone, Debug, Default)]
 pub struct Summary {
     pub n: usize,
@@ -59,6 +63,9 @@ pub struct Summary {
     pub d_min_gap_median: f64,
     pub d_min_gap_max: f64,
     pub ref_disagree_total: u64,
+    /// Fraction of pixels in each [`crate::outcome::State`], by the nominal copy's label.
+    pub state_fracs: [f64; 6],
+    pub t_end_median: f64,
     pub n_pixels_with_nonfinite: usize,
     pub sigma_e_0_median: f64,
 }
@@ -77,6 +84,7 @@ pub fn summarise(pixels: &[PixelOut]) -> Summary {
     let mut dr: Vec<f64> = pixels.iter().map(|p| p.energy_drift_max).filter(finite).collect();
     let mut gap: Vec<f64> = pixels.iter().map(|p| p.d_min_gap).filter(finite).collect();
     let mut s0: Vec<f64> = pixels.iter().map(|p| p.sigma_e_0).filter(finite).collect();
+    let mut te: Vec<f64> = pixels.iter().map(|p| p.t_end).filter(finite).collect();
 
     let (mut argmax, mut best) = (0usize, f64::NEG_INFINITY);
     for (i, p) in pixels.iter().enumerate() {
@@ -97,6 +105,17 @@ pub fn summarise(pixels: &[PixelOut]) -> Summary {
         d_min_gap_median: quantile(&mut gap.clone(), 0.5),
         d_min_gap_max: quantile(&mut gap, 1.0),
         ref_disagree_total: pixels.iter().map(|p| p.ref_disagree as u64).sum(),
+        state_fracs: {
+            let mut f = [0.0f64; 6];
+            for p in pixels {
+                if (p.state as usize) < 6 {
+                    f[p.state as usize] += 1.0;
+                }
+            }
+            let n = pixels.len().max(1) as f64;
+            f.map(|x| x / n)
+        },
+        t_end_median: quantile(&mut te, 0.5),
         n_pixels_with_nonfinite: pixels.iter().filter(|p| p.n_nonfinite > 0).count(),
         sigma_e_0_median: quantile(&mut s0, 0.5),
     }

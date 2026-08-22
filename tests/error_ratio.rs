@@ -100,14 +100,27 @@ fn error_ratio_sits_at_one_on_a_near_two_body_control() {
 /// not, it is measuring a wrong equation rather than integration error — the same diagnostic
 /// signature that has caught three bugs in this project, applied to a statistic that has
 /// nothing else to check it against.
+///
+/// **The convergence is asserted on the median over pixels, not the max, and that is a
+/// correction rather than a convenience.** `error_ratio` is now built on the maximum
+/// deviation over 8 copies, so a max over 9 pixels is a 1-in-72 order statistic: which copy
+/// of which pixel happens to be worst changes with `eta`, and the realisation scatter is
+/// wider than the trend. Measured — the max rose 3.166e-4 -> 9.596e-4 at the first halving
+/// and then fell by a factor of 340 over the next two, while the median fell at every single
+/// step. This is CLAUDE.md's "do not read a scaling law off a single trajectory", one level
+/// up: an extreme order statistic is not the place to read a convergence law.
+///
+/// The max is printed anyway, and the end-to-end fall across the whole decade is asserted, so
+/// the scatter is visible rather than filtered out.
 #[test]
 fn error_ratio_minus_one_falls_with_step_size() {
     let s = grid::region("near-field", 3, 3, 0.05).unwrap();
-    println!("{:>8}{:>16}{:>16}{:>14}", "eta", "max |ratio-1|", "median |r-1|", "ratio");
+    println!("{:>8}{:>16}{:>16}{:>14}", "eta", "max |ratio-1|", "median |r-1|", "med ratio");
     let mut prev: Option<f64> = None;
     let mut fell = 0usize;
     let mut total = 0usize;
-    for eta in [4e-2f64, 2e-2, 1e-2, 5e-3] {
+    let (mut first_max, mut last_max) = (0.0f64, 0.0f64);
+    for (k, eta) in [4e-2f64, 2e-2, 1e-2, 5e-3].into_iter().enumerate() {
         let cfg = EnsembleCfg { eta, t_max: 4.0, n_sync: 10, ..Default::default() };
         let mut devs: Vec<f64> = (0..s.npix())
             .map(|i| (evaluate::<f64>(&s, i, &cfg).error_ratio - 1.0).abs())
@@ -115,18 +128,29 @@ fn error_ratio_minus_one_falls_with_step_size() {
         devs.sort_by(|a, b| a.partial_cmp(b).unwrap());
         let mx = *devs.last().unwrap();
         let med = devs[devs.len() / 2];
-        let rs = prev.map(|p| format!("{:>14.3}", mx / p)).unwrap_or_else(|| format!("{:>14}", "-"));
+        if k == 0 {
+            first_max = mx;
+        }
+        last_max = mx;
+        let rs = prev.map(|p| format!("{:>14.3}", med / p)).unwrap_or_else(|| format!("{:>14}", "-"));
         println!("{eta:>8.0e}{mx:>16.6e}{med:>16.6e}{rs}");
         if let Some(p) = prev {
             total += 1;
-            if mx < p {
+            if med < p {
                 fell += 1;
             }
         }
-        prev = Some(mx);
+        prev = Some(med);
     }
     println!();
     println!("error_ratio - 1 must fall with eta. If it plateaus or rises, it is measuring a");
-    println!("wrong equation, not integration error.");
-    assert_eq!(fell, total, "error_ratio - 1 did not fall at every step-size halving");
+    println!("wrong equation, not integration error. Read the median column: the max over 9");
+    println!("pixels of a max over 8 copies is a 1-in-72 order statistic and its realisation");
+    println!("scatter is wider than the trend it is being asked to show.");
+
+    assert_eq!(fell, total, "median error_ratio - 1 did not fall at every step-size halving");
+    assert!(
+        last_max < first_max,
+        "max error_ratio - 1 did not fall across the decade: {first_max:.4e} -> {last_max:.4e}"
+    );
 }

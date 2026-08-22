@@ -1,10 +1,27 @@
-//! Robust ensemble statistics.
+//! Ensemble statistics.
 //!
-//! `error_ratio` uses MAD internally rather than a standard deviation, because a std returns
-//! NaN the moment one copy is non-finite — precisely the pathological pixel the statistic
-//! exists to flag. Over pixels it aggregates by **max**, not median: max tracks damage at
-//! Spearman +0.956 against +0.599 for median. Its magnitude is unstable, so it is a boolean
-//! flag, not a measurement.
+//! **Two independent decisions both land on the word "max", for different reasons. Do not
+//! collapse them.**
+//!
+//! *Within* a footprint, `error_ratio` uses the **maximum deviation** from the median. BRIEF §4
+//! requires the inner statistic survive a non-finite copy, because a standard deviation returns
+//! NaN on exactly the pathological pixel the field exists to flag. MAD satisfies that but
+//! overshoots: an estimator a single wild copy cannot move is one that cannot *see* a single
+//! wild copy, and with eight copies one bad value sits above the median of eight deviations and
+//! is arithmetically invisible. Measured on 23 damaged against 1001 healthy pixels, the
+//! damaged/healthy separation is **1.06 with MAD and 59.51 with max deviation**; a pixel whose
+//! worst copy drifted 120x the total energy reported a MAD ratio of 1.1369, inside the healthy
+//! p99 of 1.0756. Max deviation meets the original requirement *better*: a non-finite copy
+//! gives an infinite deviation, which is the correct answer where a std gives NaN — and NaN is
+//! indistinguishable from "could not compute".
+//!
+//! *Across* footprints, [`crate::render`] aggregates by max rather than median, at Spearman
+//! +0.956 against +0.599. That is an aggregation-level result about `error_ratio_max` versus
+//! `error_ratio_median`, correlated against per-quad exponent damage. It is not a statement
+//! about which estimator goes inside a footprint, and the two must not be conflated when
+//! either is re-measured.
+//!
+//! The magnitude of the ratio is unstable either way: it is a boolean flag, not a measurement.
 
 use crate::Real;
 
@@ -51,32 +68,30 @@ pub fn mad<T: Real>(v: &[T]) -> T {
     median(&dev) * T::lit(1.4826)
 }
 
-/// `sigma_E(t) / sigma_E(0)`, exactly 1.0 under exact dynamics.
+/// `sigma_E(t) / sigma_E(0)`, exactly 1.0 under exact dynamics. **This is the field.**
 ///
 /// Each trajectory conserves its own energy, so the ensemble's *spread* of energies is fixed
 /// at `t = 0` and any growth is pure integration error — no threshold, no tuned constant.
+///
+/// `sigma_E` here is [`max_dev`]; see the module docs for why not MAD. [`error_ratio_mad`] is
+/// kept and dumped alongside so the change stays measurable rather than asserted.
 ///
 /// **`sigma_E(0)` is proportional to the jitter and therefore to the cell width.** As
 /// resolution rises `sigma_E(0)` shrinks while integration error does not, so the ratio
 /// inflates for a purely trivial reason. Both `sigma_E` values are returned so the confound
 /// is visible and correctable rather than baked into a single number.
 pub fn error_ratio<T: Real>(e0: &[T], et: &[T]) -> (T, T, T) {
-    let s0 = mad(e0);
-    let st = mad(et);
+    let s0 = max_dev(e0);
+    let st = max_dev(et);
     let ratio = if s0 > T::zero() { st / s0 } else { T::nan() };
     (ratio, s0, st)
 }
 
 /// Maximum absolute deviation from the median, with non-finite treated as infinite.
 ///
-/// The **non-robust** companion to [`mad`], and it exists because robustness cuts both ways.
-/// MAD is specified in BRIEF §4 so the statistic survives a non-finite copy — but a spread
-/// estimator that a single wild copy cannot move is also one that cannot *see* a single wild
-/// copy, which is precisely the damage `error_ratio` exists to flag. Measured: a pixel whose
-/// worst copy drifted by `1.2e+02` reported a MAD-based `error_ratio` of 1.1369.
-///
-/// Reported alongside rather than instead: the two answer different questions, and which one
-/// the acceptance test should use is a decision for data, not for taste.
+/// The deliberately **non-robust** spread estimator, and the one [`error_ratio`] is built on.
+/// Robustness cuts both ways: see the module docs. A non-finite copy yields an infinite
+/// deviation — the correct answer, and never a NaN.
 pub fn max_dev<T: Real>(v: &[T]) -> T {
     if v.len() < 2 {
         return T::zero();
@@ -92,10 +107,14 @@ pub fn max_dev<T: Real>(v: &[T]) -> T {
     worst
 }
 
-/// `error_ratio` built on [`max_dev`] instead of [`mad`]. Sensitive to a single damaged copy.
-pub fn error_ratio_range<T: Real>(e0: &[T], et: &[T]) -> T {
-    let s0 = max_dev(e0);
-    let st = max_dev(et);
+/// `error_ratio` built on [`mad`] instead of [`max_dev`] — BRIEF §4's original wording.
+///
+/// Retained and dumped so the switch to [`error_ratio`] stays a measured difference rather
+/// than a silent replacement. Insensitive to a single damaged copy, which is why it is no
+/// longer the field.
+pub fn error_ratio_mad<T: Real>(e0: &[T], et: &[T]) -> T {
+    let s0 = mad(e0);
+    let st = mad(et);
     if s0 > T::zero() {
         st / s0
     } else {

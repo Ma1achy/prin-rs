@@ -42,8 +42,8 @@ fn mad_based_error_ratio_cannot_separate_damaged_pixels() {
 
     let mut seps = Vec::new();
     for (name, f) in [
-        ("MAD", (|p: &&prin_rs::ensemble::pixel::PixelOut| p.error_ratio) as fn(&&_) -> f64),
-        ("max deviation", |p: &&prin_rs::ensemble::pixel::PixelOut| p.error_ratio_range),
+        ("MAD", (|p: &&prin_rs::ensemble::pixel::PixelOut| p.error_ratio_mad) as fn(&&_) -> f64),
+        ("max deviation", |p: &&prin_rs::ensemble::pixel::PixelOut| p.error_ratio),
     ] {
         let dmed = q(damaged.iter().map(f).filter(|x| x.is_finite()).collect(), 0.5);
         let hp99 = q(healthy.iter().map(f).filter(|x| x.is_finite()).collect(), 0.99);
@@ -61,14 +61,24 @@ fn mad_based_error_ratio_cannot_separate_damaged_pixels() {
 /// The gate. The threshold comes from what a healthy f64 run actually produces, per the
 /// earlier decision — not from a number chosen by eye.
 ///
-/// It is a weak gate, and deliberately reported as such: given the separation measured above,
-/// almost any threshold on the MAD-based statistic is arbitrary. The distribution is what
-/// carries information, so all four numbers are printed.
+/// **It is gated on the healthy population, and that is not a dodge.** `error_ratio` is now
+/// built on the maximum deviation, so a genuinely damaged pixel reads five or six orders of
+/// magnitude above 1 — as it should, that being the entire point. A max over the whole grid
+/// would therefore be a measurement of the worst pixel in the region, not a correctness
+/// criterion. The criterion that carries weight is: **where the integration is healthy, the
+/// ratio sits at 1.** Both populations are printed, so nothing is hidden by the split.
 #[test]
 fn error_ratio_acceptance_near_field_t13() {
     let px = render(32);
-    let er: Vec<f64> = px.iter().map(|p| p.error_ratio).filter(|x| x.is_finite()).collect();
-    let rg: Vec<f64> = px.iter().map(|p| p.error_ratio_range).filter(|x| x.is_finite()).collect();
+    let fin = |x: &f64| x.is_finite();
+    let er: Vec<f64> = px.iter().map(|p| p.error_ratio).filter(fin).collect();
+    let md: Vec<f64> = px.iter().map(|p| p.error_ratio_mad).filter(fin).collect();
+    let healthy: Vec<f64> = px
+        .iter()
+        .filter(|p| p.energy_drift_max <= 1e-3)
+        .map(|p| p.error_ratio)
+        .filter(fin)
+        .collect();
     let argmax = px
         .iter()
         .enumerate()
@@ -78,18 +88,34 @@ fn error_ratio_acceptance_near_field_t13() {
         .unwrap();
 
     println!("near-field 32x32, t=13, E+1=8 copies, eta=0.01, f64");
-    println!("  error_ratio (MAD)   max {:.6}  p99 {:.6}  median {:.6}  argmax pixel {argmax}",
+    println!("  error_ratio, all pixels    max {:.4e}  p99 {:.4e}  median {:.6}  argmax {argmax}",
              q(er.clone(), 1.0), q(er.clone(), 0.99), q(er.clone(), 0.5));
-    println!("  error_ratio (range) max {:.4e}  p99 {:.4e}  median {:.6}",
-             q(rg.clone(), 1.0), q(rg.clone(), 0.99), q(rg.clone(), 0.5));
+    println!("  error_ratio, healthy only  max {:.4e}  p99 {:.4e}  median {:.6}   ({} px)",
+             q(healthy.clone(), 1.0), q(healthy.clone(), 0.99), q(healthy.clone(), 0.5),
+             healthy.len());
+    println!("  error_ratio_mad, all       max {:.6}  p99 {:.6}  median {:.6}",
+             q(md.clone(), 1.0), q(md.clone(), 0.99), q(md.clone(), 0.5));
     println!();
-    println!("BRIEF §5 asks for 1.0000. The median is 1.000000; the max is not, and cannot");
-    println!("be — a max over 1024 pixels of a statistic §4 calls unstable in magnitude is");
-    println!("the least reproducible quantity in the system.");
+    println!("BRIEF §5 asks for 1.0000. The median is 1.000000 on both populations. The max");
+    println!("over all pixels is not 1 and must not be: on a chaos instrument, a region with");
+    println!("no damaged pixels would mean the region was not interesting.");
 
-    assert!(q(er.clone(), 0.5) < 1.001, "median error_ratio should sit at 1");
-    assert!(q(er, 1.0) < 3.0, "max error_ratio exceeded the healthy-run bound");
+    assert!(q(er, 0.5) < 1.001, "median error_ratio should sit at 1");
+    assert!(q(healthy.clone(), 0.5) < 1.001, "healthy median error_ratio should sit at 1");
+    assert!(
+        q(healthy, 1.0) < HEALTHY_MAX,
+        "max error_ratio over healthy pixels exceeded the measured bound"
+    );
 }
+
+/// Set from the measured healthy-f64 run: near-field 32x32, t=13, eta=0.01 gives a healthy
+/// p99 of 1.0228 and a healthy max of 5.2087. The bound is 10.0 — roughly 2x the measured
+/// worst — and a named constant so any future change to it shows up in a diff.
+///
+/// The gap between p99 (1.02) and max (5.21) is itself worth reading: `drift_max <= 1e-3` is
+/// a blunt cut, and a handful of pixels just inside it are already mildly damaged. The cut is
+/// not a clean partition and is not presented as one.
+const HEALTHY_MAX: f64 = 10.0;
 
 /// NOTES §2.1, settled with data: the reference's `d_min` blind spot never bites.
 #[test]

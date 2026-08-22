@@ -8,20 +8,32 @@ use std::path::Path;
 
 use crate::ensemble::pixel::PixelOut;
 use crate::grid::Slice;
+use crate::outcome::State;
 
-/// Outcome colouring. The legacy classifier emits body 0/1/2 escaping, or 3 for bound;
-/// a pixel with any non-finite copy is flagged separately, because "undetermined" is a
-/// distinct answer from "bound" and must not be painted as one.
+/// Colour by `state` with `detail` shading it, per BRIEF §7. A pixel with any non-finite copy
+/// is flagged separately regardless of the nominal copy's label, because "undetermined" is a
+/// distinct answer from any of the others and must not be painted as one.
+///
+/// `detail = 3` — the two "all three" outcomes — gets the brightest shade of its family, so a
+/// triple reads at a glance rather than blending into ordinary collisions or escapes.
 fn outcome_rgb(p: &PixelOut) -> [u8; 3] {
     if p.n_nonfinite > 0 {
         return [255, 0, 255]; // magenta: undetermined, deliberately loud
     }
-    match p.legacy_class {
-        0 => [220, 80, 60],
-        1 => [70, 150, 220],
-        2 => [110, 190, 110],
+    let base = match State::from_bits(p.state) {
+        Some(State::Escape) => [220, 80, 60],
+        Some(State::Collision) => [110, 190, 110],
+        Some(State::Bounded) => [70, 150, 220],
+        Some(State::Running) => [200, 190, 90],
+        Some(State::SimFailed) => return [255, 0, 255],
         _ => [40, 40, 48],
-    }
+    };
+    let k = 0.55 + 0.15 * p.detail as f64;
+    [
+        (base[0] as f64 * k).min(255.0) as u8,
+        (base[1] as f64 * k).min(255.0) as u8,
+        (base[2] as f64 * k).min(255.0) as u8,
+    ]
 }
 
 /// Perceptually monotone ramp for a value in `[0, 1]`. Not a scientific colourmap; it is

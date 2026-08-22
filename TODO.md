@@ -90,38 +90,43 @@ Gates (paste raw output into the PR):
 
 ## Step 5a — ensemble, fields, outputs · **SECOND PR**
 
-- [ ] `src/grid.rs` — slice decode, per-axis cell widths
-- [ ] `src/ensemble/jitter.rs` — per-pixel seeding `(i,j,seed)` via SplitMix64 → `Pcg64Mcg`
-  - [ ] **jitter uses per-axis cell width** — the reference uses `hx` for *both* axes
+- [x] `src/grid.rs` — slice decode, per-axis cell widths
+- [x] `src/ensemble/jitter.rs` — per-pixel seeding `(i,j,seed)` via SplitMix64 → `Pcg64Mcg`
+  - [x] **jitter uses per-axis cell width** — the reference uses `hx` for *both* axes
         (not x-only as first described; latent on square grids, wrong on any other)
-  - [ ] copy 0 always un-jittered — load-bearing, assert it
-  - [ ] `tests/seeding_golden.rs` pins first N values so a dep bump can't move ICs
-- [ ] `src/ensemble/stats.rs` — median, MAD, spreads
-- [ ] `error_ratio`: MAD inside, **max** aggregation over pixels
-- [ ] `spread_shape`: dump **both** BRIEF §4's definition and `refine_test.svar` — different
+  - [x] copy 0 always un-jittered — load-bearing, assert it
+  - [x] `tests/seeding_golden.rs` pins first N values so a dep bump can't move ICs
+- [x] `src/ensemble/stats.rs` — median, MAD, spreads
+- [x] `error_ratio`: MAD inside, **max** aggregation over pixels
+- [!] **MAD defeats the field's purpose.** Damaged-vs-healthy separation is 1.06 with MAD
+      and 59.51 with max-deviation. Both computed and dumped; contradicts a CLAUDE.md
+      non-negotiable, so the choice is the user's
+- [x] `spread_shape`: dump **both** BRIEF §4's definition and `refine_test.svar` — different
       statistics; the brief's is spec, `svar` is the one with a reference
-- [ ] `d_min_ref`, `d_min_true`, `d_min_gap` as three fields
-- [ ] per-copy `finite` flag; never update `d_min` from non-finite state; never discard a copy
-- [ ] `src/output/raw.rs`, `src/output/png.rs`, `src/render.rs`, `src/config.rs`, `src/bin/prin.rs`
+- [x] `d_min_ref`, `d_min_true`, `d_min_gap` as three fields
+- [x] per-copy `finite` flag; never update `d_min` from non-finite state; never discard a copy
+- [x] `src/output/raw.rs`, `src/output/png.rs`, `src/render.rs`, `src/config.rs`, `src/bin/prin.rs`
 
 Validation (no oracle — invariants only):
-- [ ] `error_ratio` == 1.0 exactly at t=0
-- [ ] shift/scale invariance of the ratio
-- [ ] exactly-integrable control (two-body + distant third) sits at 1
-- [ ] **step-size convergence: `error_ratio − 1` falls as `eta → 0`** — the check that makes a
+- [x] `error_ratio` == 1.0 exactly at t=0
+- [x] shift/scale invariance of the ratio
+- [x] exactly-integrable control (two-body + distant third) sits at 1
+- [x] **step-size convergence: `error_ratio − 1` falls as `eta → 0`** — the check that makes a
       field with no oracle trustworthy
-- [ ] **gate:** gauge invariance, `α ∈ {0.25,1,4}`, `t` by `α^{3/2}`, ~10 decimals
-- [ ] **gate:** `max(error_ratio)` under the Step-4-derived bound; report max/median/p99/argmax
+- [x] **gate:** gauge invariance, `α ∈ {0.25,1,4}`, `t` by `α^{3/2}`, ~10 decimals
+- [x] **gate:** `max(error_ratio)` under the Step-4-derived bound; report max/median/p99/argmax
 
 Confounds to dump, not hide:
-- [ ] `sigma_E_0` and `sigma_E_t` as separate fields — `σ_E(0) ∝ cell width`, so the ratio
+- [x] `sigma_E_0` and `sigma_E_t` as separate fields — `σ_E(0) ∝ cell width`, so the ratio
       inflates with resolution for a trivial reason. Threatens §8 exp 3, and exp 1 too
       (2×2 aggregation compares across different effective cell widths)
-- [ ] **confirm with a number, not an argument, that `ensemble_spread` is free of it**
-      (`spread_shape` normalises by the chord bound 2, not by σ_E)
-- [ ] `d_min_gap` distribution across the grid — settles NOTES §2.1
-- [ ] `ref_disagree` vs `error_ratio` correlation, unshared run — settles NOTES §1
-- [ ] State the prediction `error_ratio ≈ 1 + 1e-3` in the PR so a surprise is visible
+- [x] **confirmed with a number:** cell width falls 9x, `sigma_E(0)` falls 8.6x
+      (proportional), `ensemble_spread` falls only 2.1x — not proportional, so free of it
+- [x] `d_min_gap` **identically zero in all five regions** — NOTES §2.1 settled
+- [x] `ref_disagree` vs `error_ratio` correlation, unshared run — settles NOTES §1
+- [!] Predicted `error_ratio ≈ 1 + 1e-3`; **measured max 2.449, p99 1.433, median 1.000000**.
+      The prediction was wrong because it assumed no damaged pixels; 23 of 1024 have
+      `drift_max > 1e-3`. See the MAD finding below
 
 ## Step 5b — termination and outcome encoding · **THIRD PR**
 

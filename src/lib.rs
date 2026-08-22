@@ -5,11 +5,14 @@
 
 pub mod real;
 pub mod vec2;
+pub mod config;
 pub mod ensemble;
 pub mod grid;
 pub mod integrate;
 pub mod outcome;
 pub mod physics;
+pub mod output;
+pub mod render;
 pub mod rng;
 
 pub use real::Real;

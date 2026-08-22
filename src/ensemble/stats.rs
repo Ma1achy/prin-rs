@@ -67,6 +67,42 @@ pub fn error_ratio<T: Real>(e0: &[T], et: &[T]) -> (T, T, T) {
     (ratio, s0, st)
 }
 
+/// Maximum absolute deviation from the median, with non-finite treated as infinite.
+///
+/// The **non-robust** companion to [`mad`], and it exists because robustness cuts both ways.
+/// MAD is specified in BRIEF §4 so the statistic survives a non-finite copy — but a spread
+/// estimator that a single wild copy cannot move is also one that cannot *see* a single wild
+/// copy, which is precisely the damage `error_ratio` exists to flag. Measured: a pixel whose
+/// worst copy drifted by `1.2e+02` reported a MAD-based `error_ratio` of 1.1369.
+///
+/// Reported alongside rather than instead: the two answer different questions, and which one
+/// the acceptance test should use is a decision for data, not for taste.
+pub fn max_dev<T: Real>(v: &[T]) -> T {
+    if v.len() < 2 {
+        return T::zero();
+    }
+    let m = median(v);
+    let mut worst = T::zero();
+    for &x in v {
+        let d = if x.is_finite() { (x - m).abs() } else { T::infinity() };
+        if d > worst {
+            worst = d;
+        }
+    }
+    worst
+}
+
+/// `error_ratio` built on [`max_dev`] instead of [`mad`]. Sensitive to a single damaged copy.
+pub fn error_ratio_range<T: Real>(e0: &[T], et: &[T]) -> T {
+    let s0 = max_dev(e0);
+    let st = max_dev(et);
+    if s0 > T::zero() {
+        st / s0
+    } else {
+        T::nan()
+    }
+}
+
 /// Fraction of copies not sharing the modal class, normalised by `1 - 1/(E+1)` so a
 /// maximally split ensemble reads 1.0.
 pub fn spread_event<T: Real>(classes: &[u8]) -> T {

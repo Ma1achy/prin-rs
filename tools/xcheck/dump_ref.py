@@ -13,6 +13,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "referenc
 import numpy as np  # noqa: E402
 import tb  # noqa: E402
 import tb_az  # noqa: E402
+import tb_lc  # noqa: E402
 import tb_ftle  # noqa: E402
 import refine_test  # noqa: E402
 
@@ -117,7 +118,10 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--case", required=True, choices=sorted(cases.CASES))
     ap.add_argument("--out", required=True)
+    ap.add_argument("--lc-unstable", action="store_true",
+                    help="use the reference's original (unconditioned) inverse LC branch")
     a = ap.parse_args()
+    tb_lc.USE_STABLE_LC = not a.lc_unstable
     os.makedirs(os.path.dirname(a.out) or ".", exist_ok=True)
     kind = cases.CASES[a.case]["kind"]
     if kind == "algebra":

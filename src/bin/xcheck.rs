@@ -137,9 +137,10 @@ fn main() {
         eprintln!("usage: xcheck --case <name> --out <path>");
         std::process::exit(2);
     });
-    // The cross-check exists to reproduce the reference exactly, so it defaults to the
-    // reference's inverse LC branch. The production kernel uses the stable one.
-    let lc_stable = args.iter().any(|a| a == "--lc-stable");
+    // Both sides now default to the conditioned inverse LC branch: `reference/tb_lc.py`
+    // sets `USE_STABLE_LC = True`. Pass --lc-unstable on both sides to compare the
+    // historical path instead.
+    let lc_stable = !args.iter().any(|a| a == "--lc-unstable");
     if let Some(dir) = std::path::Path::new(&out).parent() {
         let _ = std::fs::create_dir_all(dir);
     }

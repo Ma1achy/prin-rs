@@ -54,8 +54,8 @@ def main():
         subprocess.run(pycmd, check=True, stdout=subprocess.DEVNULL, cwd=ROOT)
         cmd = [CARGO, "run", "--release", "--quiet", "--bin", "xcheck", "--",
                "--case", name, "--out", rs_p]
-        if "--lc-unstable" not in sys.argv:
-            cmd.append("--lc-stable")
+        if "--lc-unstable" in sys.argv:
+            cmd.append("--lc-unstable")
         subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL,
                        stderr=subprocess.DEVNULL, cwd=ROOT)
 

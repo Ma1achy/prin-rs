@@ -8,6 +8,7 @@ pub mod vec2;
 pub mod ensemble;
 pub mod grid;
 pub mod integrate;
+pub mod outcome;
 pub mod physics;
 pub mod rng;
 

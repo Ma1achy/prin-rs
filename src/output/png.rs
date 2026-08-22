@@ -56,7 +56,9 @@ fn save(path: &Path, w: u32, h: u32, data: &[u8]) -> std::io::Result<()> {
     Ok(())
 }
 
-pub fn write_pair(stem: &str, slice: &Slice, pixels: &[PixelOut]) -> std::io::Result<()> {
+/// Returns the `[lo, hi]` window the spread image was scaled over, so the caller can print it.
+/// A false-colour image without its scale is decoration.
+pub fn write_pair(stem: &str, slice: &Slice, pixels: &[PixelOut]) -> std::io::Result<(f64, f64)> {
     let (w, h) = (slice.nx as u32, slice.ny as u32);
 
     let mut a = Vec::with_capacity(pixels.len() * 3);
@@ -65,11 +67,40 @@ pub fn write_pair(stem: &str, slice: &Slice, pixels: &[PixelOut]) -> std::io::Re
     }
     save(Path::new(&format!("{stem}_outcome.png")), w, h, &a)?;
 
+    // `ensemble_spread` spans several decades and its median sits near 1e-3, so a linear
+    // [0,1] ramp paints the whole grid at the bottom of the scale and the structure — thin
+    // filaments where the copies decohere — disappears into flat background. Mapped on a log
+    // scale between the grid's own p1 and p99 instead, which is a *diagnostic* choice: the
+    // image is not the product, the raw dump is, and the image only has to make structure
+    // visible. The window is printed alongside so the picture is not read as absolute.
+    let mut fin: Vec<f64> = pixels
+        .iter()
+        .map(|p| p.ensemble_spread)
+        .filter(|x| x.is_finite() && *x > 0.0)
+        .collect();
+    fin.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    let (lo, hi) = if fin.len() < 2 {
+        (1e-6, 1.0)
+    } else {
+        let q = |f: f64| fin[(((fin.len() - 1) as f64) * f).round() as usize];
+        (q(0.01).max(1e-12), q(0.99).max(q(0.01) * 10.0))
+    };
+    let (ll, lh) = (lo.ln(), hi.ln());
+
     let mut b = Vec::with_capacity(pixels.len() * 3);
     for p in pixels {
-        let v = if p.ensemble_spread.is_finite() { p.ensemble_spread } else { 1.0 };
-        b.extend_from_slice(&ramp(v));
+        let v = p.ensemble_spread;
+        // Non-finite is painted at full scale: undetermined is the loudest thing a pixel can
+        // be, and must not be painted as quiet.
+        let t = if !v.is_finite() {
+            1.0
+        } else if v <= 0.0 {
+            0.0
+        } else {
+            ((v.ln() - ll) / (lh - ll)).clamp(0.0, 1.0)
+        };
+        b.extend_from_slice(&ramp(t));
     }
     save(Path::new(&format!("{stem}_spread.png")), w, h, &b)?;
-    Ok(())
+    Ok((lo, hi))
 }

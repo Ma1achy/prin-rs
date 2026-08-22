@@ -24,6 +24,7 @@ pub const FIELDS: &[&str] = &[
     "t_spread_event", "tie_ratio_at_disagree", "n_disagree", "longest_disagree_run", "ensemble_spread",
     "sigma_e_0", "sigma_e_t", "error_ratio", "error_ratio_mad",
     "switches", "ref_disagree",
+    "eta_used", "error_ratio_coarse", "energy_drift_max_coarse", "refined",
 ];
 
 pub fn write<W: Write>(
@@ -42,13 +43,14 @@ pub fn write<W: Write>(
         "nx={} ny={} cx={} cy={} half={} body={}\n\
          t_max={} n_sync={} eta={} max_steps={} n_copies={} jitter_frac={} seed={}\n\
          ref_policy={:?} lc_stable={} precision={} eps=0\n\
-         r_coll_frac={} stop_on_event={}\n\
+         r_coll_frac={} stop_on_event={} refine_flagged={} refine_threshold={} refine_eta_factor={} refine_max_passes={}\n\
          fields={}\n",
         slice.nx, slice.ny, slice.cx, slice.cy, slice.half, slice.body,
         cfg.t_max, cfg.n_sync, cfg.eta, cfg.max_steps, cfg.n_extra + 1,
         cfg.jitter_frac, cfg.seed,
         cfg.ref_policy, cfg.lc_stable, precision,
         cfg.r_coll_frac, cfg.stop_on_event,
+        cfg.refine_flagged, cfg.refine_threshold, cfg.refine_eta_factor, cfg.refine_max_passes,
         FIELDS.join(","),
     );
     w.write_all(&(header.len() as u32).to_le_bytes())?;
@@ -64,7 +66,7 @@ pub fn write<W: Write>(
     Ok(())
 }
 
-pub fn record(p: &PixelOut) -> [f64; 36] {
+pub fn record(p: &PixelOut) -> [f64; 40] {
     [
         p.outcome as f64,
         p.state as f64,
@@ -102,5 +104,9 @@ pub fn record(p: &PixelOut) -> [f64; 36] {
         p.error_ratio_mad,
         p.switches as f64,
         p.ref_disagree as f64,
+        p.eta_used,
+        p.error_ratio_coarse,
+        p.energy_drift_max_coarse,
+        if p.refined { 1.0 } else { 0.0 },
     ]
 }

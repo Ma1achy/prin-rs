@@ -1,0 +1,33 @@
+    Finished `release` profile [optimized] target(s) in 0.01s
+     Running tests/leapfrog_energy.rs (target/release/deps/leapfrog_energy-12096b6f799565e9)
+
+running 5 tests
+test cell_widths_are_per_axis ... ok
+test characterise_the_failure_mode ... region           worst stepsmedian steps   worst drift     d_min
+near-field              5575        5187      1.900e-3   1.36e-3
+deep interior          34980       16492       2.759e2   3.42e-9
+
+Budget is 2000000 steps; nothing came close to exhausting it.
+The unregularised integrator does not hang here — it returns a wrong number.
+ok
+test drift_falls_with_step_size_on_tractable_pixels ... near-field 5x5, t = 13, unregularised leapfrog
+pixels: 25, did not reach t_max at one or both eta: 0
+  median |dE/E| at eta=0.01  : 4.966747e-4
+  median |dE/E| at eta=0.005 : 6.346054e-5
+  max    |dE/E| at eta=0.01  : 1.899634e-3
+  max    |dE/E| at eta=0.005 : 2.450698e-4
+  median drift ratio (eta/2 : eta) = 0.1280
+  (2nd-order convergence would give ~0.25; adaptive stepping perturbs this)
+ok
+test grid_row_order_is_x_fastest ... ok
+test locate_where_the_unregularised_integrator_gives_up ... region           t_max  pixelsincomplete  median drift     max drift
+near-field          13      25         0      4.967e-4      1.900e-3
+near-field          40      25         0      1.312e-2      2.916e-1
+deep interior       13      25         0      3.302e-2       2.759e2
+body2 core          13      25         0      4.967e-4      5.287e-2
+
+AZ reference at near-field t=13 reaches |dE/E| ~ 3.9e-09 for comparison.
+ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.19s
+

@@ -1,0 +1,17 @@
+    Finished `release` profile [optimized] target(s) in 0.07s
+     Running tests/az_identities.rs (target/release/deps/az_identities-e3305b7467b04067)
+
+running 4 tests
+test energy_phys_matches_cartesian_energy ... energy_phys vs Cartesian energy: worst relative deviation = 8.168e-16
+ok
+test gamma_equals_ab_times_energy_defect ... Gamma == A*B*(H - E): worst relative deviation = 6.500e-14   at a=2 A=2.802e0 B=3.897e0 E=-12.826
+ok
+test the_gamma_identity_detects_a_sign_error ... sign-flipped Gamma: worst relative deviation = 1.548e0 (must be large)
+ok
+test to_reg_to_cartesian_round_trips ... to_cartesian(to_reg(.)) round trip: worst relative deviation = 1.845e-15
+  u0/|u| at the worst case = 9.046e-1  (small means near the LC branch cut)
+  see tests/lc_conditioning.rs — this is the LC branch, not the AZ algebra
+ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

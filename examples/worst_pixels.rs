@@ -4,7 +4,7 @@ use prin_rs::grid;
 
 fn main() {
     let s = grid::region("near-field", 32, 32, 0.05).unwrap();
-    let cfg = EnsembleCfg::default();
+    let cfg = EnsembleCfg { refine_flagged: false, ..Default::default() };
     let px: Vec<_> = (0..s.npix()).map(|i| evaluate::<f64>(&s, i, &cfg)).collect();
 
     let mut by_drift: Vec<usize> = (0..px.len()).collect();

@@ -1,0 +1,20 @@
+    Finished `release` profile [optimized] target(s) in 0.01s
+     Running tests/az_hamiltonian_fd.rs (target/release/deps/az_hamiltonian_fd-f25d8d73ebd28874)
+
+running 3 tests
+test deriv_matches_finite_differenced_gamma ... FD vs analytic, h = 1e-5 * max(|s_k|,1), 192 states:
+  median = 1.167e-10   p99 = 6.092e-8   worst = 6.111e-8
+  worst at a=0 A=4.10e-1 B=4.42e-1 |R3|=3.48e-2
+  worst cases sit at small |R3|, where the unregularised 1/|R3| term has a
+  large third derivative and central differencing truncates harder. That is a
+  property of the geometry, not of the derivative — the h^2 test below is the
+  correctness statement; this one bounds the conditioning.
+ok
+test finite_difference_error_falls_as_h_squared ... FD error ratio (h/2 : h) over 192 states: median = 0.2500
+  second-order central differencing predicts 0.25
+ok
+test the_fd_test_detects_the_r3_sign_error ... dGamma/du2 — correct sign: 2.171e-9, flipped sign: 2.231e0
+ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

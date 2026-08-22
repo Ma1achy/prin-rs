@@ -170,6 +170,17 @@ separation is about 1.0. So it resolves regions and not individual quads. Also: 
 size — **match the counts** or the exponent is biased (+7.6% at `E+1 = 8`) before any physics
 enters.
 
+**A statistic can report maximum confidence precisely when it is least informed.**
+The inversion, not mere noise. `drift max` scatter reads 0.000 at `n <= 256` because small
+samples never draw the one bad pixel of 16384 — stable at the wrong answer. Terminal-outcome
+purity reads pure under lockstep because nothing has terminated yet. Ask what the statistic
+would say about a system nothing is known about; if the answer is "confident", it is wrong.
+
+**`n_sync` fixed while `t_max` varies compares different discretisations.**
+`dtau = eta*dt_left/(A0*B0)`, so changing `t_max` at fixed `n_sync` changes the step size and
+the rows are not one trajectory at different playheads. Scale `n_sync` with `t_max`, or run
+once and evaluate at each boundary.
+
 **Never conclude "no effect" from an aggregate without the per-pixel distribution.**
 An aggregate can only say the distribution did not move; it cannot say the pixels did not.
 Measured twice in one PR: LC-branch `spread_shape` rows identical to five digits while **all

@@ -66,6 +66,10 @@ pub struct Summary {
     /// Fraction of pixels in each [`crate::outcome::State`], by the nominal copy's label.
     pub state_fracs: [f64; 6],
     pub t_end_median: f64,
+    pub n_refined: usize,
+    /// Pixels still above the refinement threshold after the last pass. Reported, not hidden.
+    pub n_still_flagged: usize,
+    pub drift_max_coarse: f64,
     pub n_pixels_with_nonfinite: usize,
     pub sigma_e_0_median: f64,
 }
@@ -116,6 +120,12 @@ pub fn summarise(pixels: &[PixelOut]) -> Summary {
             f.map(|x| x / n)
         },
         t_end_median: quantile(&mut te, 0.5),
+        n_refined: pixels.iter().filter(|p| p.refined).count(),
+        n_still_flagged: pixels.iter().filter(|p| p.error_ratio > 10.0).count(),
+        drift_max_coarse: quantile(
+            &mut pixels.iter().map(|p| p.energy_drift_max_coarse).filter(finite).collect(),
+            1.0,
+        ),
         n_pixels_with_nonfinite: pixels.iter().filter(|p| p.n_nonfinite > 0).count(),
         sigma_e_0_median: quantile(&mut s0, 0.5),
     }

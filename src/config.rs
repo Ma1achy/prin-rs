@@ -43,6 +43,10 @@ prin — uniform-resolution three-body initial-condition kernel
   --lc-unstable       use the reference's unconditioned inverse LC branch
   --r-coll <x>        collision radius as a FRACTION of R, fixed at t=0 (default 1e-3)
   --no-stop           record events but integrate every copy to t_max anyway
+  --no-refine         skip the second pass over error_ratio-flagged pixels
+  --refine-threshold <x>  error_ratio above which a pixel is re-integrated (default 10)
+  --refine-eta <x>    factor applied to eta on each refinement pass (default 0.25)
+  --refine-passes <n> maximum refinement passes (default 3)
   --out <stem>        output stem (default out)
 ";
 
@@ -82,6 +86,10 @@ pub fn parse(args: &[String]) -> Result<Config, String> {
             "--lc-unstable" => c.ens.lc_stable = false,
             "--r-coll" => { c.ens.r_coll_frac = get(i)?.parse().map_err(|e| format!("{e}"))?; i += 1; }
             "--no-stop" => c.ens.stop_on_event = false,
+            "--no-refine" => c.ens.refine_flagged = false,
+            "--refine-threshold" => { c.ens.refine_threshold = get(i)?.parse().map_err(|e| format!("{e}"))?; i += 1; }
+            "--refine-passes" => { c.ens.refine_max_passes = get(i)?.parse().map_err(|e| format!("{e}"))?; i += 1; }
+            "--refine-eta" => { c.ens.refine_eta_factor = get(i)?.parse().map_err(|e| format!("{e}"))?; i += 1; }
             "--out" => { c.out = get(i)?; i += 1; }
             "-h" | "--help" => return Err(USAGE.into()),
             other => return Err(format!("unknown argument: {other}\n\n{USAGE}")),

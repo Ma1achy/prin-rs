@@ -354,6 +354,55 @@ Three instances:
 The question that catches all three is the same: **what would have to be true for this test to
 fire?** If the answer is "nothing in this configuration", the test is decoration.
 
+### A statistic can report maximum confidence precisely when it is least informed
+
+Not "a statistic can be noisy" — the inversion is the point. These fail *towards* confidence,
+and they do it hardest exactly where the answer matters most.
+
+- **`drift max` scatter reads 0.000 at `n <= 256`** and 1.000 at `n = 4096`. The apparently most
+  stable quantity in the whole convergence table is stable because the tail is one pixel of
+  16384 and small samples never draw it. It is stable at the wrong answer, and its stability
+  *is* the symptom.
+- **Outcome purity reads pure under lockstep.** A `spread_event` built on the terminal
+  `(state, detail)` reports every copy in agreement early in the march — because nothing has
+  terminated yet. Maximum confidence at the playhead where least is known. Measured: 0 of 1024
+  pixels firing at `t_max = 8` against 110 for the event class.
+
+Same inversion, different costumes: a quantity that has not yet had the chance to disagree, read
+as a quantity that agrees. The check is to ask what the statistic would look like on a system
+about which nothing is known — if the answer is "confident", the statistic is wrong.
+
+### `n_sync` fixed while `t_max` varies compares different discretisations
+
+`dtau = eta * dt_left / (A0*B0)` and `dt_left` comes from the sync grid, so changing `t_max` at
+fixed `n_sync` changes the step size, and the runs are not the same trajectory sampled at
+different playheads. Two instances:
+
+- **The escape arm.** An event at `t = 9.5` is caught at `t_max = 16`, where the boundaries are
+  0.5 apart, and missed at `t_max = 13`, where they are 0.40625 apart.
+- **The `t_max` sweep in PR #5**, which I offered as evidence that `spread_event` un-fires. The
+  unguarded running max across it reads 109, 297, 110, 488, 165 at `t = 4, 6, 8, 10, 13` — a
+  running max cannot fall, which proves the rows are not nested. The un-firing is real; that
+  evidence for it was not.
+
+**Any sweep over `t_max` must scale `n_sync` with it**, or the horizon and the discretisation
+move together and neither can be attributed. To vary the playhead alone, run once and evaluate at
+each boundary — which is what `examples/latching_decision.rs` does.
+
+### All five of these rules were found the same way
+
+The two above join:
+
+- never conclude "no effect" from an aggregate without the per-pixel distribution;
+- a test that cannot fail is indistinguishable from a test that passes;
+- and, below, the provenance of a number that could not be reproduced.
+
+Every one of them came from the same question: **what would have to be true for this measurement
+to see the thing it is aimed at?** Not "is the number right" — "could this number have come out
+differently". An aggregate that cannot move, a test that cannot fire, a statistic that cannot
+disagree, a sweep whose rows are not comparable, a lead time whose baseline was a different
+criterion. In each case the arithmetic was correct and the measurement was still empty.
+
 ### Where the "~4 time units earlier" figure came from
 
 Recorded because it could not be reproduced here and the reason matters more than the number.
@@ -769,3 +818,83 @@ seven — but a production run at `10^6` pixels should expect this class of pixe
 at `eta ~ 3e-3` or re-integrate flagged pixels at finer `eta`. **Re-integrating only the flagged
 pixels is the cheaper option and needs no scheduler**: the flag already exists, and the
 measurement above shows one refinement step is enough.
+
+---
+
+## 8. The refinement remedy, and two limits on it
+
+BRIEF §2.5's remedy, implemented: run the grid, then re-integrate pixels `error_ratio` flags at
+`eta/4`, up to three passes, recording the coarse value, the refined value and the `eta` used for
+every pixel. Bounded, one extra evaluation of a shrinking subset, no tree and no state carried
+between pixels.
+
+Measured on 128x128 near-field:
+
+| | no refinement | with refinement |
+|---|---|---|
+| drift max | 1.4909e4 | 5.0876e-4 |
+| drift p99 | 5.0117e-3 | 3.2498e-5 |
+| pixels `\|dE/E\| > 1` | 7 | **0** |
+| pixels `\|dE/E\| > 1e-3` | 231 | **0** |
+| pixels re-integrated | 0 | 266 (1.62%) |
+| wall clock | 11.63 s | 12.00 s (+3%) |
+
+### Limit 1: one pass is not always enough
+
+My claim in PR #6 that one refinement step suffices was measured on near-field only. It does not
+generalise. `deep interior` at 256x256 flags 9228 of 65536 pixels — 14% of the region — and one
+pass takes it from `1.102e12` to `1.985e1`, still unusable. Three passes reach `1.146e-1` with
+**0 pixels still flagged**.
+
+`refine_max_passes` is a parameter and a pixel still flagged after the last pass keeps its
+`error_ratio`, so an unrepaired pixel is reported rather than silently accepted. The 256x256
+per-region picture, drift max before and after:
+
+| region | refined | before | after |
+|---|---|---|---|
+| far | 0 | 4.702e-11 | 4.702e-11 |
+| mid-field | 0 | 4.129e-10 | 4.129e-10 |
+| body1 slice | 0 | 9.542e-8 | 9.542e-8 |
+| near-field | 890 | 1.377e7 | 3.120e-4 |
+| body2 core | 736 | 3.110e10 | 6.139e-4 |
+| deep interior | 9228 | 1.102e12 | 2.543e-1 |
+
+Three of six regions need no refinement at all. The cost is concentrated exactly where the
+physics is. At 128x128 `deep interior` goes `1.219e11 -> 1.146e-1`, also with 0 still flagged.
+
+**The pass budget is calibrated on f64.** f32 needs more passes for the same grid: at 128x128
+near-field, one pass leaves 421 of 16384 still flagged and six leaves none
+(`4.246e1 -> 5.370e-4`); at 256x256 with the default three, f32 leaves **1578 of 65536** still
+flagged. Finer `eta` means more steps, and at f32 roundoff accumulation eats into what truncation
+error gives back — convergence is slower, not absent. Raise `refine_max_passes` for f32 and read
+`n_still_flagged` rather than assuming the default cleared it.
+
+### Limit 2: `error_ratio` detects spread, not drift
+
+After three passes, `deep interior` at 128x128 has **zero** pixels above the flag threshold and a
+worst drift of `1.146e-1` — 11% energy error. There is no contradiction: `error_ratio` is
+`sigma_E(t)/sigma_E(0)`, and an ensemble whose eight copies drift *together* has a low ratio
+however badly they drift. BRIEF §4 already names this in a different form ("it says nothing about
+whether the ensemble has decorrelated"); this is the same limitation from the other side.
+
+**So the remedy repairs what `error_ratio` can see.** `energy_drift_max` is dumped per pixel and
+is the quantity to threshold on if absolute conservation is what matters. Using `error_ratio` as
+the flag was the right choice — it is the field that catches the catastrophic cases, 7 of 7 at
+128x128 — but it is not a completeness guarantee and should not be quoted as one.
+
+### A note on what the experiments measure
+
+The experiment examples and every precision-comparison test pin `refine_flagged: false`.
+Experiments A and B characterise the kernel whose behaviour motivated the second pass, and
+measuring the repaired kernel would hide the thing being measured. Precision comparisons need it
+off for a different reason: the pass is threshold-triggered on `error_ratio`, f32 and f64 flag
+different pixel sets, and with it on the comparison would be of pipelines rather than of
+arithmetic.
+
+### The spread image was hiding its own structure
+
+Unrelated to the physics but worth recording. `ensemble_spread` spans several decades with a
+median near `1e-3`, so a linear `[0,1]` ramp painted every grid flat blue and the filament
+structure was invisible. Now log scaled between the grid's own p1 and p99, with the window
+printed alongside — a false-colour image without its scale is decoration. Non-finite is painted at
+full scale: undetermined is the loudest thing a pixel can be and must not be shown as quiet.

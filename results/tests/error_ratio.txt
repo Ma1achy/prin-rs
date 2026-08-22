@@ -1,0 +1,27 @@
+    Finished `release` profile [optimized] target(s) in 0.01s
+     Running tests/error_ratio.rs (target/release/deps/error_ratio-396712718df4021e)
+
+running 4 tests
+test error_ratio_is_exactly_one_at_t_zero ... t=0: sigma_E(0) = 2.2500000000000853e-2, sigma_E(t) = 2.2500000000000853e-2, ratio = 1
+ok
+test error_ratio_is_invariant_under_shift_and_scale ... shift 12.8: |d ratio| = 0.000e0, conditioning predicts <= 2.8e-8
+shift 1000: |d ratio| = 3.552e-10, conditioning predicts <= 2.2e-6
+scale 1000000: |d ratio| = 6.321e-11, conditioning predicts <= 2.8e-8
+scale 3.7: |d ratio| = 4.109e-12, conditioning predicts <= 2.8e-8
+ok
+test error_ratio_minus_one_falls_with_step_size ...      eta   max |ratio-1|    median |r-1|     med ratio
+    4e-2     3.166023e-4     1.040094e-4             -
+    2e-2     9.595539e-4     4.212550e-6         0.041
+    1e-2     5.999799e-5     2.406545e-7         0.057
+    5e-3     2.803334e-6     1.493647e-8         0.062
+
+error_ratio - 1 must fall with eta. If it plateaus or rises, it is measuring a
+wrong equation, not integration error. Read the median column: the max over 9
+pixels of a max over 8 copies is a 1-in-72 order statistic and its realisation
+scatter is wider than the trend it is being asked to show.
+ok
+test error_ratio_sits_at_one_on_a_near_two_body_control ... near-two-body control: sigma_E(0) = 3.498750e-4, sigma_E(t) = 3.498750e-4, ratio = 1.000000000005
+ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+

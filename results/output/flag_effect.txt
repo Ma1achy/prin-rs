@@ -1,0 +1,13 @@
+    Finished `release` profile [optimized] target(s) in 0.04s
+     Running `target/release/examples/flag_effect`
+f64, lc_stable=false:
+  pixels whose drift changed at all: 1024/1024
+  pixels whose spread_shape changed: 1024/1024
+  pixels whose error_ratio changed:  1024/1024
+  worst relative change in spread_shape: 6.711e-2
+f64, shared refs:
+  pixels whose drift changed at all: 150/1024
+  pixels whose spread_shape changed: 261/1024
+  pixels whose error_ratio changed:  190/1024
+  worst relative change in spread_shape: 3.451e3
+  ^ an individual pixel moved by 345110% while the median moved by ~1%.

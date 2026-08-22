@@ -25,9 +25,12 @@ use prin_rs::rng::SplitMix64;
 
 const FINEST: usize = 128;
 
+/// **Refinement off throughout.** This experiment characterises the kernel whose behaviour
+/// motivated the second pass; measuring the repaired kernel would hide the thing being
+/// measured. `examples/refine_pass.rs` reports the repaired numbers.
 fn render(size: usize) -> Vec<PixelOut> {
     let s = grid::region("near-field", size, size, 0.05).unwrap();
-    let cfg = EnsembleCfg::default();
+    let cfg = EnsembleCfg { refine_flagged: false, ..Default::default() };
     (0..s.npix())
         .into_par_iter()
         .map(|i| evaluate::<f64>(&s, i, &cfg))

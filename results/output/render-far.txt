@@ -1,0 +1,25 @@
+    Finished `release` profile [optimized] target(s) in 0.01s
+     Running `target/release/prin --region far --size 256 --out results/far`
+region far 256x256 half=0.05 body=0  precision=f64  t_max=13 eta=0.01 copies=8
+  9.35 s wall, 0.14 ms/pixel
+
+  error_ratio   max 1.0000e0  p99 1.0000e0  median 1.000000  argmax pixel 30565
+  sigma_E(0)    median 2.406353e-5   <- proportional to cell width; see below
+  |dE/E|        median 4.334e-11  max 4.702e-11
+  d_min_gap     median 0.000e0  max 0.000e0
+  ref_disagree  total 0
+  t_end         median 1.9164
+  outcomes      collision 1.000
+  refined       0 of 65536 pixels re-integrated at finer eta (0 still flagged)
+  |dE/E| max    4.702e-11 before refinement, 4.702e-11 after
+  pixels with a non-finite copy: 0 of 65536
+
+wrote results/far.raw, results/far_outcome.png, results/far_spread.png
+spread image is LOG scaled over [2.915e-9, 2.915e-8] (this grid's
+p1 to p99); non-finite is painted at full scale. The dump is the product.
+
+error_ratio uses the maximum deviation within a footprint and aggregates across
+pixels by max. It is a boolean flag: its magnitude is unstable.
+It also inflates with resolution for a trivial reason - sigma_E(0) is
+proportional to the jitter and so to cell width, while integration error is
+not. Use sigma_e_0 and sigma_e_t from the dump before comparing across sizes.

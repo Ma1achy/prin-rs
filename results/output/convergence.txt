@@ -1,0 +1,45 @@
+    Finished `release` profile [optimized] target(s) in 0.02s
+     Running `target/release/examples/convergence`
+Experiment B: statistical convergence. near-field, t=13, E+1=8, eta=0.01, f64.
+
+=== 1. the same slice at increasing resolution ===
+                quantity           8x8         16x16         32x32         64x64       128x128 |last/64-1|
+            drift median     8.4847e-9     3.6442e-9     2.7549e-9     2.2884e-9     2.1312e-9       0.069
+               drift p99     3.2745e-5     9.1063e-4     9.2568e-3     3.5450e-3     5.0117e-3       0.414
+               drift max     7.8271e-2     1.1508e-1     3.0705e-1     5.1173e-1      1.4909e4   29132.746
+      error_ratio median      1.0000e0      1.0000e0      1.0000e0      1.0000e0      1.0000e0       0.000
+         error_ratio p99      1.0095e0      3.5314e0      6.0864e1      4.7205e1      1.3655e2       1.893
+     spread_shape median     3.9465e-3     2.5833e-3     1.9095e-3     1.5660e-3     1.3244e-3       0.154
+        spread_shape p99     1.2417e-1     2.1329e-1     2.1457e-1     1.2669e-1     2.9705e-2       0.766
+       d_min_true median     7.9563e-3     8.1360e-3     8.3647e-3     8.4287e-3     8.4693e-3       0.005
+          frac collision     4.6875e-2     3.1250e-2     2.5391e-2     2.4170e-2     2.2095e-2       0.086
+            frac er > 10     1.5625e-2     7.8125e-3     1.6602e-2     1.4648e-2     1.6235e-2       0.108
+       frac drift > 1e-3     1.5625e-2     1.1719e-2     2.1484e-2     1.3428e-2     1.4099e-2       0.050
+   frac spread_event > 0     9.3750e-2     4.6875e-2     3.4180e-2     2.8320e-2     2.3315e-2       0.177
+
+The last column is how much the 64x64 answer moved on going to 128x128.
+It is NOT a convergence error: the jitter scales with cell width, so the finer
+grid measures a different physical ensemble. Read column 2 for that.
+
+=== 2. subsampling one fixed grid — the same physical quantity throughout ===
+truth = the full 128x128 grid (16384 pixels).
+Each cell is the interdecile spread of the statistic over 200 random draws of n
+pixels, as a fraction of the truth. Below ~0.1 the conclusion is stable.
+
+                quantity         truth        n=16        n=64       n=256      n=1024      n=4096
+            drift median     2.1312e-9       1.544       1.070       0.851       0.445       0.227
+               drift p99     5.0117e-3       7.716       2.021       3.051       2.056       1.146
+               drift max      1.4909e4       0.000       0.000       0.000       0.003       1.000
+      error_ratio median      1.0000e0       0.000       0.000       0.000       0.000       0.000
+         error_ratio p99      1.3655e2       0.807       1.870       2.882       2.235       1.061
+     spread_shape median     1.3244e-3       0.514       0.243       0.154       0.065       0.033
+        spread_shape p99     2.9705e-2       4.084       4.001       6.768       5.750       3.345
+       d_min_true median     8.4693e-3       0.370       0.234       0.140       0.060       0.034
+          frac collision     2.2095e-2       2.829       2.122       1.061       0.575       0.243
+            frac er > 10     1.6235e-2       3.850       2.887       1.203       0.602       0.331
+       frac drift > 1e-3     1.4099e-2       4.433       2.216       1.385       0.693       0.329
+   frac spread_event > 0     2.3315e-2       2.681       2.010       1.005       0.545       0.251
+
+A value of 1.0 means the interdecile scatter is as wide as the quantity itself:
+two independent studies at that n would routinely disagree by a factor of two or
+more, which is how a 1.2x effect turns out to be 18.8x.

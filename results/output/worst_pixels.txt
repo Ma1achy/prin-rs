@@ -1,0 +1,34 @@
+    Finished `release` profile [optimized] target(s) in 0.07s
+     Running `target/release/examples/worst_pixels`
+worst 8 pixels by max |dE/E| over the ensemble:
+  pixel    drift_max     er (MAD)   er (max dev)   d_min_true
+   1012     3.070e-1       1.0000       2.6103e3     2.193e-3
+    991     7.045e-2       1.9256       3.9116e2     1.554e-3
+     40     5.895e-2       1.0000       4.6136e2     1.042e-2
+    105     4.725e-2       2.3521       2.3726e2     1.032e-2
+     75     3.618e-2       0.9260       2.0043e2     1.044e-2
+     73     2.911e-2       0.9396       2.3109e2     1.040e-2
+     74     2.186e-2       1.7029       1.4925e2     1.041e-2
+     77     2.006e-2       0.7207       9.8215e1     1.048e-2
+
+drift_max distribution: median 2.755e-9  p90 4.319e-8  p99 9.257e-3  max 3.070e-1
+pixels with drift_max > 1e-3: 22
+
+Spearman against drift_max over ALL pixels:
+  error_ratio built on MAD        -0.0439
+  error_ratio built on max dev    +0.0595
+
+Both near zero - but Spearman over every pixel is the wrong summary for a
+statistic BRIEF §4 itself calls a boolean flag. 1024 healthy pixels sit at
+ratio ~= 1 plus noise, and their ranks swamp the 23 damaged ones. Detection is
+the question that matters:
+
+  22 damaged pixels (drift_max > 1e-3), 1002 healthy
+
+       statistic   damaged med   healthy p99      separation
+             MAD      1.3910e0      1.1439e0            1.22
+   max deviation      6.0864e1      1.1845e0           51.38
+
+Separation is the damaged median over the healthy p99: how far a threshold
+could be placed between them. Below ~1 the flag cannot separate the two
+populations at all.

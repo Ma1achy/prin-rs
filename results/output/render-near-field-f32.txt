@@ -1,0 +1,25 @@
+    Finished `release` profile [optimized] target(s) in 0.01s
+     Running `target/release/prin --region near-field --size 256 --precision f32 --out results/near-field-f32`
+region near-field 256x256 half=0.05 body=0  precision=f32  t_max=13 eta=0.01 copies=8
+  177.34 s wall, 2.71 ms/pixel
+
+  error_ratio   max 1.4040e3  p99 4.8302e2  median 1.125000  argmax pixel 64698
+  sigma_E(0)    median 2.441406e-4   <- proportional to cell width; see below
+  |dE/E|        median 9.264e-6  max 1.475e-2
+  d_min_gap     median 0.000e0  max 0.000e0
+  ref_disagree  total 29483
+  t_end         median 13.0000
+  outcomes      bounded 0.976 collision 0.024
+  refined       2373 of 65536 pixels re-integrated at finer eta (1578 still flagged)
+  |dE/E| max    1.006e8 before refinement, 1.475e-2 after
+  pixels with a non-finite copy: 0 of 65536
+
+wrote results/near-field-f32.raw, results/near-field-f32_outcome.png, results/near-field-f32_spread.png
+spread image is LOG scaled over [6.999e-6, 7.166e-3] (this grid's
+p1 to p99); non-finite is painted at full scale. The dump is the product.
+
+error_ratio uses the maximum deviation within a footprint and aggregates across
+pixels by max. It is a boolean flag: its magnitude is unstable.
+It also inflates with resolution for a trivial reason - sigma_E(0) is
+proportional to the jitter and so to cell width, while integration error is
+not. Use sigma_e_0 and sigma_e_t from the dump before comparing across sizes.

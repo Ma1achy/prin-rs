@@ -1,0 +1,44 @@
+    Finished `release` profile [optimized] target(s) in 0.01s
+     Running tests/f32_precision.rs (target/release/deps/f32_precision-3bdea685ecb06ec5)
+
+running 4 tests
+test f32_renders_the_grid_and_agrees_with_f64_on_the_labels ... 16x16 near-field, t=13, conditioned LC branch:
+  median |dE/E|      f64 3.644e-9   f32 9.861e-6
+  median spread_shape f64 2.5833e-3  f32 2.5697e-3
+  outcome label flips f32 vs f64: 0 of 256
+  non-finite pixels   f64 0  f32 0
+  spread_shape median differs from f64 by 0.53%
+ok
+test the_reference_floors_do_not_survive_the_cast_to_f32 ...         constant             f64          as f32      f32 in use
+            TINY      1.000e-300         0.000e0       1.000e-37
+        SYNC_EPS       1.000e-15       1.000e-15        1.000e-6
+     DRIFT_FLOOR       1.000e-30       1.000e-30       1.000e-30
+      DIST_FLOOR       1.000e-12       1.000e-12       1.000e-12
+
+1e-300 casts to exactly 0 at f32 — a floor of zero floors nothing.
+f32 uses 1.000e-37, which is normal and leaves headroom above the 1.175e-38 minimum.
+TINY*TINY at f32 = 0.000e0. A*B is a product of two floored quantities, so a
+doubly-degenerate state gives dtau = eta*dt_left/(A*B) = inf rather than a large
+finite step. That is caught by the explicit is_finite test in the RK4 loop, not
+by the floor — worth knowing which guard is actually doing the work.
+
+ulp(13) at f32 = 9.537e-7; the reference's 1e-15 slack is 953674316x below it, so
+`t < t_target - 1e-15` degenerates to `t < t_target`. f32 uses 1.000e-6.
+ok
+test the_shared_reference_policy_survives_an_early_terminating_nominal ... 3 of 64 pixels have a nominal copy that terminates before the horizon,
+so its refs record is shorter than n_sync. The shared policy falls back to the
+per-copy choice past that point rather than indexing off the end.
+ok
+test the_two_body_collision_gate_is_parameterised_by_precision ... BRIEF §5's gate (b), with the tolerance set by the type rather than by the spec:
+  f64: d_min 1.2881e-11 (tol 1e-10)   |dE/E| 2.9473e-14 (tol 1e-12)   steps 24839  finite true
+  f32: d_min 1.2218e-11 (tol 1e-9)   |dE/E| 2.8553e-6 (tol 1e-4)   steps 24839  finite true
+
+The d_min half survives the cast outright: f32 measures 1.2218e-11 against f64's
+1.2881e-11, so it meets BRIEF §5's 1e-10 bound as written. It is gated here at
+1e-9 only to keep a decade of headroom on a sampling-limited quantity. The
+energy half cannot: 1e-12 is five orders below f32 eps, and f32 delivers
+2.8553e-6 - a statement about the type, not about the port.
+ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.84s
+

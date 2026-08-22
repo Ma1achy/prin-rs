@@ -1,0 +1,13 @@
+    Finished `release` profile [optimized] target(s) in 0.01s
+     Running `target/release/examples/escape_check`
+t_max = 13: classify_legacy [0, 0, 0, 1024] (0,1,2 = escaping body, 3 = bound)
+  escape arm fired at some sync boundary on 0 of 1024 pixels
+t_max = 16: classify_legacy [2, 0, 0, 1022] (0,1,2 = escaping body, 3 = bound)
+  escape arm fired at some sync boundary on 2 of 1024 pixels
+  escape times: min 9.500 median 16.000 max 16.000
+t_max = 20: classify_legacy [36, 45, 6, 937] (0,1,2 = escaping body, 3 = bound)
+  escape arm fired at some sync boundary on 109 of 1024 pixels
+  escape times: min 3.125 median 3.750 max 19.375
+t_max = 30: classify_legacy [148, 610, 59, 207] (0,1,2 = escaping body, 3 = bound)
+  escape arm fired at some sync boundary on 868 of 1024 pixels
+  escape times: min 3.750 median 4.688 max 30.000

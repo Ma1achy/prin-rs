@@ -95,7 +95,10 @@ fn the_two_body_collision_gate_is_parameterised_by_precision() {
 #[test]
 fn f32_renders_the_grid_and_agrees_with_f64_on_the_labels() {
     let s = grid::region("near-field", 16, 16, 0.05).unwrap();
-    let cfg = EnsembleCfg::default();
+    // Refinement off: it is threshold-triggered on `error_ratio` and the two precisions flag
+    // different pixels, which would make this a comparison of pipelines rather than of
+    // arithmetic.
+    let cfg = EnsembleCfg { refine_flagged: false, ..Default::default() };
     let a: Vec<_> = (0..s.npix()).map(|i| evaluate::<f64>(&s, i, &cfg)).collect();
     let b: Vec<_> = (0..s.npix()).map(|i| evaluate::<f32>(&s, i, &cfg)).collect();
 

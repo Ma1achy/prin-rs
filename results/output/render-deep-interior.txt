@@ -1,0 +1,25 @@
+    Finished `release` profile [optimized] target(s) in 0.01s
+     Running `target/release/prin --region 'deep interior' --size 256 --out results/deep-interior`
+region deep interior 256x256 half=0.05 body=0  precision=f64  t_max=13 eta=0.01 copies=8
+  31.69 s wall, 0.48 ms/pixel
+
+  error_ratio   max 9.9983e0  p99 7.4564e0  median 1.000018  argmax pixel 3491
+  sigma_E(0)    median 1.302931e-3   <- proportional to cell width; see below
+  |dE/E|        median 5.076e-7  max 2.543e-1
+  d_min_gap     median 0.000e0  max 0.000e0
+  ref_disagree  total 109
+  t_end         median 3.0137
+  outcomes      escape 0.064 collision 0.936
+  refined       9228 of 65536 pixels re-integrated at finer eta (0 still flagged)
+  |dE/E| max    1.102e12 before refinement, 2.543e-1 after
+  pixels with a non-finite copy: 0 of 65536
+
+wrote results/deep-interior.raw, results/deep-interior_outcome.png, results/deep-interior_spread.png
+spread image is LOG scaled over [7.537e-6, 2.857e-1] (this grid's
+p1 to p99); non-finite is painted at full scale. The dump is the product.
+
+error_ratio uses the maximum deviation within a footprint and aggregates across
+pixels by max. It is a boolean flag: its magnitude is unstable.
+It also inflates with resolution for a trivial reason - sigma_E(0) is
+proportional to the jitter and so to cell width, while integration error is
+not. Use sigma_e_0 and sigma_e_t from the dump before comparing across sizes.

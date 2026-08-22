@@ -1,0 +1,10 @@
+    Finished `release` profile [optimized] target(s) in 0.01s
+     Running `target/release/examples/collision_scan`
+far = 100, n_sync = 1 (one registration, no re-registration loss)
+       eta         d_min        |dE/E|     gamma_max     steps
+      1e-2      6.486e-7     5.374e-12     3.465e-12       249
+      1e-3      3.789e-8       0.000e0     3.482e-15      2484  d_min ratio 5.84e-2, eta^2 predicts 1.00e-2
+      1e-4     2.865e-11     3.265e-15     7.065e-15     24839  d_min ratio 7.56e-4, eta^2 predicts 1.00e-2
+      1e-5     2.160e-11     4.855e-14     6.148e-14    248383  d_min ratio 7.54e-1, eta^2 predicts 1.00e-2
+      3e-6     4.194e-13     6.465e-14     5.130e-14    827941  d_min ratio 1.94e-2, eta^2 predicts 9.00e-2
+      1e-6     1.242e-13     1.051e-13     7.883e-14   2483822  d_min ratio 2.96e-1, eta^2 predicts 1.11e-1

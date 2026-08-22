@@ -18,7 +18,7 @@ const SIZE: usize = 32;
 
 fn render(t_max: f64) -> Vec<PixelOut> {
     let s = grid::region("near-field", SIZE, SIZE, 0.05).unwrap();
-    let cfg = EnsembleCfg { t_max, ..Default::default() };
+    let cfg = EnsembleCfg { t_max, refine_flagged: false, ..Default::default() };
     (0..s.npix()).into_par_iter().map(|i| evaluate::<f64>(&s, i, &cfg)).collect()
 }
 

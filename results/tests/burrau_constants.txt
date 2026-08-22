@@ -1,0 +1,17 @@
+    Finished `release` profile [optimized] target(s) in 0.01s
+     Running tests/burrau_constants.rs (target/release/deps/burrau_constants-e5e83f2b4e739c70)
+
+running 3 tests
+test burrau_is_at_rest_with_com_at_origin ... ok
+test burrau_reference_constants ... M  = 12
+R  = 2.23606797749979
+E  = -12.816666666666666
+tc = 0.9652434877402243
+ok
+test hyperradius_is_scale_covariant ... alpha = 0.25: R/alpha = 2.23606797749979, rel err = 0e0
+alpha = 1: R/alpha = 2.23606797749979, rel err = 0e0
+alpha = 4: R/alpha = 2.23606797749979, rel err = 0e0
+ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

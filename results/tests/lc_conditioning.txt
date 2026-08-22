@@ -1,0 +1,29 @@
+    Finished `release` profile [optimized] target(s) in 0.02s
+     Running tests/lc_conditioning.rs (target/release/deps/lc_conditioning-1db60a4220e88763)
+
+running 2 tests
+test lc_inverse_conditioning_versus_angle ...  angle (deg)       f64 ref    f64 stable       f32 ref    f32 stable
+           0       0.000e0       0.000e0       0.000e0       0.000e0
+          45     1.110e-16     1.110e-16       0.000e0       0.000e0
+          90     1.608e-16     1.608e-16      5.960e-8      5.960e-8
+         135     2.220e-16       0.000e0      1.788e-7       0.000e0
+         170     3.886e-15     1.110e-16      2.325e-6      5.960e-8
+         179     1.912e-13       0.000e0      9.835e-5      5.960e-8
+       179.9     3.975e-12       0.000e0      2.213e-2      5.960e-8
+      179.99      3.471e-9       0.000e0      1.745e-4       0.000e0
+         180     1.225e-16       0.000e0     1.225e-16       0.000e0
+
+f32 worst: reference = 2.213e-2, stable = 5.960e-8
+
+reference worst = 3.471e-9, stable worst = 1.608e-16
+The reference always computes u0 first; that sum cancels when rho points along
+-x. The stable branch computes whichever component is larger and derives the
+other, which removes the loss entirely rather than merely bounding it.
+ok
+test the_stable_branch_is_rotationally_uniform ... worst round-trip over 3600 orientations:
+  reference branch = 6.206e-11
+  stable branch    = 4.108e-16
+ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

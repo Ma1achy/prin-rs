@@ -5,7 +5,7 @@ use prin_rs::grid;
 
 fn main() {
     let s = grid::region("near-field", 128, 128, 0.05).unwrap();
-    let cfg = EnsembleCfg::default();
+    let cfg = EnsembleCfg { refine_flagged: false, ..Default::default() };
     let px: Vec<PixelOut> = (0..s.npix()).into_par_iter().map(|i| evaluate::<f64>(&s, i, &cfg)).collect();
     let mut by: Vec<usize> = (0..px.len()).collect();
     by.sort_by(|&a, &b| px[b].energy_drift_max.partial_cmp(&px[a].energy_drift_max).unwrap());
@@ -34,7 +34,7 @@ fn main() {
     for &i in by.iter().take(4) {
         print!("{i:>8}");
         for eta in [1e-2f64, 3e-3, 1e-3, 3e-4] {
-            let c = EnsembleCfg { eta, max_steps: 2_000_000, ..Default::default() };
+            let c = EnsembleCfg { eta, max_steps: 2_000_000, refine_flagged: false, ..Default::default() };
             print!("{:>13.4e}", evaluate::<f64>(&s, i, &c).energy_drift_max);
         }
         println!();

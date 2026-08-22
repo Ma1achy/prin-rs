@@ -32,6 +32,36 @@ pub struct EnsembleCfg {
     /// Stop at the first terminating event (BRIEF §2.4). Off keeps every copy integrating to
     /// `t_max`, which is the reference's behaviour.
     pub stop_on_event: bool,
+
+    /// Re-integrate flagged pixels at finer `eta` after the first pass. **BRIEF §2.5.**
+    ///
+    /// `eta = 1e-2` is not sufficient above ~64x64: at 128x128 near-field, 7 pixels of 16384
+    /// carry `|dE/E| > 1`, worst `1.49e4`. The failure is a **cliff, not a slope** — the same
+    /// pixels give `1.49e4 -> 5.96e-9` for a 3.3x change in `eta` — so an adaptive-`eta`
+    /// policy that interpolates between regions has nothing to interpolate along. Flagging and
+    /// re-integrating does work, because `error_ratio` flagged 7 of 7 and one refinement step
+    /// was enough.
+    ///
+    /// This is one extra pass over a small flagged subset, not a scheduler. Measured cost on
+    /// the 128x128 near-field grid: ~1.6% of pixels flagged.
+    pub refine_flagged: bool,
+    /// `error_ratio` above which a pixel is re-integrated. Set from the measurement: at
+    /// `> 10` it caught 7 of the 7 pixels with `|dE/E| > 1` and flagged ~1.6% of the grid.
+    pub refine_threshold: f64,
+    /// Factor applied to `eta` on each refinement pass. 1/4 sits past the measured cliff,
+    /// which closed between `1e-2` and `3e-3`.
+    pub refine_eta_factor: f64,
+    /// Maximum refinement passes. **Bounded on purpose, and not a scheduler**: each pass is
+    /// one extra evaluation of a shrinking flagged subset, with no tree and no state carried
+    /// between pixels.
+    ///
+    /// One pass suffices in the ordinary regions — near-field 256x256 goes from `1.38e7` to
+    /// `3.12e-4` — but **not everywhere**. `deep interior` needs more: one pass takes it from
+    /// `1.10e12` to `1.99e1`, still far above any usable bound, because 14% of that region is
+    /// flagged and its close approaches are much deeper. A pixel still flagged after the last
+    /// pass keeps its `error_ratio`, so an unrepaired pixel is reported, never silently
+    /// accepted.
+    pub refine_max_passes: u8,
 }
 
 impl Default for EnsembleCfg {
@@ -48,6 +78,10 @@ impl Default for EnsembleCfg {
             lc_stable: true,
             r_coll_frac: 1e-3,
             stop_on_event: true,
+            refine_flagged: true,
+            refine_threshold: 10.0,
+            refine_eta_factor: 0.25,
+            refine_max_passes: 3,
         }
     }
 }
@@ -177,6 +211,17 @@ pub struct PixelOut {
     /// determined is a measurement outcome, and this records it explicitly rather than
     /// letting a NaN contaminate every aggregate it touches.
     pub n_nonfinite: u8,
+
+    /// The `eta` this pixel's reported values were computed at. Equal to `cfg.eta` unless the
+    /// pixel was flagged and re-integrated, in which case it is the refined one.
+    pub eta_used: f64,
+    /// `error_ratio` and `energy_drift_max` from the **first** pass, kept whether or not a
+    /// refinement happened. A refinement that silently replaced the coarse value would hide
+    /// exactly the pixels this mechanism exists to find.
+    pub error_ratio_coarse: f64,
+    pub energy_drift_max_coarse: f64,
+    /// Whether the second pass ran on this pixel.
+    pub refined: bool,
 }
 
 /// Consecutive boundaries a disagreement must survive before the latch counts it.
@@ -186,13 +231,44 @@ pub struct PixelOut {
 /// slice, at this `n_sync`. It is a named constant so a future change to it shows in a diff.
 pub const LATCH_RUN: u16 = 3;
 
+/// One pass at the configured `eta`, then — if the pixel is flagged — one more at finer `eta`.
+///
+/// The refinement is deliberately **flag-driven, not region-driven**. See
+/// [`EnsembleCfg::refine_flagged`]: the failure it addresses is a cliff, and a cliff gives an
+/// adaptive-`eta`-by-region policy nothing to interpolate along.
 pub fn evaluate<T: Real>(slice: &Slice, idx: usize, cfg: &EnsembleCfg) -> PixelOut {
+    let coarse = evaluate_at::<T>(slice, idx, cfg, cfg.eta);
+    if !cfg.refine_flagged || !(coarse.error_ratio > cfg.refine_threshold) {
+        return coarse;
+    }
+
+    let mut out = coarse.clone();
+    let mut eta = cfg.eta;
+    for _ in 0..cfg.refine_max_passes {
+        eta *= cfg.refine_eta_factor;
+        out = evaluate_at::<T>(slice, idx, cfg, eta);
+        out.eta_used = eta;
+        out.refined = true;
+        if !(out.error_ratio > cfg.refine_threshold) {
+            break;
+        }
+    }
+    // Carried forward, not overwritten: the coarse pair is what a run without refinement would
+    // have reported, and keeping it makes the refinement measurable rather than silent. A pixel
+    // still flagged after the last pass keeps its error_ratio and is reported as such.
+    out.error_ratio_coarse = coarse.error_ratio;
+    out.energy_drift_max_coarse = coarse.energy_drift_max;
+    out
+}
+
+/// The single pass. `eta` is explicit so the refinement pass can differ from `cfg.eta`.
+pub fn evaluate_at<T: Real>(slice: &Slice, idx: usize, cfg: &EnsembleCfg, eta_v: f64) -> PixelOut {
     let m = burrau::masses::<T>();
     let copies = jitter::copies::<T>(slice, idx, cfg.n_extra, cfg.jitter_frac, cfg.seed);
     let n = copies.len();
 
     let t_max = T::lit(cfg.t_max);
-    let eta = T::lit(cfg.eta);
+    let eta = T::lit(eta_v);
 
     let base = AzOpts::<T> {
         forced_refs: None,
@@ -388,5 +464,9 @@ pub fn evaluate<T: Real>(slice: &Slice, idx: usize, cfg: &EnsembleCfg) -> PixelO
         ref_disagree,
         n_outcome_disagree,
         n_nonfinite,
+        eta_used: eta_v,
+        error_ratio_coarse: ratio.to_f64().unwrap(),
+        energy_drift_max_coarse: drift_max,
+        refined: false,
     }
 }

@@ -19,7 +19,11 @@ use prin_rs::grid;
 
 fn mean_spread<T: prin_rs::Real>(region: &str, lc_stable: bool) -> (f64, usize) {
     let s = grid::region(region, 5, 5, 0.05).unwrap();
-    let cfg = EnsembleCfg { t_max: 13.0, lc_stable, ..Default::default() };
+    // Refinement off. It is triggered by a threshold on `error_ratio`, and the two precisions
+    // flag different pixel sets — so with it on, this would compare which pixels happened to
+    // get a second pass rather than comparing the arithmetic. Any precision comparison has to
+    // hold the pipeline fixed.
+    let cfg = EnsembleCfg { t_max: 13.0, lc_stable, refine_flagged: false, ..Default::default() };
     let mut acc = 0.0;
     let mut n_bad = 0usize;
     for i in 0..s.npix() {

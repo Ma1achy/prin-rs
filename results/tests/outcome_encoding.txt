@@ -1,0 +1,44 @@
+    Finished `release` profile [optimized] target(s) in 0.01s
+     Running tests/outcome_encoding.rs (target/release/deps/outcome_encoding-e3fa02e01a712d56)
+
+running 8 tests
+test deep_interior_terminates_in_bounded_wall_clock ... deep interior: collision detail 1 at t_end 3.007912, 0.000 s wall, 1271 steps
+  fired on pair(s) (0, 2) at t = 3.007912
+
+BRIEF §2.6 predicts a triple collision here. It is a binary encounter between
+bodies 0 and 2; the other two pairs never register even at r_coll = R.
+ok
+test escape_matches_the_legacy_classifier ... 50 states: the ported escape test and tb.classify agree everywhere
+the arm fired at a sync boundary on 2 of them
+ok
+test outcome_fields_populate_across_a_grid ...        bounded:   61 of 64
+     collision:    3 of 64
+pixels whose copies disagree on the outcome: 5 of 64
+ok
+test outcomes_and_t_end_are_invariant_under_the_scale_symmetry ...    alpha    outcomes         t_end/alpha^1.5    max |dt| rel
+2 of 25 pixels terminate before the horizon; showing pixel 23
+  0.2500  25/25 same      8.92798202374311e0         0.000e0
+  4.0000  25/25 same      8.92798202374311e0         0.000e0
+  3.7000  25/25 same      8.92798202374311e0       9.948e-16
+  0.3333  25/25 same      8.92798202374310e0       1.990e-16
+
+No outcome label moved. t_end agrees bitwise for the binary-exact factors and to
+9.948e-16 relative for the inexact ones, which is roundoff in the rescaling.
+ok
+test r_coll_is_fixed_at_t_zero_and_not_co_moving ... R(0) = 2.213806, R(t_max) = 2.012551, ratio 0.9091
+r_coll = 2.213806e-3 throughout, never 2.012551e-3
+d_min_true = 1.033341e-2
+ok
+test the_collision_mask_labels_the_right_pair_for_every_reference_body ... reference body 0: mask 011 matches the direct pair_dists mask
+reference body 1: mask 011 matches the direct pair_dists mask
+reference body 2: mask 011 matches the direct pair_dists mask
+ok
+test the_encoding_packs_into_one_byte_without_loss ... ok
+test two_pairs_below_r_coll_is_never_an_ordinary_binary_collision ... |AB| = 6.0000e-3  |AC| = 6.0000e-3  |BC| = 1.2000e-2   r_coll = 1.0000e-2
+
+Two pairs below r_coll encodes as detail = 3 (triple), not as pair 0 — which
+is what an 'all three' rule would have produced.
+ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.40s
+

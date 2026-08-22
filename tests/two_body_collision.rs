@@ -13,10 +13,6 @@ use prin_rs::integrate::az::reference_body::choose_reference;
 use prin_rs::physics::Cart;
 use prin_rs::Vec2;
 
-const N_SYNC: usize = 32;
-const ETA: f64 = 0.01;
-const MAX_STEPS: usize = 30_000;
-
 fn setup() -> (Cart<f64>, [f64; 3]) {
     // Bodies 0 and 1: equal masses, unit separation, at rest.
     // Body 2: far away, and deliberately off-axis so the two long sides are not an exact

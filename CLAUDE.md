@@ -143,6 +143,19 @@ horizon are driven entirely by the collision arm — the one arm *with* a refere
 that is silent. Escape is also sampled at sync boundaries and latches on first firing, both
 transcribed from the reference.
 
+**f32 is usable, with two named caveats — and one of them is the branch cut.**
+Median drift 9.3e-6 against f64's 2.8e-9, which is what `eps ~ 1.19e-7` over ~5000 RK4 steps
+predicts; outcome labels agree with f64 on 1022 of 1024 pixels. Caveat one: 2 pixels of 1024
+have `|dE/E| > 1` and are not data — flagged by `error_ratio`, never discarded. Caveat two: the
+**unconditioned** LC branch at f32 inflates `spread_shape` 32x and flips **152 of 1024 outcome
+labels**, where at f64 it flipped none. Never run f32 on the reference branch.
+
+**The floors are the one place f32 and f64 are not the same algorithm.**
+`1e-300` casts to exactly zero (f32 uses `1e-37`); `ulp(13)` at f32 is `9.537e-7`, so a `1e-15`
+sync slack is no slack at all (f32 uses `1e-6`). Also: `TINY*TINY` underflows at f32 and `A*B`
+is a product of two floored quantities, so a doubly-degenerate state gives `dtau = inf` — caught
+by the explicit `is_finite` test, **not** by the floor. Know which guard is doing the work.
+
 **Test `is_finite` explicitly.**
 `NaN >= x` is `false`, so a diverged trajectory never satisfies a loop exit and burns its entire
 step budget. Measured: 354 s against 3 s nominal.

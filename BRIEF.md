@@ -324,6 +324,13 @@ Three bugs in the reference work failed **silently** and looked like physics. Ea
 | Burrau constants | `M=12`, `R=2.2361`, `E=-12.8167` |
 | **cross-check against the Python reference at f64** | agreement to `~1e-10` on a small grid |
 
+**Thresholds in this table are f64 thresholds.** At f32, `|dE/E| < 1e-12` is five orders below
+`eps ~ 1.19e-7` and is a statement about the type rather than about the port; asserting it there
+would fail for the wrong reason. Measured on gate (b): f64 `d_min 1.2881e-11`, `|dE/E| 2.9473e-14`;
+f32 `d_min 1.2218e-11`, `|dE/E| 2.8553e-6`. The `d_min` half survives the cast outright, because
+regularisation still carries the trajectory through collision. Report f32 numbers; gate them at f32
+tolerances.
+
 ---
 
 ## 6. Reference implementation

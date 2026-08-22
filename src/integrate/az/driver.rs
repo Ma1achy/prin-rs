@@ -156,8 +156,13 @@ pub fn integrate_az_opts<T: Real>(
     for kk in 0..n_sync {
         let t_target = T::lit((kk + 1) as f64) * t_max / T::lit(n_sync as f64);
 
-        let a = match forced_refs {
-            Some(f) => f[kk] as usize,
+        // `f.get(kk)`, not `f[kk]`. Since Step 5b the nominal copy can terminate early, so its
+        // `refs` record is shorter than `n_sync` and the shared policy has no opinion past
+        // that point. Falling back to the per-copy choice is the only defensible reading:
+        // sharing applies where the nominal has a choice to share. (This indexed out of
+        // bounds the first time the shared policy met a terminating run.)
+        let a = match forced_refs.and_then(|f| f.get(kk)) {
+            Some(&f) => f as usize,
             None => choose_reference(&cart.r),
         };
         refs.push(a as u8);

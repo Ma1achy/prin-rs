@@ -38,8 +38,8 @@ def load(path):
 
 def main():
     os.makedirs(OUT, exist_ok=True)
-    which = "STABLE (kernel branch)" if "--lc-stable" in sys.argv else "REFERENCE (pinned)"
-    print(f"inverse LC branch on the Rust side: {which}")
+    which = "UNSTABLE (original)" if "--lc-unstable" in sys.argv else "STABLE"
+    print(f"inverse LC branch, BOTH sides: {which}")
     print(f"{'case':>10}{'t_max':>8}{'n_sync':>8}{'max |dr|':>13}{'max rel':>13}{'refs':>7}{'drift(rs)':>12}")
     print("-" * 71)
     prev = None
@@ -47,12 +47,14 @@ def main():
         c = cases.CASES[name]
         ref_p = os.path.join(OUT, f"ref_{name}.tsv")
         rs_p = os.path.join(OUT, f"rs_{name}.tsv")
-        subprocess.run([sys.executable, os.path.join(os.path.dirname(__file__), "dump_ref.py"),
-                        "--case", name, "--out", ref_p], check=True,
-                       stdout=subprocess.DEVNULL, cwd=ROOT)
+        pycmd = [sys.executable, os.path.join(os.path.dirname(__file__), "dump_ref.py"),
+                 "--case", name, "--out", ref_p]
+        if "--lc-unstable" in sys.argv:
+            pycmd.append("--lc-unstable")
+        subprocess.run(pycmd, check=True, stdout=subprocess.DEVNULL, cwd=ROOT)
         cmd = [CARGO, "run", "--release", "--quiet", "--bin", "xcheck", "--",
                "--case", name, "--out", rs_p]
-        if "--lc-stable" in sys.argv:
+        if "--lc-unstable" not in sys.argv:
             cmd.append("--lc-stable")
         subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL,
                        stderr=subprocess.DEVNULL, cwd=ROOT)

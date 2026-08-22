@@ -5,6 +5,7 @@
 
 pub mod real;
 pub mod vec2;
+pub mod ensemble;
 pub mod grid;
 pub mod integrate;
 pub mod physics;

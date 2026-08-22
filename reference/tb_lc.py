@@ -44,13 +44,71 @@ def rho_of_u(u):
     return np.stack([u[:, 0]**2 - u[:, 1]**2, 2*u[:, 0]*u[:, 1]], axis=1)
 
 
-def u_of_rho(rho):
-    """Inverse LC map (branch choice is irrelevant: rho(u) = rho(-u))."""
+# Which inverse LC branch tb_az (and everything downstream) uses.
+#
+# True  -> u_of_rho_stable, the numerically conditioned form. This is the default.
+# False -> u_of_rho_unstable, the original. Kept because prior results were produced
+#          with it and reproducing them needs it.
+#
+# This is a module-level switch rather than a silent replacement: what the reference
+# computes must remain inspectable.
+USE_STABLE_LC = True
+
+
+def u_of_rho_unstable(rho):
+    """Original inverse LC map.
+
+    Always computes u0 = sqrt((|rho| + rho.x)/2) first and derives u1 from it. When rho
+    points along -x that sum cancels catastrophically and the division amplifies the damage.
+    The 1e-300 guard prevents division by zero and does nothing for conditioning.
+
+    Measured relative round-trip loss:
+
+        angle   135      170      179      179.9    179.99
+        f64     2.2e-16  3.9e-15  1.9e-13  4.0e-12  3.5e-09
+        f32     1.8e-07  2.3e-06  9.8e-05  2.2e-02  1.7e-04
+
+    Retained only for reproducing earlier results. See docs/lc-branch-cut.md.
+    """
     r = np.sqrt(np.einsum('sk,sk->s', rho, rho))
     u1 = np.sqrt(np.maximum(0.5*(r + rho[:, 0]), 0.0))
     u2 = np.where(u1 > 1e-300, rho[:, 1]/(2*np.maximum(u1, 1e-300)),
                   np.sqrt(np.maximum(0.5*(r - rho[:, 0]), 0.0)))
     return np.stack([u1, u2], axis=1)
+
+
+def u_of_rho_stable(rho):
+    """Inverse LC map, numerically stable.
+
+    Compute whichever component is LARGER directly and derive the other from it: u0 is
+    larger when rho.x >= 0, u1 when rho.x < 0. Both branches satisfy rho_of_u(u) == rho, and
+    the branch choice is otherwise irrelevant since rho(u) = rho(-u).
+
+    Flat at roundoff across all orientations, at both f64 and f32.
+    """
+    r = np.sqrt(np.einsum('sk,sk->s', rho, rho))
+    x, y = rho[:, 0], rho[:, 1]
+    pos = x >= 0.0
+
+    a = np.sqrt(np.maximum(0.5*(r + x), 0.0))    # |u0|
+    b = np.sqrt(np.maximum(0.5*(r - x), 0.0))    # |u1|
+
+    # rho.x >= 0: u0 is the larger, take it directly.
+    u0_pos = a
+    u1_pos = np.where(a > 1e-300, y/(2*np.maximum(a, 1e-300)), b)
+
+    # rho.x < 0: u1 is the larger. Its sign follows sign(rho.y), with +1 at y == 0.
+    u1_neg = np.where(y < 0.0, -b, b)
+    u0_neg = np.where(np.abs(u1_neg) > 1e-300,
+                      y/(2*np.where(np.abs(u1_neg) > 1e-300, u1_neg, 1.0)), a)
+
+    return np.stack([np.where(pos, u0_pos, u0_neg),
+                     np.where(pos, u1_pos, u1_neg)], axis=1)
+
+
+def u_of_rho(rho):
+    """Inverse LC map. Dispatches on USE_STABLE_LC."""
+    return u_of_rho_stable(rho) if USE_STABLE_LC else u_of_rho_unstable(rho)
 
 
 class LCSystem:

@@ -111,6 +111,34 @@ same information without a value that silently contaminates every aggregate it t
 
 ---
 
+## 2b. The Levi-Civita branch cut
+
+Found while porting AZ; written up in full in [`docs/lc-branch-cut.md`](docs/lc-branch-cut.md).
+
+The original inverse LC map computes `u0 = sqrt((|rho| + rho.x)/2)` first and derives `u1`
+from it. That sum cancels catastrophically when `rho` points along negative x, and the
+division amplifies it. **The Burrau default sits exactly on the cut**: bodies 1 and 2 start at
+the same `y`, so their separation is `(3, 0)`, and with reference body 2 that registers at
+exactly 180 degrees before anything moves.
+
+Worst case over 3600 orientations: 6.206e-11 unstable, 4.108e-16 stable at f64; **2.2e-2** at
+f32 unstable against 5.96e-8 stable.
+
+The defect is correctness, not precision: the cut is fixed in the coordinate frame, so
+accuracy depends on the absolute orientation of a configuration. The physics is rotationally
+invariant; the unstable implementation is not.
+
+It is the leading candidate for the unresolved f32 dispute — orientation-dependence means
+copies of one pixel can straddle the cut differently, so a cross-copy spread partly measures
+registration error rather than dynamics, which is the exact shape of "drift looks fine but
+the ensemble diagnostic breaks early".
+
+Conditioning both sides also retired a negative result from PR #2: the `t=13` cross-check
+went from 1.930e-10 to **2.718e-13**, so BRIEF §9's `~1e-10` stands and the amendment
+proposed there was premature.
+
+---
+
 ## 3. Smaller observations
 
 - `reference/tb_az.py` uses `eta=0.02` as its default; `tb_all_az` and the smoke test pass

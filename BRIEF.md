@@ -210,7 +210,7 @@ Write **all** of these to the raw dump.
 | `energy_drift` | `\|E(t) - E(0)\| / \|E(0)\|` per copy — **integration quality** |
 | `shape_vec` | see below |
 | `spread_shape` | mean distance of the copies' `shape_vec` from their centroid, ÷ 2 |
-| `spread_event` | fraction of copies not sharing the modal `(state,detail)`, ÷ `(1 - 1/(E+1))` |
+| `spread_event` | fraction of copies not sharing the modal **event class**, ÷ `(1 - 1/(E+1))` |
 | `error_ratio` | `sigma_E(t) / sigma_E(0)` — see below |
 | `ensemble_spread` | `max(spread_shape, spread_event)` |
 
@@ -226,6 +226,31 @@ A = |rt|^2   B = |lt|^2   I = A + B
 p = rt.x lt.x + rt.y lt.y        q = rt.y lt.x - rt.x lt.y
 n = ( (A-B)/I , 2p/I , 2q/I )    then normalise
 ```
+
+**`spread_event` is defined over the *event class*, not the terminal outcome.** The event class
+is **which pair is currently the tightest binary**, evaluated at every sync boundary and joined
+with the terminal `(state, detail)` for copies that have terminated.
+
+The terminal outcome was explicitly *rejected* as the contributor and must not be reinstated. It
+is terminal-grain and inverts under lockstep: early in the march nothing has terminated, every copy
+agrees, and the field reports maximum confidence at exactly the playhead where least is known. The
+event class is defined at every playhead and needs no gate. Measured, near-field 32×32, nonzero
+pixels of 1024: at `t_max = 8`, **110 against 0**; at `t_max = 13`, 165 against 22, strictly nested,
+with none flagged by the terminal statistic alone. On the pixels both flag the lead time is zero —
+the gain is coverage and horizon-independence, not earliness.
+
+The `(state, detail)` encoding of §2.4 stays as the **outcome**, for classification and rendering.
+It is correct; it is simply not the spread contributor.
+
+Note also that the playhead value can *un*-fire, since the tightest-pair identity fluctuates. Dump
+`spread_event_max`, the running max over boundaries, alongside it.
+
+**`d_min` is primary; `r_coll` is a recorded parameter.** The collision label is *derived* from
+`d_min`, not the reverse. Measured on near-field 64×64: the collision fraction runs 0.0000 → 0.0242
+→ 1.0000 across `r_coll/R ∈ {1e-4, 1e-3, 1e-2}` while the whole grid's `d_min/R` spans less than one
+decade (5.909e-4 to 4.931e-3). No threshold in that range is a physical event boundary — it is a
+readout of the `d_min` distribution. `r_coll` must appear in every output header. The default
+`1e-3` separates tail from bulk **on this slice** and claims nothing more.
 
 **`error_ratio` — the free correctness check.** Each trajectory conserves its own energy exactly, so
 the ensemble's *spread* of energies is fixed at `t=0` and must stay constant. Any growth is **pure

@@ -220,6 +220,64 @@ all six reachable and keeps "we integrated to the horizon" distinguishable from 
 early", which the dump otherwise has nowhere to record. Flagged rather than assumed: if the
 literal reading was intended, it is one line.
 
+### 2.8 `spread_event` was defined over the wrong quantity
+
+**Corrected in Step 6's PR, at the user's direction — the error was in the brief, not the
+physics.** BRIEF §4 defined `spread_event` over the modal terminal `(state, detail)`. The
+refinement work it derives from had concluded on something different: the **event class** is
+which pair is *currently the tightest binary*, evaluated at every sync boundary. Terminal
+outcome had been explicitly rejected as a contributor, because it is terminal-grain and
+inverts under lockstep — early in the march nothing has terminated, so every copy agrees, so
+the statistic reports maximum confidence at exactly the playhead where least is known.
+
+`spread_event` is now disagreement over the event class at the playhead, joined with the
+terminal class for copies that have terminated, normalisation unchanged. The terminal
+`(state, detail)` encoding stays as the **outcome**, for classification and rendering; BRIEF
+§2.4 is correct, it is simply not the spread contributor.
+
+Measured, near-field 32x32, `E+1 = 8`, `eta = 0.01`, f64 — nonzero pixels of 1024:
+
+| `t_max` | event class | terminal |
+|---|---|---|
+| 4 | 0 | 0 |
+| 8 | **110** | **0** |
+| 13 | 35 | 22 |
+| 20 | 352 | 323 |
+
+At `t = 13` the two are strictly nested: every pixel the terminal statistic flags, the event
+class flags too, and 143 more — 165 against 22, a factor of 7.5, with **zero** pixels flagged
+by the terminal one alone.
+
+**But the gain is coverage, not lead time, and the "~4 time units earlier" framing does not
+reproduce here.** On the 22 pixels both flag, the lead time is exactly zero: they fire at the
+same boundary. A collision *is* the tightest pair reaching `r_coll`, and that usually settles
+the tightest-pair identity at the same boundary it terminates on. What does reproduce is
+horizon-independence — at `t_max = 8` it is 110 against 0, because the terminal statistic
+cannot fire before something terminates and nothing has.
+
+**A second thing worth knowing: the playhead value is a snapshot and can *un*-fire.** The
+tightest-pair identity fluctuates, so copies that disagreed at one boundary can agree again at
+the next — which is why the `t_max = 8` row has *more* nonzero pixels than the `t_max = 13`
+row. Non-monotone in the horizon is not what a confidence flag should be, so
+`spread_event_max`, the running max over boundaries, is dumped alongside; it flags the same
+165 pixels at `t = 13` and never un-fires. Which one `ensemble_spread` should use is a
+judgement and the spec one is the default.
+
+`t_spread_event` records the first boundary at which the copies disagree — **NaN** when they
+never do, not `t_max`, which would be indistinguishable from disagreeing at the last boundary.
+Over the 165 pixels that fire: min 2.4375, median 8.9375, max 9.7500.
+
+`ensemble_spread` at `t = 13`: median 0.001910, max 0.571429, with `spread_event` setting it
+on 35 of 1024 pixels (22 under the old definition). At this horizon it is still mostly
+`spread_shape`, but no longer only that.
+
+### 2.9 `d_min_true` is primary; `r_coll` is a recorded parameter
+
+Adopted as spec after §2.6's plateau finding. The collision label is **derived** from
+`d_min_true`, not the other way round; `r_coll` is a parameter carried in every output header,
+not a physical constant. The default stays `1e-3` with the honest justification: it separates
+tail from bulk *on this slice*, and nothing more.
+
 ---
 
 ## 2b. The Levi-Civita branch cut

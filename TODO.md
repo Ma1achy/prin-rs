@@ -154,7 +154,20 @@ Confounds to dump, not hide:
 - [x] outcome fractions vs `lc_stable`: **0 label flips of 4096** at every `r_coll` — the
       branch cut does not reach the outcome encoding, unlike `spread_shape`
 
-## Step 6 — f32 · **FOURTH PR**
+## Spec corrections carried into Step 6's PR
+
+- [x] `spread_event` := disagreement over the **event class** (currently-tightest pair at each
+      sync boundary, joined with the terminal class), not the terminal `(state, detail)`.
+      Measured: 110 vs 0 nonzero pixels at `t_max = 8`; 165 vs 22 at `t = 13`, strictly nested
+- [!] the "~4 time units earlier" framing does **not** reproduce as a lead time — zero on the
+      22 pixels both flag. The gain is coverage (7.5x) and horizon-independence. NOTES §2.8
+- [!] the playhead value can **un-fire** (the tightest pair fluctuates), so it is non-monotone
+      in the horizon. `spread_event_max` dumped alongside; the spec one stays the default
+- [x] `t_spread_event` dumped, **NaN** when the copies never disagree
+- [x] BRIEF §2.6 rewritten: `deep interior` is a binary collision (landed in PR #4)
+- [x] `d_min_true` primary, `r_coll` a recorded parameter, in BRIEF §4 and CLAUDE.md
+
+## Step 6 — f32 · **FIFTH PR**
 
 - [ ] `impl Real for f32` — **the floors especially**: `1e-300` flushes to zero at f32,
       `1e-15` sync eps is below f32 eps at t≈13

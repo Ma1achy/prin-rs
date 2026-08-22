@@ -93,6 +93,24 @@ decisions land on the word "max" for unrelated reasons; do not collapse them.
 
 Treat the result as a **boolean flag**; its magnitude is unstable.
 
+**`spread_event` is over the EVENT CLASS, never the terminal outcome.**
+The event class is which pair is *currently the tightest binary*, evaluated at every sync
+boundary and joined with the terminal `(state, detail)` for copies that have terminated. The
+terminal outcome was explicitly rejected as the contributor and reinstating it is a regression,
+not a simplification: it is terminal-grain and inverts under lockstep — early in the march
+nothing has terminated, every copy agrees, and the field reports maximum confidence at exactly
+the playhead where least is known. Measured, near-field 32×32, nonzero pixels of 1024: at
+`t_max = 8`, **110 against 0**; at `t_max = 13`, 165 against 22 and strictly nested. The gain is
+coverage and horizon-independence, not lead time — on pixels both flag, the lead is zero.
+The `(state, detail)` encoding stays as the **outcome**, for classification and rendering.
+
+**`d_min` is primary; `r_coll` is a recorded parameter, not a physical constant.**
+The collision label is *derived* from `d_min`. Measured: the collision fraction runs
+0.0000 → 0.0242 → 1.0000 across `r_coll/R ∈ {1e-4, 1e-3, 1e-2}` while the grid's `d_min/R`
+spans less than one decade. No threshold in that range is a physical event boundary. `r_coll`
+appears in every output header. The default `1e-3` separates tail from bulk on this slice and
+claims nothing more.
+
 **Never discard an ensemble copy.**
 Every pixel carries exactly `E+1` copies, always. A badly-integrated trajectory is a *measurement
 outcome* — "this could not be determined" — not missing data. Discarding biases the sample toward

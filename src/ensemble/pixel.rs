@@ -89,11 +89,33 @@ pub struct PixelOut {
     /// reference. Both are dumped so the discrepancy is measurable rather than a silent
     /// choice.
     pub svar: f64,
-    /// Over the §2.4 `(state, detail)` pair, which is what BRIEF §4 specifies.
+    /// Disagreement over the **event class** — the currently tightest pair at the final sync
+    /// boundary, joined with the terminal outcome for copies that have terminated.
+    ///
+    /// **Not the terminal `(state, detail)`.** That quantity is terminal-grain and inverts
+    /// under lockstep: early in the march nothing has terminated, so every copy agrees and
+    /// the field reports maximum confidence where least is known. Measured on near-field
+    /// 32x32: at `t_max = 8` the corrected field fires on 110 of 1024 pixels and the terminal
+    /// one on **none**; at `t_max = 13`, 35 against 22. See NOTES §2.8.
     pub spread_event: f64,
-    /// Over `classify_legacy`. Dumped because it is the reference-checkable one; the spec
-    /// field above is not.
+    /// Running **max** of the event-class spread over every boundary up to the playhead.
+    ///
+    /// Dumped because the playhead value is a snapshot and can *un*-fire: the tightest-pair
+    /// identity fluctuates, so copies that disagreed at one boundary can agree again at the
+    /// next. Measured, the playhead value fires on 110 of 1024 pixels at `t_max = 8` and only
+    /// 35 at `t_max = 13` — non-monotone in the horizon, which is not what a confidence flag
+    /// should do. This one is monotone. Which of the two `ensemble_spread` should use is a
+    /// judgement, so both are dumped and the spec one is the default.
+    pub spread_event_max: f64,
+    /// The terminal-outcome version, kept so the correction stays a measured difference.
+    pub spread_event_terminal: f64,
+    /// Over `classify_legacy`. Dumped because it is the reference-checkable one.
     pub spread_event_legacy: f64,
+    /// First sync-boundary time at which the copies' event classes disagree; **NaN** if they
+    /// never do — not `t_max`, which would be indistinguishable from disagreeing at the last
+    /// boundary. This is the property the event class was chosen for — it fires while the
+    /// march is still running rather than only at a terminal label.
+    pub t_spread_event: f64,
     pub ensemble_spread: f64,
 
     /// Dumped separately from the ratio. `sigma_E(0)` is proportional to the jitter and so
@@ -184,7 +206,28 @@ pub fn evaluate<T: Real>(slice: &Slice, idx: usize, cfg: &EnsembleCfg) -> PixelO
 
     let sp_shape = shape::spread_shape(&shapes).to_f64().unwrap();
     let sv = shape::svar(&shapes).to_f64().unwrap();
-    let sp_event = stats::spread_event::<T>(&packed).to_f64().unwrap();
+    // The event class at each sync boundary, per copy. Evaluated at every boundary rather
+    // than only at the end: `t_spread_event` is the whole reason this quantity was chosen
+    // over the terminal one.
+    let tights: Vec<&[u8]> = outs.iter().map(|o| o.tight.as_slice()).collect();
+    let ev_at = |k: usize| -> Vec<u8> {
+        tights
+            .iter()
+            .zip(packed.iter())
+            .map(|(t, &term)| stats::event_class_at(t, term, k))
+            .collect()
+    };
+    let per_boundary: Vec<f64> = (0..cfg.n_sync)
+        .map(|k| stats::spread_event::<T>(&ev_at(k)).to_f64().unwrap())
+        .collect();
+    let sp_event = per_boundary[cfg.n_sync - 1];
+    let sp_event_max = per_boundary.iter().cloned().fold(0.0f64, f64::max);
+    let t_spread_event = per_boundary
+        .iter()
+        .position(|&x| x > 0.0)
+        .map(|k| (k + 1) as f64 * cfg.t_max / cfg.n_sync as f64)
+        .unwrap_or(f64::NAN);
+    let sp_event_terminal = stats::spread_event::<T>(&packed).to_f64().unwrap();
     let sp_event_legacy = stats::spread_event::<T>(&classes).to_f64().unwrap();
     let n_outcome_disagree = packed.iter().filter(|&&c| c != packed[0]).count() as u8;
 
@@ -247,7 +290,10 @@ pub fn evaluate<T: Real>(slice: &Slice, idx: usize, cfg: &EnsembleCfg) -> PixelO
         spread_shape: sp_shape,
         svar: sv,
         spread_event: sp_event,
+        spread_event_max: sp_event_max,
+        spread_event_terminal: sp_event_terminal,
         spread_event_legacy: sp_event_legacy,
+        t_spread_event,
         ensemble_spread: sp_shape.max(sp_event),
         sigma_e_0: s0.to_f64().unwrap(),
         sigma_e_t: st.to_f64().unwrap(),

@@ -39,6 +39,15 @@ pub struct AzOut<T> {
     /// Termination events, per BRIEF §2.4. Collisions are sampled **inside** the RK4 loop;
     /// escape at sync boundaries, which is where the reference samples it.
     pub events: Events<T>,
+    /// Identity of the **currently tightest pair** at each completed sync boundary, as an
+    /// index into [`crate::physics::PAIRS`].
+    ///
+    /// This is what `spread_event` is built on, and it is deliberately *not* the terminal
+    /// outcome. A terminal label is terminal-grain: early in the march nothing has
+    /// terminated, so every copy agrees, so a spread built on it reports maximum confidence
+    /// at exactly the playhead where least is known. The tightest-pair identity is defined at
+    /// every playhead, needs no gate, and moves earlier. See NOTES §2.8.
+    pub tight: Vec<u8>,
     /// Time of the first terminating event, or the time reached if none fired. Distinct from
     /// `t` only when `stop_on_event` is off, where the run continues past the event.
     pub t_end: T,
@@ -132,6 +141,7 @@ pub fn integrate_az_opts<T: Real>(
     let mut switches = 0u32;
     let mut prev_ref: Option<usize> = None;
     let mut refs = Vec::with_capacity(n_sync);
+    let mut tight = Vec::with_capacity(n_sync);
     let mut total_steps = 0usize;
     let mut finite = true;
     let mut budget_exhausted = false;
@@ -245,6 +255,8 @@ pub fn integrate_az_opts<T: Real>(
         // is the reference's behaviour and part of what the cross-check measures.
         t += s.t.min(dt_left);
 
+        tight.push(crate::outcome::binary_id(&cart));
+
         // The escape test runs at the sync boundary, where the state is Cartesian and every
         // trajectory shares a playhead — the reference's cadence, transcribed.
         if events.escape.is_none() {
@@ -271,6 +283,7 @@ pub fn integrate_az_opts<T: Real>(
         switches,
         gamma_max,
         refs,
+        tight,
         steps: total_steps,
         finite,
         budget_exhausted,

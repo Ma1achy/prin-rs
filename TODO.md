@@ -154,26 +154,50 @@ Confounds to dump, not hide:
 - [x] outcome fractions vs `lc_stable`: **0 label flips of 4096** at every `r_coll` — the
       branch cut does not reach the outcome encoding, unlike `spread_shape`
 
-## Step 6 — f32 · **FOURTH PR**
+## Spec corrections carried into Step 6's PR
 
-- [ ] `impl Real for f32` — **the floors especially**: `1e-300` flushes to zero at f32,
-      `1e-15` sync eps is below f32 eps at t≈13
-- [ ] Wire `Precision` through the single dispatch in `render.rs`
-- [ ] **ICs generated once in f64, cast down** — never per precision
-- [ ] Acceptance thresholds **parameterised by precision**: `|dE/E| < 1e-12` is structurally
-      impossible at f32 (eps ≈ 1.2e-7); report f32, don't assert it at f64 tolerance
-- [ ] Report all four: {f32,f64} × shared-reference {on,off} — `energy_drift`, `error_ratio`,
-      `ensemble_spread`, `ref_disagree`
-- [ ] State the floor divergences up front — the one place f32 and f64 are not the same algorithm
-- [ ] Shared-reference flag governs **cross-copy sharing only**, never freezing across time
+- [x] `spread_event` := disagreement over the **event class** (currently-tightest pair at each
+      sync boundary, joined with the terminal class), not the terminal `(state, detail)`.
+      Measured: 110 vs 0 nonzero pixels at `t_max = 8`; 165 vs 22 at `t = 13`, strictly nested
+- [!] the "~4 time units earlier" framing does **not** reproduce as a lead time — zero on the
+      22 pixels both flag. The gain is coverage (7.5x) and horizon-independence. NOTES §2.8
+- [!] the playhead value can **un-fire** (the tightest pair fluctuates), so it is non-monotone
+      in the horizon. `spread_event_max` dumped alongside; the spec one stays the default
+- [x] `t_spread_event` dumped, **NaN** when the copies never disagree
+- [x] BRIEF §2.6 rewritten: `deep interior` is a binary collision (landed in PR #4)
+- [x] `d_min_true` primary, `r_coll` a recorded parameter, in BRIEF §4 and CLAUDE.md
+
+## Step 6 — f32 · **FIFTH PR**
+
+- [x] `impl Real for f32` — floors asserted, not assumed: `tests/f32_precision.rs` checks that
+      `1e-300` casts to exactly 0 and that `1e-15` is a no-op against `ulp(13) = 9.537e-7`
+- [!] `TINY*TINY` underflows at f32 and `A*B` is a product of two floored quantities, so a
+      doubly-degenerate state gives `dtau = inf`. Caught by the explicit `is_finite` test, not
+      by the floor — the guard doing the work is not the one it looks like
+- [x] `Precision` wired through the single dispatch in `render.rs`
+- [x] ICs generated once in f64 and cast down (`ensemble/jitter.rs`) — never per precision
+- [x] acceptance thresholds parameterised by precision. Gate (b): f64 `1.2881e-11` / `2.9473e-14`,
+      f32 `1.2218e-11` / `2.8553e-6`. The `d_min` half meets the f64 bound as written; the
+      `1e-12` energy bound is five orders below f32 eps and is not asserted there
+- [x] all four {f32,f64} × shared-reference {on,off} reported — NOTES §4
+- [x] **Q1** the conditioned branch fixes f32 `spread_shape`: reference branch inflates the
+      median 32x (6.1582e-2 against the f64 truth 1.9095e-3); conditioned tracks to 1.2%
+- [!] this run produced **no** NaN pixels at f32 on either branch, where PR #3 saw them — the
+      NaN observation is configuration-dependent and must not be quoted as general
+- [x] **Q2** shared reference does not help: `spread_shape` median moves 1%, and at f32 the
+      worst pixel gets **56% worse**. Default stays unshared. Demoted, not eliminated
+- [!] the aggregate hides it — sharing changes 268/1024 pixels' `spread_shape`, worst **1.86x**,
+      while the median moves 1%. Exactly the NOTES §1 failure mode
+- [x] **Q3** the branch cut **does** reach the outcome encoding at f32: **152 of 1024** label
+      flips at the default `r_coll`, against 0 at f64. The zero at `r_coll = 1e-2` is
+      saturation, not reassurance
+- [x] bug found by the shared-reference path: the nominal can now terminate early, so its
+      `refs` is shorter than `n_sync` and the policy indexed off the end. Fixed, with a
+      regression test
+- [!] f32 tail: 2 pixels of 1024 have `|dE/E| > 1`. Not data. Flagged, never discarded
 
 ---
 
 ## Spec amendments accepted, not yet written into BRIEF.md
 
-- [x] §5 `error_ratio = 1.0000` → median 1.0000 + bound on the healthy max (written in)
-- [x] §4 MAD → maximum deviation, with the measured justification (written in)
-- [x] §2.6 `deep interior` is a binary collision, not a triple (written in)
-- [x] §2.4 `bounded` vs `running`, one of six states had no condition (written in)
-- [ ] §9 flat `~1e-10` → horizon-divergence table, hard-assert ≤1e-13 at t≤2
-- [ ] Note that the Step-1 smoke number is not a Rust target
+- [x] all of the above are written into `BRIEF.md`, `CLAUDE.md` and `NOTES.md` as they land

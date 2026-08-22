@@ -124,6 +124,9 @@ pub fn error_ratio_mad<T: Real>(e0: &[T], et: &[T]) -> T {
 
 /// Fraction of copies not sharing the modal class, normalised by `1 - 1/(E+1)` so a
 /// maximally split ensemble reads 1.0.
+///
+/// The class handed in is the **event class** — see [`event_classes`] — not the terminal
+/// outcome.
 pub fn spread_event<T: Real>(classes: &[u8]) -> T {
     let n = classes.len();
     if n < 2 {
@@ -138,4 +141,27 @@ pub fn spread_event<T: Real>(classes: &[u8]) -> T {
     }
     let frac = T::one() - T::lit(best as f64) / T::lit(n as f64);
     frac / (T::one() - T::one() / T::lit(n as f64))
+}
+
+/// The event class of every copy at sync boundary `k`.
+///
+/// The class is the identity of the **currently tightest pair**, joined with the terminal
+/// outcome once a copy has terminated. Terminal classes are offset past the three pair
+/// indices so the two alphabets cannot collide.
+///
+/// **Why not the terminal outcome alone.** That was the definition BRIEF §4 carried and it is
+/// the wrong quantity: it is terminal-grain, so early in the march nothing has terminated,
+/// every copy agrees, and the statistic reports maximum confidence at exactly the playhead
+/// where least is known. It also needs a gate — at `t = 13` on the near-field slice, zero of
+/// 1024 pixels have any copy escape, so the field was reading identically zero for a reason
+/// that had nothing to do with the ensemble. The tightest-pair identity is defined at every
+/// playhead and needs no gate. See NOTES §2.8.
+pub const TERMINAL_TAG: u8 = 8;
+
+/// Join one copy's per-boundary tightest-pair record with its terminal class.
+pub fn event_class_at(tight: &[u8], terminal: u8, k: usize) -> u8 {
+    match tight.get(k) {
+        Some(&p) => p,
+        None => TERMINAL_TAG + terminal,
+    }
 }

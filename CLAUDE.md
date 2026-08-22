@@ -93,6 +93,24 @@ decisions land on the word "max" for unrelated reasons; do not collapse them.
 
 Treat the result as a **boolean flag**; its magnitude is unstable.
 
+**`spread_event` is over the EVENT CLASS, never the terminal outcome.**
+The event class is which pair is *currently the tightest binary*, evaluated at every sync
+boundary and joined with the terminal `(state, detail)` for copies that have terminated. The
+terminal outcome was explicitly rejected as the contributor and reinstating it is a regression,
+not a simplification: it is terminal-grain and inverts under lockstep — early in the march
+nothing has terminated, every copy agrees, and the field reports maximum confidence at exactly
+the playhead where least is known. Measured, near-field 32×32, nonzero pixels of 1024: at
+`t_max = 8`, **110 against 0**; at `t_max = 13`, 165 against 22 and strictly nested. The gain is
+coverage and horizon-independence, not lead time — on pixels both flag, the lead is zero.
+The `(state, detail)` encoding stays as the **outcome**, for classification and rendering.
+
+**`d_min` is primary; `r_coll` is a recorded parameter, not a physical constant.**
+The collision label is *derived* from `d_min`. Measured: the collision fraction runs
+0.0000 → 0.0242 → 1.0000 across `r_coll/R ∈ {1e-4, 1e-3, 1e-2}` while the grid's `d_min/R`
+spans less than one decade. No threshold in that range is a physical event boundary. `r_coll`
+appears in every output header. The default `1e-3` separates tail from bulk on this slice and
+claims nothing more.
+
 **Never discard an ensemble copy.**
 Every pixel carries exactly `E+1` copies, always. A badly-integrated trajectory is a *measurement
 outcome* — "this could not be determined" — not missing data. Discarding biases the sample toward
@@ -124,6 +142,19 @@ Burrau's escape happens later than the horizon: zero of 1024 near-field pixels f
 horizon are driven entirely by the collision arm — the one arm *with* a reference is the one
 that is silent. Escape is also sampled at sync boundaries and latches on first firing, both
 transcribed from the reference.
+
+**f32 is usable, with two named caveats — and one of them is the branch cut.**
+Median drift 9.3e-6 against f64's 2.8e-9, which is what `eps ~ 1.19e-7` over ~5000 RK4 steps
+predicts; outcome labels agree with f64 on 1022 of 1024 pixels. Caveat one: 2 pixels of 1024
+have `|dE/E| > 1` and are not data — flagged by `error_ratio`, never discarded. Caveat two: the
+**unconditioned** LC branch at f32 inflates `spread_shape` 32x and flips **152 of 1024 outcome
+labels**, where at f64 it flipped none. Never run f32 on the reference branch.
+
+**The floors are the one place f32 and f64 are not the same algorithm.**
+`1e-300` casts to exactly zero (f32 uses `1e-37`); `ulp(13)` at f32 is `9.537e-7`, so a `1e-15`
+sync slack is no slack at all (f32 uses `1e-6`). Also: `TINY*TINY` underflows at f32 and `A*B`
+is a product of two floored quantities, so a doubly-degenerate state gives `dtau = inf` — caught
+by the explicit `is_finite` test, **not** by the floor. Know which guard is doing the work.
 
 **Test `is_finite` explicitly.**
 `NaN >= x` is `false`, so a diverged trajectory never satisfies a loop exit and burns its entire

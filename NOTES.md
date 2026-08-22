@@ -220,6 +220,64 @@ all six reachable and keeps "we integrated to the horizon" distinguishable from 
 early", which the dump otherwise has nowhere to record. Flagged rather than assumed: if the
 literal reading was intended, it is one line.
 
+### 2.8 `spread_event` was defined over the wrong quantity
+
+**Corrected in Step 6's PR, at the user's direction — the error was in the brief, not the
+physics.** BRIEF §4 defined `spread_event` over the modal terminal `(state, detail)`. The
+refinement work it derives from had concluded on something different: the **event class** is
+which pair is *currently the tightest binary*, evaluated at every sync boundary. Terminal
+outcome had been explicitly rejected as a contributor, because it is terminal-grain and
+inverts under lockstep — early in the march nothing has terminated, so every copy agrees, so
+the statistic reports maximum confidence at exactly the playhead where least is known.
+
+`spread_event` is now disagreement over the event class at the playhead, joined with the
+terminal class for copies that have terminated, normalisation unchanged. The terminal
+`(state, detail)` encoding stays as the **outcome**, for classification and rendering; BRIEF
+§2.4 is correct, it is simply not the spread contributor.
+
+Measured, near-field 32x32, `E+1 = 8`, `eta = 0.01`, f64 — nonzero pixels of 1024:
+
+| `t_max` | event class | terminal |
+|---|---|---|
+| 4 | 0 | 0 |
+| 8 | **110** | **0** |
+| 13 | 35 | 22 |
+| 20 | 352 | 323 |
+
+At `t = 13` the two are strictly nested: every pixel the terminal statistic flags, the event
+class flags too, and 143 more — 165 against 22, a factor of 7.5, with **zero** pixels flagged
+by the terminal one alone.
+
+**But the gain is coverage, not lead time, and the "~4 time units earlier" framing does not
+reproduce here.** On the 22 pixels both flag, the lead time is exactly zero: they fire at the
+same boundary. A collision *is* the tightest pair reaching `r_coll`, and that usually settles
+the tightest-pair identity at the same boundary it terminates on. What does reproduce is
+horizon-independence — at `t_max = 8` it is 110 against 0, because the terminal statistic
+cannot fire before something terminates and nothing has.
+
+**A second thing worth knowing: the playhead value is a snapshot and can *un*-fire.** The
+tightest-pair identity fluctuates, so copies that disagreed at one boundary can agree again at
+the next — which is why the `t_max = 8` row has *more* nonzero pixels than the `t_max = 13`
+row. Non-monotone in the horizon is not what a confidence flag should be, so
+`spread_event_max`, the running max over boundaries, is dumped alongside; it flags the same
+165 pixels at `t = 13` and never un-fires. Which one `ensemble_spread` should use is a
+judgement and the spec one is the default.
+
+`t_spread_event` records the first boundary at which the copies disagree — **NaN** when they
+never do, not `t_max`, which would be indistinguishable from disagreeing at the last boundary.
+Over the 165 pixels that fire: min 2.4375, median 8.9375, max 9.7500.
+
+`ensemble_spread` at `t = 13`: median 0.001910, max 0.571429, with `spread_event` setting it
+on 35 of 1024 pixels (22 under the old definition). At this horizon it is still mostly
+`spread_shape`, but no longer only that.
+
+### 2.9 `d_min_true` is primary; `r_coll` is a recorded parameter
+
+Adopted as spec after §2.6's plateau finding. The collision label is **derived** from
+`d_min_true`, not the other way round; `r_coll` is a parameter carried in every output header,
+not a physical constant. The default stays `1e-3` with the honest justification: it separates
+tail from bulk *on this slice*, and nothing more.
+
 ---
 
 ## 2b. The Levi-Civita branch cut
@@ -267,3 +325,133 @@ per-step or per-sync error source.
   fraction of the remaining interval, so effective resolution depends on `n_sync` through
   `dt_left`. Worth pinning `n_sync` explicitly in the cross-check test rather than leaving it at a
   default, or the `1e-10` agreement target is comparing two different discretisations.
+
+---
+
+## 4. Step 6 — is Aarseth–Zare usable at f32?
+
+Near-field 32x32, `t = 13`, `E+1 = 8`, `eta = 0.01`, `r_coll = 1e-3 R`, conditioned LC branch
+unless stated. Initial conditions are generated once in f64 and cast down, so no row differs by
+its initial condition.
+
+### The four combinations
+
+| prec | shared | drift med | drift max | er med | er max | ens_sp med | ref_disagree |
+|---|---|---|---|---|---|---|---|
+| f64 | off | 2.755e-9 | 3.070e-1 | 1.0000 | 2.6103e3 | 1.9095e-3 | 1174 |
+| f64 | on | 2.755e-9 | 3.070e-1 | 1.0000 | 2.6103e3 | 1.8884e-3 | 0 |
+| f32 | off | 9.293e-6 | 1.676e1 | 1.0039 | 1.1978e5 | 1.8875e-3 | 1152 |
+| f32 | on | 9.307e-6 | 2.613e1 | 1.0028 | 1.8671e5 | 1.8777e-3 | 0 |
+
+The drift tail, which the medians hide:
+
+| prec | shared | p50 | p90 | p99 | max | `>1e-3` | `>1` |
+|---|---|---|---|---|---|---|---|
+| f64 | off | 2.755e-9 | 4.319e-8 | 9.257e-3 | 3.070e-1 | 22 | 0 |
+| f64 | on | 2.755e-9 | 4.314e-8 | 1.108e-3 | 3.070e-1 | 11 | 0 |
+| f32 | off | 9.293e-6 | 1.937e-5 | 1.740e-2 | 1.676e1 | 51 | **2** |
+| f32 | on | 9.307e-6 | 1.939e-5 | 1.187e-2 | 2.613e1 | 42 | **2** |
+
+**Answer: yes, with a named caveat.** The f32 median drift is 9.3e-6 — three and a half orders
+worse than f64, and exactly what `eps ~ 1.19e-7` compounded over ~5000 RK4 steps predicts, not a
+sign of a broken port. Outcome labels agree with f64 on 1022 of 1024 pixels. The caveat is the
+tail: 2 pixels of 1024 lose more than the total energy of the system. Those pixels are not
+data. `error_ratio` flags them, which is what it is for, and "never discard a copy" means they
+are reported rather than removed.
+
+### 1. The conditioned branch fixes `spread_shape` at f32
+
+| prec | LC branch | median | p99 | max |
+|---|---|---|---|---|
+| f64 | conditioned | 1.9095e-3 | 2.1457e-1 | 2.8315e-1 |
+| f64 | reference | 1.9095e-3 | 2.1457e-1 | 2.8315e-1 |
+| f32 | conditioned | 1.8875e-3 | 2.2874e-1 | 3.3302e-1 |
+| f32 | **reference** | **6.1582e-2** | 2.8454e-1 | 3.6668e-1 |
+
+The reference branch at f32 inflates the median by **32x** against the f64 truth of 1.9095e-3.
+The conditioned branch tracks it to **1.2%** at the median, 6.6% high at p99, 17.6% high at max.
+That settles the prior dispute: the symptom was the branch cut, and conditioning removes it.
+
+Two honest qualifications. The f64 rows are identical to five digits, which is a real result
+and not a flag failing to reach the kernel — checked per pixel in `examples/flag_effect.rs`,
+where the branch changes **all 1024** pixels' drift, `spread_shape` and `error_ratio`, with a
+worst per-pixel `spread_shape` change of 6.7%. The distribution does not move; the pixels do.
+And this run produced **no** NaN pixels at f32 on either branch, where PR #3 saw them — so the
+NaN observation is configuration-dependent and should not be quoted as a general property.
+
+### 2. The shared-reference flag does not help, and hurts the tail
+
+Ratios are shared/unshared, so above 1 means sharing made it worse:
+
+| prec | drift med | drift max | er max | `spread_shape` med |
+|---|---|---|---|---|
+| f64 | x1.000 | x1.000 | x1.000 | x0.9889 |
+| f32 | x1.001 | **x1.559** | **x1.559** | x0.9948 |
+
+Sharing lowers `spread_shape` by about 1%, in the direction the original hypothesis predicted
+— but by 1%, against the 18.8x that motivated the concern. At f32 it makes the worst pixel
+**56% worse**. **Recommendation: keep the default unshared**, consistent with NOTES §1.
+Demoted, not eliminated: the flag stays and both settings stay measurable.
+
+**And the aggregate hides something.** Sharing changes 152 of 1024 pixels' drift and 268 of
+1024 pixels' `spread_shape`, with a worst per-pixel `spread_shape` change of **1.86x** — an
+individual pixel nearly tripling while the median moves 1%. That is precisely the failure mode
+NOTES §1 anticipated, and why `ref_disagree` is dumped per pixel rather than compared as a
+difference of aggregates.
+
+### 3. The branch cut DOES reach the outcome encoding at f32
+
+| prec | `r_coll/R` | label flips (of 1024) |
+|---|---|---|
+| f64 | 1e-4 | 0 |
+| f64 | 1e-3 | 0 |
+| f64 | 1e-2 | 0 |
+| f32 | 1e-4 | **37** |
+| f32 | 1e-3 | **152** |
+| f32 | 1e-2 | 0 |
+
+At f64 it was inert (§2.6). At f32 the reference branch flips **152 of 1024** outcome labels at
+the default `r_coll` — 14.8% of the grid classified differently by a registration artefact.
+This is the failure mode a continuous-field check cannot see: a discrete label flips rather
+than a number shifting.
+
+The zero at `1e-2` is not reassurance. At that threshold every pixel collides regardless
+(NOTES §2.6), so the label is saturated and cannot flip. The flips concentrate exactly where
+the classification is actually deciding something.
+
+### The floor divergence, stated up front
+
+| constant | f64 | naively cast to f32 | f32 in use |
+|---|---|---|---|
+| `TINY` | 1e-300 | **0** | 1e-37 |
+| `SYNC_EPS` | 1e-15 | 1e-15 | 1e-6 |
+| `DRIFT_FLOOR` | 1e-30 | 1e-30 | 1e-30 |
+| `DIST_FLOOR` | 1e-12 | 1e-12 | 1e-12 |
+
+`1e-300` is exactly zero at f32, so the reference's guard would stop guarding. `ulp(13)` at f32
+is 9.537e-7, which is 9.5e8 times the reference's `1e-15` slack, so `t < t_target - 1e-15`
+degenerates to `t < t_target`.
+
+One thing the floor does *not* cover: `TINY * TINY` underflows to zero at f32, and `A*B` is a
+product of two floored quantities, so a doubly-degenerate state gives `dtau = eta*dt_left/(A*B)
+= inf` rather than a large finite step. That is caught by the explicit `is_finite` test in the
+RK4 loop, not by the floor. Worth knowing which guard is doing the work.
+
+Gate (b) at both precisions, tolerances set by the type:
+
+```
+  f64: d_min 1.2881e-11 (tol 1e-10)   |dE/E| 2.9473e-14 (tol 1e-12)   steps 24839
+  f32: d_min 1.2218e-11 (tol 1e-9)    |dE/E| 2.8553e-6  (tol 1e-4)    steps 24839
+```
+
+The `d_min` half survives the cast outright — f32 meets BRIEF §5's `1e-10` as written, because
+regularisation still carries the trajectory through collision. The energy half cannot: `1e-12`
+is five orders below f32 eps.
+
+### A bug the shared-reference path found
+
+Since Step 5b the nominal copy can terminate early, so its `refs` record is shorter than
+`n_sync` and the shared policy indexed off the end — an outright panic the first time the two
+features met. Fixed by falling back to the per-copy choice past the nominal's last boundary:
+sharing applies where the nominal has a choice to share. Regression test in
+`tests/f32_precision.rs`.

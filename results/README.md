@@ -27,17 +27,28 @@ pixel can be and must not be shown as quiet.
 
 ## Raw dumps
 
-`raw/<region>-64.raw` — 64×64 rather than 256×256, because a 256² dump is 21 MB and seven of them
-do not belong in a repository. The format is self-describing: magic `PRIN`, a version, a
-length-prefixed text header carrying every parameter and the field names, then 40 `f64` per pixel
-in row-major order (`index = jy*nx + jx`, x fastest). Fields are always `f64` regardless of kernel
-precision, so an f32 run and an f64 run produce byte-comparable dumps.
+**The dump is the product; the images are diagnostics.** Both resolutions are committed:
+
+- `<region>.raw` — 256×256, the same runs as the committed images, 21 MB each.
+- `raw/<region>-64.raw` — 64×64, ~1.3 MB each, for reading and testing a parser against.
+
+Together they are about 155 MB, which is large for a repository and is a deliberate choice: the
+findings in [`../RESULTS.md`](../RESULTS.md) are re-derivable from these files without a
+re-run. If that ever needs undoing, `git lfs migrate` moves them out of the tree retroactively.
+
+The format is self-describing: magic `PRIN`, a version, a length-prefixed text header carrying
+every parameter and the field names, then 40 `f64` per pixel in row-major order
+(`index = jy*nx + jx`, x fastest). Fields are always `f64` regardless of kernel precision, so an
+f32 run and an f64 run produce byte-comparable dumps.
+
+`near-field.raw` and `near-field-f32.raw` are the same slice at the two precisions, so a
+field-by-field diff between them is the f32 question answered directly from the data.
 
 Read one with:
 
 ```python
 import struct
-d = open("raw/near-field-64.raw", "rb").read()
+d = open("near-field.raw", "rb").read()   # or raw/near-field-64.raw
 assert d[:4] == b"PRIN"
 hl, = struct.unpack_from("<I", d, 8)
 hdr = d[12:12+hl].decode()

@@ -111,6 +111,20 @@ Two or more pairs below `r_coll`, not all three. By the triangle inequality `|AB
 near-triple. Requiring all three would silently misclassify it as an ordinary binary collision.
 `detail = 3` means "all three" for both arms — triple collision and triple ejection.
 
+**`deep interior` is a binary collision, not a triple.**
+BRIEF §2.6's warning predates AZ. Measured in both implementations: pair (0,2) closes to
+`2.28e-5`, pairs (0,1) and (1,2) never register even at `r_coll = R`, and it reaches `t = 13`
+in about a second with `|dE/E| ~ 1.4e-7`. The 190 s failure was the *unregularised* integrator.
+Do not restore a "this region is intractable" assumption — that has already produced one false
+finding in this project.
+
+**The escape arm contributes nothing at `t = 13`.**
+Burrau's escape happens later than the horizon: zero of 1024 near-field pixels fire at
+`t_max = 13`, 109 at `t_max = 20`. So `spread_event` and the outcome image at the project
+horizon are driven entirely by the collision arm — the one arm *with* a reference is the one
+that is silent. Escape is also sampled at sync boundaries and latches on first firing, both
+transcribed from the reference.
+
 **Test `is_finite` explicitly.**
 `NaN >= x` is `false`, so a diverged trajectory never satisfies a loop exit and burns its entire
 step budget. Measured: 354 s against 3 s nominal.

@@ -127,7 +127,13 @@ A simulation stops when any of these fires. Record which.
 Requiring all three would silently misclassify it as an ordinary binary collision.
 
 **Encoding.** `state` is 3 bits `{escape, bounded, collision, running, sim_failed, decode_failed}` and
-`detail` is 2 bits. For `escape`, detail is the escaping body `0–2`; for `collision`, the colliding
+`detail` is 2 bits.
+
+*The table above gives conditions for five of the six states.* `running` is written as "still bound
+at `t_max`" and `bounded` is given no condition, so read literally one of the six is unreachable.
+Implemented instead as: **`bounded`** = reached `t_max` with nothing having fired, **`running`** =
+did *not* reach it, the step budget ran out and the final state is not a terminal answer. That keeps
+all six reachable and keeps "integrated to the horizon" distinguishable from "stopped early". For `escape`, detail is the escaping body `0–2`; for `collision`, the colliding
 pair `0–2`. **`detail = 3` means "all three"** — triple collision or triple ejection respectively.
 One rule, both arms.
 
@@ -152,10 +158,21 @@ force law*, so tag it in the output and never mix `eps>0` with `eps=0` data.
 
 ### 2.6 Known-pathological region
 
-`deep interior` (centre `(0,0)`, body 0) drives all three bodies together — a near-triple collision.
-It is **not regularisable** and will fail however well the integrator is built. In the reference
-implementation it took 190 s per probe *and still failed*. Expect it to hit the triple-collision
-outcome. **This is correct behaviour, not a bug.**
+`deep interior` (centre `(0,0)`, body 0) was expected to drive all three bodies together — a
+near-triple collision, not regularisable, failing however well the integrator is built, at 190 s
+per probe.
+
+**Measured under Aarseth–Zare, that is not what happens.** It is an ordinary binary encounter
+between bodies 0 and 2: `d_min = 2.28e-5` (Rust) against `2.30e-5` (numpy), `|dE/E| ~ 1.4e-7`,
+two reference switches, reaching `t = 13` in about a second in both implementations. Sweeping
+`r_coll` from `1e-4 R` to `R`, pairs (0,1) and (1,2) never register at any threshold.
+
+The 190 s failure is the **unregularised** integrator. A close binary approach with a distant
+third body is exactly the case AZ regularises — the warning predates the method that removes it.
+See `examples/deep_interior.rs` and NOTES §2.4.
+
+Expect a **binary collision**, not a triple. A genuine triple still exists in principle and is
+still non-regularisable; this pixel is not it.
 
 ---
 

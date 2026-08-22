@@ -130,6 +130,96 @@ pixel. The Rust port should decide this deliberately rather than inherit it: I w
 per-copy `finite` flag and let the pixel record "one copy undetermined" explicitly, which is the
 same information without a value that silently contaminates every aggregate it touches.
 
+### 2.4 `deep interior` is not a triple collision, and it does not fail
+
+BRIEF §2.6 says the `deep interior` pixel "drives all three bodies together", is not
+regularisable, "will fail however well the integrator is built", should hit the
+triple-collision outcome, and cites 190 s per probe still failing.
+
+Measured, in both implementations, on the same initial condition (body 0 at the origin,
+bodies 1 and 2 at their Burrau positions — initial separations 2.236, 1.414, 3.0):
+
+| | Rust (reference LC branch) | numpy reference |
+|---|---|---|
+| `d_min` | 2.2837794877e-5 | 2.2976014100e-5 |
+| `\|dE/E\|` | 1.395286245e-7 | 1.393632170e-7 |
+| switches | 2 | 2 |
+| reaches `t = 13` | yes | yes |
+| wall clock | ~0.1 s | 1.5 s |
+
+It is an **ordinary binary encounter between bodies 0 and 2**. Sweeping `r_coll` from
+`1e-4 R` up to `R` itself, pairs (0,1) and (1,2) never register at any threshold; only (0,2)
+does, and it does so already at `1e-4 R`. There is no near-triple here by any definition.
+
+The 190 s failure §2.6 records is almost certainly the **unregularised** integrator. A close
+binary approach with a distant third body is precisely the case AZ regularises — the warning
+predates the method that removes it. `examples/deep_interior.rs` is the probe.
+
+The `d_min` figures differ by 0.6%, which is the sampling-offset mechanism established in
+PR #2: near a close approach `d_min` is set by where a step lands relative to the crossing.
+
+### 2.5 The escape arm never fires at `t = 13`
+
+Over a 32x32 near-field grid at the project's horizon, `tb.classify` and the ported escape
+test both return "bound" for all 1024 pixels. Burrau's escape happens later than `t_max = 13`:
+the first firings appear at `t_max = 16` (2 of 1024), and by `t_max = 20` it is 109 of 1024.
+
+Consequences worth stating rather than discovering later:
+
+- At the project's horizon, `spread_event` and the outcome image are driven **entirely by the
+  collision arm**. The one arm with a reference contributes nothing at `t = 13`.
+- Escape is sampled at sync boundaries, so `t_end` for an escape has the resolution of the
+  sync grid, and *which* events are seen depends on `n_sync` and `t_max`. An event at
+  `t = 9.5` is caught at `t_max = 16` (boundaries 0.5 apart) and missed at `t_max = 13`
+  (0.40625 apart). This is the reference's cadence, transcribed.
+- The arm latches on first firing. At `t = 20`, 109 pixels fire but only 87 are still labelled
+  escaping at the horizon: a body can be unbound and receding at one boundary and recaptured
+  by the next.
+
+### 2.6 `r_coll` has no plateau to sit on
+
+The sweep BRIEF asks for, on 64x64 near-field at `t = 13` (`examples/r_coll_sweep.rs`):
+
+| `r_coll/R` | escape | bounded | collision | triples | median `t_end` |
+|---|---|---|---|---|---|
+| 1e-4 | 0.0000 | 1.0000 | 0.0000 | 0.0000 | 13.0000 |
+| 1e-3 | 0.0000 | 0.9758 | 0.0242 | 0.0000 | 13.0000 |
+| 1e-2 | 0.0000 | 0.0000 | **1.0000** | 0.0000 | 1.8713 |
+
+The collision fraction goes from nothing to everything across three decades, because the whole
+grid's `d_min_true/R` lands inside **less than one decade** — min 5.909e-4, median 3.769e-3,
+max 4.931e-3. Cross-checked from the `d_min` distribution of an unterminated run: 0.0000 /
+0.0281 / 1.0000, which bounds the nominal-copy fractions from the expected side.
+
+So no `r_coll` in this range is a physical event threshold; it is a readout of the `d_min`
+distribution. The honest position is that **`d_min_true` is the primary quantity and the
+collision label is derived from it**, with `r_coll` recorded in the dump header as the
+parameter it is. The default of `1e-3` is picked because it separates the tail from the bulk
+on this slice, not because anything physical happens there.
+
+`triples` is 0.0000 at every threshold: no pixel on this slice ever has two pairs below
+`r_coll` simultaneously, so the >=2-pair rule is exercised only by construction in
+`tests/outcome_encoding.rs`, never by this data.
+
+**And the branch cut does not reach it.** Outcome labels were compared between `lc_stable` and
+the reference branch at all three thresholds: **0 flips of 4096** each time. Unlike
+`spread_shape`, which the unstable branch destroys at f32, the outcome encoding is insensitive
+to it here — measured, not assumed. That is a bounded result: at f64, on this slice, at these
+thresholds. Step 6 repeats it at f32, where the conditioning error is six orders larger.
+
+### 2.7 §2.4 lists six states and gives conditions for five
+
+`state` is 3 bits over `{escape, bounded, collision, running, sim_failed, decode_failed}`, but
+§2.4's table gives `running` as "still bound at `t_max`" and gives `bounded` no condition at
+all. Read literally, one of the six is unreachable.
+
+Resolved in `src/outcome.rs` by giving each a distinct job: `Bounded` is reaching `t_max` with
+nothing having fired, `Running` is *not* reaching it — the step budget ran out, so the
+trajectory is genuinely still running and its final state is not a terminal answer. That keeps
+all six reachable and keeps "we integrated to the horizon" distinguishable from "we stopped
+early", which the dump otherwise has nowhere to record. Flagged rather than assumed: if the
+literal reading was intended, it is one line.
+
 ---
 
 ## 2b. The Levi-Civita branch cut

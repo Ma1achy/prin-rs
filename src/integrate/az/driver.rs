@@ -3,6 +3,7 @@
 //!
 //! Transcribed from `reference/tb_az.py:integrate_az`.
 
+use crate::outcome::{collision_pairs_from, Events};
 use crate::physics::{energy, Cart};
 use crate::Real;
 
@@ -35,6 +36,39 @@ pub struct AzOut<T> {
     pub steps: usize,
     pub finite: bool,
     pub budget_exhausted: bool,
+    /// Termination events, per BRIEF §2.4. Collisions are sampled **inside** the RK4 loop;
+    /// escape at sync boundaries, which is where the reference samples it.
+    pub events: Events<T>,
+    /// Time of the first terminating event, or the time reached if none fired. Distinct from
+    /// `t` only when `stop_on_event` is off, where the run continues past the event.
+    pub t_end: T,
+}
+
+/// The options that grew past what a positional argument list can carry legibly.
+#[derive(Clone, Copy, Debug)]
+pub struct AzOpts<'a, T> {
+    pub forced_refs: Option<&'a [u8]>,
+    /// Conditioned inverse LC branch. `false` reproduces the reference's original.
+    pub lc_stable: bool,
+    /// **Canonical**: a fraction of the initial hyperradius `R`, evaluated once at `t = 0`
+    /// from this trajectory's own initial condition and never updated. Zero disables
+    /// collision detection.
+    ///
+    /// A fraction, not a length. An absolute `r_coll` would break the scale invariance the
+    /// project quotients out — measured, the same physical system gave answers differing by
+    /// 1.66x purely from an arbitrary overall size. A *co-moving* one would make the
+    /// Hamiltonian time-dependent and destroy energy conservation.
+    pub r_coll_frac: T,
+    /// Stop at the first terminating event, per §2.4. With it off the run continues to
+    /// `t_max` and the event is recorded but not acted on — which is what the reference does,
+    /// and what keeps every copy's continuous fields evaluated at a common playhead.
+    pub stop_on_event: bool,
+}
+
+impl<T: Real> Default for AzOpts<'_, T> {
+    fn default() -> Self {
+        Self { forced_refs: None, lc_stable: true, r_coll_frac: T::zero(), stop_on_event: true }
+    }
 }
 
 /// `forced_refs`, when supplied, overrides the per-sync choice — this is how the shared
@@ -68,6 +102,27 @@ pub fn integrate_az_lc<T: Real>(
     forced_refs: Option<&[u8]>,
     lc_stable: bool,
 ) -> AzOut<T> {
+    // No r_coll and no early stop: these two entry points are the reference-matching path,
+    // and the reference has no termination logic at all. Events are still *recorded* — that
+    // costs nothing and changes no arithmetic — but nothing acts on them.
+    integrate_az_opts(
+        s0, m, t_max, n_sync, eta, max_steps,
+        &AzOpts { forced_refs, lc_stable, r_coll_frac: T::zero(), stop_on_event: false },
+    )
+}
+
+/// The full entry point.
+#[allow(clippy::too_many_arguments)]
+pub fn integrate_az_opts<T: Real>(
+    s0: Cart<T>,
+    m: &[T; 3],
+    t_max: T,
+    n_sync: usize,
+    eta: T,
+    max_steps: usize,
+    opts: &AzOpts<T>,
+) -> AzOut<T> {
+    let (forced_refs, lc_stable) = (opts.forced_refs, opts.lc_stable);
     let mut cart = s0;
     let e0 = energy::energy(&s0.r, &s0.v, m, T::zero());
     let mut t = T::zero();
@@ -80,6 +135,13 @@ pub fn integrate_az_lc<T: Real>(
     let mut total_steps = 0usize;
     let mut finite = true;
     let mut budget_exhausted = false;
+    let mut events = Events::default();
+    let mut t_end: Option<T> = None;
+
+    // Canonical and fixed at t=0: a fraction of *this* trajectory's initial hyperradius,
+    // evaluated once, before anything moves. Never recomputed from the instantaneous
+    // configuration — a co-moving length makes the Hamiltonian time-dependent.
+    let r_coll = opts.r_coll_frac * energy::hyperradius(&s0.r, m);
 
     for kk in 0..n_sync {
         let t_target = T::lit((kk + 1) as f64) * t_max / T::lit(n_sync as f64);
@@ -155,6 +217,21 @@ pub fn integrate_az_lc<T: Real>(
                 d_min_true = m_true;
             }
 
+            // Sampled here, inside the RK4 loop, not at sync boundaries: with n_sync = 32 and
+            // t_max = 13 the boundaries are 0.4 apart, and a close encounter passes between
+            // two of them entirely unseen.
+            if events.collision.is_none() && r_coll > T::zero() {
+                let mask = collision_pairs_from(ab, bb, cb, d1, d2, d3, r_coll);
+                if mask != 0 {
+                    let tc = t + s.t;
+                    events.collision = Some((mask, tc));
+                    t_end.get_or_insert(tc);
+                    if opts.stop_on_event {
+                        break;
+                    }
+                }
+            }
+
             let g = gamma_residual(&sys, &s, e);
             if g.is_finite() && g > gamma_max {
                 gamma_max = g;
@@ -168,7 +245,16 @@ pub fn integrate_az_lc<T: Real>(
         // is the reference's behaviour and part of what the cross-check measures.
         t += s.t.min(dt_left);
 
-        if budget_exhausted {
+        // The escape test runs at the sync boundary, where the state is Cartesian and every
+        // trajectory shares a playhead — the reference's cadence, transcribed.
+        if events.escape.is_none() {
+            if let Some(b) = crate::outcome::escape_candidate(&cart, m) {
+                events.escape = Some((b, t));
+                t_end.get_or_insert(t);
+            }
+        }
+
+        if budget_exhausted || (opts.stop_on_event && (events.collision.is_some() || events.escape.is_some())) {
             break;
         }
     }
@@ -188,6 +274,8 @@ pub fn integrate_az_lc<T: Real>(
         steps: total_steps,
         finite,
         budget_exhausted,
+        events,
+        t_end: t_end.unwrap_or(t),
     }
 }
 

@@ -15,11 +15,12 @@ pub const VERSION: u32 = 1;
 
 /// Field order in each record. Written into the header so a reader never has to guess.
 pub const FIELDS: &[&str] = &[
-    "legacy_class", "binary_id", "n_nonfinite", "censored",
+    "outcome", "state", "detail",
+    "legacy_class", "binary_id", "n_nonfinite", "n_outcome_disagree", "censored",
     "t_end", "d_min_ref", "d_min_true", "d_min_gap",
     "energy_drift_nominal", "energy_drift_max", "gamma_max",
     "shape_x", "shape_y", "shape_z",
-    "spread_shape", "svar", "spread_event", "ensemble_spread",
+    "spread_shape", "svar", "spread_event", "spread_event_legacy", "ensemble_spread",
     "sigma_e_0", "sigma_e_t", "error_ratio", "error_ratio_mad",
     "switches", "ref_disagree",
 ];
@@ -40,11 +41,13 @@ pub fn write<W: Write>(
         "nx={} ny={} cx={} cy={} half={} body={}\n\
          t_max={} n_sync={} eta={} max_steps={} n_copies={} jitter_frac={} seed={}\n\
          ref_policy={:?} lc_stable={} precision={} eps=0\n\
+         r_coll_frac={} stop_on_event={}\n\
          fields={}\n",
         slice.nx, slice.ny, slice.cx, slice.cy, slice.half, slice.body,
         cfg.t_max, cfg.n_sync, cfg.eta, cfg.max_steps, cfg.n_extra + 1,
         cfg.jitter_frac, cfg.seed,
         cfg.ref_policy, cfg.lc_stable, precision,
+        cfg.r_coll_frac, cfg.stop_on_event,
         FIELDS.join(","),
     );
     w.write_all(&(header.len() as u32).to_le_bytes())?;
@@ -60,11 +63,15 @@ pub fn write<W: Write>(
     Ok(())
 }
 
-pub fn record(p: &PixelOut) -> [f64; 24] {
+pub fn record(p: &PixelOut) -> [f64; 29] {
     [
+        p.outcome as f64,
+        p.state as f64,
+        p.detail as f64,
         p.legacy_class as f64,
         p.binary_id as f64,
         p.n_nonfinite as f64,
+        p.n_outcome_disagree as f64,
         if p.censored { 1.0 } else { 0.0 },
         p.t_end,
         p.d_min_ref,
@@ -79,6 +86,7 @@ pub fn record(p: &PixelOut) -> [f64; 24] {
         p.spread_shape,
         p.svar,
         p.spread_event,
+        p.spread_event_legacy,
         p.ensemble_spread,
         p.sigma_e_0,
         p.sigma_e_t,

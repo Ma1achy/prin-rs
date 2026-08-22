@@ -41,6 +41,8 @@ prin — uniform-resolution three-body initial-condition kernel
   --precision <p>     f32 | f64 (default f64)
   --shared-reference  force all copies onto the nominal copy's reference body
   --lc-unstable       use the reference's unconditioned inverse LC branch
+  --r-coll <x>        collision radius as a FRACTION of R, fixed at t=0 (default 1e-3)
+  --no-stop           record events but integrate every copy to t_max anyway
   --out <stem>        output stem (default out)
 ";
 
@@ -78,6 +80,8 @@ pub fn parse(args: &[String]) -> Result<Config, String> {
             }
             "--shared-reference" => c.ens.ref_policy = RefPolicy::Shared,
             "--lc-unstable" => c.ens.lc_stable = false,
+            "--r-coll" => { c.ens.r_coll_frac = get(i)?.parse().map_err(|e| format!("{e}"))?; i += 1; }
+            "--no-stop" => c.ens.stop_on_event = false,
             "--out" => { c.out = get(i)?; i += 1; }
             "-h" | "--help" => return Err(USAGE.into()),
             other => return Err(format!("unknown argument: {other}\n\n{USAGE}")),

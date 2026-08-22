@@ -43,6 +43,16 @@ fn main() {
     println!("  |dE/E|        median {:.3e}  max {:.3e}", s.drift_median, s.drift_max);
     println!("  d_min_gap     median {:.3e}  max {:.3e}", s.d_min_gap_median, s.d_min_gap_max);
     println!("  ref_disagree  total {}", s.ref_disagree_total);
+    println!("  t_end         median {:.4}", s.t_end_median);
+    print!("  outcomes     ");
+    for k in 0..6u8 {
+        if s.state_fracs[k as usize] > 0.0 {
+            print!(" {} {:.3}",
+                   prin_rs::outcome::State::from_bits(k).unwrap().name(),
+                   s.state_fracs[k as usize]);
+        }
+    }
+    println!();
     println!("  pixels with a non-finite copy: {} of {}", s.n_pixels_with_nonfinite, s.n);
     println!();
     println!("wrote {dump}, {}_outcome.png, {}_spread.png", cfg.out, cfg.out);

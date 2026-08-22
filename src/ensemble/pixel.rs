@@ -1,8 +1,8 @@
 //! Per-pixel evaluation: build the copies, integrate them, reduce.
 
 use crate::grid::Slice;
-use crate::integrate::az::{self, RefPolicy};
-use crate::outcome;
+use crate::integrate::az::{self, AzOpts, RefPolicy};
+use crate::outcome::{self, Outcome, State};
 use crate::physics::{burrau, energy, shape};
 use crate::Real;
 
@@ -22,6 +22,16 @@ pub struct EnsembleCfg {
     /// Conditioned inverse LC branch. Default true; false reproduces the reference's
     /// original branch, for measuring what the conditioning is worth.
     pub lc_stable: bool,
+    /// `r_coll` as a **fraction of the initial hyperradius** `R`, fixed at `t = 0`. Never an
+    /// absolute length and never co-moving (BRIEF §2.5).
+    ///
+    /// The default has no reference — `r_coll` appears nowhere in the numpy tree — so it is
+    /// reported as a measurement instead: see `examples/r_coll_sweep.rs` for how the outcome
+    /// fractions move across `{1e-4, 1e-3, 1e-2}`.
+    pub r_coll_frac: f64,
+    /// Stop at the first terminating event (BRIEF §2.4). Off keeps every copy integrating to
+    /// `t_max`, which is the reference's behaviour.
+    pub stop_on_event: bool,
 }
 
 impl Default for EnsembleCfg {
@@ -36,6 +46,8 @@ impl Default for EnsembleCfg {
             max_steps: 30_000,
             ref_policy: RefPolicy::PerCopy,
             lc_stable: true,
+            r_coll_frac: 1e-3,
+            stop_on_event: true,
         }
     }
 }
@@ -46,6 +58,13 @@ impl Default for EnsembleCfg {
 /// directly comparable dumps.
 #[derive(Clone, Debug, Default)]
 pub struct PixelOut {
+    /// BRIEF §2.4's packed encoding: `state` in the high 3 bits, `detail` in the low 2.
+    pub outcome: u8,
+    /// Unpacked for readers who would rather not shift. Same information.
+    pub state: u8,
+    pub detail: u8,
+    /// `tb.classify`'s labelling — kept because it is the one classification with a
+    /// reference, and `spread_event_legacy` is checkable against it.
     pub legacy_class: u8,
     pub binary_id: u8,
     pub t_end: f64,
@@ -70,7 +89,11 @@ pub struct PixelOut {
     /// reference. Both are dumped so the discrepancy is measurable rather than a silent
     /// choice.
     pub svar: f64,
+    /// Over the §2.4 `(state, detail)` pair, which is what BRIEF §4 specifies.
     pub spread_event: f64,
+    /// Over `classify_legacy`. Dumped because it is the reference-checkable one; the spec
+    /// field above is not.
+    pub spread_event_legacy: f64,
     pub ensemble_spread: f64,
 
     /// Dumped separately from the ratio. `sigma_E(0)` is proportional to the jitter and so
@@ -92,6 +115,9 @@ pub struct PixelOut {
     /// Lets `error_ratio` be conditioned on reference disagreement, so §8 experiment 2 gets
     /// an attributed answer from one run rather than a difference of aggregates (NOTES §1).
     pub ref_disagree: u32,
+    /// Copies whose `(state, detail)` differs from the nominal copy's. `spread_event`
+    /// normalised away; this is the raw count.
+    pub n_outcome_disagree: u8,
     /// Copies that went non-finite. **Never discarded** — a copy that could not be
     /// determined is a measurement outcome, and this records it explicitly rather than
     /// letting a NaN contaminate every aggregate it touches.
@@ -106,11 +132,16 @@ pub fn evaluate<T: Real>(slice: &Slice, idx: usize, cfg: &EnsembleCfg) -> PixelO
     let t_max = T::lit(cfg.t_max);
     let eta = T::lit(cfg.eta);
 
+    let base = AzOpts::<T> {
+        forced_refs: None,
+        lc_stable: cfg.lc_stable,
+        r_coll_frac: T::lit(cfg.r_coll_frac),
+        stop_on_event: cfg.stop_on_event,
+    };
+
     // The nominal copy first: its reference-body choices are what the shared policy hands to
     // the others.
-    let nominal = az::integrate_az_lc(
-        copies[0], &m, t_max, cfg.n_sync, eta, cfg.max_steps, None, cfg.lc_stable,
-    );
+    let nominal = az::integrate_az_opts(copies[0], &m, t_max, cfg.n_sync, eta, cfg.max_steps, &base);
     let nominal_refs = nominal.refs.clone();
 
     let mut outs = Vec::with_capacity(n);
@@ -120,8 +151,9 @@ pub fn evaluate<T: Real>(slice: &Slice, idx: usize, cfg: &EnsembleCfg) -> PixelO
             RefPolicy::Shared => Some(nominal_refs.as_slice()),
             RefPolicy::PerCopy => None,
         };
-        outs.push(az::integrate_az_lc(
-            *c, &m, t_max, cfg.n_sync, eta, cfg.max_steps, forced, cfg.lc_stable,
+        outs.push(az::integrate_az_opts(
+            *c, &m, t_max, cfg.n_sync, eta, cfg.max_steps,
+            &AzOpts { forced_refs: forced, ..base },
         ));
     }
 
@@ -144,10 +176,17 @@ pub fn evaluate<T: Real>(slice: &Slice, idx: usize, cfg: &EnsembleCfg) -> PixelO
         .iter()
         .map(|o| outcome::classify_legacy(&o.state, &m))
         .collect();
+    let outcomes: Vec<Outcome> = outs
+        .iter()
+        .map(|o| outcome::classify(&o.events, &o.state, &m, o.finite, o.budget_exhausted))
+        .collect();
+    let packed: Vec<u8> = outcomes.iter().map(|o| o.pack()).collect();
 
     let sp_shape = shape::spread_shape(&shapes).to_f64().unwrap();
     let sv = shape::svar(&shapes).to_f64().unwrap();
-    let sp_event = stats::spread_event::<T>(&classes).to_f64().unwrap();
+    let sp_event = stats::spread_event::<T>(&packed).to_f64().unwrap();
+    let sp_event_legacy = stats::spread_event::<T>(&classes).to_f64().unwrap();
+    let n_outcome_disagree = packed.iter().filter(|&&c| c != packed[0]).count() as u8;
 
     // d_min over the ensemble, from finite states only.
     let mut d_ref = f64::INFINITY;
@@ -187,10 +226,13 @@ pub fn evaluate<T: Real>(slice: &Slice, idx: usize, cfg: &EnsembleCfg) -> PixelO
 
     let nom = &outs[0];
     PixelOut {
+        outcome: packed[0],
+        state: outcomes[0].state as u8,
+        detail: outcomes[0].detail,
         legacy_class: classes[0],
         binary_id: outcome::binary_id(&nom.state),
-        t_end: nom.t.to_f64().unwrap(),
-        censored: nom.t.to_f64().unwrap() >= cfg.t_max,
+        t_end: nom.t_end.to_f64().unwrap(),
+        censored: outcomes[0].state != State::Collision && outcomes[0].state != State::Escape,
         d_min_ref: d_ref,
         d_min_true: d_true,
         d_min_gap: d_ref - d_true,
@@ -205,6 +247,7 @@ pub fn evaluate<T: Real>(slice: &Slice, idx: usize, cfg: &EnsembleCfg) -> PixelO
         spread_shape: sp_shape,
         svar: sv,
         spread_event: sp_event,
+        spread_event_legacy: sp_event_legacy,
         ensemble_spread: sp_shape.max(sp_event),
         sigma_e_0: s0.to_f64().unwrap(),
         sigma_e_t: st.to_f64().unwrap(),
@@ -212,6 +255,7 @@ pub fn evaluate<T: Real>(slice: &Slice, idx: usize, cfg: &EnsembleCfg) -> PixelO
         error_ratio_mad: ratio_mad.to_f64().unwrap(),
         switches: nom.switches,
         ref_disagree,
+        n_outcome_disagree,
         n_nonfinite,
     }
 }

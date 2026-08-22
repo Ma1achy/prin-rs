@@ -130,18 +130,29 @@ Confounds to dump, not hide:
 
 ## Step 5b — termination and outcome encoding · **THIRD PR**
 
-- [ ] `src/outcome.rs` — `classify_legacy()` (reference-exact, xcheck only) and `classify()`
+- [x] `src/outcome.rs` — `classify_legacy()` (reference-exact, xcheck only) and `classify()`
       (BRIEF §2.4 3-bit state + 2-bit detail)
-- [ ] escape arm is a **port** (`tb_all_az` sync-boundary test); collision/triple arms are
-      **invented** — say which is which in the PR
-- [ ] ≥2-pair rule encoded as `detail = 3`, both arms
-- [ ] `r_coll` canonical, fixed at t=0, never co-moving
-- [ ] collision detection samples **inside** the AZ inner loop (sync boundaries are 0.4 apart)
-- [ ] property test: two pairs below `r_coll` is **never** labelled an ordinary binary collision
-- [ ] scale invariance of outcomes and `t_end` under `α` — catches an absolute-length leak
-- [ ] `deep interior` (0,0) terminates as triple collision in bounded wall-clock
-- [ ] `r_coll` sensitivity sweep `{1e-4, 1e-3, 1e-2}·R` on 64×64 — turns an arbitrary constant
-      into a reported measurement
+- [x] escape arm is a **port** (`tb_all_az` sync-boundary test); collision/triple arms are
+      **invented** — marked as such in the source, in one block
+- [x] ≥2-pair rule encoded as `detail = 3`, both arms
+- [x] `r_coll` canonical, fixed at t=0, from each trajectory's own `R`, never co-moving
+- [x] collision detection samples **inside** the AZ inner loop (sync boundaries are 0.4 apart)
+- [x] property test: two pairs below `r_coll` is **never** labelled an ordinary binary collision
+- [x] property test: the `(R1,R2,R3)` → pair-index mapping, for every reference body
+- [x] scale invariance of outcomes and `t_end` under `α` — 25/25 labels held, `t_end` bitwise
+      for `α ∈ {0.25,4}` and `9.9e-16` relative for `{3.7, 1/3}`
+- [x] the reference-matching entry points keep `stop_on_event = false`, so the cross-check is
+      unchanged — verified, `az_t13` still passes
+- [!] `deep interior` terminates in bounded wall-clock — but as a **binary** collision, not a
+      triple. BRIEF §2.6 is wrong about this pixel; see NOTES §2.4
+- [!] the **escape arm never fires at `t = 13`** (0 of 1024 near-field pixels; 109 at `t=20`),
+      so at the project horizon the outcome fields are driven entirely by the invented arm.
+      NOTES §2.5
+- [x] `r_coll` sensitivity sweep `{1e-4, 1e-3, 1e-2}·R` on 64×64
+- [!] the default is on a **slope, not a plateau**: collision fraction 0.0000 → 0.0242 → 1.0000
+      across the three decades. Reported, not tuned
+- [x] outcome fractions vs `lc_stable`: **0 label flips of 4096** at every `r_coll` — the
+      branch cut does not reach the outcome encoding, unlike `spread_shape`
 
 ## Step 6 — f32 · **FOURTH PR**
 
@@ -160,6 +171,9 @@ Confounds to dump, not hide:
 
 ## Spec amendments accepted, not yet written into BRIEF.md
 
-- [ ] §5 `error_ratio = 1.0000` → bound on max + reported distribution
+- [x] §5 `error_ratio = 1.0000` → median 1.0000 + bound on the healthy max (written in)
+- [x] §4 MAD → maximum deviation, with the measured justification (written in)
+- [x] §2.6 `deep interior` is a binary collision, not a triple (written in)
+- [x] §2.4 `bounded` vs `running`, one of six states had no condition (written in)
 - [ ] §9 flat `~1e-10` → horizon-divergence table, hard-assert ≤1e-13 at t≤2
 - [ ] Note that the Step-1 smoke number is not a Rust target

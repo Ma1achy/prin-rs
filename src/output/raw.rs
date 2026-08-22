@@ -20,8 +20,8 @@ pub const FIELDS: &[&str] = &[
     "t_end", "d_min_ref", "d_min_true", "d_min_gap",
     "energy_drift_nominal", "energy_drift_max", "gamma_max",
     "shape_x", "shape_y", "shape_z",
-    "spread_shape", "svar", "spread_event", "spread_event_max", "spread_event_terminal", "spread_event_legacy",
-    "t_spread_event", "ensemble_spread",
+    "spread_shape", "svar", "spread_event", "spread_event_max", "spread_event_latched", "spread_event_terminal", "spread_event_legacy",
+    "t_spread_event", "tie_ratio_at_disagree", "n_disagree", "longest_disagree_run", "ensemble_spread",
     "sigma_e_0", "sigma_e_t", "error_ratio", "error_ratio_mad",
     "switches", "ref_disagree",
 ];
@@ -64,7 +64,7 @@ pub fn write<W: Write>(
     Ok(())
 }
 
-pub fn record(p: &PixelOut) -> [f64; 32] {
+pub fn record(p: &PixelOut) -> [f64; 36] {
     [
         p.outcome as f64,
         p.state as f64,
@@ -88,9 +88,13 @@ pub fn record(p: &PixelOut) -> [f64; 32] {
         p.svar,
         p.spread_event,
         p.spread_event_max,
+        p.spread_event_latched,
         p.spread_event_terminal,
         p.spread_event_legacy,
         p.t_spread_event,
+        p.tie_ratio_at_disagree,
+        p.n_disagree as f64,
+        p.longest_disagree_run as f64,
         p.ensemble_spread,
         p.sigma_e_0,
         p.sigma_e_t,

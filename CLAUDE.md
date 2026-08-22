@@ -156,6 +156,34 @@ sync slack is no slack at all (f32 uses `1e-6`). Also: `TINY*TINY` underflows at
 is a product of two floored quantities, so a doubly-degenerate state gives `dtau = inf` — caught
 by the explicit `is_finite` test, **not** by the floor. Know which guard is doing the work.
 
+**`eta = 1e-2` is not sufficient above ~64x64, and the failure is a cliff.**
+At 128x128 near-field, 7 pixels of 16384 have `|dE/E| > 1` (worst `1.49e4`), all finite, all at
+`d_min ~ 2e-3` against `r_coll = 2.21e-3`. Drift falls thirteen orders for a 3.3x change in
+`eta`, so it is resolution, not a wrong equation. `error_ratio` flags 7 of 7. Re-integrate
+flagged pixels at finer `eta` rather than lowering `eta` globally — no scheduler needed.
+
+**The refinement exponent is a region-level statistic, not a per-quad one.**
+`alpha = log2(spread_parent/spread_child)` on a control whose true value is exactly 1.0 has an
+interdecile width of **0.48 at `E+1 = 8`**, falling as `1/sqrt(E)`. The measured region
+separation is about 1.0. So it resolves regions and not individual quads. Also: a parent pools
+`4(E+1)` copies against a child's `E+1`, and a spread estimator's expectation depends on sample
+size — **match the counts** or the exponent is biased (+7.6% at `E+1 = 8`) before any physics
+enters.
+
+**Never conclude "no effect" from an aggregate without the per-pixel distribution.**
+An aggregate can only say the distribution did not move; it cannot say the pixels did not.
+Measured twice in one PR: LC-branch `spread_shape` rows identical to five digits while **all
+1024** pixels moved, worst 6.7%; shared references moving the median 1% while 268 of 1024
+pixels moved, worst **1.86x**. Both would have been written up as "inert".
+
+**A test that cannot fail is indistinguishable from a test that passes.**
+Ask what would have to be true for the test to fire. Three catches: a label-flip count of zero
+at `r_coll = 1e-2`, where every pixel collides anyway so the label is *saturated*; a
+scale-invariance test at `t_max = 6` where nothing terminated, so `t_end` was the horizon and
+the invariance was the rescaling's own arithmetic; and an FD test on `Gamma` that a sign error
+shared by `Gamma` and `deriv` would have passed. If the answer is "nothing in this
+configuration", the test is decoration.
+
 **Test `is_finite` explicitly.**
 `NaN >= x` is `false`, so a diverged trajectory never satisfies a loop exit and burns its entire
 step budget. Measured: 354 s against 3 s nominal.

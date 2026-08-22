@@ -153,6 +153,15 @@ tempting and **catastrophic**: it makes the Hamiltonian time-dependent and destr
 conservation. Measured `|dE/E| = 3.06e-02`, *identical* at `dt=1e-4` and `dt=2e-5` — insensitive to
 step size, which is the signature of a wrong equation rather than an accuracy problem.
 
+**`eta = 1e-2` is not sufficient above ~64×64.** Measured on near-field at 128×128: seven pixels
+of 16384 have `|dE/E| > 1`, one of them `1.49e4`, all finite, all clustered in one corner at
+`d_min ~ 2e-3` against `r_coll = 2.21e-3` — a near-collision the run is not allowed to terminate
+on. It is a step-size problem, not a wrong equation: the same pixels give `1.49e4 → 5.96e-9 →
+3.12e-11` at `eta = 1e-2 → 3e-3 → 1e-3`, thirteen orders for a 3.3× change. A **cliff, not a
+slope**. `error_ratio` flags 7 of 7, so nothing fails silently. At `10^6` pixels either run at
+`eta ~ 3e-3` or re-integrate flagged pixels at finer `eta` — the latter is cheaper and needs no
+scheduler, since the flag already exists and one refinement step suffices.
+
 **Defaults:** `r_coll` nonzero (a small fraction of `R`), `epsilon = 0`. Softening is a *different
 force law*, so tag it in the output and never mix `eps>0` with `eps=0` data.
 
@@ -242,8 +251,17 @@ the gain is coverage and horizon-independence, not earliness.
 The `(state, detail)` encoding of §2.4 stays as the **outcome**, for classification and rendering.
 It is correct; it is simply not the spread contributor.
 
-Note also that the playhead value can *un*-fire, since the tightest-pair identity fluctuates. Dump
-`spread_event_max`, the running max over boundaries, alongside it.
+Note also that the playhead value can *un*-fire, since the tightest-pair identity fluctuates:
+within one `t = 13` run, 130 of the 165 pixels that ever disagree have re-agreed by the horizon.
+
+**Do not latch it unguarded.** Of those 130, **129 were at a near-tie** — second-tightest over
+tightest separation below 1.1, median 1.0030 — so the copies disagreed about which pair is
+*tightest* without having diverged. A running max lights 165 pixels where 35 have genuinely
+diverged. The tie ratio cannot be the guard either: genuine disagreements also sit near 1 (median
+1.0797). **Persistence is the guard** — artefacts last one boundary (median run 1, max 2), genuine
+divergence persists (median run 10) — and a run of 3 admits 0 of 130 artefacts. Dump
+`spread_event_max` (unguarded) and `spread_event_latched` (guarded, joined with the playhead value)
+alongside, and keep the playhead value as the field `ensemble_spread` uses.
 
 **`d_min` is primary; `r_coll` is a recorded parameter.** The collision label is *derived* from
 `d_min`, not the reverse. Measured on near-field 64×64: the collision fraction runs 0.0000 → 0.0242

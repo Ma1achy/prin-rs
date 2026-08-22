@@ -107,10 +107,43 @@ pub struct PixelOut {
     /// should do. This one is monotone. Which of the two `ensemble_spread` should use is a
     /// judgement, so both are dumped and the spec one is the default.
     pub spread_event_max: f64,
+    /// The latching field: the running max over boundaries, **guarded by persistence**, joined
+    /// with the playhead value.
+    ///
+    /// An unguarded running max is wrong for a *discrete* label. Measured, near-field 32x32 at
+    /// `t = 13`: of 165 pixels that ever disagree, 130 disagree and then re-agree, and **129 of
+    /// those 130 were at a near-tie** (second-tightest/tightest below 1.1, median 1.0030) at
+    /// the boundary where they first disagreed. The copies disagreed about which pair is
+    /// *tightest* without having diverged. An unguarded latch would light 79% of the firing
+    /// pixels permanently for a labelling artefact.
+    ///
+    /// The tie ratio does not separate the populations cleanly enough to threshold on —
+    /// genuine disagreements also sit near 1 (median 1.0797). **Persistence does**: artefacts
+    /// last one boundary (median run 1, max 2), genuine divergence persists (median run 10).
+    /// A run of [`LATCH_RUN`] admits 0 of 130 artefacts; joining with the playhead value picks
+    /// up the genuine disagreements too recent to have persisted yet, which is censoring at
+    /// the horizon rather than a miss.
+    pub spread_event_latched: f64,
     /// The terminal-outcome version, kept so the correction stays a measured difference.
     pub spread_event_terminal: f64,
     /// Over `classify_legacy`. Dumped because it is the reference-checkable one.
     pub spread_event_legacy: f64,
+    /// Minimum over copies of (second-tightest / tightest) pair separation, at the boundary
+    /// where the copies' event classes **first disagree**. NaN if they never do.
+    ///
+    /// This is the measurement that decides whether `spread_event` may latch. Near 1 means a
+    /// **near-tie**: the copies disagree about which pair is tightest without having diverged,
+    /// so a running max would latch an artefact that never clears. Well above 1 means the
+    /// disagreement is genuine divergence and latching is correct. See NOTES §5.
+    pub tie_ratio_at_disagree: f64,
+    /// Number of sync boundaries at which the copies' event classes disagree, and the longest
+    /// **consecutive** run of them.
+    ///
+    /// A near-tie produces isolated single-boundary disagreements that clear immediately; a
+    /// genuine divergence persists. This is the lever a latching field would need if it is not
+    /// to latch an artefact, and it is dumped so the guard can be chosen from data.
+    pub n_disagree: u16,
+    pub longest_disagree_run: u16,
     /// First sync-boundary time at which the copies' event classes disagree; **NaN** if they
     /// never do — not `t_max`, which would be indistinguishable from disagreeing at the last
     /// boundary. This is the property the event class was chosen for — it fires while the
@@ -145,6 +178,13 @@ pub struct PixelOut {
     /// letting a NaN contaminate every aggregate it touches.
     pub n_nonfinite: u8,
 }
+
+/// Consecutive boundaries a disagreement must survive before the latch counts it.
+///
+/// Chosen from the measurement in `examples/latching_decision.rs`, not by eye: at 2 it admits
+/// 1 of 130 artefacts, at 3 it admits none, and raising it further changes nothing. On this
+/// slice, at this `n_sync`. It is a named constant so a future change to it shows in a diff.
+pub const LATCH_RUN: u16 = 3;
 
 pub fn evaluate<T: Real>(slice: &Slice, idx: usize, cfg: &EnsembleCfg) -> PixelOut {
     let m = burrau::masses::<T>();
@@ -222,6 +262,47 @@ pub fn evaluate<T: Real>(slice: &Slice, idx: usize, cfg: &EnsembleCfg) -> PixelO
         .collect();
     let sp_event = per_boundary[cfg.n_sync - 1];
     let sp_event_max = per_boundary.iter().cloned().fold(0.0f64, f64::max);
+    let n_disagree = per_boundary.iter().filter(|&&x| x > 0.0).count() as u16;
+    let longest_disagree_run = {
+        let (mut best, mut run) = (0u16, 0u16);
+        for &x in &per_boundary {
+            run = if x > 0.0 { run + 1 } else { 0 };
+            best = best.max(run);
+        }
+        best
+    };
+    // The latch: the largest value inside any run of at least LATCH_RUN consecutive
+    // disagreeing boundaries, joined with the playhead value.
+    let spread_event_latched = {
+        let mut best = sp_event;
+        let (mut run_start, mut run) = (0usize, 0usize);
+        for (k, &x) in per_boundary.iter().enumerate() {
+            if x > 0.0 {
+                if run == 0 {
+                    run_start = k;
+                }
+                run += 1;
+                if run >= LATCH_RUN as usize {
+                    for &y in &per_boundary[run_start..=k] {
+                        best = best.max(y);
+                    }
+                }
+            } else {
+                run = 0;
+            }
+        }
+        best
+    };
+
+    let k_first = per_boundary.iter().position(|&x| x > 0.0);
+    let tie_ratio_at_disagree = k_first
+        .map(|k| {
+            outs.iter()
+                .filter_map(|o| o.tie_ratio.get(k).map(|x| x.to_f64().unwrap()))
+                .fold(f64::INFINITY, f64::min)
+        })
+        .filter(|x| x.is_finite())
+        .unwrap_or(f64::NAN);
     let t_spread_event = per_boundary
         .iter()
         .position(|&x| x > 0.0)
@@ -291,8 +372,12 @@ pub fn evaluate<T: Real>(slice: &Slice, idx: usize, cfg: &EnsembleCfg) -> PixelO
         svar: sv,
         spread_event: sp_event,
         spread_event_max: sp_event_max,
+        spread_event_latched,
         spread_event_terminal: sp_event_terminal,
         spread_event_legacy: sp_event_legacy,
+        n_disagree,
+        longest_disagree_run,
+        tie_ratio_at_disagree,
         t_spread_event,
         ensemble_spread: sp_shape.max(sp_event),
         sigma_e_0: s0.to_f64().unwrap(),

@@ -48,6 +48,14 @@ pub struct AzOut<T> {
     /// at exactly the playhead where least is known. The tightest-pair identity is defined at
     /// every playhead, needs no gate, and moves earlier. See NOTES §2.8.
     pub tight: Vec<u8>,
+    /// Second-tightest over tightest pair separation, at each completed sync boundary.
+    ///
+    /// A value near 1 is a **near-tie**: two pairs are nearly equally close, so copies can
+    /// disagree about which is *tightest* without their trajectories having diverged at all.
+    /// That distinction does not exist for a continuous divergence measure and it decides
+    /// whether `spread_event` may latch — a running max would make a near-tie permanent and
+    /// it would never clear. See NOTES §5.
+    pub tie_ratio: Vec<T>,
     /// Time of the first terminating event, or the time reached if none fired. Distinct from
     /// `t` only when `stop_on_event` is off, where the run continues past the event.
     pub t_end: T,
@@ -142,6 +150,7 @@ pub fn integrate_az_opts<T: Real>(
     let mut prev_ref: Option<usize> = None;
     let mut refs = Vec::with_capacity(n_sync);
     let mut tight = Vec::with_capacity(n_sync);
+    let mut tie_ratio = Vec::with_capacity(n_sync);
     let mut total_steps = 0usize;
     let mut finite = true;
     let mut budget_exhausted = false;
@@ -261,6 +270,11 @@ pub fn integrate_az_opts<T: Real>(
         t += s.t.min(dt_left);
 
         tight.push(crate::outcome::binary_id(&cart));
+        {
+            let mut d = crate::physics::newton::pair_dists(&cart.r);
+            d.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+            tie_ratio.push(d[1] / d[0].max(T::TINY));
+        }
 
         // The escape test runs at the sync boundary, where the state is Cartesian and every
         // trajectory shares a playhead — the reference's cadence, transcribed.
@@ -289,6 +303,7 @@ pub fn integrate_az_opts<T: Real>(
         gamma_max,
         refs,
         tight,
+        tie_ratio,
         steps: total_steps,
         finite,
         budget_exhausted,

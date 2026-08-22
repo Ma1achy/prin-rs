@@ -317,6 +317,58 @@ per-step or per-sync error source.
 
 ---
 
+## 3a. Standing rules, each promoted after it caught something
+
+### Never conclude "no effect" from an aggregate without the per-pixel distribution
+
+Three instances, two of them in a single PR:
+
+- The f64 `spread_shape` rows were **identical to five printed digits** between LC branches.
+  Checked per pixel: the branch changes **all 1024** pixels' drift, `spread_shape` and
+  `error_ratio`, with a worst per-pixel change of 6.7%. The distribution does not move; the
+  pixels do.
+- Shared references move the `spread_shape` **median by 1%**. Per pixel: 268 of 1024 change,
+  the worst by **1.86x** — an individual pixel nearly tripling.
+- NOTES §1 anticipated exactly this, which is why `ref_disagree` is dumped per pixel rather
+  than compared as a difference of aggregates.
+
+Both would have been reported as "no effect" from the summary line alone. An aggregate can
+only ever say the distribution did not move; it cannot say the pixels did not. Dump the
+per-pixel comparison before writing "inert".
+
+### A test that cannot fail is indistinguishable from a test that passes
+
+Three instances:
+
+- The `r_coll = 1e-2` label-flip count came back **zero** — but at that threshold every pixel
+  collides regardless, so the label is saturated and *cannot* flip. Zero there is not
+  reassurance, and the 152 flips at `1e-3` are the real answer.
+- The scale-invariance test at `t_max = 6` passed while measuring nothing: no pixel terminated,
+  every `t_end` was exactly the horizon, and the invariance was the rescaling's own arithmetic.
+  It now asserts that some pixel terminates early.
+- The finite-difference test on `Gamma` would have passed a sign error present in **both**
+  `Gamma` and `deriv`. That is why the chain anchors on
+  `gamma(s,E) == A*B*(energy_phys(s) - E)` first, and why a deliberately sign-flipped variant
+  is kept as a `#[should_panic]` case.
+
+The question that catches all three is the same: **what would have to be true for this test to
+fire?** If the answer is "nothing in this configuration", the test is decoration.
+
+### Where the "~4 time units earlier" figure came from
+
+Recorded because it could not be reproduced here and the reason matters more than the number.
+
+The figure was measured against an **escape-based** terminal criterion, where the terminal
+label genuinely lagged the event class. Here the terminal arm is *collision at `r_coll`*, and a
+collision **is** the tightest pair reaching threshold — so both fire at the same boundary by
+construction, and the measured lead is exactly zero on all 22 pixels where both fire.
+
+The lead time was never a property of the event class. It was a property of what it was being
+compared against. The justification that holds independently of the comparison is **coverage
+and horizon-independence**: 165 pixels against 22 at `t = 13`, strictly nested with none
+flagged by the terminal statistic alone, and 110 against 0 at `t_max = 8`. That is a stronger
+claim than the lead time ever was.
+
 ## 3. Smaller observations
 
 - `reference/tb_az.py` uses `eta=0.02` as its default; `tb_all_az` and the smoke test pass
@@ -455,3 +507,265 @@ Since Step 5b the nominal copy can terminate early, so its `refs` record is shor
 features met. Fixed by falling back to the per-copy choice past the nominal's last boundary:
 sharing applies where the nominal has a choice to share. Regression test in
 `tests/f32_precision.rs`.
+
+---
+
+## 5. Should `spread_event` latch? — measured, not judged
+
+The numpy work observed ensemble spread **falling 6x between `t=6` and `t=8`**
+(diverge-then-reconverge), which is why the divergence accumulator latches. The same shape
+appears here. But a **discrete** label has a failure mode a continuous divergence measure does
+not: if two pairs are near-equal in separation, copies can disagree about which is *tightest*
+without their trajectories having diverged at all, and a running max would latch that
+permanently.
+
+So: at the boundary where the copies first disagree, how close were the two tightest pairs?
+`tie_ratio_at_disagree` is the second-tightest over tightest separation, minimised over the 8
+copies. 1.0 is an exact tie. Near-field 32x32, `t = 13`, f64:
+
+| population | min | p10 | median | p90 | max | n |
+|---|---|---|---|---|---|---|
+| all that ever disagree | 1.0000 | 1.0006 | 1.0040 | 1.0884 | 2.3587 | 165 |
+| **un-fired** (disagreed, then re-agreed) | 1.0000 | 1.0006 | **1.0030** | 1.0193 | 1.1098 | 130 |
+| still disagreeing at the playhead | 1.0004 | 1.0066 | 1.0797 | 1.1636 | 2.3587 | 35 |
+
+**129 of the 130 un-fired pixels were at a near-tie** (below 1.1), median 1.0030 — essentially
+exact ties. An unguarded running max would light 165 of 1024 pixels where 35 have genuinely
+diverged: **79% of the firing pixels lit permanently for a labelling artefact.**
+
+**But the tie ratio cannot be the guard.** The two populations are shifted, not separated —
+genuine disagreements also sit near 1 (median 1.0797, p10 1.0066). A threshold at 1.1 would
+admit 14 pixels and drop most of the genuine ones. Reported rather than fitted.
+
+**Persistence separates them, and cleanly:**
+
+| population | `n_disagree` median | max | longest run median | max |
+|---|---|---|---|---|
+| un-fired | 1.0 | 3.0 | **1.0** | **2.0** |
+| still disagreeing | 10.0 | 10.0 | **10.0** | **10.0** |
+
+| latch requires a run of | genuine kept | artefacts admitted |
+|---|---|---|
+| >= 1 | 35/35 | **130/130** |
+| >= 2 | 22/35 | 1/130 |
+| >= 3 | 22/35 | **0/130** |
+| >= 4 | 22/35 | 0/130 |
+
+`LATCH_RUN = 3`, chosen from that table rather than by eye. The 13 genuine pixels a run guard
+alone misses are ones that began disagreeing within three boundaries of the horizon — censoring,
+not a false negative — so the field joins the guarded latch with the playhead value.
+`spread_event_latched` is then lit on **35/35 genuine and 0/130 artefact**.
+
+### The latch is a no-op on this slice, and that is the result
+
+Evaluated at every boundary of one `t = 13`, `n_sync = 32` run — nonzero pixels of 1024:
+
+| k | t | playhead | latched | unguarded max |
+|---|---|---|---|---|
+| 3 | 1.6250 | 0 | 0 | 0 |
+| 7 | 3.2500 | 0 | 0 | 26 |
+| 15 | 6.5000 | 0 | 0 | 26 |
+| 23 | 9.7500 | 22 | 22 | 165 |
+| 31 | 13.0000 | 35 | 35 | 165 |
+
+The guarded latch tracks the playhead value exactly. Every genuine disagreement on this slice
+persists to the horizon, so latching adds nothing here — it is cheap insurance for regions where
+one does re-agree, and it costs nothing to carry. The unguarded version over-reports by 4.7x.
+
+**Recommendation: keep `spread_event` (playhead) as the spec field and as what
+`ensemble_spread` uses. Do not adopt `spread_event_max`.** All three stay dumped.
+
+### A correction to my own evidence in PR #5
+
+I cited the `t_max` sweep — 110 nonzero pixels at `t_max = 8` against 35 at `t_max = 13` — as
+evidence that the playhead value un-fires. **That comparison is invalid.** `n_sync` is fixed
+while `t_max` varies, so the sync grid changes with the horizon, `dtau` changes with it, and the
+rows are different discretisations rather than one run truncated at different playheads. The
+unguarded running max across that sweep reads 109, 297, 110, 488, 165 at `t = 4, 6, 8, 10, 13` —
+a running max cannot fall, which proves the rows are not nested.
+
+The un-firing is real; the evidence I gave for it was not. The correct demonstration is within a
+single run: 130 of the 165 pixels that ever disagree have re-agreed by the horizon. Same
+cadence-dependence as the escape arm in PR #4, in a new place.
+
+---
+
+## 6. Experiment A — the refinement criterion, tested without a scheduler
+
+BRIEF §8 experiment 1. The criterion compares a parent quad against its children, and a fine
+uniform grid already *contains* every coarser scale by aggregation: pool a 2x2 block's copies to
+synthesise the parent, compare against the children, and the whole exponent machinery is
+testable with no quadtree. The absence of one is a feature of the test — nothing here can be an
+artefact of a scheduler, because there is no scheduler.
+
+`alpha = log2(spread_parent / spread_child)`, child taken as the median over the four.
+
+### The control does not return 1.0, and that is the result
+
+`alpha` for `sigma_E(0)` has true value **exactly 1.0**: `sigma_E(0)` is proportional to the
+jitter and therefore to the cell width, so doubling the cell doubles it. Measured, near-field
+64x64 -> 32x32 parents:
+
+| E+1 | estimator | p10 | median | p90 | **p90−p10** | subsampled median |
+|---|---|---|---|---|---|---|
+| 8 | rms | 0.8525 | 1.0762 | 1.3321 | **0.4796** | 1.0191 |
+| 8 | max_dev | 0.8787 | 1.1248 | 1.3855 | 0.5067 | 0.9865 |
+| 16 | rms | 0.8614 | 1.0137 | 1.1817 | 0.3203 | 0.9999 |
+| 16 | max_dev | 0.8613 | 1.0391 | 1.2115 | 0.3502 | 0.9730 |
+| 32 | rms | 0.8902 | 0.9887 | 1.1025 | 0.2123 | 0.9884 |
+| 64 | rms | 0.9169 | 0.9862 | 1.0663 | 0.1493 | 0.9949 |
+
+**At the project's `E+1 = 8` the per-quad noise floor is an interdecile width of 0.48 in
+`alpha`** — a factor of 1.4 in the ratio — on a quantity whose true value is exactly 1. It falls
+as `1/sqrt(E)`: 0.48, 0.32, 0.21, 0.15 against ratios of 0.667, 0.663, 0.703 versus the
+predicted 0.707.
+
+There is also a **+7.6% median bias at `E+1 = 8`**, and the subsampled column identifies its
+cause: drawing `E+1` of the parent's pooled `4(E+1)` copies puts the same sample count on both
+sides and the median goes to 1.0191, and to 0.9999 at `E+1 = 16`. A parent pools four times as
+many copies as a child, and a spread estimator's expectation depends on sample size. **Match the
+counts, or the exponent is biased before any physics enters.** This is why the experiment uses
+an rms deviation rather than `error_ratio`'s max deviation: an order statistic's bias with
+sample size is much larger, as the `max_dev` rows show.
+
+### The criterion discriminates regions, not individual quads
+
+Fine grid 64x64, `t = 13`, f64. `alpha` for `spread_shape`:
+
+| region | min | p10 | median | p90 | max |
+|---|---|---|---|---|---|
+| near-field | −0.6678 | −0.0989 | **0.1722** | 0.5324 | 10.7910 |
+| body2 core | −0.5254 | 0.0551 | **0.3390** | 0.7312 | 10.7508 |
+| mid-field | 0.7427 | 0.9546 | **1.1781** | 1.3930 | 1.7517 |
+| far | 0.6000 | 0.9276 | **1.1716** | 1.4161 | 1.8814 |
+
+**This is the criterion working.** In the tame regions `alpha ~ 1.17`: the shape spread scales
+with cell width, as a smooth field must, so refining halves it and refinement pays. In the
+chaotic regions `alpha ~ 0.17-0.34`: the parent spread is barely larger than the child's, so
+refining buys almost nothing — the pixels are genuinely *undetermined*, not under-resolved. That
+distinction is what the criterion exists to make.
+
+The region separation is about 1.0 in `alpha`, roughly **twice the `E+1 = 8` noise floor of
+0.48**. So at the project's ensemble size the criterion resolves *regions* comfortably and
+*individual quads* not at all. A scheduler thresholding per quad at `E+1 = 8` would be acting on
+noise; one thresholding on a region aggregate would not.
+
+### Two smaller things
+
+`alpha` for `sigma_E(t)` is **identical to `alpha` for `sigma_E(0)` to every printed digit** in
+mid-field and far — the energy spread is unchanged from `t = 0` there, which is what a
+well-integrated tame region should look like. In near-field and body2 core it departs and its
+max reaches 10.35 and 12.84.
+
+Those large values are a fragility, not a signal: a child quad with near-zero spread makes the
+ratio explode. Same `0/0` shape as the `Gamma` residual normalised by `A*B`. Read the median and
+the interdecile range; the max of a log-ratio is not a measurement.
+
+---
+
+## 7. Experiment B — which conclusions survive at large `n`?
+
+BRIEF §8's reason for the whole build. Near-field, `t = 13`, `E+1 = 8`, `eta = 0.01`, f64.
+
+### The resolution sweep, and why it is the weaker half
+
+| quantity | 8x8 | 16x16 | 32x32 | 64x64 | 128x128 |
+|---|---|---|---|---|---|
+| drift median | 8.4847e-9 | 3.6442e-9 | 2.7549e-9 | 2.2884e-9 | 2.1312e-9 |
+| drift p99 | 3.2745e-5 | 9.1063e-4 | 9.2568e-3 | 3.5450e-3 | 5.0117e-3 |
+| **drift max** | 7.8271e-2 | 1.1508e-1 | 3.0705e-1 | 5.1173e-1 | **1.4909e4** |
+| error_ratio median | 1.0000 | 1.0000 | 1.0000 | 1.0000 | 1.0000 |
+| **error_ratio p99** | 1.0095 | 3.5314 | 6.0864e1 | 4.7205e1 | **1.3655e2** |
+| spread_shape median | 3.9465e-3 | 2.5833e-3 | 1.9095e-3 | 1.5660e-3 | 1.3244e-3 |
+| spread_shape p99 | 1.2417e-1 | 2.1329e-1 | 2.1457e-1 | 1.2669e-1 | 2.9705e-2 |
+| d_min_true median | 7.9563e-3 | 8.1360e-3 | 8.3647e-3 | 8.4287e-3 | 8.4693e-3 |
+| frac collision | 4.6875e-2 | 3.1250e-2 | 2.5391e-2 | 2.4170e-2 | 2.2095e-2 |
+| frac drift > 1e-3 | 1.5625e-2 | 1.1719e-2 | 2.1484e-2 | 1.3428e-2 | 1.4099e-2 |
+| frac spread_event > 0 | 9.3750e-2 | 4.6875e-2 | 3.4180e-2 | 2.8320e-2 | 2.3315e-2 |
+
+**A resolution sweep cannot separate "the estimate converged" from "the thing being estimated
+changed"** — the jitter scales with cell width, so a finer grid measures a different physical
+ensemble. `spread_shape median` falling monotonically 3.9e-3 -> 1.3e-3 is mostly that, not
+convergence. Use it for orientation; the subsampling below is the measurement.
+
+### Subsampling one fixed grid — the same physical quantity throughout
+
+Truth is the full 128x128 grid (16384 pixels). Each cell is the **interdecile spread over 200
+random draws of `n` pixels, as a fraction of the truth**. Below ~0.1 a conclusion drawn from `n`
+pixels is stable.
+
+| quantity | truth | n=16 | n=64 | n=256 | n=1024 | n=4096 |
+|---|---|---|---|---|---|---|
+| drift median | 2.1312e-9 | 1.544 | 1.070 | 0.851 | 0.445 | 0.227 |
+| drift p99 | 5.0117e-3 | 7.716 | 2.021 | 3.051 | 2.056 | 1.146 |
+| drift max | 1.4909e4 | **0.000** | **0.000** | **0.000** | 0.003 | 1.000 |
+| error_ratio median | 1.0000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 |
+| error_ratio p99 | 1.3655e2 | 0.807 | 1.870 | 2.882 | 2.235 | 1.061 |
+| spread_shape median | 1.3244e-3 | 0.514 | 0.243 | 0.154 | 0.065 | 0.033 |
+| spread_shape p99 | 2.9705e-2 | 4.084 | 4.001 | 6.768 | 5.750 | 3.345 |
+| d_min_true median | 8.4693e-3 | 0.370 | 0.234 | 0.140 | 0.060 | 0.034 |
+| frac collision | 2.2095e-2 | 2.829 | 2.122 | 1.061 | 0.575 | 0.243 |
+| frac er > 10 | 1.6235e-2 | 3.850 | 2.887 | 1.203 | 0.602 | 0.331 |
+| frac drift > 1e-3 | 1.4099e-2 | 4.433 | 2.216 | 1.385 | 0.693 | 0.329 |
+| frac spread_event > 0 | 2.3315e-2 | 2.681 | 2.010 | 1.005 | 0.545 | 0.251 |
+
+**At `n = 64` — the size of every prior measurement in this project — every fraction has an
+interdecile scatter of 2 to 4.4 times the quantity itself.** Two independent studies at that `n`
+would routinely disagree by more than a factor of two. That is the 1.2x-turns-out-to-be-18.8x
+mechanism, quantified rather than anecdotal.
+
+What is safe at what `n`:
+
+- **medians of well-behaved quantities**: `spread_shape` and `d_min_true` medians reach 0.15 at
+  `n = 256` and 0.03 at `n = 4096`. Usable from a few hundred.
+- **`drift median`** is slower — 0.85 at `n = 256`, 0.23 at `n = 4096` — because the underlying
+  distribution spans twelve orders.
+- **fractions** need `n >= 1000` to get under 1.0 and `n ~ 4000` for 0.25.
+- **p99 of anything heavy-tailed is not estimable at these `n`.** `spread_shape p99` sits at
+  3.3-6.8 at every `n` tested and does not improve. `drift p99` and `error_ratio p99` are at
+  1.0-2.9 at `n = 4096`.
+
+**The `drift max` row is the important one and it reads backwards.** It shows 0.000 scatter at
+`n <= 256` — apparently the most stable quantity in the table — and 1.000 at `n = 4096`. It is
+not stable; the tail is a *single pixel* of 16384, and at small `n` it is essentially never
+drawn, so the statistic is stable at the wrong answer. **A max statistic's apparent stability at
+small `n` is the statistic never seeing the tail.** That is this project's "a test that cannot
+fail is indistinguishable from a test that passes" appearing inside a statistic.
+
+### What 128x128 found that 64x64 could not
+
+Seven pixels of 16384 (0.043%) have `|dE/E| > 1`, one of them `1.4909e4`. They are all finite,
+all clustered in one corner of the slice, all with `d_min_true ~ 2e-3` against
+`r_coll = 1e-3 R = 2.214e-3`, and all with `gamma_max ~ 1` — the regularised Hamiltonian
+residual is order unity, so the trajectory is not being integrated.
+
+| pixel | (jx,jy) | drift_max | error_ratio | d_min_true | gamma_max |
+|---|---|---|---|---|---|
+| 16110 | (110,125) | 1.4909e4 | 3.9615e8 | 1.8381e-3 | 1.0911 |
+| 15989 | (117,124) | 4.0856e1 | 7.3239e5 | 1.7260e-3 | 0.7969 |
+| 16351 | (95,127) | 6.3484 | 1.9212e5 | 2.0439e-3 | 0.9829 |
+| 16229 | (101,126) | 6.1218 | 1.7145e5 | 2.2125e-3 | 0.9041 |
+
+**`error_ratio` flags 7 of 7.** The field does exactly its job, and this is the strongest
+evidence yet for the max-deviation switch: under MAD these would have been invisible.
+
+**And it is a step-size problem, not a wrong equation** — checked, because CLAUDE.md requires it:
+
+| pixel | eta=1e-2 | eta=3e-3 | eta=1e-3 | eta=3e-4 |
+|---|---|---|---|---|
+| 16110 | 1.4909e4 | 5.9589e-9 | 3.1161e-11 | 1.4885e-11 |
+| 15989 | 4.0856e1 | 5.3896e-9 | 3.6647e-11 | 1.3174e-11 |
+| 16351 | 6.3484 | 7.9098e-9 | 3.9721e-11 | 1.7923e-11 |
+| 16229 | 6.1218 | 9.8056e-9 | 3.5737e-11 | 1.5836e-11 |
+
+Thirteen orders of magnitude for a 3.3x change in `eta`. That is a **cliff, not a slope**: at
+`eta = 1e-2` the step lands wrong relative to a close approach the run is not allowed to
+terminate on; at `3e-3` it does not.
+
+**Consequence for the spec: `eta = 1e-2` is not sufficient at 128x128.** BRIEF §2.3's production
+value was set against grids where those pixels are not grid points. At 64x64 the worst drift is
+5.1e-1; at 128x128 it is 1.5e4. The kernel does not fail silently — `error_ratio` catches all
+seven — but a production run at `10^6` pixels should expect this class of pixel and either run
+at `eta ~ 3e-3` or re-integrate flagged pixels at finer `eta`. **Re-integrating only the flagged
+pixels is the cheaper option and needs no scheduler**: the flag already exists, and the
+measurement above shows one refinement step is enough.

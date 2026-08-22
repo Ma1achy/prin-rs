@@ -29,7 +29,8 @@ fn main() {
     output::raw::write(&mut w, &cfg.slice, &cfg.ens, cfg.precision.name(), &pixels)
         .expect("raw dump failed");
     drop(w);
-    output::png::write_pair(&cfg.out, &cfg.slice, &pixels).expect("png failed");
+    let (spread_lo, spread_hi) =
+        output::png::write_pair(&cfg.out, &cfg.slice, &pixels).expect("png failed");
 
     println!("region {} {}x{} half={} body={}  precision={}  t_max={} eta={} copies={}",
              cfg.region, cfg.slice.nx, cfg.slice.ny, cfg.slice.half, cfg.slice.body,
@@ -53,9 +54,15 @@ fn main() {
         }
     }
     println!();
+    println!("  refined       {} of {} pixels re-integrated at finer eta ({} still flagged)",
+             s.n_refined, s.n, s.n_still_flagged);
+    println!("  |dE/E| max    {:.3e} before refinement, {:.3e} after",
+             s.drift_max_coarse, s.drift_max);
     println!("  pixels with a non-finite copy: {} of {}", s.n_pixels_with_nonfinite, s.n);
     println!();
     println!("wrote {dump}, {}_outcome.png, {}_spread.png", cfg.out, cfg.out);
+    println!("spread image is LOG scaled over [{spread_lo:.3e}, {spread_hi:.3e}] (this grid's");
+    println!("p1 to p99); non-finite is painted at full scale. The dump is the product.");
     println!();
     println!("error_ratio uses the maximum deviation within a footprint and aggregates across");
     println!("pixels by max. It is a boolean flag: its magnitude is unstable.");

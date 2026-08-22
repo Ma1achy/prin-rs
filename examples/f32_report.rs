@@ -5,6 +5,10 @@
 //! whether the shared-reference flag matters, and whether the branch cut reaches the outcome
 //! encoding at f32 as it does not at f64.
 //!
+//! **Refinement off throughout.** The second pass is triggered by a threshold on `error_ratio`
+//! and the two precisions flag different pixel sets, so with it on this would compare which
+//! pixels happened to get a second pass rather than the arithmetic.
+//!
 //! **Initial conditions are generated once in f64 and cast down** (`ensemble/jitter.rs`), so
 //! nothing here is an IC difference wearing an f32 costume.
 
@@ -50,7 +54,7 @@ fn main() {
     let mut store: Vec<(Precision, RefPolicy, Vec<PixelOut>)> = Vec::new();
     for prec in [Precision::F64, Precision::F32] {
         for policy in [RefPolicy::PerCopy, RefPolicy::Shared] {
-            let cfg = EnsembleCfg { ref_policy: policy, ..Default::default() };
+            let cfg = EnsembleCfg { ref_policy: policy, refine_flagged: false, ..Default::default() };
             let px = render(prec, &cfg, &s);
             println!("{:>6}{:>10}{:>12.3e}{:>12.3e}{:>12.4e}{:>12.4e}{:>12.4e}{:>12.4e}{:>9}",
                      prec.name(),
@@ -119,7 +123,7 @@ fn main() {
         (Precision::F32, true),
         (Precision::F32, false),
     ] {
-        let cfg = EnsembleCfg { lc_stable, ..Default::default() };
+        let cfg = EnsembleCfg { lc_stable, refine_flagged: false, ..Default::default() };
         let px = render(prec, &cfg, &s);
         let med = q(px.iter().map(|p| p.spread_shape), 0.5);
         if matches!(prec, Precision::F64) && lc_stable {
@@ -160,8 +164,8 @@ fn main() {
     println!("{:>6}{:>12}{:>16}{:>16}", "prec", "r_coll/R", "label flips", "of");
     for prec in [Precision::F64, Precision::F32] {
         for r_coll_frac in [1e-4f64, 1e-3, 1e-2] {
-            let stable = render(prec, &EnsembleCfg { r_coll_frac, lc_stable: true, ..Default::default() }, &s);
-            let unstable = render(prec, &EnsembleCfg { r_coll_frac, lc_stable: false, ..Default::default() }, &s);
+            let stable = render(prec, &EnsembleCfg { r_coll_frac, lc_stable: true, refine_flagged: false, ..Default::default() }, &s);
+            let unstable = render(prec, &EnsembleCfg { r_coll_frac, lc_stable: false, refine_flagged: false, ..Default::default() }, &s);
             let flips = stable
                 .iter()
                 .zip(unstable.iter())

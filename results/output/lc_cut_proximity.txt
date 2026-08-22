@@ -1,0 +1,10 @@
+    Finished `release` profile [optimized] target(s) in 0.01s
+     Running `target/release/examples/lc_cut_proximity`
+t_max=  0.5  n_sync=  1  registrations=   18  min u0/|u| = 0.000e0  differ = 1/18  max |du|/|u| = 1.570e-16
+t_max=    1  n_sync=  2  registrations=   36  min u0/|u| = 0.000e0  differ = 10/36  max |du|/|u| = 4.104e-12
+t_max=    2  n_sync=  5  registrations=   90  min u0/|u| = 0.000e0  differ = 37/90  max |du|/|u| = 1.593e-11
+t_max=   13  n_sync= 32  registrations=  576  min u0/|u| = 0.000e0  differ = 255/576  max |du|/|u| = 1.659e-11
+
+u0/|u| near 1 means rho points along +x, far from the cut. Near 0 means it sits
+on the cut, where the reference branch cancels. 'differ' counts registrations
+where the two branches produce a different u at all, even by one ulp.

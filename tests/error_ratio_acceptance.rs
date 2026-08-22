@@ -3,9 +3,14 @@
 use prin_rs::ensemble::pixel::{evaluate, EnsembleCfg};
 use prin_rs::grid;
 
+/// **Refinement off.** These tests compare spread estimators *on damaged pixels*, and the
+/// second pass exists precisely to repair those — with it on there is nothing left to separate,
+/// and the test would pass by having no subject rather than by the estimator working. Both
+/// tests below need the unrefined population; `refined_pixels_are_repaired` covers the other
+/// side.
 fn render(size: usize) -> Vec<prin_rs::ensemble::pixel::PixelOut> {
     let s = grid::region("near-field", size, size, 0.05).unwrap();
-    let cfg = EnsembleCfg::default();
+    let cfg = EnsembleCfg { refine_flagged: false, ..Default::default() };
     (0..s.npix()).map(|i| evaluate::<f64>(&s, i, &cfg)).collect()
 }
 
@@ -116,6 +121,36 @@ fn error_ratio_acceptance_near_field_t13() {
 /// a blunt cut, and a handful of pixels just inside it are already mildly damaged. The cut is
 /// not a clean partition and is not presented as one.
 const HEALTHY_MAX: f64 = 10.0;
+
+/// The other side of the switch above: with the second pass on, the pixels `error_ratio` flags
+/// are repaired rather than merely reported. BRIEF §2.5.
+#[test]
+fn refined_pixels_are_repaired() {
+    let s = grid::region("near-field", 32, 32, 0.05).unwrap();
+    let off = EnsembleCfg { refine_flagged: false, ..Default::default() };
+    let on = EnsembleCfg::default();
+    let a: Vec<_> = (0..s.npix()).map(|i| evaluate::<f64>(&s, i, &off)).collect();
+    let b: Vec<_> = (0..s.npix()).map(|i| evaluate::<f64>(&s, i, &on)).collect();
+
+    let worst = |v: &Vec<prin_rs::ensemble::pixel::PixelOut>| {
+        v.iter().map(|p| p.energy_drift_max).filter(|x| x.is_finite()).fold(0.0f64, f64::max)
+    };
+    let n_ref = b.iter().filter(|p| p.refined).count();
+    println!("near-field 32x32, t=13, f64");
+    println!("  drift max      {:.4e} unrefined -> {:.4e} refined", worst(&a), worst(&b));
+    println!("  pixels re-integrated: {n_ref} of {}", b.len());
+    println!("  pixels above 1e-3 drift: {} -> {}",
+             a.iter().filter(|p| p.energy_drift_max > 1e-3).count(),
+             b.iter().filter(|p| p.energy_drift_max > 1e-3).count());
+
+    assert!(n_ref > 0, "nothing was flagged, so this test has no subject");
+    assert!(worst(&b) < worst(&a), "refinement did not reduce the worst drift");
+    // Every refined pixel keeps both values, so a refinement that did not help stays visible.
+    for p in b.iter().filter(|p| p.refined) {
+        assert!(p.eta_used < on.eta, "a refined pixel kept the coarse eta");
+        assert!(p.error_ratio_coarse.is_finite(), "the coarse value was not carried forward");
+    }
+}
 
 /// NOTES §2.1, settled with data: the reference's `d_min` blind spot never bites.
 #[test]

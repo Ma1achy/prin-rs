@@ -225,3 +225,25 @@ Confounds to dump, not hide:
       flags 7 of 7. Drift falls 13 orders for a 3.3x change in `eta`: resolution, not a wrong
       equation. **`eta = 1e-2` is not sufficient at this resolution** — written into BRIEF §2.5
 - [x] no scheduler machinery built, per the instruction
+
+## Consolidation · **SEVENTH PR**
+
+- [x] `RESULTS.md` — a findings document readable cold, not a PR summary
+- [x] `results/` committed: 256x256 images per region, 64x64 raw dumps, captured stdout for
+      every example
+- [x] three new standing rules in `NOTES.md` §3a and `CLAUDE.md`
+- [x] BRIEF §2.5's remedy implemented: flag on `error_ratio`, re-integrate at `eta/4`, up to
+      3 passes, recording coarse and refined values and the `eta` used
+- [!] one pass is **not** always enough — `deep interior` needs all three (`1.10e12` -> `1.99e1`
+      after one, `1.146e-1` after three at 128x128). My PR #6 claim that one step suffices was
+      near-field only
+- [!] the pass budget is calibrated on **f64**: f32 needs ~6 at 128x128 and leaves 1578 of 65536
+      still flagged at 256x256 with the default 3. Read `n_still_flagged`
+- [!] `error_ratio` detects **spread, not drift**: after refinement `deep interior` has 0 pixels
+      flagged and a worst drift of `1.15e-1`. An ensemble that drifts *together* is invisible to
+      it. Threshold on `energy_drift_max` if absolute conservation is what matters
+- [x] the spread image is log scaled over the grid's own p1-p99; a linear ramp hid the structure
+      entirely
+- [x] `RESULTS.md` §5 lists what this invalidates in the prior numpy work
+- [x] comparison tests and experiment examples pin `refine_flagged: false`, so they measure
+      arithmetic rather than which pixels got a second pass

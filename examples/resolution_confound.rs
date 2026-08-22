@@ -25,7 +25,7 @@ fn main() {
     let mut first: Option<(f64, f64, f64)> = None;
     for size in [8usize, 16, 32, 64] {
         let s = grid::region("near-field", size, size, 0.05).unwrap();
-        let cfg = EnsembleCfg { t_max: 4.0, n_sync: 10, ..Default::default() };
+        let cfg = EnsembleCfg { t_max: 4.0, n_sync: 10, refine_flagged: false, ..Default::default() };
         let px: Vec<_> = (0..s.npix()).map(|i| evaluate::<f64>(&s, i, &cfg)).collect();
         let (hx, _) = s.cell_widths();
 
@@ -50,7 +50,7 @@ fn main() {
     println!();
     println!("=== ref_disagree vs error_ratio (NOTES §1, unshared run) ===");
     let s = grid::region("near-field", 24, 24, 0.05).unwrap();
-    let cfg = EnsembleCfg::default();
+    let cfg = EnsembleCfg { refine_flagged: false, ..Default::default() };
     let px: Vec<_> = (0..s.npix()).map(|i| evaluate::<f64>(&s, i, &cfg)).collect();
     let with: Vec<&_> = px.iter().filter(|p| p.ref_disagree > 0).collect();
     let without: Vec<&_> = px.iter().filter(|p| p.ref_disagree == 0).collect();
@@ -73,7 +73,7 @@ fn main() {
     println!("{:>14}{:>16}{:>16}", "region", "median gap", "max gap");
     for region in ["near-field", "mid-field", "body2 core", "body1 slice", "far"] {
         let s = grid::region(region, 16, 16, 0.05).unwrap();
-        let px: Vec<_> = (0..s.npix()).map(|i| evaluate::<f64>(&s, i, &EnsembleCfg::default())).collect();
+        let px: Vec<_> = (0..s.npix()).map(|i| evaluate::<f64>(&s, i, &EnsembleCfg { refine_flagged: false, ..Default::default() })).collect();
         let mut g: Vec<f64> = px.iter().map(|p| p.d_min_gap).filter(|x| x.is_finite()).collect();
         println!("{region:>14}{:>16.3e}{:>16.3e}", q(&mut g.clone(), 0.5), q(&mut g, 1.0));
     }

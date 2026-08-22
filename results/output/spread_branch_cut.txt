@@ -1,0 +1,18 @@
+    Finished `release` profile [optimized] target(s) in 0.07s
+     Running `target/release/examples/spread_branch_cut`
+spread_shape with the reference vs the conditioned inverse LC branch
+(near-field is the region whose pair (1,2) separation sits exactly on the cut)
+
+        region    prec      unstable        stable     max |d|     max rel
+    near-field     f64     2.8971e-2     2.8971e-2     1.11e-9     2.17e-7
+    near-field     f32     1.4088e-1     3.0947e-2     2.76e-1      7.27e1
+    body2 core     f64     7.3475e-2     7.3475e-2     1.93e-7     4.49e-4
+    body2 core     f32     1.4563e-1     7.3425e-2     2.59e-1      6.84e2
+   body1 slice     f64     5.8483e-2     5.8483e-2     1.19e-6     8.28e-5
+   body1 slice     f32     1.5589e-1     5.8446e-2     3.97e-1      7.24e1
+     mid-field     f64     1.7355e-6     1.7355e-6    3.32e-11     2.11e-5
+     mid-field     f32     1.0359e-4     1.9125e-6     2.73e-4      1.90e2
+
+Columns 3 and 4 are the grid-mean spread_shape under each branch. If the
+conditioning defect leaks into the ensemble diagnostic, the two differ by more
+than the dynamics justify - and it should show at f32 first.

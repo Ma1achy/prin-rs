@@ -1,0 +1,54 @@
+    Finished `release` profile [optimized] target(s) in 0.08s
+     Running `target/release/examples/refinement_criterion`
+=== the control's noise floor against ensemble size ===
+alpha for sigma_E(0). True value is exactly 1.0: sigma_E(0) is proportional to
+the jitter and so to cell width, so doubling the cell doubles it.
+
+     E+1   estimator       p10    median       p90       p90-p10subsamp med
+       8         rms    0.8525    1.0762    1.3321        0.4796    1.0191
+       8     max_dev    0.8787    1.1248    1.3855        0.5067    0.9865
+      16         rms    0.8614    1.0137    1.1817        0.3203    0.9999
+      16     max_dev    0.8613    1.0391    1.2115        0.3502    0.9730
+      32         rms    0.8902    0.9887    1.1025        0.2123    0.9884
+      32     max_dev    0.8772    1.0099    1.1217        0.2445    0.9726
+      64         rms    0.9169    0.9862    1.0663        0.1493    0.9949
+      64     max_dev    0.9012    0.9975    1.0791        0.1778    0.9815
+
+p90-p10 is the noise floor: the width a single quad's alpha scatters over when
+the true value is exactly 1.0. Any per-quad refinement decision finer than that
+width is reading noise. The subsampled column matches sample counts on both
+sides, so the gap between it and the median column is pure sample-size bias.
+
+Experiment A: the refinement criterion by aggregation, no quadtree.
+64x64 fine grid -> 32x32 parents, E+1=8 copies, t=13, eta=0.01, f64
+alpha = log2(spread_parent / spread_child); parent pools the 2x2 block's copies,
+child is the median over the four.
+
+=== near-field ===
+                          quantity       min       p10    median       p90       max
+alpha sigma_E(0), rms  [truth 1.0]    0.4777    0.8525    1.0762    1.3321    1.9250
+alpha sigma_E(0), max_dev [control]    0.5502    0.8787    1.1248    1.3855    1.9330
+             alpha sigma_E(t), rms   -0.5011    0.8417    1.0839    1.3892   10.3520
+                alpha spread_shape   -0.6678   -0.0989    0.1722    0.5324   10.7910
+
+=== mid-field ===
+                          quantity       min       p10    median       p90       max
+alpha sigma_E(0), rms  [truth 1.0]    0.4721    0.8551    1.0745    1.3350    1.8855
+alpha sigma_E(0), max_dev [control]    0.5374    0.8651    1.0975    1.3491    1.9271
+             alpha sigma_E(t), rms    0.4721    0.8551    1.0745    1.3350    1.8855
+                alpha spread_shape    0.7427    0.9546    1.1781    1.3930    1.7517
+
+=== body2 core ===
+                          quantity       min       p10    median       p90       max
+alpha sigma_E(0), rms  [truth 1.0]    0.4759    0.8435    1.0946    1.3734    1.8820
+alpha sigma_E(0), max_dev [control]    0.3980    0.9065    1.2106    1.4863    2.1709
+             alpha sigma_E(t), rms   -0.3861    0.8336    1.0970    1.4039   12.8392
+                alpha spread_shape   -0.5254    0.0551    0.3390    0.7312   10.7508
+
+=== far ===
+                          quantity       min       p10    median       p90       max
+alpha sigma_E(0), rms  [truth 1.0]    0.5122    0.8605    1.0761    1.3211    1.8363
+alpha sigma_E(0), max_dev [control]    0.5432    0.8433    1.0525    1.2906    1.8974
+             alpha sigma_E(t), rms    0.5122    0.8605    1.0761    1.3211    1.8363
+                alpha spread_shape    0.6000    0.9276    1.1716    1.4161    1.8814
+

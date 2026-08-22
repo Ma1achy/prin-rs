@@ -1,0 +1,33 @@
+    Finished `release` profile [optimized] target(s) in 0.01s
+     Running `target/release/examples/lc_branch_effect`
+near-field 8x8 nominal, eta=0.01, n_sync scaled to a fixed 13/32 sub-interval
+
+  t_max |     med ref  med stable    gain |     max ref  max stable    gain
+----------------------------------------------------------------------------
+    0.5 |   1.071e-13   1.071e-13    1.0x |   1.135e-13   1.135e-13    1.0x
+      1 |   4.400e-12   4.787e-13    9.2x |   1.163e-11   5.070e-13   22.9x
+      2 |   1.764e-11   1.668e-11    1.1x |   5.100e-11   1.786e-11    2.9x
+      4 |   2.688e-10   2.735e-10    1.0x |    9.736e-8    9.737e-8    1.0x
+      8 |   9.320e-10   9.537e-10    1.0x |    9.750e-8    9.751e-8    1.0x
+     13 |    3.400e-9    3.404e-9    1.0x |    1.241e-5    1.241e-5    1.0x
+
+=== f32 preview (Step 6 proper will do this correctly) ===
+The f64 gain vanishes past t=2 because larger errors mask it. At f32 the same
+cancellation is ~5e8 times worse, so the question is whether it is masked there
+too. Initial conditions are built in f64 and cast down, so this isolates
+arithmetic from IC differences.
+
+  t_max | f32 reference    f32 stable     gain
+----------------------------------------------
+    0.5 |      2.223e-7      1.497e-7     1.5x
+      1 |      3.151e-3      3.723e-7  8464.7x
+      2 |      4.692e-3      1.043e-6  4497.9x
+      4 |      4.751e-3      2.683e-6  1771.2x
+     13 |      5.873e-3      3.705e-6  1584.9x
+
+Gamma residual (median over the grid):
+  t_max |     reference        stable     gain
+----------------------------------------------
+      1 |     4.506e-12     3.712e-13    12.1x
+      4 |     1.810e-10     1.810e-10     1.0x
+     13 |      1.711e-9      1.711e-9     1.0x

@@ -1,0 +1,22 @@
+    Finished `release` profile [optimized] target(s) in 0.01s
+     Running `target/release/examples/dmin_where`
+Instrumented inner loop, n_sync=1, reference LC branch (as gate (b) runs it).
+
+eta = 1e-4:  dtau = 9.999999e-8, steps = 24839
+  d_min = 1.288146277e-11 at step 15708, tau = 1.570799874e-3, t = 0.785398163
+  neighbouring samples of |R1| (step, tau, |R1|):
+         15706  1.570599874e-3  3.857724481e-8
+         15707  1.570699874e-3  9.295064875e-9
+         15708  1.570799874e-3  1.288146277e-11  <- min
+         15709  1.570899874e-3  1.073069495e-8
+         15710  1.570999874e-3  4.144850490e-8
+
+eta = 1e-5:  dtau = 9.999999e-9, steps = 248381
+  d_min = 1.288146250e-11 at step 157080, tau = 1.570799874e-3, t = 0.785398163
+  neighbouring samples of |R1| (step, tau, |R1|):
+        157078  1.570779874e-3  2.693183951e-10
+        157079  1.570789874e-3  4.109994401e-11
+        157080  1.570799874e-3  1.288146250e-11  <- min
+        157081  1.570809874e-3  1.846629506e-10
+        157082  1.570819874e-3  5.564444083e-10
+

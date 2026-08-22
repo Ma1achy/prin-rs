@@ -1,0 +1,30 @@
+    Finished `release` profile [optimized] target(s) in 0.06s
+     Running `target/release/examples/deep_interior`
+deep interior, R(0) = 1.369306
+  r_coll/R        r_coll   outcome  detail  |01| at fire  |02| at fire  |12| at fire
+      1e-4     1.3693e-4 collision       1      3.9313e0     1.2151e-4      3.9313e0
+      1e-3     1.3693e-3 collision       1      3.4330e0     1.2589e-3      3.4324e0
+      1e-2     1.3693e-2 collision       1      2.2577e0     1.2817e-2      2.2694e0
+      1e-1     1.3693e-1 collision       1      2.2053e0     1.3631e-1      2.3186e0
+
+smallest r_coll/R at which each pair registers (sweep, stop_on_event off):
+  pair (0,1): never registers, even at r_coll = R
+  pair (0,2): registers at r_coll/R = 1e-4
+  pair (1,2): never registers, even at r_coll = R
+
+d_min over all three pairs, sampled inside the RK4 loop: 2.2838e-5 (1.668e-5 of R)
+|dE/E| = 1.395e-7, 4769 steps, 2 switches, finite = true
+
+on the reference's own LC branch, for direct comparison with the numpy run:
+  d_min_ref = 2.2837794877e-5   drift = 1.395286245e-7   switches = 2
+  reference:  2.2976014100e-05        1.393632170e-07              2
+  drift agrees to 3 digits; d_min differs by 0.6%, which is the sampling-offset
+  mechanism established in PR #2 - d_min near a close approach is set by where a
+  step happens to land relative to the crossing, not by a floor.
+
+BRIEF §2.6 expects this pixel to be an unregularisable triple collision that
+fails however well the integrator is built. It is not. It is an ordinary binary
+encounter between bodies 0 and 2 - the other two pairs never come within R of
+each other - and both implementations integrate it to t = 13 in a couple of
+seconds with |dE/E| ~ 1e-7. The 190 s failure recorded in 2.6 is the
+unregularised integrator; AZ regularises exactly this case, which is its job.

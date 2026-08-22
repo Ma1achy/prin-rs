@@ -16,14 +16,42 @@ done.
 In particular §2.3 (integration), §4 (outputs), §5 (verification). [`CLAUDE.md`](CLAUDE.md) carries
 the working agreement — scope, non-negotiables, build order.
 
+**[`RESULTS.md`](RESULTS.md) is what the kernel measured**, written to be read cold: the
+refinement criterion's resolution limit and its cost curve, which conclusions survive at large
+`n`, the high-drift pixels and their remedy, and what all of it invalidates in the prior NumPy
+work. [`NOTES.md`](NOTES.md) carries the mechanisms and the standing rules behind those findings.
+
 ## Layout
 
 | path | contents |
 |---|---|
 | `BRIEF.md` | the build brief — authoritative spec |
 | `CLAUDE.md` | working agreement: scope, invariants, review protocol |
+| `RESULTS.md` | findings — what the kernel measured, and what it corrects |
+| `NOTES.md` | mechanisms, corrections, and standing rules |
+| `TODO.md` | the gated build checklist, kept current |
 | `reference/` | validated NumPy implementation. Port `tb_az.py`; do not re-derive the algebra |
-| `src/`, `Cargo.toml` | the Rust kernel — **not yet landed** |
+| `src/`, `Cargo.toml` | the Rust kernel |
+| `examples/` | one per measurement in `RESULTS.md`; each prints its own raw table |
+| `results/` | committed images, 64×64 raw dumps, and captured output for every example |
+| `tools/xcheck/` | the cross-check harness against the NumPy reference |
+
+## Running the kernel
+
+```bash
+cargo run --release --bin prin -- --region near-field --size 256 --out out
+```
+
+Writes `out.raw` (the product), `out_outcome.png` and `out_spread.png` (diagnostics). `--help`
+lists the flags; `--precision f32`, `--shared-reference`, `--r-coll` and `--no-refine` are the
+ones that change what is measured rather than how much.
+
+```bash
+cargo test --release                      # the invariant and acceptance suite
+cargo test --release -- --ignored         # plus the NumPy cross-check
+```
+
+The cross-check needs Python and NumPy on `PATH`; nothing else does.
 
 ## Running the reference
 

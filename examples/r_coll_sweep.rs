@@ -21,7 +21,7 @@ const SIZE: usize = 64;
 
 fn render(r_coll_frac: f64, lc_stable: bool) -> Vec<PixelOut> {
     let s = grid::region("near-field", SIZE, SIZE, 0.05).unwrap();
-    let cfg = EnsembleCfg { r_coll_frac, lc_stable, ..Default::default() };
+    let cfg = EnsembleCfg { r_coll_frac, lc_stable, refine_flagged: false, ..Default::default() };
     (0..s.npix())
         .into_par_iter()
         .map(|i| evaluate::<f64>(&s, i, &cfg))
@@ -83,7 +83,7 @@ fn main() {
     println!();
     println!("=== 1b. cross-check: the same fractions from d_min directly ===");
     let s = grid::region("near-field", SIZE, SIZE, 0.05).unwrap();
-    let cfg = EnsembleCfg { stop_on_event: false, r_coll_frac: 0.0, ..Default::default() };
+    let cfg = EnsembleCfg { stop_on_event: false, r_coll_frac: 0.0, refine_flagged: false, ..Default::default() };
     let free: Vec<PixelOut> = (0..s.npix())
         .into_par_iter()
         .map(|i| evaluate::<f64>(&s, i, &cfg))

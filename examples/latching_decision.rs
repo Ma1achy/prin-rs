@@ -28,7 +28,7 @@ fn qs(v: &[f64]) -> (f64, f64, f64, f64, f64) {
 
 fn main() {
     let s = grid::region("near-field", SIZE, SIZE, 0.05).unwrap();
-    let cfg = EnsembleCfg::default();
+    let cfg = EnsembleCfg { refine_flagged: false, ..Default::default() };
     let px: Vec<PixelOut> = (0..s.npix())
         .into_par_iter()
         .map(|i| evaluate::<f64>(&s, i, &cfg))

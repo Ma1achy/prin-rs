@@ -1,0 +1,39 @@
+    Finished `release` profile [optimized] target(s) in 0.01s
+     Running `target/release/examples/r_coll_sweep`
+near-field 64x64, t=13, E+1=8, eta=0.01, f64
+
+=== 1. r_coll sensitivity ===
+  r_coll/R     escape    bounded  collision    running     failed     triples   med t_end
+      1e-4     0.0000     1.0000     0.0000     0.0000     0.0000      0.0000     13.0000
+      1e-3     0.0000     0.9758     0.0242     0.0000     0.0000      0.0000     13.0000
+      1e-2     0.0000     0.0000     1.0000     0.0000     0.0000      0.0000      1.8713
+
+r_coll is a threshold on a monotone quantity, so raising it can only turn
+non-collisions into collisions. The table shows how fast - and the answer is
+that on this slice there is NO PLATEAU to sit on. The collision fraction goes
+0.0000 -> 0.0242 -> 1.0000 across three decades, because every pixel's d_min
+lands inside a single decade (see 1b). No choice of r_coll in that range is a
+physical event threshold; it is a readout of the d_min distribution. d_min_true
+is the primary quantity here and the collision label is derived from it.
+
+Note also that `triples` is 0.0000 at every threshold: no pixel on this slice
+ever has two pairs below r_coll at once, so the >=2-pair rule is exercised only
+by construction in tests/outcome_encoding.rs, never by this data.
+
+=== 1b. cross-check: the same fractions from d_min directly ===
+d_min_true/R over the grid: min 5.909e-4  median 3.769e-3  max 4.931e-3
+  fraction with d_min_true < 1e-4 R: 0.0000
+  fraction with d_min_true < 1e-3 R: 0.0281
+  fraction with d_min_true < 1e-2 R: 1.0000
+These are per-pixel minima over the ensemble, so they bound the nominal-copy
+fractions above from one side rather than matching them exactly.
+
+=== 2. does the LC branch move the outcome fractions? ===
+  r_coll/R     escape    bounded  collision     triples   label flips
+      1e-4     0.0000     1.0000     0.0000      0.0000         0 / 4096
+      1e-3     0.0000     0.9758     0.0242      0.0000         0 / 4096
+      1e-2     0.0000     0.0000     1.0000      0.0000         0 / 4096
+
+Rows are the UNSTABLE branch; 'label flips' counts pixels whose packed outcome
+differs from the stable branch's at the same r_coll. A nonzero count means the
+branch cut reaches the outcome encoding, not only the continuous fields.

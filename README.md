@@ -33,7 +33,7 @@ work. [`NOTES.md`](NOTES.md) carries the mechanisms and the standing rules behin
 | `reference/` | validated NumPy implementation. Port `tb_az.py`; do not re-derive the algebra |
 | `src/`, `Cargo.toml` | the Rust kernel |
 | `examples/` | one per measurement in `RESULTS.md`; each prints its own raw table |
-| `results/` | committed images, 64×64 raw dumps, and captured output for every example |
+| `results/` | committed images, 64×64 raw dumps, and captured output for every example and test |
 | `tools/xcheck/` | the cross-check harness against the NumPy reference |
 
 ## Running the kernel

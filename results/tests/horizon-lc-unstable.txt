@@ -1,0 +1,12 @@
+inverse LC branch, BOTH sides: UNSTABLE (original)
+      case   t_max  n_sync     max |dr|      max rel   refs   drift(rs)
+-----------------------------------------------------------------------
+   az_t0p5     0.5       1    0.000e+00    0.000e+00     ok    1.13e-13
+     az_t1     1.0       2    0.000e+00    0.000e+00     ok    6.81e-12
+     az_t2     2.0       5    8.882e-16    1.431e-15     ok    3.83e-11
+     az_t4     4.0      10    6.847e-12    3.958e-11     ok    9.74e-08   growth exp(4.48 t)
+     az_t8     8.0      20    1.463e-10    6.120e-10     ok    9.75e-08   growth exp(0.77 t)
+    az_t13    13.0      32    1.930e-10    2.504e-08     ok    1.71e-08   growth exp(0.06 t)
+-----------------------------------------------------------------------
+Measured Lyapunov exponent for this configuration is ~0.7 (BRIEF §2.1), so a
+correct port should show growth near exp(0.7 t) from an O(1e-16) intercept.

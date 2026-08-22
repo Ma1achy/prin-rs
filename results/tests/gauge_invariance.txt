@@ -1,0 +1,19 @@
+    Finished `release` profile [optimized] target(s) in 0.01s
+     Running tests/gauge_invariance.rs (target/release/deps/gauge_invariance-81da6a204ed3a320)
+
+running 2 tests
+test shape_spread_is_invariant_across_the_grid ... worst spread_shape deviation over the grid: 0.000e0 at pixel 0
+ok
+test shape_spread_is_invariant_under_the_scale_symmetry ...    alpha          spread_shape                  svarmax |d| vs a=1
+       1 1.2529454229683509e-2 3.7316238778495325e-4             -
+  0.2500 1.2529454229683509e-2 3.7316238778495325e-4       0.000e0
+  4.0000 1.2529454229683509e-2 3.7316238778495325e-4       0.000e0
+  3.7000 1.2529454229683224e-2 3.7316238778517530e-4     2.845e-16
+  0.3333 1.2529454229691079e-2 3.7316238778561939e-4     7.570e-15
+
+BRIEF §5 asks for agreement to ~10 decimals. Powers of two come out bitwise
+identical; inexact factors land at 7.570e-15, which is roundoff.
+ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+

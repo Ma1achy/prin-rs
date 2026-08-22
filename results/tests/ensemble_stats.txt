@@ -1,0 +1,14 @@
+    Finished `release` profile [optimized] target(s) in 0.02s
+     Running tests/ensemble_stats.rs (target/release/deps/ensemble_stats-cac922668c8669a0)
+
+running 5 tests
+test mad_is_the_scaled_median_absolute_deviation ... ok
+test mad_survives_a_non_finite_copy_where_a_std_would_not ... with one NaN of 8 copies: std = NaN, MAD = 2.9652
+with five NaN of 8 copies: MAD = inf
+ok
+test median_uses_the_even_count_convention ... ok
+test spread_event_is_normalised_to_one_when_maximally_split ... ok
+test spread_event_matches_the_reference_statistic_up_to_its_normalisation ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

@@ -1,0 +1,19 @@
+    Finished `release` profile [optimized] target(s) in 0.01s
+     Running tests/shape_vec.rs (target/release/deps/shape_vec-5a5ee0059a7fd2c4)
+
+running 3 tests
+test shape_vec_is_a_unit_vector ... n = [0.4285714285714285, 0.127775312999988, -0.894427190999916], |n| = 1
+ok
+test shape_vec_quotients_translation_rotation_scale ... translation: max dev = 1.3877787807814457e-16
+rotation 0.3: max dev = 1.1102230246251565e-16
+rotation 1.9: max dev = 8.326672684688674e-17
+rotation -2.4: max dev = 1.6653345369377348e-16
+scale 0.25: max dev = 0e0
+scale 4: max dev = 0e0
+scale 16: max dev = 0e0
+ok
+test spread_statistics_are_zero_on_identical_copies_and_bounded ... antipodal: spread_shape = 0.5, svar = 1
+ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

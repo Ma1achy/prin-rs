@@ -1,0 +1,39 @@
+    Finished `release` profile [optimized] target(s) in 0.01s
+     Running tests/error_ratio_acceptance.rs (target/release/deps/error_ratio_acceptance-9c1326a3d835c0a6)
+
+running 4 tests
+test d_min_gap_is_zero_in_every_region ...     near-field: max d_min_gap = 0.000e0
+     mid-field: max d_min_gap = 0.000e0
+    body2 core: max d_min_gap = 0.000e0
+   body1 slice: max d_min_gap = 0.000e0
+           far: max d_min_gap = 0.000e0
+
+d_min_ref tracks only the two regularised pairs; d_min_true includes the
+unregularised side. The gap is identically zero, so the discrepancy flagged in
+NOTES §2.1 exists in principle and does not materialise in practice.
+ok
+test error_ratio_acceptance_near_field_t13 ... near-field 32x32, t=13, E+1=8 copies, eta=0.01, f64
+  error_ratio, all pixels    max 2.6103e3  p99 6.0864e1  median 1.000000  argmax 1012
+  error_ratio, healthy only  max 5.2087e0  p99 1.1845e0  median 1.000000   (1002 px)
+  error_ratio_mad, all       max 2.795042  p99 1.580294  median 1.000000
+
+BRIEF §5 asks for 1.0000. The median is 1.000000 on both populations. The max
+over all pixels is not 1 and must not be: on a chaos instrument, a region with
+no damaged pixels would mean the region was not interesting.
+ok
+test mad_based_error_ratio_cannot_separate_damaged_pixels ... 22 damaged pixels (drift_max > 1e-3), 1002 healthy
+       statistic    damaged med    healthy p99    separation
+             MAD       1.3910e0       1.1439e0          1.22
+   max deviation       6.0864e1       1.1845e0         51.38
+
+Separation is the damaged median over the healthy p99 — how far apart a
+threshold could be placed. Near 1 means the flag cannot separate them.
+ok
+test refined_pixels_are_repaired ... near-field 32x32, t=13, f64
+  drift max      3.0705e-1 unrefined -> 1.2306e-3 refined
+  pixels re-integrated: 17 of 1024
+  pixels above 1e-3 drift: 22 -> 5
+ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 21.16s
+

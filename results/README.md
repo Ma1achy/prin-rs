@@ -73,6 +73,37 @@ rows = [struct.unpack_from(f"<{nf}d", d, off + i*nf*8) for i in range(n)]
 | `output/bench_deriv.txt` | `deriv` throughput, extrapolated to 1024²×8 |
 | `output/render-*.txt` | the 256² renders, one per region |
 
+## Test and cross-check output
+
+`tests/*.txt` is the raw output of each test binary, run with `--nocapture --test-threads=1` so
+the printed tables appear in order. These carry BRIEF §5's acceptance evidence, which otherwise
+lives only in pull-request descriptions.
+
+| file | what it carries |
+|---|---|
+| `tests/burrau_constants.txt` | `M=12`, `R=2.2361`, `E=-12.8167`, crossing time |
+| `tests/az_identities.txt` | the validation chain: energy round-trip, `Gamma == A*B*(H-E)` |
+| `tests/az_hamiltonian_fd.txt` | finite-difference `Gamma` against analytic `deriv`, h² convergence |
+| `tests/two_body_collision.txt` | gate (b): `d_min < 1e-10` with `\|dE/E\| < 1e-12` |
+| `tests/gauge_invariance.txt` | the `alpha` rescaling gate — catches an absolute-length leak |
+| `tests/error_ratio_acceptance.txt` | the `error_ratio` gate, MAD against max deviation, `d_min_gap` |
+| `tests/error_ratio.txt` | the five invariants, including step-size convergence |
+| `tests/outcome_encoding.txt` | BRIEF §2.4's encoding, the >=2-pair rule, scale invariance of `t_end` |
+| `tests/f32_precision.txt` | the floor divergence, and gate (b) parameterised by precision |
+| `tests/lc_conditioning.txt` | inverse-LC branch conditioning |
+| `tests/spread_branch_cut.txt` | whether `spread_shape` inherits the branch cut |
+| `tests/xcheck.txt` | gate (c): per-column comparison against the NumPy reference |
+| `tests/horizon.txt` | the divergence-vs-horizon table, both sides conditioned |
+| `tests/horizon-lc-unstable.txt` | the same table on the reference's original LC branch |
+
+The two horizon tables are the reason the branch-cut finding is legible: `az_t13` reads
+`1.930e-10` on the original branch and `2.718e-13` with both sides conditioned. Keep them
+together — the pair is the evidence, either alone is not.
+
+`tests/xcheck.txt` needs Python and NumPy; regenerate it with
+`cargo test --release --test xcheck -- --ignored --nocapture`, and the horizon tables with
+`python3 tools/xcheck/horizon.py [--lc-unstable]`.
+
 ## A note on refinement
 
 The experiment examples run with `refine_flagged: false`, deliberately. Experiments A and B

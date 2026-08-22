@@ -1,0 +1,14 @@
+    Finished `release` profile [optimized] target(s) in 0.01s
+     Running tests/seeding_golden.rs (target/release/deps/seeding_golden-e43b6c2fc8e024ab)
+
+running 4 tests
+test copy_zero_is_always_the_un_jittered_nominal ... ok
+test golden_jitter_values ... copy 1: dx = -6.04696524908354682e-3, dy = 9.09101887490315619e-3
+copy 2: dx = 6.33724372630850574e-3, dy = 1.17315358118474933e-2
+copy 3: dx = 3.73278530955589716e-4, dy = 2.70285819262516824e-3
+ok
+test jitter_is_bounded_by_the_per_axis_cell_width ... ok
+test pixels_are_independent_and_order_free ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

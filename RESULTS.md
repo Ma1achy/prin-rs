@@ -394,8 +394,9 @@ not earliness.
 ## 6. Reproducing any of this
 
 Every table above comes from a committed example. Raw output for all of them is in
-[`results/output/`](results/output/), and the images and 64×64 raw dumps are in
-[`results/`](results/).
+[`results/output/`](results/output/), the acceptance-gate and cross-check output is in
+[`results/tests/`](results/tests/), and the images and 64×64 raw dumps are in
+[`results/`](results/). [`results/README.md`](results/README.md) indexes all of it.
 
 | result | command |
 |---|---|
@@ -409,3 +410,6 @@ Every table above comes from a committed example. Raw output for all of them is 
 | §5 deep interior | `cargo run --release --example deep_interior` |
 | §5 event class | `cargo run --release --example spread_event_correction` |
 | a full slice | `cargo run --release --bin prin -- --region near-field --size 256 --out out` |
+| the acceptance gates | `cargo test --release -- --nocapture` |
+| the NumPy cross-check | `cargo test --release --test xcheck -- --ignored --nocapture` |
+| the horizon table | `python3 tools/xcheck/horizon.py [--lc-unstable]` |

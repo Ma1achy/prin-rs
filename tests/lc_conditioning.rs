@@ -16,22 +16,34 @@ use prin_rs::Vec2;
 
 #[test]
 fn lc_inverse_conditioning_versus_angle() {
-    println!("{:>12}{:>18}{:>18}{:>12}", "angle (deg)", "reference branch", "stable branch", "u0/|u|");
+    println!("{:>12}{:>14}{:>14}{:>14}{:>14}",
+             "angle (deg)", "f64 ref", "f64 stable", "f32 ref", "f32 stable");
     let mut worst_ref = 0.0f64;
     let mut worst_stable = 0.0f64;
+    let mut worst_ref32 = 0.0f32;
+    let mut worst_stable32 = 0.0f32;
     for deg in [0.0f64, 45.0, 90.0, 135.0, 170.0, 179.0, 179.9, 179.99, 180.0] {
         let th = deg.to_radians();
         let rho = Vec2::new(th.cos(), th.sin());
+        let rel_r = (lc::rho_of_u(lc::u_of_rho_reference(rho)) - rho).norm() / rho.norm();
+        let rel_s = (lc::rho_of_u(lc::u_of_rho(rho)) - rho).norm() / rho.norm();
 
-        let ur = lc::u_of_rho_reference(rho);
-        let rel_r = (lc::rho_of_u(ur) - rho).norm() / rho.norm();
-        let us = lc::u_of_rho(rho);
-        let rel_s = (lc::rho_of_u(us) - rho).norm() / rho.norm();
+        // Same angles at f32. This is the reason the change jumped the queue: the loss
+        // predicted here would otherwise have shown up in Step 6 as an AZ arithmetic result.
+        let rho32 = Vec2::new(th.cos() as f32, th.sin() as f32);
+        let rel_r32 = (lc::rho_of_u(lc::u_of_rho_reference(rho32)) - rho32).norm() / rho32.norm();
+        let rel_s32 = (lc::rho_of_u(lc::u_of_rho(rho32)) - rho32).norm() / rho32.norm();
 
-        println!("{deg:>12}{rel_r:>18.3e}{rel_s:>18.3e}{:>12.3e}", ur.x / ur.norm().max(1e-300));
+        println!("{deg:>12}{rel_r:>14.3e}{rel_s:>14.3e}{rel_r32:>14.3e}{rel_s32:>14.3e}");
         worst_ref = worst_ref.max(rel_r);
         worst_stable = worst_stable.max(rel_s);
+        worst_ref32 = worst_ref32.max(rel_r32);
+        worst_stable32 = worst_stable32.max(rel_s32);
     }
+    println!();
+    println!("f32 worst: reference = {worst_ref32:.3e}, stable = {worst_stable32:.3e}");
+    assert!(worst_ref32 > 1e-5, "f32 reference branch was expected to lose badly");
+    assert!(worst_stable32 < 1e-6, "f32 stable branch should be near f32 roundoff: {worst_stable32:e}");
     println!("\nreference worst = {worst_ref:.3e}, stable worst = {worst_stable:.3e}");
     println!("The reference always computes u0 first; that sum cancels when rho points along");
     println!("-x. The stable branch computes whichever component is larger and derives the");

@@ -38,6 +38,8 @@ def load(path):
 
 def main():
     os.makedirs(OUT, exist_ok=True)
+    which = "STABLE (kernel branch)" if "--lc-stable" in sys.argv else "REFERENCE (pinned)"
+    print(f"inverse LC branch on the Rust side: {which}")
     print(f"{'case':>10}{'t_max':>8}{'n_sync':>8}{'max |dr|':>13}{'max rel':>13}{'refs':>7}{'drift(rs)':>12}")
     print("-" * 71)
     prev = None
@@ -48,9 +50,12 @@ def main():
         subprocess.run([sys.executable, os.path.join(os.path.dirname(__file__), "dump_ref.py"),
                         "--case", name, "--out", ref_p], check=True,
                        stdout=subprocess.DEVNULL, cwd=ROOT)
-        subprocess.run([CARGO, "run", "--release", "--quiet", "--bin", "xcheck", "--",
-                        "--case", name, "--out", rs_p], check=True,
-                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, cwd=ROOT)
+        cmd = [CARGO, "run", "--release", "--quiet", "--bin", "xcheck", "--",
+               "--case", name, "--out", rs_p]
+        if "--lc-stable" in sys.argv:
+            cmd.append("--lc-stable")
+        subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL,
+                       stderr=subprocess.DEVNULL, cwd=ROOT)
 
         cols, a = load(ref_p)
         _, b = load(rs_p)

@@ -143,6 +143,55 @@ fn d_min_at_collision_is_phase_limited() {
     }
 }
 
+/// **The mechanism behind the bit-identical d_min at eta=1e-4 and eta=1e-5: grid nesting.**
+///
+/// `dtau = eta * dt_left / (A0*B0)` is proportional to `eta` exactly, and every sub-interval
+/// starts at `tau = 0`. So reducing `eta` by an integer factor produces a **strict refinement**
+/// — every coarse sample point is still a sample point on the fine grid. `d_min` can
+/// therefore never increase under refinement, and it only decreases when a genuinely new
+/// point lands closer to the crossing.
+///
+/// For a regularised two-body collision the crossing is at a quarter period,
+/// `tau_c = (pi/2) * dt_left/(A0*B0)`, so `tau_c/dtau = pi/(2 eta)` exactly. Write that as
+/// `N + delta`. Refining by 10 gives `10N + 10delta`, and while `|10 delta| < 0.5` the
+/// nearest sample is still the same *physical* point: the offset in `tau` is `delta*dtau`
+/// either way. Identical offset, identical `d_min`.
+///
+/// So `d_min(eta)` is a **step function**, not a power law. Its envelope falls as `eta^2`;
+/// individual decades can be flat.
+///
+/// This also eliminates the three alternative explanations:
+///   - no clamping — at `eta = 1e-6` `d_min` reaches 1.7e-13, below `DIST_FLOOR = 1e-12`;
+///   - it is recorded per RK4 step, not per sync boundary — the minimum lands at step 15708
+///     of 24839 within a single sub-interval (`n_sync = 1`, so there is one registration);
+///   - registration does not reset it — `d_min` accumulates across the whole run.
+#[test]
+fn d_min_is_a_step_function_because_the_sample_grids_nest() {
+    let (_, m) = setup();
+    println!("{:>8}{:>16}{:>18}{:>14}", "eta", "d_min", "tau_c/dtau = pi/2eta", "offset*dtau");
+    for eta in [1e-4f64, 1e-5, 1e-6] {
+        let (s, _) = setup();
+        let o = az::integrate_az(s, &m, 1.0, 1, eta, 40_000_000, None);
+        let x = std::f64::consts::PI / (2.0 * eta);
+        let delta = x - x.round();
+        // dtau in units where dt_left/(A0*B0) is absorbed; only the product matters here.
+        println!("{eta:>8.0e}{:>16.7e}{x:>18.4}{:>14.3e}", o.d_min_ref, delta.abs() * eta);
+    }
+    println!();
+    println!("The last column is the distance from the nearest sample to the crossing, in");
+    println!("units of dt_left/(A0*B0). It is identical for 1e-4 and 1e-5 - which is why");
+    println!("d_min is identical - and changes at 1e-6, which is why d_min drops there.");
+
+    // The load-bearing claim: refinement never makes d_min worse.
+    let mut prev = f64::INFINITY;
+    for eta in [1e-2f64, 1e-3, 1e-4, 1e-5, 1e-6] {
+        let (s, _) = setup();
+        let d = az::integrate_az(s, &m, 1.0, 1, eta, 40_000_000, None).d_min_ref;
+        assert!(d <= prev * (1.0 + 1e-9), "d_min rose under refinement: {d:e} > {prev:e}");
+        prev = d;
+    }
+}
+
 /// At the **production** step size, the §5 threshold is out of reach by two orders. Not a
 /// defect — the trajectory simply is not sampled that finely.
 #[test]

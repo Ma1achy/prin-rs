@@ -156,6 +156,20 @@ sync slack is no slack at all (f32 uses `1e-6`). Also: `TINY*TINY` underflows at
 is a product of two floored quantities, so a doubly-degenerate state gives `dtau = inf` — caught
 by the explicit `is_finite` test, **not** by the floor. Know which guard is doing the work.
 
+**`eta = 1e-2` is not sufficient above ~64x64, and the failure is a cliff.**
+At 128x128 near-field, 7 pixels of 16384 have `|dE/E| > 1` (worst `1.49e4`), all finite, all at
+`d_min ~ 2e-3` against `r_coll = 2.21e-3`. Drift falls thirteen orders for a 3.3x change in
+`eta`, so it is resolution, not a wrong equation. `error_ratio` flags 7 of 7. Re-integrate
+flagged pixels at finer `eta` rather than lowering `eta` globally — no scheduler needed.
+
+**The refinement exponent is a region-level statistic, not a per-quad one.**
+`alpha = log2(spread_parent/spread_child)` on a control whose true value is exactly 1.0 has an
+interdecile width of **0.48 at `E+1 = 8`**, falling as `1/sqrt(E)`. The measured region
+separation is about 1.0. So it resolves regions and not individual quads. Also: a parent pools
+`4(E+1)` copies against a child's `E+1`, and a spread estimator's expectation depends on sample
+size — **match the counts** or the exponent is biased (+7.6% at `E+1 = 8`) before any physics
+enters.
+
 **Never conclude "no effect" from an aggregate without the per-pixel distribution.**
 An aggregate can only say the distribution did not move; it cannot say the pixels did not.
 Measured twice in one PR: LC-branch `spread_shape` rows identical to five digits while **all

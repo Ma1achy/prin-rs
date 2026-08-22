@@ -201,3 +201,27 @@ Confounds to dump, not hide:
 ## Spec amendments accepted, not yet written into BRIEF.md
 
 - [x] all of the above are written into `BRIEF.md`, `CLAUDE.md` and `NOTES.md` as they land
+
+## Step 7 — BRIEF §8, the reason for the build · **SIXTH PR**
+
+- [x] **A.** refinement criterion by 2x2 aggregation, no quadtree. `alpha` distribution,
+      region discrimination, `alpha_sigma_E(0)` as the control (truth exactly 1.0)
+- [!] the control does **not** return 1.0 per quad: interdecile width **0.48** at `E+1 = 8`,
+      falling as `1/sqrt(E)`. The criterion resolves **regions**, not individual quads
+- [!] **sample-size bias**: a parent pools `4(E+1)` copies against a child's `E+1`, so the
+      exponent reads +7.6% high before any physics. Subsampling to matched counts gives
+      1.0191 at `E+1 = 8` and 0.9999 at 16. Use an rms deviation here, not `max_dev`
+- [x] the criterion discriminates: `spread_shape` alpha median 0.17 (near-field), 0.34
+      (body2 core), 1.18 (mid-field), 1.17 (far) — chaotic regions do not pay for refinement
+- [x] `sigma_E_0` and `sigma_E_t` reported separately, per PR #3
+- [x] **B.** statistical convergence by subsampling a fixed 128x128 grid
+- [!] at `n = 64` every fraction has interdecile scatter **2.0-4.4x the quantity itself**.
+      That is the 1.2x-to-18.8x mechanism, quantified
+- [!] p99 of anything heavy-tailed is **not estimable** at any `n` tested (3.3-6.8 for
+      `spread_shape p99`, flat)
+- [!] `drift max` reads 0.000 scatter at `n <= 256` and 1.000 at `n = 4096` — apparent
+      stability is the statistic never drawing the tail
+- [!] 128x128 found 7 pixels of 16384 with `|dE/E| > 1` that 64x64 could not. `error_ratio`
+      flags 7 of 7. Drift falls 13 orders for a 3.3x change in `eta`: resolution, not a wrong
+      equation. **`eta = 1e-2` is not sufficient at this resolution** — written into BRIEF §2.5
+- [x] no scheduler machinery built, per the instruction

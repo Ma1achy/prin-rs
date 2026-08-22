@@ -153,6 +153,15 @@ tempting and **catastrophic**: it makes the Hamiltonian time-dependent and destr
 conservation. Measured `|dE/E| = 3.06e-02`, *identical* at `dt=1e-4` and `dt=2e-5` — insensitive to
 step size, which is the signature of a wrong equation rather than an accuracy problem.
 
+**`eta = 1e-2` is not sufficient above ~64×64.** Measured on near-field at 128×128: seven pixels
+of 16384 have `|dE/E| > 1`, one of them `1.49e4`, all finite, all clustered in one corner at
+`d_min ~ 2e-3` against `r_coll = 2.21e-3` — a near-collision the run is not allowed to terminate
+on. It is a step-size problem, not a wrong equation: the same pixels give `1.49e4 → 5.96e-9 →
+3.12e-11` at `eta = 1e-2 → 3e-3 → 1e-3`, thirteen orders for a 3.3× change. A **cliff, not a
+slope**. `error_ratio` flags 7 of 7, so nothing fails silently. At `10^6` pixels either run at
+`eta ~ 3e-3` or re-integrate flagged pixels at finer `eta` — the latter is cheaper and needs no
+scheduler, since the flag already exists and one refinement step suffices.
+
 **Defaults:** `r_coll` nonzero (a small fraction of `R`), `epsilon = 0`. Softening is a *different
 force law*, so tag it in the output and never mix `eps>0` with `eps=0` data.
 

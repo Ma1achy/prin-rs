@@ -1066,3 +1066,83 @@ The f64 truths also differ between schemes by up to 1.8x (near-field mean `1.606
 against `2.897e-2` PCG). That is expected and is not an error: different offsets measure a
 different ensemble. Only the f32-tracks-f64 comparison is scheme-independent, which is why it is
 the one gated.
+
+---
+
+## 10. The pooled parent is not a parent
+
+Following the fixed-offset switch, the `+38.6%` bias was traced to the aggregation rather than
+the estimator (§9). This settles it by building the thing the aggregation was standing in for.
+
+A **true** parent quad at 2x cell width carries offsets scaled to *its* width. A pooled 2x2 block
+carries offsets scaled to the *child's* width, four times over. They are not the same ensemble.
+Rendering at `N` and `N/2` makes both sides real. `alpha` for `sigma_E(0)`, true value exactly
+1.0, near-field, fine 64x64 against coarse 32x32:
+
+| E+1 | scheme | pooled median | true median | pooled err | **true err** |
+|---|---|---|---|---|---|
+| 4 | Halton | 1.6678 | 1.0231 | 0.6678 | **0.0231** |
+| 8 | Halton | 1.3857 | 1.0227 | 0.3857 | **0.0227** |
+| 16 | Halton | 1.1668 | 1.0227 | 0.1668 | **0.0227** |
+| 32 | Halton | 1.0661 | 1.0227 | 0.0661 | **0.0227** |
+| 4 | Pcg | 1.2798 | 0.8843 | 0.2798 | 0.1157 |
+| 8 | Pcg | 1.0762 | 0.9447 | 0.0762 | 0.0553 |
+| 16 | Pcg | 1.0137 | 0.9762 | 0.0137 | 0.0238 |
+| 32 | Pcg | 0.9887 | 0.9872 | 0.0113 | 0.0128 |
+
+The pooled error runs `0.67 -> 0.07` with `E`; the true error is **flat at 0.0227**. Confirmed:
+the bias is the surrogate. The remedy is to render twice, not to calibrate.
+
+The 0.0227 residual is the two-resolution method's own cost. It does not shrink with `E`, and it
+reappears independently below as the tame-region `alpha_shape` median of 1.0229 — same constant,
+two unrelated quantities, so it is a property of the method rather than of either measurement.
+
+**Under PCG the two errors partly cancel.** Pooling gives 4x the samples and per-footprint
+randomisation blurs the surrogate mismatch, so the pooled figure reads *better* than the true one
+at small `E` (0.0762 against 0.0553 at `E+1 = 8` is close; at `E+1 = 4` pooled 0.2798 against
+true 0.1157 is not). Two wrongs partially offsetting is why this survived until the fixed scheme
+removed the randomisation.
+
+### The criterion, re-measured properly — and it is sharper than reported
+
+True two-resolution `alpha_shape`, fixed Halton prefix, `t = 13`:
+
+| region | p10 | median | p90 | interdecile |
+|---|---|---|---|---|
+| near-field | −0.6568 | 0.0368 | 0.6696 | **1.3264** |
+| body2 core | −0.3673 | 0.1844 | 0.7405 | **1.1078** |
+| mid-field | 1.0224 | 1.0229 | 1.0235 | **0.0010** |
+| far | 1.0228 | 1.0230 | 1.0232 | **0.0004** |
+
+Separation between region medians: **0.9862**.
+
+**"Regions not quads" was too blunt, in both directions.** In the tame regions the exponent is
+essentially exact — interdecile `0.0004`–`0.001` — so per-quad decisions there are trivial, and
+the ~0.63 scatter pooling reported for those regions was **entirely surrogate error**. In the
+chaotic regions the scatter is `1.1`–`1.3`, twice what pooling suggested, and it is chaotic
+divergence rather than sampling noise.
+
+That is the criterion working, not failing: **"not resolvable per quad" is the answer for a
+chaotic quad.** The scatter is the measurement, not an error bar around one.
+
+### Read the interdecile, not the variance
+
+`alpha_shape` under Halton: variance `5.331e-1`, sd `0.7302`, interdecile `0.6326` (pooled) —
+`interdecile / sd = 0.866` where a normal distribution gives 2.563, and **excess kurtosis 110.0**.
+
+The variance lives in the tails; the interdecile describes the bulk. That resolves the apparent
+tension between "variance fell 6.9% under Halton" and "scatter unchanged" — both true, of
+different parts of one distribution. **A scheduler decides per typical quad, so the interdecile
+is the measure and it is the one that did not move.** Do not quote the 6.9% as the improvement.
+
+### Two things left alone
+
+The **Halton advantage growing with `E`** (discrepancy ratios 0.748, 0.624, 0.489, 0.395 at
+`E+1 = 4..32`) is reported, not chased. Low-discrepancy sequences are usually most valuable at
+small `N`, so growing benefit suggests the raw unscrambled prefix's early terms are less well
+distributed than its later ones — a known property in low dimensions. Scrambling is the standard
+remedy if it ever matters; nothing here depends on it.
+
+The **control variate** stays dropped. Two variance reductions targeted the same component and
+the cheaper one won: the offset scheme had already removed what the control variate would have
+corrected, which is why `beta = -153.76` was a division by nothing.

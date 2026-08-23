@@ -63,7 +63,10 @@ rows = [struct.unpack_from(f"<{nf}d", d, off + i*nf*8) for i in range(n)]
 
 | file | what it measures |
 |---|---|
-| `output/refinement_criterion.txt` | Experiment A — the refinement exponent, its control, the noise floor against `E` |
+| `output/pooled_vs_true_parent.txt` | the pooled block against a real two-resolution parent, and the corrected per-quad scatter |
+| `output/halton_noise_floor.txt` | offset schemes: noise floor, parent/child correlation, the `alpha_E` control variate |
+| `output/scheme_f32_effect.txt` | whether the fixed prefix changes the f32 answer (one pixel, not the scheme) |
+| `output/refinement_criterion.txt` | Experiment A — the refinement exponent, its control, the noise floor against `E` (**pooled**; superseded by `pooled_vs_true_parent`) |
 | `output/convergence.txt` | Experiment B — which conclusions survive at large `n` |
 | `output/worst_128.txt` | the seven high-drift pixels at 128², and drift against `eta` |
 | `output/refine_pass.txt` | the flag-then-re-integrate remedy, on against off |
@@ -101,6 +104,7 @@ lives only in pull-request descriptions.
 | `tests/error_ratio.txt` | the five invariants, including step-size convergence |
 | `tests/outcome_encoding.txt` | BRIEF §2.4's encoding, the >=2-pair rule, scale invariance of `t_end` |
 | `tests/f32_precision.txt` | the floor divergence, and gate (b) parameterised by precision |
+| `tests/halton_offsets.txt` | the fixed prefix: radical inverse, fixedness across resolutions, discrepancy against PCG |
 | `tests/lc_conditioning.txt` | inverse-LC branch conditioning |
 | `tests/spread_branch_cut.txt` | whether `spread_shape` inherits the branch cut |
 | `tests/xcheck.txt` | gate (c): per-column comparison against the NumPy reference |

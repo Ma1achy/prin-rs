@@ -271,3 +271,19 @@ Confounds to dump, not hide:
       ratio to nothing. Nothing left to correct, which is the outcome the switch was for
 - [x] `alpha` **not** smoothed over neighbouring quads, per the instruction
 - [x] all captured output and images regenerated under the new default
+
+## Pooling correction · **NINTH PR**
+
+- [x] **the pooled parent is not a parent** — confirmed by building the true one. Pooled error
+      `0.67 -> 0.07` with `E`; true two-resolution error **flat at 0.0227**
+- [x] BRIEF §8 experiment 1 rewritten: render at `N` and `N/2`, not by aggregation. Noted that
+      any `alpha` measured by pooling carries this, including in the prior NumPy work
+- [x] per-quad scatter re-measured the right way. Pooling **understates** it ~2x
+- [!] "regions not quads" was too blunt **in both directions**: tame regions resolve per quad
+      (interdecile `0.0004`-`0.001`), chaotic ones do not (`1.1`-`1.3`). Separation `0.9862`
+- [x] RESULTS.md §1 rewritten — cost curve deleted, constraint restated as chaotic divergence
+- [x] the heavy tail recorded: excess kurtosis **110**, interdecile/sd `0.866` against a normal
+      `2.563`. Read the interdecile; the variance is a statement about the tail
+- [x] the two-resolution method's own residual is `+0.0227`, visible independently in the
+      `sigma_E(0)` control and the tame-region `alpha_shape` median `1.0229`
+- [x] Halton-advantage-grows anomaly reported, not chased; control variate stays dropped

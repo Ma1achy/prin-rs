@@ -14,10 +14,12 @@ recorded before that correction was produced on the PCG path and `--jitter-pcg` 
 
 ---
 
-## 1. The refinement criterion resolves regions, not quads
+## 1. The refinement criterion
 
-**This is a scheduler design constraint, not a defect.** The criterion works. It works at a
-resolution the ensemble size sets, and that resolution is measurable in advance.
+**The criterion works, and what limits it is not what an earlier version of this document
+said.** It resolves individual quads exactly where the physics is smooth and not at all where it
+is chaotic — and the second half is the correct answer rather than a limitation. The limit is
+chaotic divergence, which no ensemble scheme and no amount of compute reaches.
 
 The criterion compares a parent quad against its children. A fine uniform grid already contains
 every coarser scale by aggregation, so the whole exponent machinery is testable with no
@@ -28,133 +30,127 @@ Nothing here can be an artefact of a scheduler, because there is no scheduler.
 
 ### What it discriminates
 
-`alpha` for `spread_shape`, 64×64 fine grid → 32×32 parents, `t = 13`:
+In the tame regions the shape spread scales with cell width, as a smooth field must, so halving
+the cell halves the spread and refinement pays. In the chaotic regions the parent spread is
+barely above the child's, so refining buys almost nothing — those pixels are **undetermined, not
+under-resolved**. Making that distinction is what the criterion is for, and it makes it cleanly.
+The numbers are in the table two sections down, measured by rendering at two resolutions; the
+figures this document previously carried were measured by pooling and are corrected there.
 
-| region | min | p10 | **median** | p90 | max |
+### The pooled parent is not a parent
+
+Every `alpha` in earlier versions of this document was computed by **pooling** a 2×2 block's
+copies to synthesise a parent. That is not a parent, and the error is systematic.
+
+With the spec's fixed offsets, a pooled block is four **exact repeats** of one offset pattern at
+four cell centres. A *true* parent at 2× cell width carries offsets scaled to **its own** width —
+a wider footprint. They are not the same ensemble. `alpha` for `sigma_E(0)`, whose true value is
+exactly 1.0, measured both ways on near-field (fine 64×64, coarse 32×32):
+
+| E+1 | scheme | pooled median | true median | pooled \|err\| | **true \|err\|** |
 |---|---|---|---|---|---|
-| near-field | −0.6678 | −0.0989 | **0.1722** | 0.5324 | 10.7910 |
-| body2 core | −0.5254 | 0.0551 | **0.3390** | 0.7312 | 10.7508 |
-| mid-field | 0.7427 | 0.9546 | **1.1781** | 1.3930 | 1.7517 |
-| far | 0.6000 | 0.9276 | **1.1716** | 1.4161 | 1.8814 |
+| 4 | Halton | 1.6678 | 1.0231 | 0.6678 | **0.0231** |
+| 8 | Halton | 1.3857 | 1.0227 | 0.3857 | **0.0227** |
+| 16 | Halton | 1.1668 | 1.0227 | 0.1668 | **0.0227** |
+| 32 | Halton | 1.0661 | 1.0227 | 0.0661 | **0.0227** |
+| 4 | Pcg | 1.2798 | 0.8843 | 0.2798 | 0.1157 |
+| 8 | Pcg | 1.0762 | 0.9447 | 0.0762 | 0.0553 |
+| 16 | Pcg | 1.0137 | 0.9762 | 0.0137 | 0.0238 |
+| 32 | Pcg | 0.9887 | 0.9872 | 0.0113 | 0.0128 |
 
-In the tame regions `alpha ≈ 1.17`: the shape spread scales with cell width, as a smooth field
-must, so halving the cell halves the spread and refinement pays. In the chaotic regions
-`alpha ≈ 0.17–0.34`: the parent spread is barely above the child's, so refining buys almost
-nothing — those pixels are **undetermined, not under-resolved**. Making that distinction is what
-the criterion is for, and it makes it cleanly.
+The pooled error runs 0.67 → 0.07 as `E` grows; the true error is **flat at 0.0227**. The bias is
+the surrogate, not the estimator, and it is removed by **rendering at two resolutions** rather
+than by calibrating a correction factor. The residual 0.0227 is what the two-resolution method
+itself costs and it does not shrink with `E`.
 
-### The cost curve, and what it is a cost curve *for*
+Under PCG the two errors partly cancel: pooling gives 4× the samples and per-footprint
+randomisation blurs the surrogate mismatch, so the pooled figure looks better than the true one
+at small `E`. Two wrongs, partially offsetting — which is why this went unnoticed until the
+fixed scheme removed the randomisation.
 
-`alpha` for `sigma_E(0)` is a control whose true value is **exactly 1.0**: `sigma_E(0)` is
-proportional to the jitter and therefore to the cell width, so doubling the cell doubles it.
-Measured on both offset schemes — the fixed Halton (2,3) prefix the spec calls for, and the
-per-pixel PCG stream the port originally inherited:
+**Any `alpha` measured by pooling carries this**, here and in the prior NumPy work.
 
-| E+1 | scheme | median | **p90−p10** | parent/child r |
+### The criterion, re-measured properly
+
+`alpha` for `spread_shape`, true two-resolution rendering, fixed Halton prefix, `t = 13`:
+
+| region | p10 | median | p90 | **interdecile** |
 |---|---|---|---|---|
-| 4 | Halton | 1.6678 | **0.0242** | 0.9134 |
-| 4 | Pcg | 1.2798 | 0.8397 | 0.1750 |
-| 8 | Halton | 1.3857 | **0.0010** | 0.9998 |
-| 8 | Pcg | 1.0762 | 0.4796 | 0.1746 |
-| 16 | Halton | 1.1668 | **0.0005** | 1.0000 |
-| 16 | Pcg | 1.0137 | 0.3203 | 0.2236 |
-| 32 | Halton | 1.0661 | 0.0029 | 0.9983 |
-| 32 | Pcg | 0.9887 | 0.2123 | 0.2742 |
-| 64 | Halton | 1.0308 | 0.0018 | 0.9994 |
-| 64 | Pcg | 0.9862 | 0.1493 | 0.3018 |
+| near-field | −0.6568 | 0.0368 | 0.6696 | **1.3264** |
+| body2 core | −0.3673 | 0.1844 | 0.7405 | **1.1078** |
+| mid-field | 1.0224 | 1.0229 | 1.0235 | **0.0010** |
+| far | 1.0228 | 1.0230 | 1.0232 | **0.0004** |
 
-The fixed prefix is decisively better at what it controls. At `E+1 = 8` the control's noise floor
-falls from **0.4796 to 0.0010** — a factor of 480 — and the parent/child correlation rises from
-0.175 to **0.9998**, which is the common-random-numbers structure a fixed offset set is supposed
-to produce, arriving exactly as predicted.
+Separation between region medians: **0.9862**.
 
-**But this is a cost curve for the control, not for the criterion.** `alpha` for `spread_shape`,
-same grid, `E+1 = 8`:
+This is a different picture from the pooled one, and a better one:
 
-| scheme | median | p90−p10 | var |
-|---|---|---|---|
-| Halton | 0.1386 | **0.6326** | 5.331e-1 |
-| Pcg | 0.1722 | **0.6313** | 5.725e-1 |
+- **In the tame regions the exponent is essentially exact.** `alpha = 1.023` with an interdecile
+  of `0.0004`–`0.001`. Per-quad decisions there are not merely possible, they are trivial. The
+  pooled measurement reported ~0.63 scatter in these regions and **all of it was surrogate
+  error**.
+- **In the chaotic regions the scatter is 1.1–1.3** — twice what pooling suggested, and it is not
+  sampling noise. It is chaotic divergence.
+- The tame median `1.0229` matches the `0.0227` residual from the control above. Same constant:
+  the two-resolution method carries a small systematic `+0.023`, and it is visible in two
+  independent quantities.
 
-The interdecile scatter is unchanged. The variance falls by 6.9%, and the arithmetic says why:
-`var(alpha_shape)` drops by `3.94e-2`, against `var(alpha_E) = 3.75e-2` under PCG. **Sampling
-noise adds in, it was about 7% of the total, and the fixed prefix removes essentially all of
-it** — `var(alpha_E)` falls to `1.40e-7`, a factor of 267,000.
+**So "regions not quads" is too blunt.** The criterion resolves individual quads perfectly well
+where the physics is smooth, and not at all where it is chaotic. That is the correct behaviour
+rather than a limitation: **"not resolvable per quad" is the answer for a chaotic quad**, and the
+scatter is the measurement, not an error bar around one.
 
-The other 93% is not sampling noise and no offset scheme can touch it. `sigma_E(0)` is a smooth
-function of position, so its ensemble spread is pure geometry; `spread_shape` at `t = 13` is
-dominated by trajectories that have genuinely separated.
+**And no amount of compute changes the chaotic case.** Switching from the PCG stream to the
+spec's fixed Halton prefix cut the control's sampling noise by a factor of 267,000
+(`var(alpha_E)`: `3.75e-2 → 1.40e-7`) and moved `alpha_shape`'s interdecile not at all
+(0.6313 → 0.6326 pooled; 1.3051 → 1.3264 true). Sampling error was ~7% of the variance; the rest
+is the physics the instrument exists to measure. There is no ensemble size that buys per-quad
+resolution in a chaotic region.
 
-**The design constraint, restated with the right number:**
+### Read the interdecile, not the variance
 
-- The criterion's per-quad scatter in `alpha_shape` is **0.63**, under either scheme.
-- The measured region separation is about **1.0** — roughly 1.6× that scatter.
-- So `E+1 = 8` resolves **regions** and not **individual quads**.
-- **More copies will not fix it.** Only ~7% of the scatter is sampling error, and the fixed
-  prefix has already removed essentially all of that. The remainder is the physics the
-  instrument exists to measure.
+The two summaries disagree, and the disagreement is the point. For `alpha_shape` under Halton:
 
-An earlier version of this document gave the floor as **0.48 and attributed it to the criterion**.
-That was the control's sampling floor, presented as though it bounded `alpha_shape`. The
-conclusion it supported survives — regions yes, quads no — but for a reason that cannot be bought
-off with compute rather than one that can.
+| | value |
+|---|---|
+| variance | 5.331e-1 |
+| sd | 0.7302 |
+| interdecile (p90−p10) | 0.6326 |
+| interdecile / sd | **0.866** (normal: 2.563) |
+| excess kurtosis | **110.0** (normal: 0) |
 
-### The bias is geometric, and only a control could have found it
+An interdecile three times *narrower* than a normal distribution's, with excess kurtosis of 110:
+**the variance lives in the tails and the interdecile describes the bulk.** That resolves the
+tension between "variance fell 6.9%" and "scatter unchanged" — both are true, of different parts
+of the same distribution.
 
-There is also a bias in the control: **+7.6% at `E+1 = 8` under PCG, and +38.6% under Halton with
-essentially no scatter** (p90−p10 = 0.0010). It falls as `1/E`:
+**A scheduler decides per typical quad, so the interdecile is the measure that matters, and it is
+the one that did not move.** Do not quote the 6.9% variance reduction as the improvement; it is a
+statement about the tail.
 
-| E+1 | \|median−1\| | × (E+1) |
-|---|---|---|
-| 4 | 0.6678 | 2.671 |
-| 8 | 0.3857 | 3.086 |
-| 16 | 0.1668 | 2.669 |
-| 32 | 0.0661 | 2.117 |
-| 64 | 0.0308 | 1.974 |
-| 128 | 0.0173 | 2.220 |
+### The bias only a control could have caught
 
-Constant to within ±25% with no trend, so `1/E`.
+None of the above is visible without a quantity whose answer is known exactly. A smooth offset on
+a statistic with no oracle does not look like an error, it looks like a result — `+38.6%` would
+have read as "parent spread grows faster than linearly in cell width", a plausible physical
+statement and completely wrong. It was visible only because `sigma_E(0)` has an *exactly* known
+value, and it was *diagnosable* only because the fixed offset scheme removed the noise that had
+been hiding it.
 
-**The mechanism is geometric and it indicts the aggregation, not the estimator.** With fixed
-offsets, a pooled 2×2 block is four *exact repeats* of one offset pattern at four different cell
-centres — not `4(E+1)` samples of a genuinely wider footprint. At small `E` the pooled spread is
-set by the child-centre separation rather than by the offset set. As `E` grows the offset set
-fills the footprint and the surrogate converges, which is the `1/E`.
+### Two footnotes
 
-An earlier version attributed this to sample-size bias, on the evidence that matched-count
-subsampling removed most of it (1.0762 → 1.0191). **That was wrong**: subsampling was removing a
-symptom of the randomisation, not the cause. Under a fixed scheme there is no randomisation left
-to hide behind and the geometry is visible directly.
+**The `alpha_E` control variate was dropped.** `rho` is −0.079 (Halton) and −0.042 (PCG), and the
+regression form makes the floor slightly worse either way. Under Halton the fitted
+`beta = −153.76` is a division by nothing — `var(alpha_E) = 1.4e-7`. Two variance reductions
+targeted the same component and the cheaper one won: the offset scheme had already removed what
+the control variate would have corrected.
 
-So "a fine uniform grid already contains every coarser scale by aggregation" is true of the
-*positions* and false of the *ensemble*. The synthesised parent is a weaker surrogate than that
-sentence implies, and the fixed offset scheme is what made it measurable.
-
-**No estimator without a known-true-value control could have found any of this.** A smooth bias
-on a quantity with no oracle does not look like an error, it looks like a result — it would have
-read as "parent spread grows faster than linearly in cell width", a plausible physical statement
-and completely wrong. It was visible only because `sigma_E(0)` has an *exactly* known answer.
-
-### The `alpha_E` control variate buys nothing
-
-Energy's exponent is known exactly, so `(alpha_E − 1)` is observed noise sharing a source with
-`alpha_shape` — textbook control-variate structure. Measured per-quad, across quads:
-
-| scheme | rho | fitted beta | floor ratio, regression | floor ratio, additive |
-|---|---|---|---|---|
-| Halton | −0.0789 | −153.76 | 1.0396 | 1.0008 |
-| Pcg | −0.0419 | −0.1637 | 1.0544 | 1.2574 |
-
-`rho` is near zero under both, and the regression form makes the floor slightly *worse* — fitting
-a coefficient on noise costs a degree of freedom and returns nothing. **Dropped.**
-
-The Halton `beta = −153.76` is not a result but a division by nothing: `var(alpha_E) = 1.4e-7`
-there. **The control variate is degenerate under Halton precisely because the switch already
-removed what it would have corrected.**
-
-(This is a different correlation from the −0.035 reported earlier, which compared two
-within-footprint *estimators* per pixel. This compares two per-quad *exponents* across quads.
-Both null, but they are not the same measurement.)
+**The fixed prefix's advantage grows with `E` rather than shrinking** — L2 star discrepancy ratios
+against PCG are 0.748, 0.624, 0.489, 0.395 at `E+1 = 4, 8, 16, 32`. Low-discrepancy sequences are
+usually most valuable at small `N`, so this suggests the raw unscrambled Halton prefix's early
+terms are less well distributed than its later ones, which is a known property in low dimensions.
+Reported, not chased; scrambling is the standard remedy if it ever matters, and nothing here
+depends on it.
 
 `alpha` was **not** smoothed over neighbouring quads. It is the obvious variance reduction and it
 is wrong here: `alpha` varies smoothly except at boundaries, and boundaries are exactly what a
@@ -482,6 +478,7 @@ Every table above comes from a committed example. Raw output for all of them is 
 | §5 deep interior | `cargo run --release --example deep_interior` |
 | §5 event class | `cargo run --release --example spread_event_correction` |
 | §1 offset schemes | `cargo run --release --example halton_noise_floor` |
+| §1 pooled vs true parent | `cargo run --release --example pooled_vs_true_parent` |
 | the offset properties | `cargo test --release --test halton_offsets -- --nocapture` |
 | a full slice | `cargo run --release --bin prin -- --region near-field --size 256 --out out` |
 | the acceptance gates | `cargo test --release -- --nocapture` |

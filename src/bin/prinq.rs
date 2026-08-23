@@ -155,7 +155,7 @@ fn main() {
     println!("wrote {dump}");
 
     if let Some(res) = overlay {
-        let slice = grid::Slice { nx: res, ny: res, cx: root.cx, cy: root.cy, half, body: root.body };
+        let slice = grid::Slice::body_plane(res, res, root.cx, root.cy, half, root.body).with_chart(tree.chart);
         let base = render::render(&slice, &ens, precision);
         treeout::overlay(&out, "tree_outcome", &tree, &base, res, png::outcome_rgb)
             .expect("overlay");

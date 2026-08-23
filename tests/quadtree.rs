@@ -40,7 +40,7 @@ fn a_childs_cell_width_is_exactly_half_its_parents() {
 #[should_panic(expected = "samples per quad axis")]
 fn a_single_sample_quad_is_rejected() {
     let t = QuadTree::new(1.0, 3.0, 0.05, N, 0);
-    let _ = t.nodes[0].slice(MIN_SAMPLES_PER_AXIS - 1, 0);
+    let _ = t.nodes[0].slice(MIN_SAMPLES_PER_AXIS - 1, 0, prin_rs::grid::Chart::BodyPlane);
 }
 
 /// The quad `Slice` must sample the box it claims to: corners inclusive, spacing uniform.
@@ -48,7 +48,7 @@ fn a_single_sample_quad_is_rejected() {
 fn a_quads_slice_spans_its_own_box() {
     let t = QuadTree::new(1.0, 3.0, 0.05, N, 0);
     let q = &t.nodes[0];
-    let s = q.slice(N, 0);
+    let s = q.slice(N, 0, prin_rs::grid::Chart::BodyPlane);
     let (lo, _) = s.decode_pos(0);
     let (hi, _) = s.decode_pos(N - 1);
     assert_eq!(lo, q.cx - q.half, "first sample is not the lower edge");

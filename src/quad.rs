@@ -14,7 +14,7 @@
 //! measured surrogate error is +38.6%, flat in `E`. The uniform kernel had to pool because it has
 //! no tree. This one computes every quad as a real quad at its own cell width.
 
-use crate::grid::Slice;
+use crate::grid::{Chart, Slice};
 
 /// Minimum samples per quad axis.
 ///
@@ -110,6 +110,13 @@ pub enum Decision {
     MaxLevel,
     /// Wanted to split; the budget ran out first. Reported, never silently dropped.
     BudgetExhausted,
+    /// The quad's tiles have shrunk to pixel size. **The everyday stop** — in normal
+    /// exploration this fires far shallower than any precision floor, and PR #11 had no
+    /// camera to apply it. View-relative: the same quad refines again when zoomed into.
+    ScreenFloor,
+    /// `level >= camera_depth + MAX_REL_DEPTH`. Replaces absolute `MaxLevel`, which caps
+    /// infinite zoom at ~14. Scheduler state, never on the sim key.
+    MaxRelDepth,
 }
 
 impl Decision {
@@ -122,6 +129,8 @@ impl Decision {
             Decision::PrecisionFloor => "precision_floor",
             Decision::MaxLevel => "max_level",
             Decision::BudgetExhausted => "budget_exhausted",
+            Decision::ScreenFloor => "screen_floor",
+            Decision::MaxRelDepth => "max_rel_depth",
         }
     }
     pub fn code(self) -> u8 {
@@ -133,6 +142,8 @@ impl Decision {
             Decision::PrecisionFloor => 4,
             Decision::MaxLevel => 5,
             Decision::BudgetExhausted => 6,
+            Decision::ScreenFloor => 7,
+            Decision::MaxRelDepth => 8,
         }
     }
 }
@@ -174,13 +185,13 @@ impl Quad {
     /// The `Slice` that samples this quad's `N × N` footprints.
     ///
     /// Panics below [`MIN_SAMPLES_PER_AXIS`] rather than silently corner-anchoring.
-    pub fn slice(&self, n: usize, body: usize) -> Slice {
+    pub fn slice(&self, n: usize, body: usize, chart: Chart) -> Slice {
         assert!(
             n >= MIN_SAMPLES_PER_AXIS,
             "samples per quad axis must be >= {MIN_SAMPLES_PER_AXIS}; \
              Slice::axis corner-anchors at n <= 1 and cell_widths clamps to 2*half"
         );
-        Slice { nx: n, ny: n, cx: self.cx, cy: self.cy, half: self.half, body }
+        Slice::body_plane(n, n, self.cx, self.cy, self.half, body).with_chart(chart)
     }
 
     /// Footprint spacing: `2*half/(n-1)`. Exactly halves per level.
@@ -219,10 +230,16 @@ pub struct QuadTree {
     /// Samples per quad axis, `N`.
     pub n: usize,
     pub body: usize,
+    /// The chart every quad in this tree decodes through. One tree, one chart.
+    pub chart: Chart,
 }
 
 impl QuadTree {
     pub fn new(cx: f64, cy: f64, half: f64, n: usize, body: usize) -> Self {
+        Self::with_chart(cx, cy, half, n, body, Chart::BodyPlane)
+    }
+
+    pub fn with_chart(cx: f64, cy: f64, half: f64, n: usize, body: usize, chart: Chart) -> Self {
         assert!(n >= MIN_SAMPLES_PER_AXIS, "samples per quad axis must be >= {MIN_SAMPLES_PER_AXIS}");
         let root = Quad {
             level: 0,
@@ -240,7 +257,7 @@ impl QuadTree {
             alpha_sibling_spread: None,
             decision: Decision::Pending,
         };
-        QuadTree { nodes: vec![root], n, body }
+        QuadTree { nodes: vec![root], n, body, chart }
     }
 
     /// Create four children of `i`. Returns their indices. Does **not** compute them.

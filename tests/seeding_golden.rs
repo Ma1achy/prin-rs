@@ -72,7 +72,7 @@ fn pixels_are_independent_and_order_free() {
 /// for both — latent on square grids, wrong on any other.
 #[test]
 fn jitter_is_bounded_by_the_per_axis_cell_width() {
-    let s = grid::Slice { nx: 5, ny: 3, cx: 1.0, cy: 3.0, half: 0.05, body: 0 };
+    let s = grid::Slice::body_plane(5, 3, 1.0, 3.0, 0.05, 0);
     let (hx, hy) = s.cell_widths();
     assert!((hx - 0.025).abs() < 1e-15 && (hy - 0.05).abs() < 1e-15, "hx={hx} hy={hy}");
     let frac = 0.5;

@@ -91,7 +91,7 @@ fn drift_falls_with_step_size_on_tractable_pixels() {
 fn grid_row_order_is_x_fastest() {
     // index = jy*nx + jx. The cross-check compares row by row, so this ordering is
     // load-bearing: getting it wrong would look like a physics disagreement.
-    let s = grid::Slice { nx: 3, ny: 2, cx: 0.0, cy: 0.0, half: 1.0, body: 0 };
+    let s = grid::Slice::body_plane(3, 2, 0.0, 0.0, 1.0, 0);
     let want = [
         (-1.0, -1.0), (0.0, -1.0), (1.0, -1.0),
         (-1.0,  1.0), (0.0,  1.0), (1.0,  1.0),
@@ -105,7 +105,7 @@ fn grid_row_order_is_x_fastest() {
 #[test]
 fn cell_widths_are_per_axis() {
     // The reference uses hx for both axes; latent on square grids, wrong on any other.
-    let s = grid::Slice { nx: 5, ny: 3, cx: 0.0, cy: 0.0, half: 1.0, body: 0 };
+    let s = grid::Slice::body_plane(5, 3, 0.0, 0.0, 1.0, 0);
     let (hx, hy) = s.cell_widths();
     assert!((hx - 0.5).abs() < 1e-15, "hx = {hx}");
     assert!((hy - 1.0).abs() < 1e-15, "hy = {hy}");

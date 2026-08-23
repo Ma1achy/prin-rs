@@ -1,5 +1,6 @@
 //! Per-pixel evaluation: build the copies, integrate them, reduce.
 
+use crate::decode::Path;
 use crate::grid::Slice;
 use crate::integrate::az::{self, AzOpts, RefPolicy};
 use crate::outcome::{self, Outcome, State};
@@ -55,6 +56,15 @@ pub struct EnsembleCfg {
     /// Factor applied to `eta` on each refinement pass. 1/4 sits past the measured cliff,
     /// which closed between `1e-2` and `3e-3`.
     pub refine_eta_factor: f64,
+    /// Which arithmetic forms each copy's initial condition. Default [`Path::DirectF64`] —
+    /// every result before the vertical slice. The other paths exist for the deep-zoom
+    /// measurement, where a **collapsed** decode is the failure to watch for: identical
+    /// footprints give a spread of exactly zero, which the criterion reads as
+    /// "perfectly resolved" rather than as "no data".
+    pub decode_path: Path,
+    /// Keep each copy's packed outcome, for the SSAA resolve. Off by default: it is only
+    /// wanted at render time, and it makes `PixelOut` allocate.
+    pub keep_copy_outcomes: bool,
     /// Maximum refinement passes. **Bounded on purpose, and not a scheduler**: each pass is
     /// one extra evaluation of a shrinking flagged subset, with no tree and no state carried
     /// between pixels.
@@ -87,6 +97,8 @@ impl Default for EnsembleCfg {
             refine_threshold: 10.0,
             refine_eta_factor: 0.25,
             refine_max_passes: 3,
+            keep_copy_outcomes: false,
+            decode_path: Path::DirectF64,
         }
     }
 }
@@ -227,6 +239,16 @@ pub struct PixelOut {
     pub energy_drift_max_coarse: f64,
     /// Whether the second pass ran on this pixel.
     pub refined: bool,
+
+    /// Every copy's packed `(state, detail)`, in copy order. Empty unless
+    /// [`EnsembleCfg::keep_copy_outcomes`] is set.
+    ///
+    /// **This is the SSAA input, and it is not `spread_event`.** The `E+1` copies serve two
+    /// jobs that must not be confused: `spread_*` is a *disagreement* statistic and drives
+    /// scheduling; resolve is an *average* and drives display. A pixel where the copies split
+    /// 4/4 has a large spread and a blended colour, and neither number substitutes for the
+    /// other.
+    pub copy_outcomes: Vec<u8>,
 }
 
 /// Consecutive boundaries a disagreement must survive before the latch counts it.
@@ -269,8 +291,8 @@ pub fn evaluate<T: Real>(slice: &Slice, idx: usize, cfg: &EnsembleCfg) -> PixelO
 /// The single pass. `eta` is explicit so the refinement pass can differ from `cfg.eta`.
 pub fn evaluate_at<T: Real>(slice: &Slice, idx: usize, cfg: &EnsembleCfg, eta_v: f64) -> PixelOut {
     let m = burrau::masses::<T>();
-    let copies = jitter::copies_with::<T>(
-        slice, idx, cfg.n_extra, cfg.jitter_frac, cfg.seed, cfg.jitter_scheme,
+    let copies = jitter::copies_with_path::<T>(
+        slice, idx, cfg.n_extra, cfg.jitter_frac, cfg.seed, cfg.jitter_scheme, cfg.decode_path,
     );
     let n = copies.len();
 
@@ -475,5 +497,6 @@ pub fn evaluate_at<T: Real>(slice: &Slice, idx: usize, cfg: &EnsembleCfg, eta_v:
         error_ratio_coarse: ratio.to_f64().unwrap(),
         energy_drift_max_coarse: drift_max,
         refined: false,
+        copy_outcomes: if cfg.keep_copy_outcomes { packed.clone() } else { Vec::new() },
     }
 }

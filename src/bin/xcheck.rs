@@ -84,7 +84,7 @@ fn dump_az(name: &str, t_max: f64, path: &str, lc_stable: bool) -> std::io::Resu
     let n_sync = n_sync_for(t_max);
     let eta = 0.01f64;
     let max_steps = 30_000usize;
-    let s = Slice { nx: 3, ny: 3, cx: 1.0, cy: 3.0, half: 0.05, body: 0 };
+    let s = Slice::body_plane(3, 3, 1.0, 3.0, 0.05, 0);
 
     let f = File::create(path)?;
     let mut w = BufWriter::new(f);

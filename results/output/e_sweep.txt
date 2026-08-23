@@ -1,0 +1,25 @@
+    Finished `release` profile [optimized] target(s) in 0.07s
+     Running `target/release/examples/e_sweep 6000 1e-4 0.2`
+budget 6000 quads, tau=1e-4, alpha_hi=0.2, N=8, t=13, f64
+viewport 512x512 when the veto is on; camera framing the root box.
+
+PREDICTION ON RECORD: low E biases toward refine, as low N did (N=4 spent 4x the
+quads of N=16). 'trajectories' is the quantity that decides the tier question.
+
+        region   veto   E+1   quads  leaves  depth  floor screen   trajectories   sib range    wall_s
+           far     on     2      21      16      2      0      0           2048      0.0162       0.0
+           far     on     4      21      16      2      0      0           4096      0.0075       0.1
+           far     on     8      21      16      2      0      0           8192      0.0107       0.2
+           far     on    16      21      16      2      0      0          16384      0.0108       0.4
+           far     on    32      21      16      2      0      0          32768      0.0108       0.9
+
+           far    OFF     2      21      16      2      0      0           2048      0.0162       0.1
+           far    OFF     4      21      16      2      0      0           4096      0.0075       0.1
+           far    OFF     8      21      16      2      0      0           8192      0.0107       0.2
+           far    OFF    16      21      16      2      0      0          16384      0.0108       0.5
+           far    OFF    32      21      16      2      0      0          32768      0.0108       0.8
+
+    near-field     on     2     713     535      6    157    296          68480      1.0022      10.7
+    near-field     on     4     697     523      6    120    348         133888      0.5358      17.2
+    near-field     on     8     549     412      6    100    252         210944      0.4833      27.5
+    near-field     on    16     809     607      6    114    408         621568      0.5019      76.1

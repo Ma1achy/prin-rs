@@ -1,0 +1,20 @@
+    Finished `release` profile [optimized] target(s) in 0.06s
+     Running `target/release/examples/sched_policies 10000 1e-4 0.2`
+equal budget 10000 quads, tau=1e-4, alpha_hi=0.2, N=8, t=13, f64
+A comparison at a threshold where neither policy descends is not a comparison, so
+alpha_hi comes from the sweep.
+
+        region    policy    quads   leaves   split   floor    keep  depth  med spread  max spread
+           far     alpha       21       16       5       0      16      2   4.2680e-8   1.7033e-7
+           far   sibling       21       16       5       0      16      2   4.2680e-8   1.7033e-7
+                shared leaves 16, alpha-only 0, sibling-only 0
+    near-field     alpha     4617     3463    1154     609    2854     12   5.7747e-5   1.4286e-1
+    near-field   sibling      497      373     124     235     138     11   7.9696e-4   3.8920e-3
+                shared leaves 264, alpha-only 3199, sibling-only 109
+ deep interior     alpha       29       22       7       9      13      4   9.4462e-5   7.1429e-1
+ deep interior   sibling       21       16       5       6      10      2   7.5328e-5   7.1429e-1
+                shared leaves 15, alpha-only 7, sibling-only 1
+
+Equal budget, so the question is where each SPENT it, not how much it used. A policy
+that floors the chaotic sea earlier has budget left for structure; one that does not
+starves the structure to feed the sea.

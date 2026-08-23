@@ -215,6 +215,25 @@ would say about a system nothing is known about; if the answer is "confident", i
 the rows are not one trajectory at different playheads. Scale `n_sync` with `t_max`, or run
 once and evaluate at each boundary.
 
+**Never compute a refinement exponent by pooling — and in the scheduler, never aggregate silently.**
+A quad holds `N x N` footprint spreads and needs one number. Measured: **half the shared decisions
+flip** between mean, median and p90 (54.1% and 49.1% against median in near-field), and the trees
+overlap by 3-13%. median under-refines thin structure (blind to a filament crossing a quad); mean
+over-refines and blows the budget; p90 refines deepest, narrowest, and floors 55% of leaves. Three
+schedulers wearing one name. State the aggregation wherever a tree is quoted.
+
+**Coarse `N` OVER-refines. The cheaper quad is a false economy.**
+The concern on record was that a low `N` makes a quad call itself *coherent* by undersampling its
+area. Measured, the opposite: leaf count falls monotonically with `N` (near-field 106, 31, 19, 16
+at `N = 4, 7, 8, 16`), because a noisy spread estimate biases toward *refine* — the conservative
+failure direction. `N = 4` spends 4x the quads of `N = 16` on the same region.
+
+**In the scheduler, `alpha_hi` does more work than the criterion, and `tau` is often inert.**
+`tau = 1e-8` and `1e-6` give identical trees in near-field (the spread never falls that low), while
+`alpha_hi` from 0.20 to 0.50 collapses the tree **80x**. The alpha median is +0.389, so the
+threshold sits inside the distribution. Sweep both before quoting any tree; never pick either to
+make a picture look right.
+
 **Never conclude "no effect" from an aggregate without the per-pixel distribution.**
 An aggregate can only say the distribution did not move; it cannot say the pixels did not.
 Measured twice in one PR: LC-branch `spread_shape` rows identical to five digits while **all

@@ -1,0 +1,22 @@
+    Finished `release` profile [optimized] target(s) in 0.06s
+     Running `target/release/prinq --region far --budget 8000 --tau 1e-4 --alpha-hi 0.2 --alpha-band 0.4 --overlay 512 --out results/sched-far`
+region far half=0.05 body=0  N=8 copies=8  precision=f64
+policy=alpha order=spread agg=median tau=0.0001 alpha_hi=0.2 alpha_lo=0.08000000000000002 sib_tau=0.5 bootstrap=2
+
+  21 quads computed of a 8000 budget, 1344 footprints, 10752 trajectories
+  0.15 s wall, 7.2 ms/quad
+  3 iterations, 16 leaves
+
+  leaf decisions:  split 0  floor 0  keep 16  precision_floor 0  max_level 0  budget 0
+  budget exhausted: false
+
+  depth histogram: 2:16
+  leaves per iteration: 1 4 16
+
+wrote results/sched-far.tree
+wrote results/sched-far_tree_outcome.png and results/sched-far_tree_spread.png (512x512 base)
+spread base log scaled over [2.303e-9, 2.363e-9]; the tree tracks spread, not
+outcome labels, so that is the base the tree should be checked against.
+
+The tree and the decisions are the output; the image is a diagnostic. A threshold
+chosen because the picture looked right is an arbitrary constant — sweep, do not tune.

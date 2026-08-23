@@ -377,7 +377,135 @@ three are dumped.
 
 ---
 
-## 5. What this invalidates in the prior numpy investigation
+## 5. The scheduler — the criterion in a loop
+
+Everything above measured the criterion on **one split in isolation**. `prinq` descends from one
+quad, adaptively, at a fixed playhead. `N = 8` footprints per quad axis, `E+1 = 8` copies each, so
+**one quad is 512 trajectories** and the budget is counted in quads.
+
+### It terminates, and the floor engages
+
+`alpha_hi = 0.2`, `tau = 1e-4`, **no depth cap**, budget 50 000 quads:
+
+| region | quads used | leaves | depth | terminated | floored | hit the cap |
+|---|---|---|---|---|---|---|
+| far | **21** | 16 | 2 | 100% | 0.0% | no |
+| near-field | **4617** | 3463 | 12 | 100% | 17.6% | no |
+| deep interior | **29** | 22 | 4 | 100% | 40.9% | no |
+
+The Wada-dense-boundary fear — that spread stays high however far you refine — does not
+materialise here. No leaf hit the budget, the depth cap, or the precision floor. The floor branch
+works and bites hardest where it should: 40.9% in the most chaotic region, 0% in the tame one,
+which exits through *keep* because its spread is already below `tau`.
+
+**But what terminates the descent is `tau`, not the floor.** In near-field's deepest two levels the
+exponent has median **+3.945** while the spread is `1.4e-5`, below `tau`. Those quads split because
+their *parents* were above `tau`, and the split collapsed the spread ~16×. 82.4% of leaves exit
+through *keep*. So this is termination **at `tau = 1e-4`**, and at `tau = 1e-8` the same descent
+exhausted a 2000-quad budget with 869 leaves still wanting to split. Bounded, not general.
+
+### The threshold does more work than the criterion
+
+near-field, budget 2000:
+
+| tau | alpha_hi | quads | leaves | depth | budget-blocked |
+|---|---|---|---|---|---|
+| 1e-8 | **0.20** | 1997 | 1498 | 8 | 869 |
+| 1e-8 | 0.50 | 25 | 19 | 3 | 0 |
+| 1e-6 | **0.20** | 1997 | 1498 | 8 | 869 |
+| 1e-4 | 0.20 | 1997 | 1498 | 8 | 343 |
+| 1e-3 | 0.20 | 441 | 331 | 8 | 0 |
+| 1e-2 | 0.20 | 21 | 16 | 2 | 0 |
+
+`tau = 1e-8` and `1e-6` give **identical trees** — the spread never falls that low, so `tau` never
+binds. Meanwhile `alpha_hi` from 0.20 to 0.50 collapses the tree **80×**. near-field's `alpha`
+median is +0.389, so the threshold sits *inside* the distribution and a small move flips most
+decisions. Which knob binds is region-dependent: at `tau = 1e-4` deep interior stops at 29 quads
+while near-field runs to 4617.
+
+### The aggregation is three schedulers wearing one name
+
+A quad holds `N²` footprint spreads and needs one number. Budget 6000:
+
+| region | agg | quads | leaves | depth | floor | leaf jaccard vs median | decisions differing |
+|---|---|---|---|---|---|---|---|
+| near-field | median | 4617 | 3463 | 12 | 609 | — | — |
+| near-field | mean | 5997 | 4498 | 9 | 847 | 0.0963 | **54.1%** |
+| near-field | p90 | 1141 | 856 | **14** | 472 | 0.0283 | **49.1%** |
+| deep interior | median | 29 | 22 | 4 | 9 | — | — |
+| deep interior | mean | 161 | 121 | 7 | 38 | 0.1260 | **34.5%** |
+| deep interior | p90 | 81 | 61 | 7 | 30 | 0.2388 | **34.5%** |
+
+**Half the shared decisions flip and the trees overlap by 3–13%.** median under-refines structure,
+being blind to a thin filament crossing a quad; mean over-refines and is the only configuration
+here to hit a cap; p90 refines deepest and narrowest and floors 55% of its leaves. Three different
+intentions — resolve the typical footprint, the total, or the worst — and which is wanted is a
+display question this cannot settle. What it settles is that the choice must be stated wherever a
+tree is quoted.
+
+### Coarse `N` over-refines, which is the opposite of the stated concern
+
+Fixed budget 4000 quads. The worry on record was that a low `N` makes a quad call itself *coherent*
+by undersampling its area:
+
+| region | N | traj/quad | leaves | depth |
+|---|---|---|---|---|
+| near-field | 4 | 128 | **106** | 5 |
+| near-field | 8 | 512 | 19 | 3 |
+| near-field | 16 | 2048 | **16** | 2 |
+| deep interior | 4 | 128 | **40** | 4 |
+| deep interior | 16 | 2048 | **16** | 2 |
+
+Leaf count falls monotonically with `N`. A coarse quad calls itself **uncertain**, not coherent —
+a noisy spread estimate biases toward *refine*, the conservative failure direction — so `N = 4`
+spends four times the quads of `N = 16` on the same region. The cheaper quad is a false economy.
+
+The `N = 7` probe of parent–child common random numbers is **inconclusive**: it sits between 4 and
+8 in near-field and matches 8 exactly in deep interior. The `N` trend dominates; no separable CRN
+effect.
+
+### The reliability signal works, and is 9× cheaper
+
+Equal budget, near-field: the **sibling-spread** policy reaches depth 11 on **497 quads** against
+the α policy's depth 12 on **4617**. It floors 63% of leaves against 18%. Where the four sibling
+exponents scatter, the unreliability *is* the answer and no trustworthy α is needed.
+
+Cheaper is not the same as better: its median quad spread is `7.97e-4` against `5.78e-5`, so it
+leaves an order more uncertainty on the table. The two trees are not nested — 109 leaves are
+sibling-only — so it is not a truncation of the other. `alpha_sibling_spread` is the **range of
+four samples** and is itself noisy; this result makes the policy worth pursuing and that noise the
+next thing to characterise.
+
+### Thrash is real, and it is per-quad noise
+
+Adjacent leaf pairs with spreads within 1.5× that sit at **different levels**. near-field:
+**0.3392 at N=4, 0.2179 at N=8, 0.0733 at N=16.** More samples, less noise, fewer contradictory
+neighbours — which is what identifies it as noise rather than structure.
+
+Adjacent siblings share an edge column of footprints *identically* (`1/N` of a quad: 25% at N=4,
+6.25% at N=16), which makes neighbours more alike and **suppresses** apparent thrash. The
+most-suppressed row shows the most thrash, so the true N=4 figure is above 0.339 and the trend is
+understated.
+
+### Ordering matters; which ordering does not
+
+At a budget that binds (1500 quads, near-field): shuffling changes **600 of 1123 leaves, 42% of the
+tree**, at identical cost. But `spread` and `spread × area` produce **byte-identical** trees. The
+priority function is load-bearing; the choice between these two candidates is free.
+
+### The tree looks right in one region and wrong in another
+
+Against the spread base, near-field refines in coherent bands — but leaves the brightest, thinnest
+filaments in coarse quads. **`deep interior` fails outright**: it leaves the large high-spread wedge
+and the bright diagonal bands at level 2 while spending its only fine refinement on an unremarkable
+central patch. `far` is uniform at level 2, correctly.
+
+The first overlay was drawn over the **outcome** image, which is 97.7% one colour in near-field, and
+that version would have passed inspection. Both are now written; only the spread base is a check.
+
+---
+
+## 6. What this invalidates in the prior numpy investigation
 
 Those documents live outside this repository. Each item below is a specific correction with the
 measurement behind it.
@@ -459,7 +587,7 @@ not earliness.
 
 ---
 
-## 6. Reproducing any of this
+## 7. Reproducing any of this
 
 Every table above comes from a committed example. Raw output for all of them is in
 [`results/output/`](results/output/), the acceptance-gate and cross-check output is in
@@ -481,6 +609,14 @@ Every table above comes from a committed example. Raw output for all of them is 
 | §1 pooled vs true parent | `cargo run --release --example pooled_vs_true_parent` |
 | the offset properties | `cargo test --release --test halton_offsets -- --nocapture` |
 | a full slice | `cargo run --release --bin prin -- --region near-field --size 256 --out out` |
+| §5 the descent | `cargo run --release --bin prinq -- --region near-field --budget 8000 --tau 1e-4 --alpha-hi 0.2 --alpha-band 0.4 --overlay 512 --out t` |
+| §5 thresholds | `cargo run --release --example sched_sweep` |
+| §5 termination | `cargo run --release --example sched_terminate -- 50000 1e-4 0.2` |
+| §5 aggregation | `cargo run --release --example sched_agg -- 6000 1e-4 0.2` |
+| §5 policies | `cargo run --release --example sched_policies -- 10000 1e-4 0.2` |
+| §5 ordering | `cargo run --release --example sched_order -- 1500 1e-4 0.2` |
+| §5 N sweep | `cargo run --release --example sched_n_sweep -- 4000 1e-4` |
+| §5 thrash | `cargo run --release --example sched_thrash -- 1e-4 0.2` |
 | the acceptance gates | `cargo test --release -- --nocapture` |
 | the NumPy cross-check | `cargo test --release --test xcheck -- --ignored --nocapture` |
 | the horizon table | `python3 tools/xcheck/horizon.py [--lc-unstable]` |

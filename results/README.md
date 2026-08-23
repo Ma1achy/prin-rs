@@ -87,6 +87,29 @@ rows = [struct.unpack_from(f"<{nf}d", d, off + i*nf*8) for i in range(n)]
 | `output/bench_deriv.txt` | `deriv` throughput, extrapolated to 1024²×8 |
 | `output/render-*.txt` | the 256² renders, one per region |
 
+## The scheduler
+
+`sched-*_tree.png` — leaf boundaries drawn over a 512² uniform render of the same box, one per
+region. Deeper leaves are brighter, so the depth is visible without a legend, and the base is dimmed
+so the boundaries read. **The picture is a diagnostic; the threshold sweep is the result** — a
+threshold chosen because the image looked right is an arbitrary constant.
+
+`sched-*.tree` — the tree dump, magic `PRNQ`, one record per quad with 24 fields: `level`, bounds,
+`cell_width`, the three spread aggregations, `alpha` under each of them, `alpha_sibling_spread`,
+`error_ratio_max`, `worst_energy_drift`, and the decision taken. Same self-describing header shape
+as the pixel dump, carrying every threshold, the policy, the order, the aggregation, the budget and
+the trajectory cost per quad.
+
+| file | what it measures |
+|---|---|
+| `output/sched_sweep.txt` | §4 q7 — threshold sensitivity. **Runs first, because it is what sets `tau`** |
+| `output/sched_terminate.txt` | §4 q1, q2 — does the descent terminate, does the floor engage |
+| `output/sched_thrash.txt` | §4 q4 — adjacent leaf pairs at different levels with similar spread |
+| `output/sched_policies.txt` | §4 q5 — sibling-spread policy against the alpha policy, equal budget |
+| `output/sched_order.txt` | §4 q6 — priority against shuffled, same budget |
+| `output/sched_n_sweep.txt` | the N sweep, including `N = 7` to vary parent–child CRN strength |
+| `output/prinq-*.txt` | the per-region descents that produced the overlays |
+
 ## Test and cross-check output
 
 `tests/*.txt` is the raw output of each test binary, run with `--nocapture --test-threads=1` so
@@ -104,6 +127,7 @@ lives only in pull-request descriptions.
 | `tests/error_ratio.txt` | the five invariants, including step-size convergence |
 | `tests/outcome_encoding.txt` | BRIEF §2.4's encoding, the >=2-pair rule, scale invariance of `t_end` |
 | `tests/f32_precision.txt` | the floor divergence, and gate (b) parameterised by precision |
+| `tests/quadtree.txt` | quadtree geometry: exact cell-width halving, tiling, no pooling, precision floor, budget |
 | `tests/halton_offsets.txt` | the fixed prefix: radical inverse, fixedness across resolutions, discrepancy against PCG |
 | `tests/lc_conditioning.txt` | inverse-LC branch conditioning |
 | `tests/spread_branch_cut.txt` | whether `spread_shape` inherits the branch cut |

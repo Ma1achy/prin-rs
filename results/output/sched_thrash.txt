@@ -1,0 +1,23 @@
+    Finished `release` profile [optimized] target(s) in 0.01s
+     Running `target/release/examples/sched_thrash 1e-4 0.2`
+adjacent leaf pairs, tau=1e-4, alpha_hi=0.2, budget 4000 quads, t=13, f64
+
+**A uniform tree cannot thrash.** Where the descent stops at the bootstrap every leaf
+is the same level, so `diff level` is structurally 0 and a thrash of 0.0000 means the
+tree never descended - not that neighbours agreed. Read the depth column with it.
+'similar spread' = within a factor of 1.5 of each other
+
+        region    N  leaves  depth adj pairs  similar  diff lvl   thrash  edge share
+           far    4      16      2        24       24         0   0.0000       25.0%
+           far    8      16      2        24       24         0   0.0000       12.5%
+           far   16      16      2        24       24         0   0.0000        6.2%
+    near-field    4    2998      9      6671     3579      1214   0.3392       25.0%
+    near-field    8    2998     10      6077     2529       551   0.2179       12.5%
+    near-field   16    2569     10      5448     2688       197   0.0733        6.2%
+ deep interior    4    1936     10      4088     3453        31   0.0090       25.0%
+ deep interior    8      22      4        40       20         6   0.3000       12.5%
+ deep interior   16      16      2        24       13         0   0.0000        6.2%
+
+'thrash' is diff-level over similar-spread adjacent pairs. The last column is the
+fraction of a quad's footprints it shares identically with each edge neighbour, so
+every thrash figure is a LOWER BOUND and the bound is loosest at small N.

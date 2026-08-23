@@ -16,7 +16,7 @@ use crate::outcome::State;
 ///
 /// `detail = 3` — the two "all three" outcomes — gets the brightest shade of its family, so a
 /// triple reads at a glance rather than blending into ordinary collisions or escapes.
-fn outcome_rgb(p: &PixelOut) -> [u8; 3] {
+pub fn outcome_rgb(p: &PixelOut) -> [u8; 3] {
     if p.n_nonfinite > 0 {
         return [255, 0, 255]; // magenta: undetermined, deliberately loud
     }

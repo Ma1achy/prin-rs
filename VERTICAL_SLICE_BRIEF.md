@@ -50,6 +50,39 @@ linearised path can escape a floor set by the *chart coordinate*; it cannot esca
 
 ---
 
+## 0b. What must be carried back to the canonical spec
+
+Two of this build's results are corrections to documents outside this repository. Recorded here so
+they are not left as local findings.
+
+**The canonical spec's decode wording is wrong as literal arithmetic.** It says the GPU does
+*"quad-local relative arithmetic (`x = x0 + J_D . delta`)"*. **That exact expression evaluated in
+f32 is the collapsing path.** Measured: it loses samples at depth 14 and is down to one initial
+condition by depth 22 — collapsing rung for rung with plain f32, which is to say it buys nothing
+at all. Someone implementing from the spec would write the naive form, and it would fail
+*invisibly*, because a collapsed decode agrees perfectly with a collapsed reference.
+
+The form that delivers the claimed benefit is the **split** one: `x0` in f64 on the CPU, `delta`
+and `J_D . delta` in f32, promoted and **summed in f64**. The spec should say so.
+
+And the benefit is narrower than the spec claims: **~24 levels for an f32 consumer, and zero over
+f64.** The split form lets an f32 GPU *reach* the f64 CPU's floor; it does not push past it. The
+"~50+" figure is f64's number, not something the linearisation creates.
+
+**The linearisation's real justification is the opposite of the one usually given.** It is
+currently defended on precision grounds. The stronger argument is that **the approximation gets
+better exactly where it is forced to be used**: `|direct - linearised|` against the sample spacing
+runs 0.39 at `half = 0.05` and 3.6e-7 at depth 20, because the discarded term is `O(h²)` against a
+spacing of `O(h)`. It exceeds one sample spacing only for boxes larger than any this project
+renders. The caching design should cite that rather than precision alone.
+
+**And a scheduler's depth cap is two numbers, not one.** The screen floor is arithmetic;
+`MAX_REL_DEPTH` is a policy default. They coincide at `N = 8` on a 512² viewport, which is the only
+configuration anyone had measured, and **diverge at every larger viewport**, where the default
+silently becomes the tighter of the two. A tree quoted with only one of them is underspecified.
+
+---
+
 ## 1. What PR #11 could not see, and why it matters
 
 ### 1.1 The screen floor is the everyday stop and it was absent

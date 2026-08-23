@@ -843,22 +843,61 @@ row so this is readable rather than inferable.
 `deep interior` is unaffected: its floored quads live at levels 2-4 and the veto never fires
 there, so its correlation is measured on the same population either way.
 
-**Item 2 — does p90 aggregation fix `deep interior`'s tree?** Yes. It is aggregation.
+**Item 2 — does p90 aggregation fix `deep interior`'s tree?** Yes. It is aggregation. **And the
+fix collides with the screen floor, mildly for p90 and severely for mean.**
+
+Without a camera:
 
 | agg | quads | leaves | depth | depth histogram |
 |---|---|---|---|---|
 | median | 29 | 22 | 4 | 2:15 3:3 4:4 |
-| mean | 161 | 121 | 7 | 2:10 3:17 4:24 5:12 6:2 7:56 |
-| p90 | 81 | 61 | 7 | 2:11 3:15 4:17 5:11 6:3 7:4 |
+| mean | 161 | 121 | **7** | 2:10 3:17 4:24 5:12 6:2 7:56 |
+| p90 | 81 | 61 | **7** | 2:11 3:15 4:17 5:11 6:3 7:4 |
 
 Median stalls at depth 4 with fifteen of its twenty-two leaves still at level 2. Both mean and p90
 descend to **depth 7**. So §5's q3 failure is **median blindness** — a thin filament crossing a
 quad does not move the median of 64 footprint spreads — and the attribution stated there as
-"plausible and unproven" is now measured.
+"plausible and unproven" is now measured. It is *not* p90 specifically: mean descends further
+still.
 
-Note it is *not* p90 specifically: mean descends further still (121 leaves against 61). The
-finding is that the median is blind, not that p90 is the right answer. Which aggregation a
-scheduler should use remains §5's open question, and this narrows it by one.
+**But depth 7 is one level past what a 512² viewport can display**, so the fix and the veto want
+different things in exactly the configuration production runs. `results/output/agg_vs_floor.txt`
+measures the cost:
+
+| viewport | `MAX_REL_DEPTH` | agg | leaves | depth | screen | relcap | histogram |
+|---|---|---|---|---|---|---|---|
+| 512² | 6 | mean | **79** | 6 | 16 | 0 | 2:10 3:17 4:24 5:12 6:16 |
+| 512² | 6 | p90 | **58** | 6 | 4 | 0 | 2:11 3:15 4:17 5:11 6:4 |
+| 1024² | **7** | mean | 121 | 7 | 0 | 0 | 2:10 3:17 4:24 5:12 6:2 7:56 |
+| 1024² | **7** | p90 | 61 | 7 | 4 | 0 | 2:11 3:15 4:17 5:11 6:3 7:4 |
+| 2048² | 8 | either | 121 / 61 | 7 | 0 | 0 | identical to no-camera |
+
+**The truncation costs p90 three leaves of sixty-one (4.9%) and mean forty-two of a hundred and
+twenty-one (34.7%).** Both keep an identical tree at levels 2–5; the difference is entirely in what
+piles up at the cap. So p90's fix survives the production viewport nearly intact and mean's does
+not — a ground for preferring p90 that has nothing to do with the statistic itself.
+
+At **1024²** — where `4^7 x 64 = 1,048,576` makes level 7 displayable — the fix is fully realised
+for mean and all but four leaves for p90. The collision is therefore a *resolution* limit, not a
+design conflict: the aggregation the region needs is affordable one viewport step up.
+
+**The two regions answer this oppositely, and that is the more useful result.** `deep interior`'s
+descent is **criterion-bound**: the veto touches 4 of p90's leaves at 512² and none at 2048², so
+raising the viewport hands the region straight back to the criterion. near-field's is
+**view-bound at every viewport tested** — at 1024² with `MAX_REL_DEPTH = 7` it still floors 576 of
+median's 844 leaves, 756 of mean's 988 and 88 of p90's 271. Its structure is dense at every scale,
+so more pixels buy more tree without ever reaching the point where the criterion decides.
+
+So "does the aggregation fix collide with the floor" has no single answer: in the region the fix
+was *for*, it does not, at one viewport step up. In near-field the question does not arise,
+because the criterion was never what was stopping the descent.
+
+**And a trap the same table exposes.** At 1024² with `MAX_REL_DEPTH` left at its default 6, the
+tree is **identical to the 512² tree** and the `screen` column reads **zero** — which looks
+exactly like "the viewport made no difference". It is not: `MAX_REL_DEPTH` had taken over as the
+binding cap, and it is a *policy default*, not arithmetic. The two coincide at 512² and diverge
+above it. **Report both cap columns or the viewport looks inert**; the first version of this run
+showed only `screen` and would have been read that way.
 
 ### 8.10 The deep-zoom decoder: two results, both narrower than the claim
 
@@ -1034,6 +1073,7 @@ Every table above comes from a committed example. Raw output for all of them is 
 | §8 deep zoom in situ | `cargo run --release --example deep_zoom -- 400` |
 | §8 SSAA resolve | `cargo run --release --example ssaa_resolve -- 256` |
 | §8 the open items | `cargo run --release --example open_items -- 6000` |
+| §8 aggregation vs the floor | `cargo run --release --example agg_vs_floor -- 6000 1e-4 0.2` |
 | §8 adaptive render | `cargo run --release --example adaptive_render -- near-field 6000 1e-4 0.2` |
 | §8 the zoom ladder (APNG) | `cargo run --release --example zoom_sequence -- near-field 9 2000` |
 | §8 the vertical-slice tests | `cargo test --release --test vertical_slice -- --nocapture` |

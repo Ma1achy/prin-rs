@@ -1578,14 +1578,24 @@ eight do not return the value bitwise, so the residual is **5.551115e-17**. Meas
   direct_f32: copies distinct 1/8  spread 5.551115e-17  sigma_E(0) 0.000e0
 ```
 
-That residual is twelve orders below `tau_display = 1e-4`. **No threshold anyone would set can
-separate a fully collapsed quad from a perfectly resolved one**, and a small tidy tree built out
+That residual is **exactly `2^-54`** — one rounding step, `f64::EPSILON / 4` — which is what makes
+it structurally unreachable by an equality test rather than merely small. It is twelve orders
+below `tau_display = 1e-4`. **No threshold anyone would set can separate a fully collapsed quad
+from a perfectly resolved one**, and a small tidy tree built out
 of nothing is exactly what a collapsed decode produces.
 
 The fix is not a smaller epsilon. It is to stop asking a *statistic* whether the data was there
 and ask the *data*: `decode::distinct` counts distinct initial conditions by bitwise comparison of
 all twelve state components, which is exact and cannot drift. The spread is reported beside it, as
 the number the criterion would have believed.
+
+**And it connects to a limitation already on record.** `deep interior`'s floored quads carry a
+median `worst_energy_drift` of **3.256e-1** — 33% energy error — while `error_ratio` on the same
+quads does not flag them. That is exactly the blind spot the design notes record: `error_ratio` is
+a ratio of *spreads*, so a drift correlated across the copies cancels in it. Two findings that
+corroborate: the flag that should have caught the bad quads is structurally blind to that failure
+mode, and `worst_energy_drift` beside it is what caught them. Both fields are needed, as specced,
+and neither is redundant.
 
 Note `sigma_E(0) = 0` in the collapsed row. That is a second, independent signal of the same
 failure and it *is* exactly zero, because it is a spread of energies rather than a distance from a
@@ -1638,3 +1648,50 @@ identical in every column. The fibre phase is a global rotation and the three-bo
 rotation-invariant, so they must be; if the Hopf inverse or the AZ port had broken rotational
 invariance, they would have separated. Kept, because it costs nothing and it is the only
 rotational-invariance check in the suite that runs through the *new* chart code.
+
+### 12.9 The screen floor and `MAX_REL_DEPTH` are different caps, and reporting one hides the other
+
+Raised in the PR #12 review: `deep interior` under mean or p90 reaches depth 7, and the screen
+floor at `N = 8` on a 512² viewport sits at level 6. Does the aggregation fix collide with the
+veto in exactly the configuration production runs?
+
+**Yes, and it separates the two aggregations.** Measured in `agg_vs_floor.txt`:
+
+| viewport | `MAX_REL_DEPTH` | agg | leaves | depth | cost of the cap |
+|---|---|---|---|---|---|
+| 512² | 6 | mean | 79 | 6 | **−42 of 121, 34.7%** |
+| 512² | 6 | p90 | 58 | 6 | **−3 of 61, 4.9%** |
+| 1024² | 7 | mean | 121 | 7 | none |
+| 1024² | 7 | p90 | 61 | 7 | 4 leaves screen-floored |
+
+Both keep an identical tree at levels 2–5; the whole difference is what piles up at the cap. So
+**p90's fix survives the production viewport nearly intact and mean's does not** — a reason to
+prefer p90 that has nothing to do with the statistic's own properties, and one neither the design
+docs nor PR #11 could have found, because neither had a camera.
+
+The collision is a *resolution* limit rather than a design conflict: `4^7 x 64 = 1,048,576`, so
+level 7 is displayable at 1024² and the aggregation the region needs is affordable one viewport
+step up.
+
+**The trap, and it is the point of this note.** At 1024² with `MAX_REL_DEPTH` left at its default
+6, the tree is **identical to the 512² tree** and the `screen` column reads **zero**. That reads
+as "the viewport made no difference". It is wrong: `MAX_REL_DEPTH` had taken over as the binding
+cap. The two coincide at 512² by construction — the contract's `MAX_REL_DEPTH <= screen floor`,
+with 6 chosen to match — and **diverge at every larger viewport**, where the default silently
+becomes the tighter of the two.
+
+The first version of this run reported only `screen`, showed it falling to zero while the tree did
+not grow by one quad, and would have been written up as "the viewport is inert". Two caps, one
+column, wrong conclusion.
+
+**And the two regions answer the collision question oppositely.** `deep interior` is
+**criterion-bound** — the veto touches 4 of p90's 61 leaves at 512² and none at 2048², so a
+viewport step hands the region back to the criterion. near-field is **view-bound at every viewport
+tested**: at 1024² with `MAX_REL_DEPTH = 7` it still floors 576 of median's 844 leaves, 756 of
+mean's 988, 88 of p90's 271. Its structure is dense at every scale, so more pixels buy more tree
+and never reach the point where the criterion decides. A question about "the" collision has no
+single answer; it is a per-region property and has to be reported as one.
+
+**So: a scheduler's depth cap is two numbers, and a tree quoted with only one of them is
+underspecified.** `MAX_REL_DEPTH` is a policy default; the screen floor is arithmetic. State both
+wherever a tree is quoted, the same way §11 requires the aggregation to be stated.

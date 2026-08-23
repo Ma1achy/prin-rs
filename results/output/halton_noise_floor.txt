@@ -46,6 +46,8 @@ alpha sigma_E(0) [truth 1]      1.3857        0.0010
   rho(alpha_E - 1, alpha_shape) = -0.0789
   fitted beta = -153.7626
   predicted variance reduction 1 - rho^2 = 0.9938
+  alpha_shape sd = 0.7302, interdecile = 0.6326, ratio = 0.866 (normal 2.563)
+  excess kurtosis = 110.04 (normal 0) — the variance lives in the tails
   measured floor ratio, regression      = 1.0396
   measured floor ratio, additive        = 1.0008
   var(alpha_E) = 1.403e-7   var(alpha_shape) = 5.331e-1
@@ -60,6 +62,8 @@ alpha sigma_E(0) [truth 1]      1.0762        0.4796
   rho(alpha_E - 1, alpha_shape) = -0.0419
   fitted beta = -0.1637
   predicted variance reduction 1 - rho^2 = 0.9982
+  alpha_shape sd = 0.7567, interdecile = 0.6313, ratio = 0.834 (normal 2.563)
+  excess kurtosis = 110.34 (normal 0) — the variance lives in the tails
   measured floor ratio, regression      = 1.0544
   measured floor ratio, additive        = 1.2574
   var(alpha_E) = 3.753e-2   var(alpha_shape) = 5.725e-1

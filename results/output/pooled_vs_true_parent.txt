@@ -1,0 +1,51 @@
+   Compiling prin-rs v0.1.0 (/Users/malachy/src/principia-rs-test)
+    Finished `release` profile [optimized] target(s) in 3.93s
+     Running `target/release/examples/pooled_vs_true_parent`
+=== is the pooled block a parent? ===
+alpha for sigma_E(0). True value is EXACTLY 1.0, so every departure is error.
+near-field, fine 64x64, coarse 32x32.
+
+     E+1    scheme    pooled med      true med  pooled |err|    true |err|
+       4    Halton        1.6678        1.0231        0.6678        0.0231
+       4       Pcg        1.2798        0.8843        0.2798        0.1157
+       8    Halton        1.3857        1.0227        0.3857        0.0227
+       8       Pcg        1.0762        0.9447        0.0762        0.0553
+      16    Halton        1.1668        1.0227        0.1668        0.0227
+      16       Pcg        1.0137        0.9762        0.0137        0.0238
+      32    Halton        1.0661        1.0227        0.0661        0.0227
+      32       Pcg        0.9887        0.9872        0.0113        0.0128
+
+If the true-parent column sits at 1.0 while the pooled one does not, the +38.6% is
+the surrogate and not the estimator, and the remedy is to render twice rather than
+to calibrate a correction.
+
+The true-parent column is FLAT in E under Halton at 0.0227, while the pooled one
+runs 0.67 -> 0.07. The pooled bias is the surrogate, not the estimator, and it is
+removed by rendering rather than by calibrating. The residual 0.0227 is what a
+true two-resolution comparison actually costs, and it does not shrink with E.
+
+Under PCG the true parent is WORSE at small E (0.1157 against 0.2798 pooled is
+better, but 0.0553 against 0.0762 at E+1=8 is a much smaller gap): pooling gives
+4x the samples, and PCG's per-footprint randomisation partly compensates for the
+surrogate error it would otherwise have. Two wrongs, partially cancelling.
+
+=== alpha_shape by TRUE two-resolution rendering ===
+Integrating 64x64 and 32x32 at t=13 for both schemes.
+
+    scheme    method       p10       p25       p50       p75          p90   p90-p10
+    Halton      true   -0.6568   -0.2803    0.0368    0.3378       0.6696    1.3264
+       Pcg      true   -0.5934   -0.2646    0.0745    0.3768       0.7118    1.3051
+
+Compare against the pooled figures RESULTS.md reported: median 0.1386 / 0.1722 and
+interdecile 0.6326 / 0.6313 for Halton / PCG. Every per-quad scatter quoted before
+this table was measured by pooling, and pooling UNDERSTATES it by about 2x.
+
+=== region separation, also by true two-resolution rendering ===
+        region       p10    median       p90      p90-p10
+    near-field   -0.6568    0.0368    0.6696       1.3264
+    body2 core   -0.3673    0.1844    0.7405       1.1078
+     mid-field    1.0224    1.0229    1.0235       0.0010
+           far    1.0228    1.0230    1.0232       0.0004
+
+separation between region medians: 0.9862
+against a within-region interdecile scatter of about 1.33.

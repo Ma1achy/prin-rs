@@ -125,12 +125,25 @@ Sampling noise is only ~7% of that scatter (`var` falls 5.725e-1 -> 5.331e-1, ag
 under either scheme against a region separation of ~1.0 — so the criterion resolves regions, not
 quads, for a reason compute cannot buy off.
 
-**The 2x2 aggregation is a weaker parent surrogate than "a fine grid contains every coarser
-scale" implies.** True of the positions, false of the ensemble: with fixed offsets a pooled block
-is four *exact repeats* of one pattern at four cell centres, so `alpha_E` carries a geometric
-bias of +38.6% at `E+1 = 8` that falls as `1/E`. Deterministic, therefore calibratable — but do
-not subtract it from `alpha_shape`, which does not share it (chaos washes the geometry out by
-`t = 13`).
+**Never compute a refinement exponent by pooling a 2x2 block. Render at two resolutions.**
+"A fine grid contains every coarser scale by aggregation" is true of the positions and false of
+the ensemble: with fixed offsets a pooled block is four *exact repeats* of one pattern at four
+cell centres, while a true parent carries offsets scaled to its own, wider cell. Measured on a
+control whose true value is exactly 1.0, the pooled exponent is **+38.6% at `E+1 = 8`** (falling
+as `1/E`) against a true two-resolution error **flat at +2.3%**; pooling also understates the
+per-quad scatter by ~2x. Not a correction factor — a different measurement.
+
+**In tame regions the criterion resolves individual quads; in chaotic ones nothing does.**
+True two-resolution `alpha_shape`: `mid-field` and `far` sit at 1.023 with an interdecile of
+**0.0004-0.001**, `near-field` and `body2 core` at 0.04-0.18 with **1.1-1.3**. The region
+separation is 0.986. "Not resolvable per quad" *is* the answer for a chaotic quad, and the
+scatter is the measurement rather than an error bar around one.
+
+**Read the interdecile, never the variance, for `alpha_shape`.**
+Excess kurtosis is **110**: the variance lives in the tails, the interdecile describes the bulk
+(interdecile/sd = 0.866 against a normal 2.563). A scheduler decides per typical quad. The
+Halton switch cut sampling variance 267,000x on the control and moved the interdecile not at all;
+quoting the 6.9% variance reduction as the improvement would be quoting the tail.
 
 **Never discard an ensemble copy.**
 Every pixel carries exactly `E+1` copies, always. A badly-integrated trajectory is a *measurement

@@ -1,0 +1,27 @@
+    Finished `release` profile [optimized] target(s) in 0.01s
+     Running `target/release/examples/scheme_f32_effect`
+=== the f32 spread_shape answer, by offset scheme ===
+        region    scheme     f64 truth    f32 stable       rel err   NaN pix
+    near-field    Halton     1.6057e-2     2.0958e-2          0.31         0
+    near-field       Pcg     2.8971e-2     2.8952e-2          0.00         0
+    body2 core    Halton     6.6202e-2     6.4658e-2          0.02         0
+    body2 core       Pcg     7.3475e-2     7.3517e-2          0.00         0
+   body1 slice    Halton     4.2682e-2     4.2519e-2          0.00         0
+   body1 slice       Pcg     5.8483e-2     5.8446e-2          0.00         0
+     mid-field    Halton     1.4817e-6     1.4829e-6          0.00         0
+     mid-field       Pcg     1.7355e-6     1.7421e-6          0.00         0
+
+The f64 truths differ between schemes by up to 1.8x, which is expected: different
+offsets measure a different ensemble. What matters is whether f32 tracks f64.
+
+=== per pixel, not per mean — near-field, f32 against f64 ===
+A mean over 25 pixels can be moved by one of them, so the distribution is what
+says whether this is a systematic loss or a single bad pixel.
+
+    scheme     rel p50     rel p90     rel max   argmax px worst f64/f32
+    Halton      0.0156      0.0825    586.2251          242.131e-4/1.251e-1
+       Pcg      0.0042      0.0469      0.1302          133.865e-3/4.368e-3
+
+If the median is small and only the max is large, this is one pixel where the two
+precisions took different branches at a close approach - a chaotic divergence, not
+a systematic loss of accuracy from the offset scheme.

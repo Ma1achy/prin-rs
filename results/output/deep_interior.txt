@@ -1,4 +1,5 @@
-    Finished `release` profile [optimized] target(s) in 0.06s
+   Compiling prin-rs v0.1.0 (/Users/malachy/src/principia-rs-test)
+    Finished `release` profile [optimized] target(s) in 2.18s
      Running `target/release/examples/deep_interior`
 deep interior, R(0) = 1.369306
   r_coll/R        r_coll   outcome  detail  |01| at fire  |02| at fire  |12| at fire

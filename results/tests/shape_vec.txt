@@ -1,4 +1,5 @@
-    Finished `release` profile [optimized] target(s) in 0.01s
+   Compiling prin-rs v0.1.0 (/Users/malachy/src/principia-rs-test)
+    Finished `release` profile [optimized] target(s) in 3.76s
      Running tests/shape_vec.rs (target/release/deps/shape_vec-5a5ee0059a7fd2c4)
 
 running 3 tests

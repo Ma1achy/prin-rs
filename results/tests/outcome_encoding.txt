@@ -1,4 +1,5 @@
-    Finished `release` profile [optimized] target(s) in 0.01s
+   Compiling prin-rs v0.1.0 (/Users/malachy/src/principia-rs-test)
+    Finished `release` profile [optimized] target(s) in 4.13s
      Running tests/outcome_encoding.rs (target/release/deps/outcome_encoding-e3fa02e01a712d56)
 
 running 8 tests
@@ -13,7 +14,7 @@ the arm fired at a sync boundary on 2 of them
 ok
 test outcome_fields_populate_across_a_grid ...        bounded:   61 of 64
      collision:    3 of 64
-pixels whose copies disagree on the outcome: 5 of 64
+pixels whose copies disagree on the outcome: 3 of 64
 ok
 test outcomes_and_t_end_are_invariant_under_the_scale_symmetry ...    alpha    outcomes         t_end/alpha^1.5    max |dt| rel
 2 of 25 pixels terminate before the horizon; showing pixel 23
@@ -40,5 +41,5 @@ Two pairs below r_coll encodes as detail = 3 (triple), not as pair 0 — which
 is what an 'all three' rule would have produced.
 ok
 
-test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.40s
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.36s
 

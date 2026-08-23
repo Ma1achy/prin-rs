@@ -1,4 +1,5 @@
-    Finished `release` profile [optimized] target(s) in 0.01s
+   Compiling prin-rs v0.1.0 (/Users/malachy/src/principia-rs-test)
+    Finished `release` profile [optimized] target(s) in 4.17s
      Running tests/error_ratio.rs (target/release/deps/error_ratio-396712718df4021e)
 
 running 4 tests
@@ -10,10 +11,10 @@ scale 1000000: |d ratio| = 6.321e-11, conditioning predicts <= 2.8e-8
 scale 3.7: |d ratio| = 4.109e-12, conditioning predicts <= 2.8e-8
 ok
 test error_ratio_minus_one_falls_with_step_size ...      eta   max |ratio-1|    median |r-1|     med ratio
-    4e-2     3.166023e-4     1.040094e-4             -
-    2e-2     9.595539e-4     4.212550e-6         0.041
-    1e-2     5.999799e-5     2.406545e-7         0.057
-    5e-3     2.803334e-6     1.493647e-8         0.062
+    4e-2     4.906601e-4     3.360007e-5             -
+    2e-2     1.079716e-3     4.217027e-6         0.126
+    1e-2     5.132328e-5     2.606372e-7         0.062
+    5e-3     3.084131e-6     1.632836e-8         0.063
 
 error_ratio - 1 must fall with eta. If it plateaus or rises, it is measuring a
 wrong equation, not integration error. Read the median column: the max over 9
@@ -23,5 +24,5 @@ ok
 test error_ratio_sits_at_one_on_a_near_two_body_control ... near-two-body control: sigma_E(0) = 3.498750e-4, sigma_E(t) = 3.498750e-4, ratio = 1.000000000005
 ok
 
-test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s
 

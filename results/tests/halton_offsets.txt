@@ -1,0 +1,33 @@
+    Finished `release` profile [optimized] target(s) in 0.01s
+     Running tests/halton_offsets.rs (target/release/deps/halton_offsets-84f9fa2bff6644f9)
+
+running 4 tests
+test copy_zero_is_never_jittered ... ok
+test halton_offsets_are_fixed_across_pixels_and_resolutions ... fixed Halton (2,3) prefix, offsets in units of jitter_frac*cell:
+  copy  1: ( 0.000000, -0.333333)
+  copy  2: (-0.500000,  0.333333)
+  copy  3: ( 0.500000, -0.777778)
+  copy  4: (-0.750000, -0.111111)
+  copy  5: ( 0.250000,  0.555556)
+  copy  6: (-0.250000, -0.555556)
+  copy  7: ( 0.750000,  0.111111)
+
+Identical to 1e-12 across three resolutions and four footprints each, the residual
+being the division used to recover them. The generator itself is exact:
+halton_offset(k) is a pure function of k — no pixel, no seed, no ordering. A
+parent ensemble and its children share the perturbation pattern exactly.
+PCG offsets differ between footprints, as expected — no shared pattern.
+ok
+test the_halton_prefix_covers_the_footprint_better_than_pcg_draws ...    E+1      Halton L2*  PCG L2* (mean)       ratio
+     4        0.152567        0.203906       0.748
+     8        0.084901        0.136148       0.624
+    16        0.046180        0.094388       0.489
+    32        0.025582        0.064744       0.395
+
+L2 star discrepancy, lower is better; PCG averaged over 256 footprints.
+The gap is what a fixed low-discrepancy prefix buys before any physics runs.
+ok
+test the_radical_inverse_is_the_reflected_digit_expansion ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

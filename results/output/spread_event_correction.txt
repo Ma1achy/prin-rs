@@ -1,40 +1,41 @@
-    Finished `release` profile [optimized] target(s) in 0.06s
+   Compiling prin-rs v0.1.0 (/Users/malachy/src/principia-rs-test)
+    Finished `release` profile [optimized] target(s) in 3.07s
      Running `target/release/examples/spread_event_correction`
 near-field 32x32, E+1=8, eta=0.01, f64
 
   t_max        spread_event (event class)           spread_event (terminal)            nonzero pixels
                 min     median        max         min     median        max        event     terminal
     4.0      0.0000     0.0000     0.0000      0.0000     0.0000     0.0000       0/1024       0/1024
-    8.0      0.0000     0.0000     0.5714      0.0000     0.0000     0.0000     110/1024       0/1024
-   13.0      0.0000     0.0000     0.5714      0.0000     0.0000     0.5714      35/1024      22/1024
-   20.0      0.0000     0.0000     0.8571      0.0000     0.0000     0.8571     352/1024     323/1024
+    8.0      0.0000     0.0000     0.5714      0.0000     0.0000     0.0000     114/1024       0/1024
+   13.0      0.0000     0.0000     0.5714      0.0000     0.0000     0.5714      41/1024      23/1024
+   20.0      0.0000     0.0000     0.8571      0.0000     0.0000     0.8571     326/1024     301/1024
 
 === at the project horizon, t = 13 ===
                                     median           max
-                spread_shape      0.001910      0.283152
+                spread_shape      0.001840      0.283744
     spread_event (corrected)      0.000000      0.571429
      spread_event (terminal)      0.000000      0.571429
- ensemble_spread (corrected)      0.001910      0.571429
-       ensemble_spread (old)      0.001910      0.571429
+ ensemble_spread (corrected)      0.001840      0.571429
+       ensemble_spread (old)      0.001840      0.571429
 
 pixels where spread_event exceeds spread_shape, so it is the one that sets
-ensemble_spread:  corrected 35/1024   terminal 22/1024
+ensemble_spread:  corrected 41/1024   terminal 23/1024
 
-t_spread_event over the 165 pixels that fire: min 2.4375  median 8.9375  max 9.7500
-pixels whose copies never disagree before the horizon: 859/1024
+t_spread_event over the 155 pixels that fire: min 2.4375  median 8.9375  max 9.7500
+pixels whose copies never disagree before the horizon: 869/1024
 
-running max over boundaries (monotone in the horizon): median 0.000000  max 0.714286
-pixels where it is nonzero: 165/1024
+running max over boundaries (monotone in the horizon): median 0.000000  max 0.571429
+pixels where it is nonzero: 155/1024
 The playhead value is a snapshot and can un-fire - the tightest pair fluctuates,
 so copies that disagreed at one boundary can agree again at the next. That is
 why the t_max=8 row above has MORE nonzero pixels than the t_max=13 row. The
 running max is monotone; both are dumped and the spec one is the default.
 
 === how much earlier, measured directly ===
-pixels where both statistics eventually fire: 22/1024
-  event class fires but terminal never does: 143
+pixels where both statistics eventually fire: 23/1024
+  event class fires but terminal never does: 132
   terminal fires but event class never does: 0
-  event class fires earlier on 0 of 22
+  event class fires earlier on 0 of 23
   lead time (terminal - event): min 0.0000  median 0.0000  max 0.0000
 
 The terminal statistic cannot fire before something terminates; the event class

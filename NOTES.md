@@ -898,3 +898,171 @@ median near `1e-3`, so a linear `[0,1]` ramp painted every grid flat blue and th
 structure was invisible. Now log scaled between the grid's own p1 and p99, with the window
 printed alongside — a false-colour image without its scale is decoration. Non-finite is painted at
 full scale: undetermined is the loudest thing a pixel can be and must not be shown as quiet.
+
+---
+
+## 9. The ensemble offsets were the wrong scheme, and fixing it changes less than expected
+
+The spec calls for copy offsets from a **fixed low-discrepancy Halton (2,3) prefix indexed by
+copy index**. The port inherited the reference's per-pixel PCG stream: pseudo-random, and
+different in every footprint. Two properties were missing — even coverage at small `E`, and the
+common-random-numbers structure that should make sampling noise cancel in the parent/child ratio
+the refinement exponent is built from.
+
+Implemented as `jitter::Scheme::Halton`, now the default; `Scheme::Pcg` reproduces every result
+measured before the switch. The Halton path needs no RNG, no per-pixel seed and no ordering:
+`halton_offset(k)` is a pure function of `k`.
+
+### The scheme is decisively better at what it controls
+
+Near-field 64x64 -> 32x32 parents, `alpha` for `sigma_E(0)`, whose true value is exactly 1.0:
+
+| E+1 | scheme | median | p90−p10 | parent/child r |
+|---|---|---|---|---|
+| 4 | Halton | 1.6678 | **0.0242** | 0.9134 |
+| 4 | Pcg | 1.2798 | 0.8397 | 0.1750 |
+| 8 | Halton | 1.3857 | **0.0010** | 0.9998 |
+| 8 | Pcg | 1.0762 | 0.4796 | 0.1746 |
+| 16 | Halton | 1.1668 | **0.0005** | 1.0000 |
+| 16 | Pcg | 1.0137 | 0.3203 | 0.2236 |
+| 32 | Halton | 1.0661 | 0.0029 | 0.9983 |
+| 32 | Pcg | 0.9887 | 0.2123 | 0.2742 |
+| 64 | Halton | 1.0308 | 0.0018 | 0.9994 |
+| 64 | Pcg | 0.9862 | 0.1493 | 0.3018 |
+
+At `E+1 = 8` the noise floor falls from **0.4796 to 0.0010** — a factor of 480 — and the
+parent/child correlation goes from 0.175 to **0.9998**. That is exactly the common-random-numbers
+structure predicted, and it is not subtle.
+
+Independently, the L2 star discrepancy of the offset set is lower at every `E` tested
+(`tests/halton_offsets.rs`): ratios 0.748, 0.624, 0.489, 0.395 at `E+1 = 4, 8, 16, 32`. **Note
+the advantage grows with `E` rather than shrinking** — the opposite of the expectation that it
+would be largest at small `E`.
+
+### But it barely moves the exponent anyone cares about
+
+`alpha` for `spread_shape`, same grid, `t = 13`, `E+1 = 8`:
+
+| scheme | median | p90−p10 | var |
+|---|---|---|---|
+| Halton | 0.1386 | 0.6326 | 5.331e-1 |
+| Pcg | 0.1722 | 0.6313 | 5.725e-1 |
+
+The interdecile scatter is **unchanged**. The variance falls by 6.9%, and that number is not a
+coincidence: `var(alpha_shape)` drops by `5.725e-1 − 5.331e-1 = 3.94e-2`, against
+`var(alpha_E) = 3.75e-2` under PCG. **The sampling noise adds in, it was about 7% of the total,
+and Halton removes essentially all of it** — `var(alpha_E)` goes to `1.40e-7`, a factor of
+267,000.
+
+The other 93% is not sampling noise. It is chaotic divergence: `sigma_E(0)` is a smooth function
+of position, so its ensemble spread is pure geometry and a better-placed offset set fixes it;
+`spread_shape` at `t = 13` is dominated by trajectories that have separated, which no offset
+scheme touches.
+
+### So RESULTS.md's "per-quad noise floor of 0.48" was over-generalised
+
+I wrote 0.48 as the per-quad floor of the refinement criterion. It is the sampling floor of the
+**control**, and the criterion's actual per-quad scatter in `alpha_shape` is **0.63 under both
+schemes**, mostly physics. The two are not the same quantity and I presented the first as though
+it bounded the second.
+
+**The conclusion it supported survives, with a different number and a different reason.** The
+measured region separation is about 1.0 in `alpha`, which is ~1.6x the 0.63 scatter rather than
+~2x the 0.48 floor. The criterion still resolves regions and not individual quads — and now for a
+reason that cannot be bought off with more copies, since 93% of the scatter is not sampling.
+
+### The +7.6% bias is not a sample-size artefact
+
+That attribution was wrong. Under Halton the bias at `E+1 = 8` is **+38.6%**, and nearly
+noise-free (p90−p10 = 0.0010). It falls as `1/E`:
+
+| E+1 | \|median−1\| | x (E+1) |
+|---|---|---|
+| 4 | 0.6678 | 2.671 |
+| 8 | 0.3857 | 3.086 |
+| 16 | 0.1668 | 2.669 |
+| 32 | 0.0661 | 2.117 |
+| 64 | 0.0308 | 1.974 |
+| 128 | 0.0173 | 2.220 |
+
+The last column is constant to within ±25% with no trend, so the excess goes as `1/E`.
+
+**The mechanism is geometric, and it is a property of the 2x2 aggregation as a parent surrogate,
+not of the estimator.** With fixed offsets, a pooled 2x2 block is four *exact repeats* of one
+offset pattern attached to four different cell centres — not `4(E+1)` samples of a genuinely
+wider footprint. At small `E` the pooled spread is set by the child-centre separation rather than
+by the offset set, and the surrogate diverges from a true parent ensemble. As `E` grows the
+offset set fills the footprint and the surrogate converges, which is the `1/E`.
+
+PCG's per-footprint randomisation partially masked this, and matched-count subsampling removed
+most of what remained (1.0762 -> 1.0191), which is why I read it as sample-size bias. The
+subsampling was removing a *symptom*. Under a fixed scheme there is no randomisation left to hide
+behind and the geometry is visible directly.
+
+Two consequences. The bias is **deterministic**, so it is calibratable in a way a noisy bias is
+not. And **aggregation is a weaker parent surrogate than I claimed** — "a fine uniform grid
+already contains every coarser scale" is true of the *positions* and false of the *ensemble*,
+which the fixed scheme exposes.
+
+### The `alpha_E` control variate buys nothing — a clean null both ways
+
+Per-quad correlation between `(alpha_E − 1)` and `alpha_shape`, across quads:
+
+| scheme | rho | fitted beta | floor ratio, regression | floor ratio, additive |
+|---|---|---|---|---|
+| Halton | −0.0789 | −153.76 | 1.0396 | 1.0008 |
+| Pcg | −0.0419 | −0.1637 | 1.0544 | 1.2574 |
+
+`rho` is near zero under both. The regression form makes the floor slightly *worse* in both cases
+— fitting a coefficient on noise costs a degree of freedom and returns nothing. **Drop it.**
+
+This is a different correlation from the −0.035 measured earlier, as flagged: that compared two
+within-footprint *estimators* per pixel, this compares two per-quad *exponents* across quads.
+Different level, different quantity. Both happen to be null, which is a coincidence of this
+system rather than the same measurement twice.
+
+The Halton `beta = −153.76` is not a result, it is a division by nothing: `var(alpha_E) = 1.4e-7`
+under Halton, so the regression is fitting against a control with no variance left. **The control
+variate is degenerate under Halton precisely because there is nothing left to correct** — which
+is the outcome the switch was for.
+
+The additive form (`beta = 1`) leaves the Halton floor unchanged (1.0008) and makes the PCG one
+26% worse. It does shift the Halton median from 0.1386 to −0.2469, removing `alpha_E`'s geometric
+bias — but **that correction is not justified**, because the two exponents do not share the bias:
+the geometry that biases `alpha_E` is a smooth-function-of-position effect, and by `t = 13` chaos
+has washed it out of `spread_shape`. Measured, the `alpha_shape` median moves only 0.1722 ->
+0.1386 between schemes, not by the 0.31 that `alpha_E` moves.
+
+### What was not done
+
+`alpha` was **not** smoothed over neighbouring quads. It is the obvious variance reduction and it
+is wrong here: `alpha` varies smoothly except at boundaries, and boundaries are exactly what a
+refinement decision is about. Smoothing would blur the signal being detected.
+
+### Two tests the switch broke, and what each one meant
+
+**`seeding_golden.rs`** asserted that distinct pixels get distinct offsets. Under the fixed
+prefix that is false *by construction* — it is the property being bought. The test now names
+`Scheme::Pcg` explicitly and asserts the contrast in both directions, so the difference is a test
+rather than a comment.
+
+**`spread_branch_cut.rs`** failed harder and was worth chasing: the f32 `spread_shape` went from
+0.5% off the f64 answer to **30%**. Measured per pixel rather than per mean, near-field 5x5:
+
+| scheme | median rel err | p90 | max | worst pixel |
+|---|---|---|---|---|
+| Halton | 0.0156 | 0.0825 | **586.2** | f64 2.131e-4 / f32 1.251e-1 |
+| Pcg | 0.0042 | 0.0469 | 0.1302 | f64 3.865e-3 / f32 4.368e-3 |
+
+**One pixel of 25.** Its f64 spread is `2.131e-4` — a near-zero denominator — and the two
+precisions took different branches at a close approach, so the relative error is 586 and the mean
+over 25 pixels moved 30%. The median is 1.6%, and the other three regions are at 0.7-1.2%.
+
+The fix is to the statistic, not the tolerance: the test now gates on the **median** per-pixel
+relative error. This project's own rule about aggregates, arriving in its own test suite — a mean
+over 25 pixels that one of them controls is not a measurement of the other 24.
+
+The f64 truths also differ between schemes by up to 1.8x (near-field mean `1.606e-2` Halton
+against `2.897e-2` PCG). That is expected and is not an error: different offsets measure a
+different ensemble. Only the f32-tracks-f64 comparison is scheme-independent, which is why it is
+the one gated.

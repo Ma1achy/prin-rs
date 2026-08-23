@@ -1,4 +1,5 @@
-    Finished `release` profile [optimized] target(s) in 0.07s
+   Compiling prin-rs v0.1.0 (/Users/malachy/src/principia-rs-test)
+    Finished `release` profile [optimized] target(s) in 3.90s
      Running tests/az_identities.rs (target/release/deps/az_identities-e3305b7467b04067)
 
 running 4 tests

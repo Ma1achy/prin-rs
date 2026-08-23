@@ -1,24 +1,25 @@
-    Finished `release` profile [optimized] target(s) in 0.03s
+   Compiling prin-rs v0.1.0 (/Users/malachy/src/principia-rs-test)
+    Finished `release` profile [optimized] target(s) in 2.48s
      Running `target/release/examples/resolution_confound`
 Refining the grid at fixed box size: cell width halves at each row.
 
   size  cell width    sigma_E(0)    sigma_E(t)   error_ratio    ens_spread
-     8   1.4286e-2     9.2124e-3     9.2124e-3      1.000000     3.1549e-3
-    16   6.6667e-3     4.1887e-3     4.1887e-3      1.000000     2.2247e-3
-    32   3.2258e-3     2.0280e-3     2.0280e-3      1.000000     1.7002e-3
-    64   1.5873e-3     9.8352e-4     9.8352e-4      1.000000     1.4851e-3
+     8   1.4286e-2     7.0482e-3     7.0482e-3      1.000000     3.4072e-3
+    16   6.6667e-3     3.2908e-3     3.2908e-3      1.000000     1.9499e-3
+    32   3.2258e-3     1.5925e-3     1.5925e-3      1.000000     1.7207e-3
+    64   1.5873e-3     7.8369e-4     7.8369e-4      1.000000     1.4565e-3
 
 sigma_E(0) tracks cell width, as it must - it is the jitter. The ratio is the
 quantity that must not be compared across resolutions without correcting for
 it; the dump carries sigma_E(0) and sigma_E(t) separately so it can be.
 
-first-row references: sigma_E(0) 9.2124e-3, error_ratio 1.000000, ens_spread 3.1549e-3
+first-row references: sigma_E(0) 7.0482e-3, error_ratio 1.000000, ens_spread 3.4072e-3
 
 === ref_disagree vs error_ratio (NOTES §1, unshared run) ===
-pixels where copies disagreed on the reference body: 172 of 576
+pixels where copies disagreed on the reference body: 163 of 576
   median error_ratio   with disagreement 1.000000   without 1.000000
-  median drift_max     with disagreement 4.364e-9   without 2.641e-9
-  median ens_spread    with disagreement 2.4349e-3   without 2.0211e-3
+  median drift_max     with disagreement 4.546e-9   without 2.326e-9
+  median ens_spread    with disagreement 2.4896e-3   without 1.9827e-3
 
 === d_min_gap across regions (NOTES §2.1) ===
         region      median gap         max gap

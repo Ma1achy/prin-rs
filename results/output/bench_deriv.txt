@@ -1,14 +1,15 @@
-    Finished `release` profile [optimized] target(s) in 0.08s
+   Compiling prin-rs v0.1.0 (/Users/malachy/src/principia-rs-test)
+    Finished `release` profile [optimized] target(s) in 2.01s
      Running `target/release/examples/bench_deriv`
 near-field 64 nominal trajectories to t=13, n_sync=32, eta=0.01
-  wall clock      : 0.031 s
+  wall clock      : 0.030 s
   total RK4 steps : 245747
-  per trajectory  : 0.49 ms, 3839 steps
-  RK4 steps/s     : 7.83e6  (4 deriv evaluations each)
+  per trajectory  : 0.48 ms, 3839 steps
+  RK4 steps/s     : 8.08e6  (4 deriv evaluations each)
 
 Extrapolated to 1024x1024 with E+1 = 8 copies (8.4e6 trajectories):
-  single core : 4116 s  (1.1 h)
-  11 cores    : 374 s  (0.10 h)  at perfect scaling
+  single core : 3985 s  (1.1 h)
+  11 cores    : 362 s  (0.10 h)  at perfect scaling
 
 Perf levers, in order: threading (rayon over pixels), f32, n_sync.
 The algorithm is not a lever — it is the thing being measured.

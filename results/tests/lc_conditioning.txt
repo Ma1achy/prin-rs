@@ -1,4 +1,5 @@
-    Finished `release` profile [optimized] target(s) in 0.02s
+   Compiling prin-rs v0.1.0 (/Users/malachy/src/principia-rs-test)
+    Finished `release` profile [optimized] target(s) in 3.74s
      Running tests/lc_conditioning.rs (target/release/deps/lc_conditioning-1db60a4220e88763)
 
 running 2 tests

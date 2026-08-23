@@ -1,0 +1,69 @@
+    Finished `release` profile [optimized] target(s) in 0.01s
+     Running `target/release/examples/halton_noise_floor`
+=== EXPERIMENT 1: the noise floor, Halton against PCG ===
+near-field 64x64 -> 32x32 parents. alpha for sigma_E(0), whose true value
+is exactly 1.0, so every departure below is measurement error.
+
+     E+1    scheme      median     p90-p10    |median-1|  parent/child r
+       4    Halton      1.6678      0.0242        0.6678          0.9134
+       4       Pcg      1.2798      0.8397        0.2798          0.1750
+       8    Halton      1.3857      0.0010        0.3857          0.9998
+       8       Pcg      1.0762      0.4796        0.0762          0.1746
+      16    Halton      1.1668      0.0005        0.1668          1.0000
+      16       Pcg      1.0137      0.3203        0.0137          0.2236
+      32    Halton      1.0661      0.0029        0.0661          0.9983
+      32       Pcg      0.9887      0.2123        0.0113          0.2742
+      64    Halton      1.0308      0.0018        0.0308          0.9994
+      64       Pcg      0.9862      0.1493        0.0138          0.3018
+     128    Halton      1.0173      0.0002        0.0173          1.0000
+     128       Pcg      0.9883      0.1056        0.0117          0.4058
+
+The last column is the correlation between the parent spread estimate and the
+child one across quads. Common random numbers should make it near 1; independent
+draws per footprint should not.
+
+Halton's |median-1| against E — if this is a 1/E law, the bias is geometric:
+     E+1    |median-1|       x (E+1)
+       4        0.6678         2.671
+       8        0.3857         3.086
+      16        0.1668         2.669
+      32        0.0661         2.117
+      64        0.0308         1.974
+     128        0.0173         2.220
+A constant last column means the excess falls as 1/E, which is what a geometric
+surrogate error diluting as the offset set fills the footprint would do.
+
+=== EXPERIMENT 2: the alpha_E control variate ===
+Integrating 64x64 at t=13 for both schemes; this is the expensive part.
+
+--- Halton ---
+                  quantity      median       p90-p10
+alpha sigma_E(0) [truth 1]      1.3857        0.0010
+          alpha sigma_E(t)      1.3857        0.0011
+        alpha spread_shape      0.1386        0.6326
+    shape, regression beta     59.4509        0.6576
+    shape, additive beta=1     -0.2469        0.6331
+  rho(alpha_E - 1, alpha_shape) = -0.0789
+  fitted beta = -153.7626
+  predicted variance reduction 1 - rho^2 = 0.9938
+  measured floor ratio, regression      = 1.0396
+  measured floor ratio, additive        = 1.0008
+  var(alpha_E) = 1.403e-7   var(alpha_shape) = 5.331e-1
+
+--- Pcg ---
+                  quantity      median       p90-p10
+alpha sigma_E(0) [truth 1]      1.0762        0.4796
+          alpha sigma_E(t)      1.0839        0.5475
+        alpha spread_shape      0.1722        0.6313
+    shape, regression beta      0.1853        0.6657
+    shape, additive beta=1      0.0991        0.7938
+  rho(alpha_E - 1, alpha_shape) = -0.0419
+  fitted beta = -0.1637
+  predicted variance reduction 1 - rho^2 = 0.9982
+  measured floor ratio, regression      = 1.0544
+  measured floor ratio, additive        = 1.2574
+  var(alpha_E) = 3.753e-2   var(alpha_shape) = 5.725e-1
+
+rho near zero means the control variate buys nothing and should be dropped.
+This is a per-quad correlation between two EXPONENTS across quads — not the
+per-pixel correlation between two within-footprint estimators measured earlier.

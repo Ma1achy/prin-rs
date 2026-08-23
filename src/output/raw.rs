@@ -41,13 +41,13 @@ pub fn write<W: Write>(
     // a dump that outlives the code that wrote it has to carry its own provenance.
     let header = format!(
         "nx={} ny={} cx={} cy={} half={} body={}\n\
-         t_max={} n_sync={} eta={} max_steps={} n_copies={} jitter_frac={} seed={}\n\
+         t_max={} n_sync={} eta={} max_steps={} n_copies={} jitter_frac={} seed={} jitter_scheme={:?}\n\
          ref_policy={:?} lc_stable={} precision={} eps=0\n\
          r_coll_frac={} stop_on_event={} refine_flagged={} refine_threshold={} refine_eta_factor={} refine_max_passes={}\n\
          fields={}\n",
         slice.nx, slice.ny, slice.cx, slice.cy, slice.half, slice.body,
         cfg.t_max, cfg.n_sync, cfg.eta, cfg.max_steps, cfg.n_extra + 1,
-        cfg.jitter_frac, cfg.seed,
+        cfg.jitter_frac, cfg.seed, cfg.jitter_scheme,
         cfg.ref_policy, cfg.lc_stable, precision,
         cfg.r_coll_frac, cfg.stop_on_event,
         cfg.refine_flagged, cfg.refine_threshold, cfg.refine_eta_factor, cfg.refine_max_passes,

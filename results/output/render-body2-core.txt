@@ -1,21 +1,21 @@
-    Finished `release` profile [optimized] target(s) in 0.02s
+    Finished `release` profile [optimized] target(s) in 0.01s
      Running `target/release/prin --region 'body2 core' --size 256 --out results/body2-core`
 region body2 core 256x256 half=0.05 body=2  precision=f64  t_max=13 eta=0.01 copies=8
-  55.81 s wall, 0.85 ms/pixel
+  43.69 s wall, 0.67 ms/pixel
 
-  error_ratio   max 9.9805e0  p99 1.0240e0  median 1.000000  argmax pixel 780
-  sigma_E(0)    median 4.408129e-4   <- proportional to cell width; see below
-  |dE/E|        median 2.429e-9  max 6.139e-4
+  error_ratio   max 9.9611e0  p99 1.0219e0  median 1.000000  argmax pixel 57314
+  sigma_E(0)    median 3.573648e-4   <- proportional to cell width; see below
+  |dE/E|        median 2.426e-9  max 3.410e-4
   d_min_gap     median 0.000e0  max 0.000e0
-  ref_disagree  total 37006
+  ref_disagree  total 35656
   t_end         median 13.0000
   outcomes      bounded 0.823 collision 0.177
-  refined       736 of 65536 pixels re-integrated at finer eta (0 still flagged)
-  |dE/E| max    3.110e10 before refinement, 6.139e-4 after
+  refined       762 of 65536 pixels re-integrated at finer eta (0 still flagged)
+  |dE/E| max    4.292e7 before refinement, 3.410e-4 after
   pixels with a non-finite copy: 0 of 65536
 
 wrote results/body2-core.raw, results/body2-core_outcome.png, results/body2-core_spread.png
-spread image is LOG scaled over [2.845e-5, 4.286e-1] (this grid's
+spread image is LOG scaled over [2.758e-5, 4.286e-1] (this grid's
 p1 to p99); non-finite is painted at full scale. The dump is the product.
 
 error_ratio uses the maximum deviation within a footprint and aggregates across

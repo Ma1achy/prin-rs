@@ -1,4 +1,5 @@
-    Finished `release` profile [optimized] target(s) in 0.01s
+   Compiling prin-rs v0.1.0 (/Users/malachy/src/principia-rs-test)
+    Finished `release` profile [optimized] target(s) in 2.00s
      Running `target/release/examples/lc_cut_proximity`
 t_max=  0.5  n_sync=  1  registrations=   18  min u0/|u| = 0.000e0  differ = 1/18  max |du|/|u| = 1.570e-16
 t_max=    1  n_sync=  2  registrations=   36  min u0/|u| = 0.000e0  differ = 10/36  max |du|/|u| = 4.104e-12

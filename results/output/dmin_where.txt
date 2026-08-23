@@ -1,4 +1,5 @@
-    Finished `release` profile [optimized] target(s) in 0.01s
+   Compiling prin-rs v0.1.0 (/Users/malachy/src/principia-rs-test)
+    Finished `release` profile [optimized] target(s) in 1.96s
      Running `target/release/examples/dmin_where`
 Instrumented inner loop, n_sync=1, reference LC branch (as gate (b) runs it).
 

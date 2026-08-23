@@ -1434,3 +1434,265 @@ Each behaves distinctly, and the behaviours are intelligible:
 footprint", "resolve the total", "resolve the worst" — and which is wanted is a display question
 this measurement cannot settle. What it settles is that the choice is load-bearing and must be
 stated wherever a tree is quoted.
+
+---
+
+## 12. The vertical slice — what the isolation was hiding
+
+Every build before this one was deliberately isolated, and each isolation hid something the next
+one found. This build put the camera, the screen floor, the adaptive render, SSAA, and the
+linearised decoder together for the first time. Three of the findings below are in the **seams**
+rather than in any component, which is where the brief predicted they would be.
+
+### 12.1 A standing rule: a small difference can mean both sides are dead
+
+**Before reading any agreement number, assert that each side still resolves what it is supposed to
+resolve.** Two things that have both collapsed agree perfectly, and their agreement carries no
+information whatever.
+
+This is not the same rule as "a test that cannot fail" (§ CLAUDE.md), though it is a cousin. That
+rule is about a *configuration* in which nothing could have gone wrong. This one is about a
+*statistic* that reports success from two simultaneous failures. The tell is different: ask not
+"what would make this fire" but "what would make this quantity small", and check that "both sides
+lost their data" is not on the list.
+
+Three catches in planning this build alone:
+
+- a **curvature term on an affine chart** — `Slice::decode_pos` is a linspace, so `J_D` is
+  constant, `x = x0 + J_D.delta` is exact, and "where does the linearisation start to matter"
+  answers "never" at every depth;
+- a **linearised f32 sum whose samples all collapse to `x0`** — at depth 40 the increment is
+  ~1e-13 against an O(1) centre, so every sample is the same initial condition, agreeing
+  perfectly with a direct path that collapsed too;
+- an **`E` null that a veto-capped tree would have produced whatever `E` did** — the screen floor
+  caps a tree at `4^6 = 4096` leaves, so an over-refining low-`E` run saturates and the sweep
+  reports a null the veto manufactured.
+
+The remedy in each case was to measure the *resolving power* first and the agreement second.
+`decode::distinct` exists for exactly this: it counts how many of a quad's `N²` sample initial
+conditions are actually different, and a divergence figure is only admissible where both sides
+are fully distinct.
+
+### 12.2 A collapsed decode makes the criterion maximally confident
+
+The consequence of §12.1 inside the scheduler, and the sharpest seam in this build.
+
+When a decode path has collapsed, every footprint in a quad is the **same** initial condition and
+every copy is the **same** trajectory. `ensemble_spread` is then exactly zero. The criterion reads
+zero spread as *"this quad is perfectly resolved"* and stops — confidently, with a small tidy
+tree, having integrated nothing distinguishable at all.
+
+This is the project's own standing pattern arriving from a new direction: *a statistic can report
+maximum confidence precisely when it is least informed*. It has now been caught four times, in
+`drift max` scatter, in terminal-outcome purity under lockstep, in the `Gamma` residual, and here.
+
+The guard is not a threshold. It is to count distinct initial conditions per quad and treat a
+collapsed quad as **undetermined**, in the same way a non-finite copy is a measurement outcome
+rather than missing data.
+
+### 12.3 The deep-zoom floor is a property of *where* you zoom, not of the renderer
+
+PR #11 recorded a plain-f64 cell-width floor at level **45.87**. That figure is conditional on the
+chart coordinate being of order 1, and the condition was never stated.
+
+Measured over four configurations at matched settings (`results/output/decode_ladder.txt`), with
+64 samples per quad:
+
+| chart | centre | `direct_f64` still resolves 64/64 to | `direct_f32` to |
+|---|---|---|---|
+| `body_plane` | \|c\| ~ 3 | depth 44 | depth 14 |
+| `body_plane` | 0 | **depth 55+ (no floor at all)** | **depth 55+** |
+| `shape` | \|c\| ~ 3 | depth 35 | depth 14 |
+| `shape` | 0 | depth 45 | depth 45 |
+
+A quad centred at the chart origin has **no O(1) neighbour for the increment to be absorbed
+into**, and therefore no cell-width floor in the tested range — on either precision. So 45.87 is
+not a universal limit on zoom depth; it is the limit at coordinates of order one, and moving the
+same box to the origin removes it entirely. Quote the coordinate magnitude alongside any floor
+depth, or the number means nothing.
+
+### 12.4 The linearised decoder buys ~24 levels over f32 and none over f64
+
+The contract's claim is that quad-local relative coordinates extend usable zoom from ~23 to ~50+.
+Measured on `body_plane` at \|c\| ~ 3:
+
+| path | all 64 samples distinct to | collapsed to 1 by |
+|---|---|---|
+| `direct_f32` | depth 14 | depth 22 |
+| `L-naive_f32` (the literal formula) | depth 14 | depth 22 |
+| `L-split_f32` | depth 44 | depth 50 |
+| `direct_f64` | depth 44 | depth 50 |
+
+Two results, and the second is the one to carry:
+
+**The literal formula buys nothing.** `L-naive` — `x0`, `J_D.delta` and the sum all in f32 —
+collapses on **exactly the same curve** as forming the chart coordinate in f32 in the first place
+(56, 18, 2, 1 at depths 16, 18, 20, 22 for both). Adding a ~1e-13 term to an O(1) f32 quantity is
+the same operation as never having the term.
+
+**The split form reaches f64's floor and stops there.** `L-split` — `x0` in f64 on the CPU,
+`delta` and `J_D.delta` in f32, promoted and summed in f64 — tracks `direct_f64` rung for rung.
+So the gain is ~24 levels *for an f32 consumer*, and **exactly zero over f64**. The "~50+" in the
+contract is f64's floor, not something the linearisation creates. That follows from the bound
+stated before the run: the initial conditions must be formed as absolute O(1) numbers before
+integration, because the three-body separations are O(1) and no nonlinear integrator can carry
+`(x0, delta)` separately through the march.
+
+One exception, and it is modest: on the **nonlinear** chart at \|c\| ~ 3, `L-split` holds 64/64 to
+depth 45 where `direct_f64` has fallen to 10/64. A single fused affine step loses fewer bits than
+a decode through `cos`, `sin` and a renormalisation. Worth ~6 levels, from conditioning rather
+than from the design's stated mechanism.
+
+### 12.5 Where the linearisation actually matters is the coarse end, not the deep end
+
+On the shape chart the linearisation error relative to the sample spacing runs `0.39` at
+`half = 0.05`, `1.5e-3` at depth 8, `3.6e-7` at depth 20 — it falls as the box shrinks, because
+the discarded term is `O(h²)` against a spacing of `O(h)`. It exceeds one sample spacing only at
+`half >= 0.5`, i.e. boxes larger than any this project renders.
+
+So the approximation is worst exactly where it is least needed and best exactly where it is used.
+That is the opposite of the intuition that a linearisation "breaks down at depth", and it is worth
+saying plainly because the intuition is load-bearing in the caching design.
+
+On `body_plane` the same column is **structurally zero**, and is reported as structural rather
+than as a measurement. What it does show at depth 44 is `0.55` — that is not curvature but
+accumulation rounding reaching half a sample spacing, arriving exactly where distinctness starts
+to fail.
+
+### 12.6 "Zero spread" is not zero, and a collapse detector written that way cannot fire
+
+Caught in this build's own instrumentation, which makes it the fourth catch of the same family
+and the first one that was mine rather than the brief's.
+
+The first version of `deep_zoom` detected a collapsed decode by testing
+`red.spread_median == 0.0`. It reported **no collapse anywhere**, including at depth 40 where
+exactly **1 of 64** initial conditions was distinct and every trajectory in the quad was the same
+trajectory.
+
+Identical inputs do not give an identically zero spread. `spread_shape` is the mean distance of
+the copies' `shape_vec` from their centroid; eight identical unit vectors summed and divided by
+eight do not return the value bitwise, so the residual is **5.551115e-17**. Measured directly:
+
+```
+  direct_f64: copies distinct 8/8  spread 2.351651e-14  sigma_E(0) 5.329e-15
+  direct_f32: copies distinct 1/8  spread 5.551115e-17  sigma_E(0) 0.000e0
+```
+
+That residual is **exactly `2^-54`** — one rounding step, `f64::EPSILON / 4` — which is what makes
+it structurally unreachable by an equality test rather than merely small. It is twelve orders
+below `tau_display = 1e-4`. **No threshold anyone would set can separate a fully collapsed quad
+from a perfectly resolved one**, and a small tidy tree built out
+of nothing is exactly what a collapsed decode produces.
+
+The fix is not a smaller epsilon. It is to stop asking a *statistic* whether the data was there
+and ask the *data*: `decode::distinct` counts distinct initial conditions by bitwise comparison of
+all twelve state components, which is exact and cannot drift. The spread is reported beside it, as
+the number the criterion would have believed.
+
+**And it connects to a limitation already on record.** `deep interior`'s floored quads carry a
+median `worst_energy_drift` of **3.256e-1** — 33% energy error — while `error_ratio` on the same
+quads does not flag them. That is exactly the blind spot the design notes record: `error_ratio` is
+a ratio of *spreads*, so a drift correlated across the copies cancels in it. Two findings that
+corroborate: the flag that should have caught the bad quads is structurally blind to that failure
+mode, and `worst_energy_drift` beside it is what caught them. Both fields are needed, as specced,
+and neither is redundant.
+
+Note `sigma_E(0) = 0` in the collapsed row. That is a second, independent signal of the same
+failure and it *is* exactly zero, because it is a spread of energies rather than a distance from a
+computed centroid. It would make a serviceable secondary guard — but it is a symptom too, and the
+distinct count is the measurement.
+
+### 12.7 The collapse arrives from the leaves upward, so a root-level check is not enough
+
+Measured in `deep_zoom.txt` at camera depth 14 under `direct_f32`: the **root quad still resolves
+all 64 of its samples** while **16 of its 21 descendants have collapsed**. Children sit at half the
+parent's cell width, so the failure begins at the leaves — exactly where the scheduler is spending
+its budget — and works upward as the zoom deepens.
+
+The consequence for any distinctness guard: it has to be **per quad, at the moment the quad is
+computed**, not a once-per-frame check on the view. A frame whose root is fine can be built almost
+entirely from collapsed leaves.
+
+And the dangerous case is not the fully collapsed one. At depth 14 the partly-collapsed quads
+reported a spread of **1.811e-7** — small, but not absurd, and nothing a sanity check would flag.
+Full collapse at least produces the recognisable `5.551e-17`.
+
+### 12.8 Tree size is slice-conditional to a factor of 4; the exponent is not
+
+`slice_variety.txt`, at **one** fixed centre configuration (near-field's, which is Burrau's own),
+varying only the 2-plane through it, with bases orthonormal in the 6D position metric so a unit of
+chart coordinate moves the system the same distance in every case.
+
+Leaf count spans **226 to 970** — a factor of **4.3**. Among pure rotations within one body's
+plane it is only 403 to 526 (a factor of 1.3), so most of the variation comes from **which bodies
+the plane moves**, not from the angle. The nonlinear shape chart is the most structured of all at
+970 leaves.
+
+The `alpha` distribution, by contrast, barely moves: median 0.172 to 0.289, p10 between -0.09 and
+-0.17, p90 between 0.51 and 1.26, across every case including the nonlinear chart.
+
+So the exponent the criterion reads is far more stable than the tree it produces. Two consequences:
+
+- **Every leaf count in this repository is conditional on the slice, to about a factor of 4.** Say
+  so when quoting one. The comparisons *within* a slice (with and without the veto, across `E`,
+  across aggregation) are unaffected, because they share a slice.
+- A criterion tuned on one slice family is more likely to transfer than a *budget* tuned on one.
+
+**The control is exact and the check is on the right quantity.** `plane 0deg` reproduces
+`body_plane` with `max |dIC| = 0` and an identical tree. The check compares initial conditions,
+not trees: a tree is downstream of a chaotic integration, so checking it would be testing chaos
+rather than the charts.
+
+**And a gauge check nobody planned.** The three `shape phase` rows — 0.0, 0.4, 1.3 — are bitwise
+identical in every column. The fibre phase is a global rotation and the three-body problem is
+rotation-invariant, so they must be; if the Hopf inverse or the AZ port had broken rotational
+invariance, they would have separated. Kept, because it costs nothing and it is the only
+rotational-invariance check in the suite that runs through the *new* chart code.
+
+### 12.9 The screen floor and `MAX_REL_DEPTH` are different caps, and reporting one hides the other
+
+Raised in the PR #12 review: `deep interior` under mean or p90 reaches depth 7, and the screen
+floor at `N = 8` on a 512² viewport sits at level 6. Does the aggregation fix collide with the
+veto in exactly the configuration production runs?
+
+**Yes, and it separates the two aggregations.** Measured in `agg_vs_floor.txt`:
+
+| viewport | `MAX_REL_DEPTH` | agg | leaves | depth | cost of the cap |
+|---|---|---|---|---|---|
+| 512² | 6 | mean | 79 | 6 | **−42 of 121, 34.7%** |
+| 512² | 6 | p90 | 58 | 6 | **−3 of 61, 4.9%** |
+| 1024² | 7 | mean | 121 | 7 | none |
+| 1024² | 7 | p90 | 61 | 7 | 4 leaves screen-floored |
+
+Both keep an identical tree at levels 2–5; the whole difference is what piles up at the cap. So
+**p90's fix survives the production viewport nearly intact and mean's does not** — a reason to
+prefer p90 that has nothing to do with the statistic's own properties, and one neither the design
+docs nor PR #11 could have found, because neither had a camera.
+
+The collision is a *resolution* limit rather than a design conflict: `4^7 x 64 = 1,048,576`, so
+level 7 is displayable at 1024² and the aggregation the region needs is affordable one viewport
+step up.
+
+**The trap, and it is the point of this note.** At 1024² with `MAX_REL_DEPTH` left at its default
+6, the tree is **identical to the 512² tree** and the `screen` column reads **zero**. That reads
+as "the viewport made no difference". It is wrong: `MAX_REL_DEPTH` had taken over as the binding
+cap. The two coincide at 512² by construction — the contract's `MAX_REL_DEPTH <= screen floor`,
+with 6 chosen to match — and **diverge at every larger viewport**, where the default silently
+becomes the tighter of the two.
+
+The first version of this run reported only `screen`, showed it falling to zero while the tree did
+not grow by one quad, and would have been written up as "the viewport is inert". Two caps, one
+column, wrong conclusion.
+
+**And the two regions answer the collision question oppositely.** `deep interior` is
+**criterion-bound** — the veto touches 4 of p90's 61 leaves at 512² and none at 2048², so a
+viewport step hands the region back to the criterion. near-field is **view-bound at every viewport
+tested**: at 1024² with `MAX_REL_DEPTH = 7` it still floors 576 of median's 844 leaves, 756 of
+mean's 988, 88 of p90's 271; at 2048² with `MAX_REL_DEPTH = 8`, 2172 of mean's 2617 and 148 of
+p90's 382. Uncapped, p90 reaches **depth 14** there. Its structure is dense at every scale, so more pixels buy more tree
+and never reach the point where the criterion decides. A question about "the" collision has no
+single answer; it is a per-region property and has to be reported as one.
+
+**So: a scheduler's depth cap is two numbers, and a tree quoted with only one of them is
+underspecified.** `MAX_REL_DEPTH` is a policy default; the screen floor is arithmetic. State both
+wherever a tree is quoted, the same way §11 requires the aggregation to be stated.

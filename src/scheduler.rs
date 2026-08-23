@@ -4,13 +4,19 @@
 //! exists because the remaining questions are dynamic: does the descent terminate, does the floor
 //! engage, does a budget get spent well, does per-quad noise cause thrash.
 //!
-//! **Scope discipline** (SCHEDULER_BRIEF §6): no eviction, no caching, no async, no promotion, no
-//! camera, no interaction. A quad is computed once and the tree keeps it — that is the tree holding
-//! its own data, not a cache. If any of the others appears here, it is a bug.
+//! **Scope discipline**: no eviction, no caching, no async, no promotion, no interaction. A quad is
+//! computed once and the tree keeps it — that is the tree holding its own data, not a cache. If any
+//! of the others appears here, it is a bug.
+//!
+//! The **camera is now in scope**, and only in scope as a veto: SCHEDULER_BRIEF §6 excluded it, and
+//! that exclusion is exactly what made PR #11's q1/q2/q3/q7 describe a regime the real system never
+//! enters. See [`crate::camera`].
 
 use rayon::prelude::*;
 
+use crate::camera::Camera;
 use crate::ensemble::pixel::{evaluate, EnsembleCfg, PixelOut};
+use crate::grid::Chart;
 use crate::quad::{quantile, Agg, Decision, QuadReduction, QuadTree};
 use crate::render::Precision;
 use crate::rng::SplitMix64;
@@ -85,8 +91,16 @@ pub struct SchedCfg {
     /// Cap on **quads computed**, not trajectories. At `N=8`, `E+1=8` one quad is 512 trajectories
     /// and ~47 ms.
     pub budget: usize,
-    /// `None` runs to the budget, which is what §4 question 1 requires.
+    /// Absolute depth cap. **Superseded by the camera's relative-depth predicate** and kept
+    /// only so PR #11's runs reproduce exactly. `None` runs to the budget, which is what
+    /// §4 question 1 required *before there was a screen floor*.
     pub max_level: Option<u32>,
+    /// The view. `None` reproduces PR #11 — the criterion **minus its principal stop
+    /// condition**, which is the regime the real system never enters.
+    ///
+    /// The camera is read in exactly one place, [`Camera::veto`], which cannot return
+    /// `Decision::Split`. Complexity stays the sole trigger.
+    pub camera: Option<Camera>,
     pub tau_display: f64,
     /// Split above this exponent, floor below `alpha_lo`. Between them: keep.
     pub alpha_hi: f64,
@@ -96,6 +110,11 @@ pub struct SchedCfg {
     pub policy: Policy,
     pub order: Order,
     pub agg: Agg,
+    /// The chart every quad decodes through. One tree, one chart.
+    pub chart: Chart,
+    /// Retain each quad's `N²` footprints for the adaptive render. Not a cache — the run is
+    /// over when `descend` returns, and nothing is reused across runs.
+    pub keep_pixels: bool,
     pub seed: u64,
 }
 
@@ -106,6 +125,7 @@ impl Default for SchedCfg {
             bootstrap_levels: 2,
             budget: 2000,
             max_level: None,
+            camera: None,
             tau_display: 1e-2,
             alpha_hi: 0.5,
             alpha_lo: 0.2,
@@ -113,6 +133,8 @@ impl Default for SchedCfg {
             policy: Policy::Alpha,
             order: Order::Spread,
             agg: Agg::Median,
+            chart: Chart::BodyPlane,
+            keep_pixels: false,
             seed: 0,
         }
     }
@@ -126,6 +148,11 @@ pub struct SchedStats {
     pub leaves_per_iteration: Vec<usize>,
     pub budget_exhausted: bool,
     pub wall_seconds: f64,
+    /// Per-node footprints, kept only when [`SchedCfg::keep_pixels`] is set. **The adaptive
+    /// render needs the samples, not the reductions** — a level-3 leaf's `N²` samples are what
+    /// it rasterises across its own screen footprint. Indexed by node; empty for nodes not
+    /// computed. Off by default, because at 4096 leaves this is ~100 MB.
+    pub pixels: Vec<Vec<PixelOut>>,
     /// Footprints integrated, and the share of them duplicated at shared sibling edges. The
     /// duplication is `1/N` of a quad and is a *known cost*, reported rather than fixed: keeping
     /// `Slice` shared with the uniform kernel is worth more than the saving.
@@ -140,13 +167,13 @@ fn compute_quad<T: crate::Real>(
     i: usize,
     ens: &EnsembleCfg,
     n: usize,
-) -> QuadReduction {
-    let slice = tree.nodes[i].slice(n, tree.body);
+) -> (QuadReduction, Vec<PixelOut>) {
+    let slice = tree.nodes[i].slice(n, tree.body, tree.chart);
     let px: Vec<PixelOut> = (0..slice.npix())
         .into_par_iter()
         .map(|k| evaluate::<T>(&slice, k, ens))
         .collect();
-    reduce(&px)
+    (reduce(&px), px)
 }
 
 pub fn reduce(px: &[PixelOut]) -> QuadReduction {
@@ -188,7 +215,7 @@ pub fn descend(
     precision: Precision,
 ) -> (QuadTree, SchedStats) {
     let t0 = std::time::Instant::now();
-    let mut tree = QuadTree::new(cx, cy, half, cfg.n, body);
+    let mut tree = QuadTree::with_chart(cx, cy, half, cfg.n, body, cfg.chart);
     let mut st = SchedStats::default();
     let mut pending = vec![0usize];
     let mut iteration = 0u32;
@@ -207,17 +234,23 @@ pub fn descend(
             break;
         }
 
-        let reds: Vec<QuadReduction> = pending
+        let reds: Vec<(QuadReduction, Vec<PixelOut>)> = pending
             .iter()
             .map(|&i| match precision {
                 Precision::F32 => compute_quad::<f32>(&tree, i, ens, cfg.n),
                 Precision::F64 => compute_quad::<f64>(&tree, i, ens, cfg.n),
             })
             .collect();
-        for (&i, r) in pending.iter().zip(reds) {
+        for (&i, (r, px)) in pending.iter().zip(reds) {
             tree.nodes[i].red = r;
             tree.nodes[i].iteration = iteration;
             st.footprints += r.n_footprints as usize;
+            if cfg.keep_pixels {
+                if st.pixels.len() <= i {
+                    st.pixels.resize(i + 1, Vec::new());
+                }
+                st.pixels[i] = px;
+            }
         }
         st.quads_computed += pending.len();
 
@@ -297,13 +330,22 @@ fn ratio_log2(parent: f64, child: f64) -> Option<f64> {
 }
 
 /// §3.2. **Guards first, and the default is keep.**
-fn decide(tree: &QuadTree, i: usize, cfg: &SchedCfg) -> Decision {
+pub fn decide(tree: &QuadTree, i: usize, cfg: &SchedCfg) -> Decision {
     let q = &tree.nodes[i];
 
     // A numerical stop, distinct from a physical one, and checked before anything else so it can
     // never be mistaken for "the descent did not terminate".
     if q.below_precision_floor(tree.n) {
         return Decision::PrecisionFloor;
+    }
+    // **The veto.** Evaluated live from (quad, camera) and never stored on the quad: zoom in
+    // and the same patch regrows above pixel size and refines with real new samples. It sits
+    // ahead of the bootstrap too — an unconditional split past the screen floor would be the
+    // same error one level up.
+    if let Some(cam) = cfg.camera {
+        if let Some(d) = cam.veto(q, tree.n, tree.nodes[0].half) {
+            return d;
+        }
     }
     if let Some(m) = cfg.max_level {
         if q.level >= m {

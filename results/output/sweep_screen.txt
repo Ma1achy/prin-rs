@@ -1,0 +1,86 @@
+    Finished `release` profile [optimized] target(s) in 0.06s
+     Running `target/release/examples/sweep_screen 2000`
+q7 under the screen floor. budget 2000 quads, N=8, E+1=8, t=13, agg=median,
+viewport 512x512, camera framing the root box. Compare each block against the
+same sweep without a veto in results/output/sched_sweep.txt.
+
+=== far ===
+       tau  alpha_hi    quads   leaves  split*   floor    keep  screen  depth   wall s
+      1e-8      0.20     1365     1024     341       0    1024       0      5     10.7
+      1e-8      0.50     1365     1024     341       0    1024       0      5     10.5
+      1e-8      0.80     1365     1024     341       0    1024       0      5     10.6
+      1e-8      1.00      245      184      61       0     184       0      5      2.0
+      1e-6      0.20       21       16       5       0      16       0      2      0.2
+      1e-6      0.50       21       16       5       0      16       0      2      0.2
+      1e-6      0.80       21       16       5       0      16       0      2      0.2
+      1e-6      1.00       21       16       5       0      16       0      2      0.2
+      1e-4      0.20       21       16       5       0      16       0      2      0.2
+      1e-4      0.50       21       16       5       0      16       0      2      0.2
+      1e-4      0.80       21       16       5       0      16       0      2      0.2
+      1e-4      1.00       21       16       5       0      16       0      2      0.2
+      1e-3      0.20       21       16       5       0      16       0      2      0.2
+      1e-3      0.50       21       16       5       0      16       0      2      0.2
+      1e-3      0.80       21       16       5       0      16       0      2      0.2
+      1e-3      1.00       21       16       5       0      16       0      2      0.2
+      1e-2      0.20       21       16       5       0      16       0      2      0.2
+      1e-2      0.50       21       16       5       0      16       0      2      0.2
+      1e-2      0.80       21       16       5       0      16       0      2      0.2
+      1e-2      1.00       21       16       5       0      16       0      2      0.2
+  alpha_hi 0.20 -> 0.50 at tau=1e-4: leaf count x1.00  (PR #11: x80)
+  tau 1e-8 -> 1e-6 at alpha_hi=0.20: leaf count x64.00  (PR #11: identical)
+
+=== near-field ===
+       tau  alpha_hi    quads   leaves  split*   floor    keep  screen  depth   wall s
+      1e-8      0.20      589      442     147     107      59     276      6     27.2
+      1e-8      0.50       25       19       6       5      14       0      3      1.2
+      1e-8      0.80       21       16       5       6      10       0      2      0.9
+      1e-8      1.00       21       16       5       9       7       0      2      1.0
+      1e-6      0.20      589      442     147     107      59     276      6     27.5
+      1e-6      0.50       25       19       6       5      14       0      3      1.2
+      1e-6      0.80       21       16       5       6      10       0      2      1.0
+      1e-6      1.00       21       16       5       9       7       0      2      1.0
+      1e-4      0.20      549      412     137     100      60     252      6     28.7
+      1e-4      0.50       25       19       6       5      14       0      3      1.1
+      1e-4      0.80       21       16       5       6      10       0      2      1.0
+      1e-4      1.00       21       16       5       9       7       0      2      1.0
+      1e-3      0.20      345      259      86      62      61     136      6     15.8
+      1e-3      0.50       25       19       6       3      16       0      3      1.2
+      1e-3      0.80       21       16       5       6      10       0      2      1.0
+      1e-3      1.00       21       16       5       9       7       0      2      1.0
+      1e-2      0.20       21       16       5       0      16       0      2      1.0
+      1e-2      0.50       21       16       5       0      16       0      2      1.0
+      1e-2      0.80       21       16       5       0      16       0      2      1.0
+      1e-2      1.00       21       16       5       0      16       0      2      1.0
+  alpha_hi 0.20 -> 0.50 at tau=1e-4: leaf count x21.68  (PR #11: x80)
+  tau 1e-8 -> 1e-6 at alpha_hi=0.20: leaf count x1.00  (PR #11: identical)
+
+=== deep interior ===
+       tau  alpha_hi    quads   leaves  split*   floor    keep  screen  depth   wall s
+      1e-8      0.20      205      154      51      83      15      56      6      3.6
+      1e-8      0.50       49       37      12      26      11       0      5      0.9
+      1e-8      0.80       37       28       9      20       8       0      4      0.6
+      1e-8      1.00       29       22       7      16       6       0      3      0.5
+      1e-6      0.20      205      154      51      83      15      56      6      3.6
+      1e-6      0.50       49       37      12      26      11       0      5      0.8
+      1e-6      0.80       37       28       9      20       8       0      4      0.6
+      1e-6      1.00       29       22       7      16       6       0      3      0.5
+      1e-4      0.20       29       22       7       9      13       0      4      0.4
+      1e-4      0.50       25       19       6       6      13       0      3      0.4
+      1e-4      0.80       25       19       6       7      12       0      3      0.4
+      1e-4      1.00       25       19       6       7      12       0      3      0.4
+      1e-3      0.20       21       16       5       4      12       0      2      0.3
+      1e-3      0.50       21       16       5       4      12       0      2      0.3
+      1e-3      0.80       21       16       5       4      12       0      2      0.4
+      1e-3      1.00       21       16       5       4      12       0      2      0.3
+      1e-2      0.20       21       16       5       4      12       0      2      0.4
+      1e-2      0.50       21       16       5       4      12       0      2      0.4
+      1e-2      0.80       21       16       5       4      12       0      2      0.3
+      1e-2      1.00       21       16       5       4      12       0      2      0.4
+  alpha_hi 0.20 -> 0.50 at tau=1e-4: leaf count x1.16  (PR #11: x80)
+  tau 1e-8 -> 1e-6 at alpha_hi=0.20: leaf count x1.00  (PR #11: identical)
+
+split* counts SPLIT over all quads; a leaf can never carry Split.
+
+With only four discretionary levels below the bootstrap, a threshold has far less
+room to express itself. A small alpha ratio here does NOT mean alpha stopped
+mattering — it means the veto stopped the descent before alpha could.

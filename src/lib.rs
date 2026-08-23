@@ -5,7 +5,9 @@
 
 pub mod real;
 pub mod vec2;
+pub mod camera;
 pub mod config;
+pub mod decode;
 pub mod ensemble;
 pub mod grid;
 pub mod integrate;

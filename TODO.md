@@ -311,3 +311,35 @@ Confounds to dump, not hide:
 - [!] **N sweep: coarse N OVER-refines**, opposite to the stated concern. N=7 CRN probe inconclusive
 - [x] three measurements of mine that could not have failed, caught and fixed: the leaf `Split`
       column (always 0), `far`'s thrash on a uniform tree, and order at a budget that never bound
+
+---
+
+## The vertical slice (PR #12)
+
+- [x] `src/grid.rs` — `Chart` enum: `BodyPlane` (bitwise-preserved), oblique `Plane` in the 6D
+      position space, nonlinear `Shape`. `Slice::body_plane` constructor; nine literal sites updated
+- [x] `src/physics/shape.rs` — the Hopf **inverse** (`from_shape`, `inertia`, `exp_map`,
+      `tangent_frame`, `reduced_masses`). Round-trips to 7.2e-16 over 1445 points; the reflected
+      sign is asserted to break it
+- [x] `src/camera.rs` — camera, screen floor as a structural **veto**, `MAX_REL_DEPTH`
+- [x] `src/output/adaptive.rs` — texels at true per-quad size, `texel_scaling` acceptance
+- [x] `src/output/ssaa.rs` — resolve, kept distinct from spread
+- [x] `src/decode.rs` — five decode paths and `distinct`, the exact collapse measurement
+- [x] `ensemble::jitter` — jitter moved into **chart** coordinates (was perturbing `r[slice.body]`
+      directly, correct only for `BodyPlane`); bitwise identical there
+- [x] `tests/vertical_slice.rs` — 13 assertions, every one chosen by asking what makes it fire
+- [x] q1, q2, q3, q7 re-run under the veto; the `E` sweep with and without it; both open items
+- [x] adaptive renders, SSAA panels, zoom-ladder APNGs and `.prnq` dumps in `results/vertical/`
+
+### Left open, deliberately
+
+- **Which aggregation a scheduler should use.** §8.9 narrows it — the median is blind, and both
+  mean and p90 descend where it stalls — but not which of the two is right. §5's finding that the
+  three flip half the shared decisions still stands.
+- **`alpha_sibling_spread`'s own noise.** The range of four samples is a noisy statistic; it was
+  flagged in the PR #11 review as the next thing to characterise rather than the first thing to
+  trust, and this build did not characterise it.
+- **`deep interior`'s floor is partly integration error** (§8.9, drift 3.3e-1 against 3.0e-3).
+  The fix is BRIEF §2.5's flag-and-re-integrate, run over that region at finer `eta`, not a
+  scheduler change. Not attempted here.
+- **Interaction, eviction, async, promotion, GUI.** Still out of scope. If one appears, it is a bug.

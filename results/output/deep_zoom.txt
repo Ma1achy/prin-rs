@@ -1,0 +1,62 @@
+   Compiling prin-rs v0.1.0 (/Users/malachy/src/principia-rs-test)
+    Finished `release` profile [optimized] target(s) in 3.69s
+     Running `target/release/examples/deep_zoom 400`
+near-field, N=8, E+1=8, t=13, tau=1e-4, alpha_hi=0.2, budget 400 quads.
+The camera is zoomed to the stated depth about the region centre, so the root quad
+is a level-`depth` box: half = 0.05 / 2^depth.
+
+'distinct' is how many of the 64 footprint ICs in the root quad are actually
+different. Read it BEFORE the tree columns: a path that has collapsed builds a
+small confident tree out of nothing.
+
+ depth            path  distinct  collapsed spread(collap)   quads  leaves  depth     root decision
+     0      direct_f64      64/64      0/397             -     397     298      6             split
+     0      direct_f32      64/64      0/397             -     397     298      6             split
+     0   lin_naive_f32      64/64      0/397             -     397     298      6             split
+     0   lin_split_f32      64/64      0/397             -     397     298      6             split
+
+    14      direct_f64      64/64      0/21              -      21      16      2             split
+    14      direct_f32      64/64     16/21       1.811e-7      21      16      2             split
+    14   lin_naive_f32      64/64     16/21       1.811e-7      21      16      2             split
+    14   lin_split_f32      64/64      0/21              -      21      16      2             split
+
+    18      direct_f64      64/64      0/21              -      21      16      2             split
+    18      direct_f32      18/64     21/21      5.551e-17      21      16      2             split
+    18   lin_naive_f32      18/64     21/21      5.551e-17      21      16      2             split
+    18   lin_split_f32      64/64      0/21              -      21      16      2             split
+
+    20      direct_f64      64/64      0/21              -      21      16      2             split
+    20      direct_f32       2/64     21/21      5.551e-17      21      16      2             split
+    20   lin_naive_f32       2/64     21/21      5.551e-17      21      16      2             split
+    20   lin_split_f32      64/64      0/21              -      21      16      2             split
+
+    22      direct_f64      64/64      0/21              -      21      16      2             split
+    22      direct_f32       1/64     21/21      5.551e-17      21      16      2             split
+    22   lin_naive_f32       1/64     21/21      5.551e-17      21      16      2             split
+    22   lin_split_f32      64/64      0/21              -      21      16      2             split
+
+    30      direct_f64      64/64      0/21              -      21      16      2             split
+    30      direct_f32       1/64     21/21      5.551e-17      21      16      2             split
+    30   lin_naive_f32       1/64     21/21      5.551e-17      21      16      2             split
+    30   lin_split_f32      64/64      0/21              -      21      16      2             split
+
+    40      direct_f64      64/64      0/1               -       1       1      0   precision_floor
+    40      direct_f32       1/64      1/1       5.551e-17       1       1      0   precision_floor
+    40   lin_naive_f32       1/64      1/1       5.551e-17       1       1      0   precision_floor
+    40   lin_split_f32      64/64      0/1               -       1       1      0   precision_floor
+
+    46      direct_f64      40/64      1/1       6.206e-17       1       1      0   precision_floor
+    46      direct_f32       1/64      1/1       5.551e-17       1       1      0   precision_floor
+    46   lin_naive_f32       1/64      1/1       5.551e-17       1       1      0   precision_floor
+    46   lin_split_f32      40/64      1/1       6.206e-17       1       1      0   precision_floor
+
+A row with 1/64 distinct and every quad collapsed is the failure: the tree is not
+small because the region is tame, it is small because there is nothing in it. Read
+`spread(collap)` beside it — that is the number the criterion saw, and at ~1e-17 it
+is twelve orders below any tau anyone would set. Nothing downstream can tell that
+apart from a perfectly resolved quad.
+
+`root decision` explains the one-quad rows: at depth 40 the root quad's own cell
+width is already below the PRECISION floor (level ~36 at half0 = 0.05), so the
+descent stops for a numerical reason before any decode path is tested. That is a
+different limit from the collapse, and the column keeps them apart.

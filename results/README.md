@@ -153,3 +153,53 @@ comparison would be of pipelines rather than of arithmetic.
 
 The `render-*.txt` runs have it **on**, and report the before and after drift maxima on the same
 line.
+
+## `vertical/` — the vertical slice
+
+Everything the adaptive render, SSAA and zoom-ladder runs produced. **These are the first images
+in this project drawn at true per-quad texel sizes**; every image above and every overlay in
+PR #11 is a *uniform* render, where a level-3 leaf and a level-5 leaf are drawn at the same size.
+
+### Adaptive renders — `<region>_*.png`
+
+Four panels per region, from `examples/adaptive_render.rs`, 512×512, camera framing the root box,
+screen floor on:
+
+| file | what it is |
+|---|---|
+| `_adaptive_spread.png` | `ensemble_spread`, texels at true size, **fixed** window `1e-8 .. 1e-1` log — comparable across regions |
+| `_adaptive_spread_auto.png` | the same, on this tree's own p1..p99 window — legible within a region |
+| `_uniform_spread.png` / `_uniform_spread_auto.png` | **the wrong instrument, kept deliberately.** Every texel the same size, which is what PR #11 drew. It exists so the acceptance test has a negative case, and it fits a texel-scaling exponent of `+0.000000` where the adaptive render fits `-1.000000` |
+| `_adaptive_outcome.png` | the nominal copy's `(state, detail)` label, same palette as the images above |
+| `_adaptive_resolved.png` | the **SSAA resolve** — the mean colour over the `E+1` copies. Compare against `_adaptive_outcome.png`: they differ on 0.6% of near-field's footprints and 14.1% of `deep interior`'s, and not at all in `far` |
+
+`deep_interior_adaptive_spread.png` is worth looking at directly: it is §5's q3 failure made
+visible. The largest high-spread structures — the red regions top-left and bottom-right — are
+drawn in the **coarsest** texels in the image, because the tree left them at level 2. A uniform
+render cannot show that, which is why it went unnoticed.
+
+### SSAA panels — `ssaa_<region>_<E+1>_{nominal,resolved}.png`
+
+256×256 uniform renders at `E+1 ∈ {1, 8, 32}`. The `E+1 = 1` pair is the control and the two
+images are **identical by construction** — the resolve of one copy is that copy. A difference
+there would be a bug in the resolve rather than a finding.
+
+### Zoom ladders — `zoom_<region>_NN.png`, `zoom_<region>_animated.png`
+
+Nine frames at 384×384, each re-descending from a root box of `half = 0.05 / 2^k` with the camera
+framing it. **This is the only artefact that shows the screen floor is view-relative**, and a
+still image cannot: the 252 quads floored in frame 0 are refined in frames 1–3 with genuinely new
+samples, and a fresh population — 868 by frame 2 — is floored in their place. Nothing is cached
+and nothing is upsampled.
+
+The animation is an **APNG** — written by the `png` crate rather than by adding a GIF dependency,
+and named `.png` because an APNG *is* a PNG and viewers that do not animate show the first frame.
+Every frame is also on disk as an ordinary PNG, so nothing here depends on APNG support to be
+readable.
+
+### Tree dumps — `<region>.prnq`, `zoom_<region>_NN.prnq`
+
+The same self-describing `PRNQ` format as `results/sched-*.tree`: a magic, a version, a text
+header naming every parameter including `chart`, then one record of 24 `f64` fields per quad.
+One dump per rendered tree and one per zoom frame, so every picture above can be checked against
+the numbers that produced it.

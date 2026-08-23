@@ -29,10 +29,11 @@
 //! [`Scheme::Pcg`] keeps the reference's behaviour available. Prior results were produced with
 //! it and reproducing them needs it.
 
+use crate::decode::{self, Path};
 use crate::grid::Slice;
 use crate::physics::Cart;
 use crate::rng::SplitMix64;
-use crate::{Real, Vec2};
+use crate::Real;
 
 /// Mix `(i, j, seed)` into a stream seed. Written out rather than delegated, so a dependency
 /// bump cannot move the initial conditions underneath us.
@@ -114,13 +115,47 @@ pub fn copies_with<T: Real>(
     seed: u64,
     scheme: Scheme,
 ) -> Vec<Cart<T>> {
+    copies_with_path(slice, idx, n_extra, jitter_frac, seed, scheme, Path::DirectF64)
+}
+
+/// The same, with the arithmetic that forms each copy's initial condition named explicitly.
+///
+/// **The jitter is in CHART coordinates, not in one body's Cartesian position.** The earlier
+/// form added the offset to `c.r[slice.body]` directly, which is the same thing only because
+/// `Chart::BodyPlane`'s decode writes `(u, v)` straight into `r[body]`. On an oblique or shape
+/// chart it would perturb a body's position rather than a sub-cell sample of the chart, and the
+/// ensemble would no longer be sampling the cell it is supposed to be sampling. For
+/// `BodyPlane` the two are **bitwise identical** — `x + du*jx` either way — which is what
+/// `tests/seeding_golden.rs` holds.
+pub fn copies_with_path<T: Real>(
+    slice: &Slice,
+    idx: usize,
+    n_extra: usize,
+    jitter_frac: f64,
+    seed: u64,
+    scheme: Scheme,
+    path: Path,
+) -> Vec<Cart<T>> {
     let (hx, hy) = slice.cell_widths();
     let jx = jitter_frac * hx;
     let jy = jitter_frac * hy;
+    let (x, y) = slice.decode_pos(idx);
 
-    let base = slice.nominal::<f64>(idx);
+    // Only built when a non-default path asks for it: five extra f64 decodes per footprint.
+    let lin = (path != Path::DirectF64)
+        .then(|| decode::linearise(&slice.chart, slice.body, slice.cx, slice.cy, slice.half));
+    let make = |u: f64, v: f64| -> Cart<f64> {
+        match &lin {
+            None => slice.decode_state(u, v),
+            Some(l) => decode::sample(
+                path, &slice.chart, slice.body, slice.cx, slice.cy, slice.half,
+                (u - slice.cx) / slice.half, (v - slice.cy) / slice.half, l,
+            ),
+        }
+    };
+
     let mut out = Vec::with_capacity(n_extra + 1);
-    out.push(base.cast::<T>());
+    out.push(make(x, y).cast::<T>());
 
     match scheme {
         // No RNG, no per-pixel seed, no ordering. Copy k is at the same place in every
@@ -129,18 +164,14 @@ pub fn copies_with<T: Real>(
         Scheme::Halton => {
             for k in 0..n_extra {
                 let (u, v) = halton_offset(k);
-                let mut c = base;
-                c.r[slice.body] += Vec2::new(u * jx, v * jy);
-                out.push(c.cast::<T>());
+                out.push(make(x + u * jx, y + v * jy).cast::<T>());
             }
         }
         Scheme::Pcg => {
             let (i, j) = (idx % slice.nx, idx / slice.nx);
             let mut rng = SplitMix64::new(pixel_seed(i, j, seed));
             for _ in 0..n_extra {
-                let mut c = base;
-                c.r[slice.body] += Vec2::new(rng.range(-jx, jx), rng.range(-jy, jy));
-                out.push(c.cast::<T>());
+                out.push(make(x + rng.range(-jx, jx), y + rng.range(-jy, jy)).cast::<T>());
             }
         }
     }

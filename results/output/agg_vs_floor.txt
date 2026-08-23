@@ -1,0 +1,67 @@
+    Finished `release` profile [optimized] target(s) in 0.06s
+     Running `target/release/examples/agg_vs_floor 6000 1e-4 0.2`
+budget 6000 quads, tau=1e-4, alpha_hi=0.2, N=8, E+1=8, t=13, f64.
+
+Screen floor by viewport, from 4^L * N^2 <= V^2:
+  viewport   512^2 -> deepest displayable level 6
+  viewport  1024^2 -> deepest displayable level 7
+  viewport  2048^2 -> deepest displayable level 8
+  viewport  4096^2 -> deepest displayable level 9
+
+        region  viewport  relD      agg   quads  leaves  depth  floor   keep  screen  relcap              depth histogram
+ deep interior     512^2     6   median      29      22      4      9     13       0       0                 2:15 3:3 4:4
+ deep interior     512^2     6     mean     105      79      6     38     25      16       0     2:10 3:17 4:24 5:12 6:16
+ deep interior     512^2     6      p90      77      58      6     28     26       4       0      2:11 3:15 4:17 5:11 6:4
+
+ deep interior    1024^2     6   median      29      22      4      9     13       0       0                 2:15 3:3 4:4
+ deep interior    1024^2     6     mean     105      79      6     38     25       0      16     2:10 3:17 4:24 5:12 6:16
+ deep interior    1024^2     6      p90      77      58      6     28     26       0       4      2:11 3:15 4:17 5:11 6:4
+
+ deep interior    1024^2     7   median      29      22      4      9     13       0       0                 2:15 3:3 4:4
+ deep interior    1024^2     7     mean     161     121      7     38     27      56       0 2:10 3:17 4:24 5:12 6:2 7:56
+ deep interior    1024^2     7      p90      81      61      7     29     28       4       0  2:11 3:15 4:17 5:11 6:3 7:4
+
+ deep interior    2048^2     6   median      29      22      4      9     13       0       0                 2:15 3:3 4:4
+ deep interior    2048^2     6     mean     105      79      6     38     25       0      16     2:10 3:17 4:24 5:12 6:16
+ deep interior    2048^2     6      p90      77      58      6     28     26       0       4      2:11 3:15 4:17 5:11 6:4
+
+ deep interior    2048^2     8   median      29      22      4      9     13       0       0                 2:15 3:3 4:4
+ deep interior    2048^2     8     mean     161     121      7     38     83       0       0 2:10 3:17 4:24 5:12 6:2 7:56
+ deep interior    2048^2     8      p90      81      61      7     30     31       0       0  2:11 3:15 4:17 5:11 6:3 7:4
+
+ deep interior      none     -   median      29      22      4      9     13       0       0                 2:15 3:3 4:4
+ deep interior      none     -     mean     161     121      7     38     83       0       0 2:10 3:17 4:24 5:12 6:2 7:56
+ deep interior      none     -      p90      81      61      7     30     31       0       0  2:11 3:15 4:17 5:11 6:3 7:4
+
+    near-field     512^2     6   median     549     412        near-field      none   median    4617    3463     12    609   2854       0 2:3 3:28 4:64 5:65 6:108 7:331 8:661 9:1092 10:621 11:450 12:40
+    near-field      none     mean    5997    4498      9    847   1139       0 2:5 3:24 4:45 5:71 6:87 7:213 8:1545 9:2508
+    near-field      none      p90    1141     856     14    472    384       0 2:6 3:23 4:51 5:49 6:54 7:51 8:111 9:101 10:150 11:128 12:87 13:33 14:12
+
+If a row's histogram is identical to the no-viewport row up to the floor level and
+then piles up at it, the veto TRUNCATED that aggregation rather than changing it.
+The share of leaves in that pile is what the truncation cost.
+    2:6 3:23 4:51 5:49 6:76
+
+    near-field    1024^2     7   median    1125     844      7    166    102     576       0 2:3 3:28 4:64 5:65 6:108 7:576
+    near-field    1024^2     7     mean    1317     988      7    126    106     756       0 2:5 3:24 4:45 5:71 6:87 7:756
+    near-field    1024^2     7      p90     361     271      7    135     48      88       0 2:6 3:23 4:51 5:49 6:54 7:88
+
+    near-field    2048^2     6   median     549     412      6    100     60       0     252     2:3 3:28 4:64 5:65 6:252
+    near-field    2048^2     6     mean     561     421      6     81     64       0     276     2:5 3:24 4:45 5:71 6:276
+    near-field    2048^2     6      p90     273     205      6     99     30       0      76      2:6 3:23 4:51 5:49 6:76
+
+    near-field    2048^2     8   median    2105    1579      8    280    319     980       0 2:3 3:28 4:64 5:65 6:108 7:331 8:980
+    near-field    2048^2     8     mean    3489    2617      8    238    207    2172       0 2:5 3:24 4:45 5:71 6:87 7:213 8:2172
+    near-field    2048^2     8      p90     509     382      8    167     67     148       0 2:6 3:23 4:51 5:49 6:54 7:51 8:148
+
+    near-field      none     -   median    4617    3463     12    609   2854       0       0 2:3 3:28 4:64 5:65 6:108 7:331 8:661 9:1092 10:621 11:450 12:40
+    near-field      none     -     mean    5997    4498      9    847   1139       0       0 2:5 3:24 4:45 5:71 6:87 7:213 8:1545 9:2508
+    near-field      none     -      p90    1141     856     14    472    384       0       0 2:6 3:23 4:51 5:49 6:54 7:51 8:111 9:101 10:150 11:128 12:87 13:33 14:12
+
+If a row's histogram is identical to the no-viewport row up to the cap level and
+then piles up at it, the veto TRUNCATED that aggregation rather than changing it.
+The share of leaves in that pile is what the truncation cost.
+
+`screen` and `relcap` are different caps and a row can be bound by either. Where
+relcap is nonzero and screen is zero, the SCREEN FLOOR was not what stopped the
+descent — MAX_REL_DEPTH was, and that is a policy default rather than arithmetic.

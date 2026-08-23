@@ -1,0 +1,21 @@
+    Finished `release` profile [optimized] target(s) in 0.06s
+     Running `target/release/examples/zoom_sequence 'deep interior' 9 2000`
+zoom ladder over deep interior: 9 frames, 384x384, budget 2000 quads each.
+Each frame re-descends from a root box of half = 0.05 / 2^depth with the camera
+framing it, so `camera_depth` is 0 in every frame and the screen floor always sits
+six levels below the view. The samples in frame k+1 are NEW, not upsampled.
+
+ frame         half   quads  leaves  depth screen   keep  spread med    wall_s
+     0    5.0000e-2      29      22      4      0     13    9.446e-5       0.4
+     1    2.5000e-2      25      19      3      0     15    5.043e-5       0.4
+     2    1.2500e-2      21      16      2      0     16    4.120e-5       0.3
+     3    6.2500e-3      21      16      2      0     16    4.493e-5       0.4
+     4    3.1250e-3      21      16      2      0     16    4.418e-5       0.3
+     5    1.5625e-3      21      16      2      0     16    1.975e-5       0.3
+     6    7.8125e-4      21      16      2      0     16    9.584e-6       0.4
+     7    3.9063e-4      21      16      2      0     16    4.937e-6       0.3
+     8    1.9531e-4      21      16      2      0     16    2.351e-6       0.3
+
+wrote 9 frames, results/vertical/zoom_deep_interior_animated.png (APNG), and one .prnq per frame.
+The `screen` column is the point: at every zoom level a fresh population of leaves
+is stopped by the view, and the previous frame's floored quads have refined again.

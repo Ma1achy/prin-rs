@@ -1,0 +1,30 @@
+    Finished `release` profile [optimized] target(s) in 0.01s
+     Running `target/release/examples/sched_screen 50000 1e-4 0.2`
+budget 50000 quads, tau=1e-4, alpha_hi=0.2, N=8, E+1=8, t=13, f64
+viewport 512x512, camera framing the whole root box -> camera_depth 0.
+
+The screen floor caps the tree at 4^6 = 4096 leaves STRUCTURALLY. A smaller leaf
+count than PR #11's is arithmetic, not improvement, and is not read as one.
+
+        region      veto   quads  leaves  depth  floor   keep screen  relcap  budget   wall_s
+           far       OFF      21      16      2      0     16      0       0       0      0.2
+           far        on      21      16      2      0     16      0       0       0      0.2
+                        q2: floor 0.0%  keep 100.0%  screen 0.0%  relcap 0.0%  precision 0.0%
+                        depth histogram: 2:16
+                        stopped by the VIEW: 0, by the CRITERION: 16
+
+    near-field       OFF    4617    3463     12    609   2854      0       0       0    236.3
+    near-field        on     549     412      6    100     60    252       0       0     27.1
+                        q2: floor 24.3%  keep 14.6%  screen 61.2%  relcap 0.0%  precision 0.0%
+                        depth histogram: 2:3 3:28 4:64 5:65 6:252
+                        stopped by the VIEW: 252, by the CRITERION: 160
+
+ deep interior       OFF      29      22      4      9     13      0       0       0      0.4
+ deep interior        on      29      22      4      9     13      0       0       0      0.5
+                        q2: floor 40.9%  keep 59.1%  screen 0.0%  relcap 0.0%  precision 0.0%
+                        depth histogram: 2:15 3:3 4:4
+                        stopped by the VIEW: 0, by the CRITERION: 22
+
+q1 under the veto is a different question from q1 without it: the descent cannot
+run away, so 'does it terminate' becomes 'what terminated it'. Read the last line
+of each region: if the view stopped most leaves, the criterion was never tested.

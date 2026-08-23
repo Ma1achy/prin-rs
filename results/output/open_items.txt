@@ -1,0 +1,38 @@
+    Finished `release` profile [optimized] target(s) in 0.01s
+     Running `target/release/examples/open_items 6000`
+=== item 1: is the floor firing on integration error? ===
+budget 6000, tau=1e-4, alpha_hi=0.2, N=8, E+1=8, t=13, f64.
+
+        region   veto  leaves  floored   spearman  drift med F  drift med K       floored levels
+ deep interior    OFF      22        9     0.2987     3.256e-1     2.971e-3          2:5 3:1 4:3
+ deep interior     on      22        9     0.2987     3.256e-1     2.971e-3          2:5 3:1 4:3
+    near-field    OFF    3463      609     0.1300     4.085e-9     3.266e-9 2:2 3:18 4:40 5:40 6:66 7:114 8:163 9:115 10:30 11:17 12:4
+    near-field     on     412      100     0.0716     4.124e-9     5.068e-9   2:2 3:18 4:40 5:40
+           far    OFF      16        0        NaN          NaN    4.501e-11                    -
+           far     on      16        0        NaN          NaN    4.501e-11                    -
+
+Read `floored` and `floored levels` before the Spearman. If the veto removes the
+levels the floored quads lived at, a weak correlation means NO DATA, not no
+relationship — the population it was measured on is gone.
+
+=== item 2: does p90 aggregation fix deep interior's tree? ===
+PR #11 q3: the tree leaves the largest high-spread structures at level 2. The
+median-blindness attribution is plausible and unproven.
+
+        region   veto      agg   quads  leaves  depth  floor   keep        depth histogram
+ deep interior    OFF   median      29      22      4      9     13           2:15 3:3 4:4
+ deep interior    OFF     mean     161     121      7     38     83 2:10 3:17 4:24 5:12 6:2 7:56
+ deep interior    OFF      p90      81      61      7     30     31 2:11 3:15 4:17 5:11 6:3 7:4
+ deep interior     on   median      29      22      4      9     13           2:15 3:3 4:4
+ deep interior     on     mean     105      79      6     38     25 2:10 3:17 4:24 5:12 6:16
+ deep interior     on      p90      77      58      6     28     26 2:11 3:15 4:17 5:11 6:4
+
+    near-field    OFF   median    4617    3463     12    609   2854 2:3 3:28 4:64 5:65 6:108 7:331 8:661 9:1092 10:621 11:450 12:40
+    near-field    OFF     mean    5997    4498      9    847   1139 2:5 3:24 4:45 5:71 6:87 7:213 8:1545 9:2508
+    near-field    OFF      p90    1141     856     14    472    384 2:6 3:23 4:51 5:49 6:54 7:51 8:111 9:101 10:150 11:128 12:87 13:33 14:12
+    near-field     on   median     549     412      6    100     60 2:3 3:28 4:64 5:65 6:252
+    near-field     on     mean     561     421      6     81     64 2:5 3:24 4:45 5:71 6:276
+    near-field     on      p90     273     205      6     99     30 2:6 3:23 4:51 5:49 6:76
+
+If p90 descends where median does not, q3's failure is AGGREGATION. If p90 also
+stalls at level 2-4, it is not, and the attribution has to be withdrawn.

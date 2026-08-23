@@ -261,6 +261,60 @@ intractable".
 Released from rest, `L_z = 0` for every copy, so `sigma_Lz(0) = 0` and the ratio is `0/0`.
 Structurally undefined for this whole configuration family.
 
+**The screen floor is the everyday stop, and without it the criterion is measured wrong.**
+`tile_size = quad_width * zoom / N`; at `N = 8` on a 512x512 viewport samples stop being
+displayable at **level 6**. PR #11 descended to **12**. Under the veto, near-field goes 4617 quads
+to **549** and **61.2% of leaves are stopped by the view, not the criterion**. It is a **veto,
+never a trigger** — `Camera::veto` returns `Option<Decision>` and cannot return `Split` — and it is
+**view-relative and never cached on a quad**: a floored quad must refine again when zoomed into.
+`deep interior` is byte-identical with it on and off, so the veto neither causes nor fixes that
+region's bad tree.
+
+**Under the screen floor, `tau` is the dominant knob and `alpha_hi` is demoted — the opposite of
+PR #11.** `alpha` is a *rate* statistic and needs levels to express itself; with `bootstrap = 2`
+and a floor at 6 there are **four** discretionary levels against twelve. `tau` is a *level*
+statistic and keeps all its room. Measured: `alpha_hi` 0.20 -> 0.50 collapses near-field **21.7x**
+(was 80x) and `far` **not at all**; `tau` moves `far` **64x** and near-field **16x**, where it was
+called inert. Sweep both, and say which regime the tree was measured in.
+
+**A difference can be small because both sides are right or because both are dead.**
+Before reading any agreement number, assert each side still resolves what it is supposed to. Three
+catches in one planning session: a curvature term on an affine chart (identically zero at every
+depth), a linearised f32 sum whose samples all collapse to `x0` and agree perfectly with a direct
+path that collapsed too, and an `E` null that a veto-capped tree would have produced whatever `E`
+did. `decode::distinct` is the guard: count distinct ICs first, read divergence second.
+
+**A collapsed decode makes the criterion maximally confident.** Identical footprints give
+`ensemble_spread` exactly zero, which reads as "perfectly resolved" and stops the descent with a
+small tidy tree built from nothing. Treat a collapsed quad as **undetermined**, the same way a
+non-finite copy is a measurement outcome rather than missing data.
+
+**The deep-zoom floor is a property of where you zoom.** PR #11's level 45.87 is conditional on the
+chart coordinate being O(1), and the condition was never stated. The same box at the chart origin
+has **no cell-width floor at all** in the tested range, on either precision, because there is no
+O(1) neighbour for the increment to be absorbed into. Quote the coordinate magnitude with any floor
+depth.
+
+**The linearised decoder buys ~24 levels over f32 and none over f64.** `L-split` (x0 in f64 on the
+CPU, `delta` and `J_D.delta` in f32, summed in f64) tracks `direct_f64` rung for rung: both hold
+64/64 samples to depth 44 and reach 1 by 50. The literal formula `x0 + J_D.delta` **all in f32**
+collapses on exactly the same curve as plain f32. The ICs must be formed as absolute O(1) numbers
+before integration — three-body separations are O(1) — so the linearisation escapes the
+chart-coordinate floor and not the IC-magnitude one.
+
+**`N` and `E` fail in opposite directions and are not interchangeable.** `N` controls how well a
+quad knows its **area**; undersampling inflates the between-footprint variation that drives
+`alpha`, so coarse `N` **over**-refines. `E` controls how well a footprint knows its **value**;
+undersampling deflates the within-footprint spread compared against `tau`, so low `E`
+**under**-refines. Measured without the veto, near-field leaf count runs 742 -> 2713 -> 3463 at
+`E+1 = 2, 4, 8`. Never trade one against the other as if they were the same knob.
+
+**The jitter is in CHART coordinates, not one body's Cartesian position.** The original form added
+the offset to `c.r[slice.body]`, which is right only because `Chart::BodyPlane` writes `(u, v)`
+straight into that slot. On an oblique or shape chart it perturbs a body instead of taking a
+sub-cell sample of the chart. Bitwise identical for `BodyPlane`; `tests/seeding_golden.rs` holds
+that.
+
 ---
 
 ## SMOKE TEST

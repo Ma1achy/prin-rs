@@ -26,6 +26,28 @@
 //! coordinate*; it cannot escape one set by the *IC magnitude*. That is a weaker claim than
 //! "no floor", and whether the two differ at all is what [`Path::LinSplitF32`] measures.
 //!
+//! # What was measured
+//!
+//! On `body_plane` at a chart centre of magnitude ~3, with 64 samples per quad:
+//!
+//! | path | all 64 distinct to | collapsed to 1 by |
+//! |---|---|---|
+//! | [`Path::DirectF32`] | depth 14 | depth 22 |
+//! | [`Path::LinNaiveF32`] | depth 14 | depth 22 |
+//! | [`Path::LinSplitF32`] | depth 44 | depth 50 |
+//! | [`Path::DirectF64`] | depth 44 | depth 50 |
+//!
+//! **The literal formula buys nothing** — it collapses on exactly the same curve as forming the
+//! chart coordinate in f32 in the first place. **The split form reaches f64's floor and stops
+//! there**, so the gain is ~24 levels *for an f32 consumer* and zero over f64. The contract's
+//! "~50+" is f64's floor, not something the linearisation creates. That is the bound above,
+//! confirmed rather than escaped.
+//!
+//! And the floor itself is conditional: the **same box at a chart centre of zero has no
+//! cell-width floor at all** in the tested range, on either precision, because there is no O(1)
+//! neighbour for the increment to be absorbed into. Quote the coordinate magnitude with any floor
+//! depth.
+//!
 //! # The linearisation is a secant, not a derivative
 //!
 //! `J_D` is taken as `(D(c + half) - D(c - half)) / 2` per axis — two f64 decodes per axis, as

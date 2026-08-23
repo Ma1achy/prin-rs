@@ -7,7 +7,8 @@
 //! the patch that was one flat texel becomes 4096 of them, and the samples are **new**, not
 //! upsampled.
 //!
-//! Writes one PNG per frame, plus an animated APNG of the whole ladder, plus the raw tree dump
+//! Writes one PNG per frame, plus an animated APNG of the whole ladder (named `.png`, since an
+//! APNG is a PNG and a viewer that does not animate shows the first frame), plus the raw tree dump
 //! for every frame so the pictures can be checked against numbers.
 //!
 //! Run: `cargo run --release --example zoom_sequence [region] [frames] [budget]`
@@ -94,7 +95,9 @@ fn main() -> std::io::Result<()> {
 
     // APNG of the ladder. No new dependency: png 0.17 writes animated PNG directly, and every
     // frame is also on disk as a still, so nothing depends on APNG support to be readable.
-    let file = File::create(format!("{stem}.apng"))?;
+    // Named .png, not .apng: an APNG *is* a PNG, and viewers that do not animate show
+    // the first frame rather than refusing the file. The .apng extension mostly stops them trying.
+    let file = File::create(format!("{stem}_animated.png"))?;
     let mut enc = png::Encoder::new(BufWriter::new(file), RES as u32, RES as u32);
     enc.set_color(png::ColorType::Rgb);
     enc.set_depth(png::BitDepth::Eight);
@@ -106,7 +109,7 @@ fn main() -> std::io::Result<()> {
     }
     writer.finish()?;
 
-    println!("\nwrote {frames} frames, {stem}.apng, and one .prnq tree dump per frame.");
+    println!("\nwrote {frames} frames, {stem}_animated.png (APNG), and one .prnq per frame.");
     println!("The `screen` column is the point: at every zoom level a fresh population of leaves");
     println!("is stopped by the view, and the previous frame's floored quads have refined again.");
     Ok(())

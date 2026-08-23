@@ -2,11 +2,14 @@
      Running `target/release/examples/adaptive_render far 6000 1e-4 0.2`
 region far, budget 6000, tau=1e-4, alpha_hi=0.2, N=8, E+1=8
 viewport 512x512, camera framing the root box, screen floor ON
-21 quads, 16 leaves, depth 2, floor 0 keep 16 screen 0, 0.2 s
+21 quads, 16 leaves, depth 2, floor 0 keep 16 screen 0, 0.1 s
   wrote results/vertical/far.prnq (21 quads, 24 fields each)
 
 spread window for the false colour: 1e-8 .. 1e-1, log.
   adaptive_spread        texel px 18.286..18.286  tiles 1024  slope n/a (one level)
+  auto window for this tree: 4.203e-8 .. 4.203e-7 (p1..p99, log)
+  adaptive_spread_auto   texel px 18.286..18.286  tiles 1024  slope n/a (one level)
+  uniform_spread_auto    texel px 18.286..18.286  tiles 1024  slope n/a (one level)
   uniform_spread         texel px 18.286..18.286  tiles 1024  slope n/a (one level)
   adaptive_outcome       texel px 18.286..18.286  tiles 1024  slope n/a (one level)
   adaptive_resolved      texel px 18.286..18.286  tiles 1024  slope n/a (one level)

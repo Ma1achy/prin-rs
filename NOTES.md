@@ -1591,3 +1591,50 @@ Note `sigma_E(0) = 0` in the collapsed row. That is a second, independent signal
 failure and it *is* exactly zero, because it is a spread of energies rather than a distance from a
 computed centroid. It would make a serviceable secondary guard — but it is a symptom too, and the
 distinct count is the measurement.
+
+### 12.7 The collapse arrives from the leaves upward, so a root-level check is not enough
+
+Measured in `deep_zoom.txt` at camera depth 14 under `direct_f32`: the **root quad still resolves
+all 64 of its samples** while **16 of its 21 descendants have collapsed**. Children sit at half the
+parent's cell width, so the failure begins at the leaves — exactly where the scheduler is spending
+its budget — and works upward as the zoom deepens.
+
+The consequence for any distinctness guard: it has to be **per quad, at the moment the quad is
+computed**, not a once-per-frame check on the view. A frame whose root is fine can be built almost
+entirely from collapsed leaves.
+
+And the dangerous case is not the fully collapsed one. At depth 14 the partly-collapsed quads
+reported a spread of **1.811e-7** — small, but not absurd, and nothing a sanity check would flag.
+Full collapse at least produces the recognisable `5.551e-17`.
+
+### 12.8 Tree size is slice-conditional to a factor of 4; the exponent is not
+
+`slice_variety.txt`, at **one** fixed centre configuration (near-field's, which is Burrau's own),
+varying only the 2-plane through it, with bases orthonormal in the 6D position metric so a unit of
+chart coordinate moves the system the same distance in every case.
+
+Leaf count spans **226 to 970** — a factor of **4.3**. Among pure rotations within one body's
+plane it is only 403 to 526 (a factor of 1.3), so most of the variation comes from **which bodies
+the plane moves**, not from the angle. The nonlinear shape chart is the most structured of all at
+970 leaves.
+
+The `alpha` distribution, by contrast, barely moves: median 0.172 to 0.289, p10 between -0.09 and
+-0.17, p90 between 0.51 and 1.26, across every case including the nonlinear chart.
+
+So the exponent the criterion reads is far more stable than the tree it produces. Two consequences:
+
+- **Every leaf count in this repository is conditional on the slice, to about a factor of 4.** Say
+  so when quoting one. The comparisons *within* a slice (with and without the veto, across `E`,
+  across aggregation) are unaffected, because they share a slice.
+- A criterion tuned on one slice family is more likely to transfer than a *budget* tuned on one.
+
+**The control is exact and the check is on the right quantity.** `plane 0deg` reproduces
+`body_plane` with `max |dIC| = 0` and an identical tree. The check compares initial conditions,
+not trees: a tree is downstream of a chaotic integration, so checking it would be testing chaos
+rather than the charts.
+
+**And a gauge check nobody planned.** The three `shape phase` rows — 0.0, 0.4, 1.3 — are bitwise
+identical in every column. The fibre phase is a global rotation and the three-body problem is
+rotation-invariant, so they must be; if the Hopf inverse or the AZ port had broken rotational
+invariance, they would have separated. Kept, because it costs nothing and it is the only
+rotational-invariance check in the suite that runs through the *new* chart code.

@@ -1,4 +1,4 @@
-    Finished `release` profile [optimized] target(s) in 0.02s
+    Finished `release` profile [optimized] target(s) in 0.05s
      Running `target/release/examples/adaptive_render 'deep interior' 6000 1e-4 0.2`
 region deep interior, budget 6000, tau=1e-4, alpha_hi=0.2, N=8, E+1=8
 viewport 512x512, camera framing the root box, screen floor ON
@@ -7,6 +7,9 @@ viewport 512x512, camera framing the root box, screen floor ON
 
 spread window for the false colour: 1e-8 .. 1e-1, log.
   adaptive_spread        texel px 4.571..18.286  tiles 1408  slope -1.000000
+  auto window for this tree: 2.445e-5 .. 8.571e-1 (p1..p99, log)
+  adaptive_spread_auto   texel px 4.571..18.286  tiles 1408  slope -1.000000
+  uniform_spread_auto    texel px 4.571..4.571  tiles 1408  slope +0.000000
   uniform_spread         texel px 4.571..4.571  tiles 1408  slope +0.000000
   adaptive_outcome       texel px 4.571..18.286  tiles 1408  slope -1.000000
   adaptive_resolved      texel px 4.571..18.286  tiles 1408  slope -1.000000

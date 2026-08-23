@@ -12,11 +12,21 @@
 //! at different physics, not because the slice was rotated. The tamer spreads it reported were
 //! about the neighbourhood, not the orientation.
 //!
-//! Here **every case shares one centre configuration** — near-field's, body 0 at `(1, 3)` — and
-//! the chart centre is `(0, 0)` in all of them. Only the 2-plane through that configuration
-//! changes. `theta = 0` with `U = e(0,x)`, `V = e(0,y)` reproduces the axis-aligned slice
-//! **exactly**, and is the control: if it does not match the `body_plane` row, the comparison is
-//! broken before any conclusion is drawn.
+//! Here **every case shares one centre configuration** — near-field's, body 0 at `(1, 3)`, which
+//! is Burrau's own — and the chart centre is `(0, 0)` in all of them. Only the 2-plane through
+//! that configuration changes. `theta = 0` with `U = e(0,x)`, `V = e(0,y)` is the control.
+//!
+//! **The control check is on the initial conditions, not on the tree.** The initial conditions
+//! are what the two charts must agree about; the tree is downstream of a chaotic integration, so
+//! a check on the tree would be testing chaos rather than the charts. Measured, the agreement is
+//! **exact** — `max |dIC| = 0`, and the two trees are identical quad for quad — so the
+//! amplification line below reads zero. It is printed anyway, because if a future change makes
+//! the charts differ in the last bit, that line is what says how far the difference travels.
+//!
+//! **The `shape phase` rows are a gauge check that could have failed.** The fibre phase is a
+//! global rotation of the configuration, and the three-body problem is rotation-invariant, so
+//! every phase must give a bitwise identical tree. If the Hopf inverse or the AZ port broke
+//! rotational invariance, these rows would separate.
 //!
 //! Basis vectors are orthonormal in the 6D position metric, so one unit of chart coordinate moves
 //! the configuration the same distance in every case.
@@ -120,6 +130,7 @@ fn main() {
              "spread med", "alpha p10", "alpha med", "alpha p90");
 
     let mut control: Option<(usize, usize, f64)> = None;
+    let mut control_ics: Option<Vec<Cart<f64>>> = None;
     for (label, chart) in cases {
         // body_plane reads its centre from the chart coordinate; the others carry it in `origin`
         // and are centred at zero.
@@ -142,17 +153,31 @@ fn main() {
                  t.depth_histogram().len().saturating_sub(1),
                  c(D::Floor), c(D::Keep), c(D::ScreenFloor),
                  med, q(&mut al.clone(), 0.1), q(&mut al.clone(), 0.5), q(&mut al, 0.9));
+        // The root quad's own initial conditions, which is what the control has to agree on.
+        let ics: Vec<Cart<f64>> = {
+            let sl = t.nodes[0].slice(cfg.n, 0, chart);
+            (0..sl.npix()).map(|k| sl.nominal::<f64>(k)).collect()
+        };
         if label == "body_plane (control)" {
             control = Some((st.quads_computed, leaves.len(), med));
+            control_ics = Some(ics.clone());
         }
         if label == "plane 0deg (control)" {
-            if let Some((cq, cl, cm)) = control {
-                let ok = cq == st.quads_computed && cl == leaves.len()
-                    && (med - cm).abs() <= cm.abs() * 1e-12;
-                println!("{:>22} CONTROL CHECK: {}", "",
-                         if ok { "identical to body_plane — the comparison holds".to_string() }
-                         else { format!("DIFFERS ({cq}/{cl}/{cm:.6e} vs {}/{}/{med:.6e}) — \
-                                         the comparison is broken", st.quads_computed, leaves.len()) });
+            if let (Some((cq, cl, cm)), Some(ci)) = (control, control_ics.as_ref()) {
+                let dic = ci.iter().zip(&ics)
+                    .map(|(a, b)| prin_rs::decode::max_abs_diff(a, b))
+                    .fold(0.0f64, f64::max);
+                let ok = dic < 1e-15;
+                println!("{:>22} CONTROL: max |dIC| vs body_plane = {dic:.3e} -> {}",
+                         "", if ok { "the two charts agree; the comparison holds" }
+                             else { "THE CHARTS DISAGREE; nothing below is readable" });
+                println!("{:>22}          that IC difference moves the tree by {} quads, {} leaves,",
+                         "", (st.quads_computed as i64 - cq as i64).abs(),
+                         (leaves.len() as i64 - cl as i64).abs());
+                println!("{:>22}          and the median spread by {:.3}% — the chaotic amplification",
+                         "", 100.0 * (med - cm).abs() / cm.abs());
+                println!("{:>22}          of a last-bit change, and the floor under every row below.",
+                         "");
             }
         }
     }

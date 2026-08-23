@@ -790,7 +790,7 @@ So the ensemble's second job is real but small in the tame and mixed regions and
 the chaotic one. Spread and resolve are measuring different things on the same data and neither
 substitutes for the other: `far` has a nonzero spread (2.5e-8) and a *zero* resolve difference.
 
-**The zoom ladder** (`results/output/zoom_near-field.txt`, and `zoom_near-field.apng` with nine
+**The zoom ladder** (`results/output/zoom_near-field.txt`, and `zoom_near-field_animated.png` with nine
 still frames beside it). Each frame re-descends from a root box of `half = 0.05 / 2^k` with the
 camera framing it, so `camera_depth` is 0 throughout and the screen floor always sits six levels
 below the view.
@@ -916,11 +916,36 @@ project renders. The approximation is worst where it is least needed and best wh
 the opposite of the intuition that a linearisation breaks down at depth. On `body_plane` the same
 column is **structurally zero** and is reported as structural, never as a measurement.
 
-**And the seam: a collapsed decode makes the criterion maximally confident.** When a path has
-collapsed, every footprint is the same initial condition and every copy the same trajectory, so
-the spread is ~5.6e-17 — twelve orders below `tau = 1e-4`. The criterion reads that as *perfectly
-resolved* and stops, with a small tidy tree built from nothing. This is the project's standing
-pattern from a new direction, and it is why collapse is counted exactly rather than thresholded.
+**Result 4 — a collapsed decode makes the criterion maximally confident, and the collapse arrives
+from the leaves upward.** `deep_zoom.txt` runs the descent under each path, counting collapsed
+quads exactly:
+
+| camera depth | path | root distinct | quads collapsed | spread of collapsed | tree |
+|---|---|---|---|---|---|
+| 14 | direct_f32 | **64/64** | **16 of 21** | 1.811e-7 | 21 quads, 16 leaves, depth 2 |
+| 18 | direct_f32 | 18/64 | 21 of 21 | **5.551e-17** | 21 quads, 16 leaves, depth 2 |
+| 22 | direct_f32 | 1/64 | 21 of 21 | 5.551e-17 | 21 quads, 16 leaves, depth 2 |
+| 30 | lin_split_f32 | 64/64 | **0 of 21** | — | 21 quads, 16 leaves, depth 2 |
+
+Two things there, and the first is the reason a root-level check is not enough. **At depth 14 the
+root quad still resolves all 64 of its samples while 16 of its 21 descendants have collapsed** —
+the children sit at half the cell width, so the failure begins at the leaves and works upward. A
+distinctness check at the root would have reported everything fine.
+
+And at depth 18 onward the tree is *21 quads, 16 leaves, depth 2* — the same shape `far` produces,
+which is the tamest region in the study. The spread the criterion saw was **5.551e-17**, twelve
+orders below `tau = 1e-4`. Nothing downstream can tell that apart from a perfectly resolved
+region. This is the project's standing pattern from a new direction — *a statistic can report
+maximum confidence precisely when it is least informed* — and it is why collapse is counted
+exactly rather than thresholded.
+
+The `1.811e-7` row is the dangerous middle: a partly-collapsed quad returns a small but not
+absurd number, which no sanity check would flag.
+
+**The precision floor is a separate limit and the dump keeps them apart.** At camera depth 40 the
+root quad's own cell width is already below `PRECISION_MARGIN * f64::EPSILON`, so the descent
+stops with `root decision = precision_floor` before any decode path is exercised. A numerical stop,
+not a physical one, and not evidence about either.
 
 ### 8.11 Slice variety: are the prior conclusions slice-conditional?
 
@@ -932,8 +957,43 @@ the same distance in every row.
 A first version of this varied the chart at the same *coordinates* `(1.0, 3.0)`, which is not an
 orientation test: an oblique plane evaluated there lands on a completely different configuration,
 and the tamer spreads it reported were about the neighbourhood, not the angle. It was rewritten
-rather than reinterpreted. The `plane 0deg` row is the control and must reproduce `body_plane`
-exactly; the run asserts it and says so in the output.
+rather than reinterpreted. The `plane 0deg` row is the control and the check is on the **initial
+conditions**, not on the tree — the tree is downstream of a chaotic integration, so checking it
+would be testing chaos rather than the charts. Measured: `max |dIC| = 0.000e0`, and the two trees
+are identical quad for quad.
+
+| case | leaves | depth | screen | spread median | alpha p10 | alpha median | alpha p90 |
+|---|---|---|---|---|---|---|---|
+| body_plane (control) | 412 | 6 | 252 | 9.747e-4 | -0.123 | 0.216 | 0.879 |
+| plane 0deg (control) | 412 | 6 | 252 | 9.747e-4 | -0.123 | 0.216 | 0.879 |
+| plane 15deg | 403 | 6 | 252 | 8.638e-4 | -0.132 | 0.234 | 1.102 |
+| plane 30deg | 526 | 6 | 376 | 6.824e-4 | -0.125 | 0.289 | 1.257 |
+| plane 45deg | 439 | 6 | 300 | 6.272e-4 | -0.092 | 0.287 | 1.213 |
+| plane 45deg, half into body 2 | **226** | 6 | 128 | 1.280e-3 | -0.155 | 0.172 | 0.509 |
+| plane 45deg, all into body 2 | 355 | 6 | 220 | 1.013e-3 | -0.109 | 0.211 | 0.629 |
+| shape (nonlinear) | **970** | 6 | 768 | 1.700e-3 | -0.170 | 0.286 | 0.916 |
+
+**Yes, the tree is slice-conditional — and no, the criterion is not, or much less so.**
+
+Leaf count spans **226 to 970, a factor of 4.3**, at one fixed centre configuration with nothing
+varying but the 2-plane through it. Median spread spans 6.3e-4 to 1.7e-3, a factor of 2.7. Among
+the pure rotations alone (0 to 45 degrees, single body) it is 403 to 526, a factor of 1.3 — so
+most of the variation comes from **which bodies the plane moves**, not from the angle within one
+body's plane.
+
+But the `alpha` distribution barely moves: median 0.172 to 0.289, p10 between -0.09 and -0.17, p90
+between 0.51 and 1.26 across every case including the nonlinear chart. So the *exponent* the
+criterion reads is a much more stable quantity than the tree it produces. That is a mildly
+reassuring result for the criterion and a cautionary one for every leaf count quoted anywhere in
+this document: **each is conditional on the slice, to about a factor of 4.**
+
+**And an unplanned gauge check that could have failed.** The three `shape phase` rows — 0.0, 0.4,
+1.3 — are **bitwise identical** in every column. The fibre phase is a global rotation of the
+configuration and the three-body problem is rotation-invariant, so they must be. If the Hopf
+inverse or the AZ port had broken rotational invariance, these rows would have separated. They
+are the last row of `slice_variety.txt` and they cost nothing to keep.
+
+
 
 ## 9. Reproducing any of this
 

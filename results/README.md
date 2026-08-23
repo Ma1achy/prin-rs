@@ -184,7 +184,7 @@ render cannot show that, which is why it went unnoticed.
 images are **identical by construction** — the resolve of one copy is that copy. A difference
 there would be a bug in the resolve rather than a finding.
 
-### Zoom ladders — `zoom_<region>_NN.png`, `zoom_<region>.apng`
+### Zoom ladders — `zoom_<region>_NN.png`, `zoom_<region>_animated.png`
 
 Nine frames at 384×384, each re-descending from a root box of `half = 0.05 / 2^k` with the camera
 framing it. **This is the only artefact that shows the screen floor is view-relative**, and a
@@ -192,7 +192,8 @@ still image cannot: the 252 quads floored in frame 0 are refined in frames 1–3
 samples, and a fresh population — 868 by frame 2 — is floored in their place. Nothing is cached
 and nothing is upsampled.
 
-The animation is an **APNG**, written by the `png` crate rather than by adding a GIF dependency.
+The animation is an **APNG** — written by the `png` crate rather than by adding a GIF dependency,
+and named `.png` because an APNG *is* a PNG and viewers that do not animate show the first frame.
 Every frame is also on disk as an ordinary PNG, so nothing here depends on APNG support to be
 readable.
 

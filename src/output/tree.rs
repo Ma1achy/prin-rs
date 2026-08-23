@@ -75,6 +75,7 @@ pub fn write<W: Write>(
         "region={} body={} n_samples_per_axis={} n_copies={} budget={} bootstrap_levels={}\n\
          tau_display={} alpha_hi={} alpha_lo={} sib_tau={} policy={} order={} agg={} max_level={:?}\n\
          t_max={} eta={} n_sync={} r_coll_frac={} lc_stable={} jitter_scheme={:?} precision={}\n\
+         chart={} decode_path={} camera={:?}\n\
          quads_computed={} footprints={} iterations={} budget_exhausted={} wall_seconds={:.3}\n\
          trajectories_per_quad={} sibling_edge_overlap_frac={:.6}\n\
          fields={}\n",
@@ -83,6 +84,9 @@ pub fn write<W: Write>(
         cfg.policy.name(), cfg.order.name(), cfg.agg.name(), cfg.max_level,
         ens.t_max, ens.eta, ens.n_sync, ens.r_coll_frac, ens.lc_stable, ens.jitter_scheme,
         precision,
+        // The chart is the one thing that now makes two otherwise identical dumps different
+        // configurations. A dump that does not name it cannot be read back with confidence.
+        tree.chart.name(), ens.decode_path.name(), cfg.camera,
         st.quads_computed, st.footprints, st.iterations, st.budget_exhausted, st.wall_seconds,
         tree.n * tree.n * (ens.n_extra + 1),
         1.0 / tree.n as f64,

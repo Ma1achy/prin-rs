@@ -1,12 +1,16 @@
-    Finished `release` profile [optimized] target(s) in 0.06s
+   Compiling prin-rs v0.1.0 (/Users/malachy/src/principia-rs-test)
+    Finished `release` profile [optimized] target(s) in 4.52s
      Running `target/release/examples/adaptive_render near-field 6000 1e-4 0.2`
 region near-field, budget 6000, tau=1e-4, alpha_hi=0.2, N=8, E+1=8
 viewport 512x512, camera framing the root box, screen floor ON
-549 quads, 412 leaves, depth 6, floor 100 keep 60 screen 252, 24.7 s
+549 quads, 412 leaves, depth 6, floor 100 keep 60 screen 252, 24.6 s
   wrote results/vertical/near-field.prnq (549 quads, 24 fields each)
 
 spread window for the false colour: 1e-8 .. 1e-1, log.
   adaptive_spread        texel px 1.143..18.286  tiles 26368  slope -1.000000
+  auto window for this tree: 4.126e-5 .. 8.207e-3 (p1..p99, log)
+  adaptive_spread_auto   texel px 1.143..18.286  tiles 26368  slope -1.000000
+  uniform_spread_auto    texel px 1.143..1.143  tiles 26368  slope +0.000000
   uniform_spread         texel px 1.143..1.143  tiles 26368  slope +0.000000
   adaptive_outcome       texel px 1.143..18.286  tiles 26368  slope -1.000000
   adaptive_resolved      texel px 1.143..18.286  tiles 26368  slope -1.000000

@@ -1,0 +1,18 @@
+    Finished `release` profile [optimized] target(s) in 0.01s
+     Running `target/release/examples/ssaa_resolve 256`
+uniform render 256x256, t=13, eta=1e-2, f64, Halton offsets, jitter_frac 0.5.
+Resolve = mean of the copies' outcome colours. Spread is NOT resolve.
+
+        region   E+1   moved frac  mean |dRGB|   max |dRGB|   spread med     wall_s
+    near-field     1       0.0000        0.000            0      0.000e0        5.7
+    near-field     2       0.0026        0.104           91     3.685e-4       11.2
+    near-field     4       0.0054        0.167          136     9.899e-4       22.2
+    near-field     8       0.0064        0.192          159     1.081e-3       44.6
+    near-field    16       0.0068        0.213          171     1.160e-3       88.6
+    near-field    32       0.0075        0.214          172     1.212e-3      177.1
+
+ deep interior     1       0.0000        0.000            0      0.000e0        1.9
+ deep interior     2       0.0514        2.199          111     7.942e-6        4.0
+ deep interior     4       0.0972        3.796          164     4.754e-5        7.9
+ deep interior     8       0.1141        4.280          191     4.967e-5       15.8
+ deep interior    16       0.1264        4.760          195     5.169e-5       31.8

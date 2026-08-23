@@ -1,0 +1,35 @@
+    Finished `release` profile [optimized] target(s) in 0.06s
+     Running `target/release/examples/deep_zoom 400`
+near-field, N=8, E+1=8, t=13, tau=1e-4, alpha_hi=0.2, budget 400 quads.
+The camera is zoomed to the stated depth about the region centre, so the root quad
+is a level-`depth` box: half = 0.05 / 2^depth.
+
+'distinct' is how many of the 64 footprint ICs in the root quad are actually
+different. Read it BEFORE the tree columns: a path that has collapsed builds a
+small confident tree out of nothing.
+
+ depth            path  distinct   zero-spread   quads  leaves  depth   keep    wall_s
+     0      direct_f64      64/64          0/397     397     298      6     60      17.9
+     0      direct_f32      64/64          0/397     397     298      6     60      17.6
+     0   lin_naive_f32      64/64          0/397     397     298      6     60      17.5
+     0   lin_split_f32      64/64          0/397     397     298      6     60      18.7
+
+    20      direct_f64      64/64          0/21       21      16      2     16       1.0
+    20      direct_f32       2/64          0/21       21      16      2     16       1.0
+    20   lin_naive_f32       2/64          0/21       21      16      2     16       1.1
+    20   lin_split_f32      64/64          0/21       21      16      2     16       1.0
+
+    40      direct_f64      64/64          0/1         1       1      0      0       0.0
+    40      direct_f32       1/64          0/1         1       1      0      0       0.0
+    40   lin_naive_f32       1/64          0/1         1       1      0      0       0.0
+    40   lin_split_f32      64/64          0/1         1       1      0      0       0.0
+
+    46      direct_f64      40/64          0/1         1       1      0      0       0.0
+    46      direct_f32       1/64          0/1         1       1      0      0       0.0
+    46   lin_naive_f32       1/64          0/1         1       1      0      0       0.0
+    46   lin_split_f32      40/64          0/1         1       1      0      0       0.0
+
+A row with 1/64 distinct and a high zero-spread count is the failure: the tree is
+not small because the region is tame, it is small because there is nothing in it.
+Compare against decode_ladder.txt, which gives the same collapse depths without
+integrating anything.

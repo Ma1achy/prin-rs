@@ -1558,3 +1558,36 @@ On `body_plane` the same column is **structurally zero**, and is reported as str
 than as a measurement. What it does show at depth 44 is `0.55` — that is not curvature but
 accumulation rounding reaching half a sample spacing, arriving exactly where distinctness starts
 to fail.
+
+### 12.6 "Zero spread" is not zero, and a collapse detector written that way cannot fire
+
+Caught in this build's own instrumentation, which makes it the fourth catch of the same family
+and the first one that was mine rather than the brief's.
+
+The first version of `deep_zoom` detected a collapsed decode by testing
+`red.spread_median == 0.0`. It reported **no collapse anywhere**, including at depth 40 where
+exactly **1 of 64** initial conditions was distinct and every trajectory in the quad was the same
+trajectory.
+
+Identical inputs do not give an identically zero spread. `spread_shape` is the mean distance of
+the copies' `shape_vec` from their centroid; eight identical unit vectors summed and divided by
+eight do not return the value bitwise, so the residual is **5.551115e-17**. Measured directly:
+
+```
+  direct_f64: copies distinct 8/8  spread 2.351651e-14  sigma_E(0) 5.329e-15
+  direct_f32: copies distinct 1/8  spread 5.551115e-17  sigma_E(0) 0.000e0
+```
+
+That residual is twelve orders below `tau_display = 1e-4`. **No threshold anyone would set can
+separate a fully collapsed quad from a perfectly resolved one**, and a small tidy tree built out
+of nothing is exactly what a collapsed decode produces.
+
+The fix is not a smaller epsilon. It is to stop asking a *statistic* whether the data was there
+and ask the *data*: `decode::distinct` counts distinct initial conditions by bitwise comparison of
+all twelve state components, which is exact and cannot drift. The spread is reported beside it, as
+the number the criterion would have believed.
+
+Note `sigma_E(0) = 0` in the collapsed row. That is a second, independent signal of the same
+failure and it *is* exactly zero, because it is a spread of energies rather than a distance from a
+computed centroid. It would make a serviceable secondary guard — but it is a symptom too, and the
+distinct count is the measurement.

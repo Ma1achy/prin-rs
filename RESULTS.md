@@ -685,6 +685,112 @@ sample-centred tile overhangs its quad by half a cell. Leaves are painted coarse
 finer neighbour overwrites the overhang. It is the same endpoint-inclusive duplication already
 recorded at sibling edges (1/N of a quad, 12.5% at N = 8), seen from the render side.
 
+### 8.5 The `E` sweep refutes the prediction, and the veto would have hidden it
+
+The prediction on record before the run: *low `E` biases toward refine, exactly as low `N` did* —
+`N = 4` spent 4x the quads of `N = 16`. **It does the opposite.**
+
+`results/output/e_sweep.txt`, budget 6000 quads, `tau = 1e-4`, `alpha_hi = 0.2`, N = 8, `t = 13`,
+f64. near-field, veto **off**:
+
+| E+1 | quads | leaves | depth | trajectories | sibling range | capped? |
+|---|---|---|---|---|---|---|
+| 2 | 989 | 742 | 10 | 94,976 | 0.8997 | no |
+| 4 | 3617 | 2713 | 10 | 694,528 | 0.9852 | no |
+| 8 | 4617 | 3463 | 12 | 1,773,056 | 1.2403 | no |
+| 16 | 5997 | 4498 | 10 | 4,605,952 | 1.4259 | **yes** |
+| 32 | 5997 | 4498 | 10 | 9,211,904 | 1.4085 | **yes** |
+
+Leaf count **rises** with `E`, monotonically, over the three uncapped rows: 742 -> 2713 -> 3463.
+**Low `E` under-refines.** The last two rows are budget-limited and their leaf counts are floors,
+not measurements; they are excluded from the trend rather than read as a plateau.
+
+**And the veto would have reported a null.** The same sweep with the screen floor on gives 535,
+523, 412, 607, 520 — no trend, everything inside a factor of 1.5, because a veto-capped tree
+saturates before over- or under-refinement can express itself. **Running only the veto-on rows
+would have concluded that `E` does not matter.** That confound was written into the plan before
+the run for exactly this reason.
+
+`far` is flat at 16 leaves across every `E` and both settings — the control working: `E` cannot
+matter in a region that never descends. `deep interior` is erratic by an order (16, 127, 22, 31,
+187 with the veto) and is **not** a trend; its `E+1 = 32` veto-off row explodes to a
+budget-capped 4498 leaves. Chaotic scatter, reported as scatter.
+
+### 8.6 `N` and `E` fail in opposite directions, and it is a bias not a noise
+
+`results/output/spread_bias_e.txt` measures the mechanism directly, on identical footprints with
+only `E+1` varying. Because the Halton offsets are a fixed prefix, the `E+1 = 2` copies are a
+**subset** of the `E+1 = 32` copies, so any movement is the estimator and not a different sample.
+
+`spread_shape` is the mean distance of the copies' `shape_vec` from their centroid. With two
+points the centroid sits exactly between them and the statistic measures half of one pair's
+separation; it is systematically **smaller** than the same quantity over eight copies. A small
+spread falls below `tau_display`, and the quad is **kept**.
+
+That is the opposite failure direction from `N`, and the two are not interchangeable:
+
+| knob | what it resolves | undersampling it | direction |
+|---|---|---|---|
+| `N` | how well a quad knows its own **area** | inflates the between-footprint variation that drives `alpha` | **over**-refines |
+| `E` | how well a footprint knows its own **value** | deflates the within-footprint spread compared against `tau` | **under**-refines |
+
+The `sibling range` column reads the same way: it **rises** with `E` (0.90 -> 0.99 -> 1.24 -> 1.43
+without the veto). That is not noise falling, it is signal appearing — more copies find more
+genuine disagreement inside the same cell.
+
+**The consequence for the tier design is the reverse of the one predicted.** The cheap tier does
+not cancel itself: `E+1 = 2` costs 94,976 trajectories against `E+1 = 8`'s 1,773,056, an **18.7x**
+saving for a 4x reduction in copies. It buys that by **refining less** — by not seeing structure —
+not by being efficient. The risk is silent under-resolution, not a blown budget.
+
+### 8.7 The two open items from the PR #11 review
+
+`results/output/open_items.txt`.
+
+**Item 1 — does `floored` correlate with `worst_energy_drift`?** It depends on the region, and the
+answer for `deep interior` is yes.
+
+| region | veto | leaves | floored | Spearman | drift median, floored | drift median, kept |
+|---|---|---|---|---|---|---|
+| deep interior | off | 22 | 9 | **+0.2987** | **3.256e-1** | 2.971e-3 |
+| deep interior | on | 22 | 9 | +0.2987 | 3.256e-1 | 2.971e-3 |
+| near-field | off | 3463 | 609 | +0.1300 | 4.085e-9 | 3.266e-9 |
+| near-field | on | 412 | 100 | +0.0716 | 4.124e-9 | 5.068e-9 |
+| far | either | 16 | 0 | n/a | n/a | 4.501e-11 |
+
+In `deep interior` the floored quads carry a median drift of **3.3e-1** against **3.0e-3** in the
+kept ones — two orders, on quads whose energy is wrong by 33%. Those quads are not trustworthy at
+all, so at least part of that region's floor is **integration error corrupting `alpha`**, which is
+a different bug with a different fix: BRIEF §2.5's flag-and-re-integrate remedy, not a scheduler
+change. In near-field the two populations are indistinguishable (4.1e-9 against 3.3e-9), so the
+floor there is not an integration artefact.
+
+**And the caveat the review asked for bites, exactly where it was predicted to.** near-field's
+floored quads live at levels 2-12; the veto removes everything below level 6, which is **509 of
+609** of them — 84% of the population. The weaker Spearman under the veto (+0.0716) therefore
+means *"no data"*, not *"no relationship"*. The `floored levels` column is printed beside every
+row so this is readable rather than inferable.
+
+`deep interior` is unaffected: its floored quads live at levels 2-4 and the veto never fires
+there, so its correlation is measured on the same population either way.
+
+**Item 2 — does p90 aggregation fix `deep interior`'s tree?** Yes. It is aggregation.
+
+| agg | quads | leaves | depth | depth histogram |
+|---|---|---|---|---|
+| median | 29 | 22 | 4 | 2:15 3:3 4:4 |
+| mean | 161 | 121 | 7 | 2:10 3:17 4:24 5:12 6:2 7:56 |
+| p90 | 81 | 61 | 7 | 2:11 3:15 4:17 5:11 6:3 7:4 |
+
+Median stalls at depth 4 with fifteen of its twenty-two leaves still at level 2. Both mean and p90
+descend to **depth 7**. So §5's q3 failure is **median blindness** — a thin filament crossing a
+quad does not move the median of 64 footprint spreads — and the attribution stated there as
+"plausible and unproven" is now measured.
+
+Note it is *not* p90 specifically: mean descends further still (121 leaves against 61). The
+finding is that the median is blind, not that p90 is the right answer. Which aggregation a
+scheduler should use remains §5's open question, and this narrows it by one.
+
 ## 9. Reproducing any of this
 
 Every table above comes from a committed example. Raw output for all of them is in
@@ -715,6 +821,18 @@ Every table above comes from a committed example. Raw output for all of them is 
 | §5 ordering | `cargo run --release --example sched_order -- 1500 1e-4 0.2` |
 | §5 N sweep | `cargo run --release --example sched_n_sweep -- 4000 1e-4` |
 | §5 thrash | `cargo run --release --example sched_thrash -- 1e-4 0.2` |
+| §8 screen floor, q1/q2 | `cargo run --release --example sched_screen -- 50000 1e-4 0.2` |
+| §8 q7 under the veto | `cargo run --release --example sweep_screen -- 2000` |
+| §8 the E sweep | `cargo run --release --example e_sweep -- 6000 1e-4 0.2` |
+| §8 the estimator bias in E | `cargo run --release --example spread_bias_e -- 48` |
+| §8 slice variety | `cargo run --release --example slice_variety -- 4000 1e-4 0.2` |
+| §8 the decode ladder | `cargo run --release --example decode_ladder` |
+| §8 deep zoom in situ | `cargo run --release --example deep_zoom -- 400` |
+| §8 SSAA resolve | `cargo run --release --example ssaa_resolve -- 256` |
+| §8 the open items | `cargo run --release --example open_items -- 6000` |
+| §8 adaptive render | `cargo run --release --example adaptive_render -- near-field 6000 1e-4 0.2` |
+| §8 the zoom ladder (APNG) | `cargo run --release --example zoom_sequence -- near-field 9 2000` |
+| §8 the vertical-slice tests | `cargo test --release --test vertical_slice -- --nocapture` |
 | the acceptance gates | `cargo test --release -- --nocapture` |
 | the NumPy cross-check | `cargo test --release --test xcheck -- --ignored --nocapture` |
 | the horizon table | `python3 tools/xcheck/horizon.py [--lc-unstable]` |

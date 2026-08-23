@@ -26,11 +26,7 @@ fn arg<T: std::str::FromStr>(i: usize, d: T) -> T {
     std::env::args().nth(i).and_then(|s| s.parse().ok()).unwrap_or(d)
 }
 
-fn spread_rgb(p: &prin_rs::ensemble::pixel::PixelOut) -> [u8; 3] {
-    // Log ramp over a fixed window, so panels from different runs are comparable. The window is
-    // printed; a false-colour image without its scale is decoration.
-    let (lo, hi) = (1e-8f64, 1e-1f64);
-    let v = p.ensemble_spread;
+fn ramp_at(v: f64, lo: f64, hi: f64) -> [u8; 3] {
     let t = if !v.is_finite() {
         1.0
     } else if v <= lo {
@@ -43,6 +39,12 @@ fn spread_rgb(p: &prin_rs::ensemble::pixel::PixelOut) -> [u8; 3] {
         (255.0 * (t * (1.0 - t) * 4.0).powf(0.8)) as u8,
         (255.0 * (1.0 - t).powf(0.6)) as u8,
     ]
+}
+
+/// Fixed window, so panels from different runs and different regions are directly comparable.
+/// Seven decades, which is honest and low-contrast.
+fn spread_rgb(p: &prin_rs::ensemble::pixel::PixelOut) -> [u8; 3] {
+    ramp_at(p.ensemble_spread, 1e-8, 1e-1)
 }
 
 fn main() -> std::io::Result<()> {
@@ -92,6 +94,28 @@ fn main() -> std::io::Result<()> {
 
     println!("\nspread window for the false colour: 1e-8 .. 1e-1, log.");
     let ad = report("adaptive_spread", TexelMode::Adaptive, &spread_rgb)?;
+
+    // A second panel on this tree's OWN p1..p99 window. The fixed window above spans seven
+    // decades while near-field's spread varies over about one, so the structure the tree is
+    // tracking is compressed into a few shades and cannot be judged by eye — which is the whole
+    // purpose of §3.2. Both are kept: the fixed one is comparable across regions, the auto one is
+    // legible within a region, and neither is the product.
+    let (alo, ahi) = {
+        let mut v: Vec<f64> = leaves.iter().flat_map(|&i| st.pixels[i].iter())
+            .map(|p| p.ensemble_spread).filter(|x| x.is_finite() && *x > 0.0).collect();
+        v.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        if v.len() < 2 { (1e-8, 1e-1) } else {
+            let q = |f: f64| v[(((v.len() - 1) as f64) * f).round() as usize];
+            (q(0.01).max(1e-14), q(0.99).max(q(0.01) * 10.0))
+        }
+    };
+    println!("  auto window for this tree: {alo:.3e} .. {ahi:.3e} (p1..p99, log)");
+    report("adaptive_spread_auto", TexelMode::Adaptive, &|p: &prin_rs::ensemble::pixel::PixelOut| {
+        ramp_at(p.ensemble_spread, alo, ahi)
+    })?;
+    report("uniform_spread_auto", TexelMode::Uniform, &|p: &prin_rs::ensemble::pixel::PixelOut| {
+        ramp_at(p.ensemble_spread, alo, ahi)
+    })?;
     let un = report("uniform_spread", TexelMode::Uniform, &spread_rgb)?;
     report("adaptive_outcome", TexelMode::Adaptive, &outcome_rgb)?;
     report("adaptive_resolved", TexelMode::Adaptive, &ssaa::resolve_rgb)?;

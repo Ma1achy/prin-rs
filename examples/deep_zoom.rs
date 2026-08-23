@@ -3,14 +3,22 @@
 //! The arithmetic ladder (`decode_ladder`) says where each path stops resolving its samples.
 //! This asks what the *scheduler* does when it happens, and the answer is the seam worth having:
 //!
-//! **A collapsed decode reports a spread of exactly zero, which the criterion reads as
-//! "perfectly resolved".** Every footprint in the quad is the same initial condition, every copy
-//! is the same trajectory, the ensemble agrees completely — and the tree stops, confident, with
-//! no data at all. That is the project's own standing pattern: *a statistic can report maximum
-//! confidence precisely when it is least informed.*
+//! **A collapsed decode reports a spread of ~5.6e-17, which the criterion reads as "perfectly
+//! resolved".** Every footprint in the quad is the same initial condition, every copy is the same
+//! trajectory, the ensemble agrees completely — and the tree stops, confident, having integrated
+//! nothing distinguishable at all. That is the project's own standing pattern arriving from a new
+//! direction: *a statistic can report maximum confidence precisely when it is least informed.*
 //!
-//! So the number to read here is `zero-spread quads`, not tree size. A small tree under a
-//! collapsed path is not the criterion working.
+//! **And "zero spread" is not zero.** The first version of this measurement tested
+//! `spread_median == 0.0` and reported no collapse anywhere, including where 1 of 64 initial
+//! conditions was distinct. Eight identical `shape_vec`s summed and divided by eight do not
+//! return the value bitwise, so the residual is ~5.55e-17 — twelve orders below `tau = 1e-4`, and
+//! therefore indistinguishable from a genuinely resolved quad by any threshold anyone would set.
+//! A collapse detector written as a spread comparison **cannot fire**.
+//!
+//! So collapse is detected **exactly**, by counting distinct initial conditions per quad
+//! ([`decode::distinct`], a bitwise comparison of all 12 state components), and the spread is
+//! reported beside it to show what the criterion would have believed.
 //!
 //! Run: `cargo run --release --example deep_zoom [budget]`
 
@@ -19,7 +27,6 @@ use prin_rs::decode::{self, Path};
 use prin_rs::ensemble::pixel::EnsembleCfg;
 use prin_rs::grid;
 use prin_rs::physics::Cart;
-use prin_rs::quad::Decision as D;
 use prin_rs::render::Precision;
 use prin_rs::scheduler::{self, SchedCfg};
 
@@ -35,10 +42,11 @@ fn main() {
     println!("'distinct' is how many of the 64 footprint ICs in the root quad are actually");
     println!("different. Read it BEFORE the tree columns: a path that has collapsed builds a");
     println!("small confident tree out of nothing.\n");
-    println!("{:>6} {:>15} {:>9} {:>13} {:>7} {:>7} {:>6} {:>6} {:>9}",
-             "depth", "path", "distinct", "zero-spread", "quads", "leaves", "depth", "keep", "wall_s");
+    println!("{:>6} {:>15} {:>9} {:>10} {:>13} {:>7} {:>7} {:>6} {:>17}",
+             "depth", "path", "distinct", "collapsed", "spread(collap)", "quads", "leaves",
+             "depth", "root decision");
 
-    for zoom_depth in [0u32, 20, 40, 46] {
+    for zoom_depth in [0u32, 14, 18, 20, 22, 30, 40, 46] {
         let half = 0.05 / (2f64).powi(zoom_depth as i32);
         for path in PATHS {
             // Distinctness of the root quad's own footprints, measured directly.
@@ -62,21 +70,50 @@ fn main() {
             let (t, st) = scheduler::descend(
                 root.cx, root.cy, half, root.body, &cfg, &ens, Precision::F64);
             let leaves: Vec<usize> = t.leaves().collect();
-            let zero = t.nodes.iter()
-                .filter(|q| q.red.n_footprints > 0 && q.red.spread_median == 0.0)
-                .count();
-            println!("{:>6} {:>15} {:>7}/64 {:>10}/{:<3} {:>7} {:>7} {:>6} {:>6} {:>9.1}",
-                     zoom_depth, path.name(), n_distinct, zero, st.quads_computed,
+
+            // Collapse, counted EXACTLY: how many computed quads have fewer than N^2 distinct
+            // initial conditions. Never a spread comparison — see the module note.
+            let mut collapsed = 0usize;
+            let mut computed = 0usize;
+            let mut csp: Vec<f64> = Vec::new();
+            for node in t.nodes.iter().filter(|q| q.red.n_footprints > 0) {
+                computed += 1;
+                let sl = node.slice(cfg.n, t.body, t.chart);
+                let l = decode::linearise(&sl.chart, sl.body, sl.cx, sl.cy, sl.half);
+                let ics: Vec<Cart<f64>> = (0..sl.npix())
+                    .map(|k| {
+                        let (u, v) = sl.decode_pos(k);
+                        decode::sample(path, &sl.chart, sl.body, sl.cx, sl.cy, sl.half,
+                                       (u - sl.cx) / sl.half, (v - sl.cy) / sl.half, &l)
+                    })
+                    .collect();
+                if decode::distinct(&ics) < sl.npix() {
+                    collapsed += 1;
+                    if node.red.spread_median.is_finite() {
+                        csp.push(node.red.spread_median);
+                    }
+                }
+            }
+            csp.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            let csp_med = csp.get(csp.len() / 2).cloned();
+            println!("{:>6} {:>15} {:>7}/64 {:>6}/{:<3} {:>13} {:>7} {:>7} {:>6} {:>17}",
+                     zoom_depth, path.name(), n_distinct, collapsed, computed,
+                     csp_med.map(|x| format!("{x:.3e}")).unwrap_or_else(|| "-".into()),
                      st.quads_computed, leaves.len(),
                      t.depth_histogram().len().saturating_sub(1),
-                     leaves.iter().filter(|&&i| t.nodes[i].decision == D::Keep).count(),
-                     st.wall_seconds);
+                     t.nodes[0].decision.name());
         }
         println!();
     }
 
-    println!("A row with 1/64 distinct and a high zero-spread count is the failure: the tree is");
-    println!("not small because the region is tame, it is small because there is nothing in it.");
-    println!("Compare against decode_ladder.txt, which gives the same collapse depths without");
-    println!("integrating anything.");
+    println!("A row with 1/64 distinct and every quad collapsed is the failure: the tree is not");
+    println!("small because the region is tame, it is small because there is nothing in it. Read");
+    println!("`spread(collap)` beside it — that is the number the criterion saw, and at ~1e-17 it");
+    println!("is twelve orders below any tau anyone would set. Nothing downstream can tell that");
+    println!("apart from a perfectly resolved quad.");
+    println!();
+    println!("`root decision` explains the one-quad rows: at depth 40 the root quad's own cell");
+    println!("width is already below the PRECISION floor (level ~36 at half0 = 0.05), so the");
+    println!("descent stops for a numerical reason before any decode path is tested. That is a");
+    println!("different limit from the collapse, and the column keeps them apart.");
 }

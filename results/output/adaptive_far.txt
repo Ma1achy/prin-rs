@@ -1,0 +1,20 @@
+    Finished `release` profile [optimized] target(s) in 0.01s
+     Running `target/release/examples/adaptive_render far 6000 1e-4 0.2`
+region far, budget 6000, tau=1e-4, alpha_hi=0.2, N=8, E+1=8
+viewport 512x512, camera framing the root box, screen floor ON
+21 quads, 16 leaves, depth 2, floor 0 keep 16 screen 0, 0.2 s
+  wrote results/vertical/far.prnq (21 quads, 24 fields each)
+
+spread window for the false colour: 1e-8 .. 1e-1, log.
+  adaptive_spread        texel px 18.286..18.286  tiles 1024  slope n/a (one level)
+  uniform_spread         texel px 18.286..18.286  tiles 1024  slope n/a (one level)
+  adaptive_outcome       texel px 18.286..18.286  tiles 1024  slope n/a (one level)
+  adaptive_resolved      texel px 18.286..18.286  tiles 1024  slope n/a (one level)
+
+**The acceptance test.** Texel size must vary as 2^-level, i.e. slope -1.
+  only one leaf level in this tree; the scaling fit is undefined and no
+
+SSAA resolve over 1024 leaf footprints:
+  mean |dRGB| 0.000  max 0  fraction of footprints that moved 0.0000
+  (per-footprint, not an aggregate: an aggregate can only say the distribution did
+   not move, never that the footprints did not.)

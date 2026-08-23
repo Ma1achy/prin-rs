@@ -1,0 +1,22 @@
+    Finished `release` profile [optimized] target(s) in 0.06s
+     Running `target/release/examples/adaptive_render near-field 6000 1e-4 0.2`
+region near-field, budget 6000, tau=1e-4, alpha_hi=0.2, N=8, E+1=8
+viewport 512x512, camera framing the root box, screen floor ON
+549 quads, 412 leaves, depth 6, floor 100 keep 60 screen 252, 24.7 s
+  wrote results/vertical/near-field.prnq (549 quads, 24 fields each)
+
+spread window for the false colour: 1e-8 .. 1e-1, log.
+  adaptive_spread        texel px 1.143..18.286  tiles 26368  slope -1.000000
+  uniform_spread         texel px 1.143..1.143  tiles 26368  slope +0.000000
+  adaptive_outcome       texel px 1.143..18.286  tiles 26368  slope -1.000000
+  adaptive_resolved      texel px 1.143..18.286  tiles 26368  slope -1.000000
+
+**The acceptance test.** Texel size must vary as 2^-level, i.e. slope -1.
+  adaptive slope -1.000000  -> PASS
+  uniform  slope +0.000000  -> correctly rejected (it MUST fail; a render where every texel
+     is the same size is the PR #11 instrument, not the system)
+
+SSAA resolve over 26368 leaf footprints:
+  mean |dRGB| 0.161  max 132  fraction of footprints that moved 0.0056
+  (per-footprint, not an aggregate: an aggregate can only say the distribution did
+   not move, never that the footprints did not.)

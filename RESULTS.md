@@ -743,7 +743,76 @@ not cancel itself: `E+1 = 2` costs 94,976 trajectories against `E+1 = 8`'s 1,773
 saving for a 4x reduction in copies. It buys that by **refining less** — by not seeing structure —
 not by being efficient. The risk is silent under-resolution, not a blown budget.
 
-### 8.7 The two open items from the PR #11 review
+### 8.7 The estimator bias, measured directly
+
+`results/output/spread_bias_e.txt`. Uniform 48x48 renders, identical nominal footprints, only
+`E+1` varying. The Halton offsets are a **fixed prefix**, so the `E+1 = 2` copies are a strict
+subset of the `E+1 = 32` copies — any movement is the estimator and not a different sample.
+
+Median `ensemble_spread`, as a fraction of the `E+1 = 32` value:
+
+| region | E+1=2 | 4 | 8 | 16 | 32 |
+|---|---|---|---|---|---|
+| near-field | **0.539** | 0.806 | 0.882 | 0.965 | 1.000 |
+| deep interior | **0.558** | 0.835 | 0.890 | 0.992 | 1.000 |
+| far | **0.131** | 0.438 | 0.801 | 0.923 | 1.000 |
+
+Monotone in every region, and the direction is unambiguous: **two copies report about half the
+spread that thirty-two do, and in a tame region only 13% of it.** That is the under-refinement in
+§8.5, arriving as a number rather than an inference.
+
+The **p10** column moves further than the median — near-field 1.907e-4 -> 9.183e-4, a 4.8x rise
+against the median's 1.9x. The bias is worst in the *low tail*, which is exactly the population
+sitting near `tau_display` where the keep-or-split decision is made. So the effect on the tree is
+larger than the median shift alone suggests.
+
+`far` is the extreme case and it makes sense: where the copies barely diverge, a two-point spread
+has almost nothing to measure. A cheap tier is therefore least trustworthy precisely in the
+regions it would be assigned to.
+
+### 8.8 SSAA resolve, and the zoom ladder
+
+**Resolve** (`results/output/ssaa_resolve.txt`, 256² uniform renders). The `E+1 = 1` row is the
+control and it is exact: `moved frac 0.0000`, because the resolve of one copy *is* the nominal
+copy. A nonzero value there would have been a bug in the resolve rather than a finding.
+
+| region | E+1=2 | 4 | 8 | 16 | 32 |
+|---|---|---|---|---|---|
+| near-field, fraction of pixels whose colour moved | 0.0026 | 0.0054 | 0.0064 | 0.0068 | 0.0075 |
+| deep interior | 0.0514 | 0.0972 | 0.1141 | 0.1264 | — |
+
+Resolve changes **0.75%** of near-field's pixels and **12.6%** of `deep interior`'s, with a worst
+per-pixel `|dRGB|` of 172 and 195 respectively. It saturates by about `E+1 = 8`. In `far`
+**nothing moves at all** — every copy lands on the same outcome label, so the resolved image is
+the nominal image exactly.
+
+So the ensemble's second job is real but small in the tame and mixed regions and substantial in
+the chaotic one. Spread and resolve are measuring different things on the same data and neither
+substitutes for the other: `far` has a nonzero spread (2.5e-8) and a *zero* resolve difference.
+
+**The zoom ladder** (`results/output/zoom_near-field.txt`, and `zoom_near-field.apng` with nine
+still frames beside it). Each frame re-descends from a root box of `half = 0.05 / 2^k` with the
+camera framing it, so `camera_depth` is 0 throughout and the screen floor always sits six levels
+below the view.
+
+| frame | half | leaves | depth | screen-floored | spread median |
+|---|---|---|---|---|---|
+| 0 | 5.00e-2 | 412 | 6 | 252 | 9.747e-4 |
+| 1 | 2.50e-2 | 586 | 6 | 468 | 3.023e-4 |
+| 2 | 1.25e-2 | 1045 | 6 | 868 | 9.568e-5 |
+| 3 | 6.25e-3 | 811 | 6 | 484 | 3.197e-5 |
+| 4 | 3.13e-3 | 214 | 6 | 16 | 2.773e-5 |
+| 5 | 1.56e-3 | 73 | 4 | 0 | 3.960e-5 |
+| 8 | 1.95e-4 | 16 | 2 | 0 | 4.813e-6 |
+
+**This is the view-relative property, and a still image cannot show it.** The 252 quads floored in
+frame 0 are refined in frames 1-3 with genuinely new samples, and a fresh population is floored in
+their place — 868 at frame 2. Nothing is cached, nothing is upsampled. Past frame 4 the
+neighbourhood is smooth enough that the criterion stops before the view does, and the screen
+column falls to zero: the veto is a veto, and where the criterion is satisfied first it never
+fires.
+
+### 8.9 The two open items from the PR #11 review
 
 `results/output/open_items.txt`.
 
@@ -790,6 +859,81 @@ quad does not move the median of 64 footprint spreads — and the attribution st
 Note it is *not* p90 specifically: mean descends further still (121 leaves against 61). The
 finding is that the median is blind, not that p90 is the right answer. Which aggregation a
 scheduler should use remains §5's open question, and this narrows it by one.
+
+### 8.10 The deep-zoom decoder: two results, both narrower than the claim
+
+`results/output/decode_ladder.txt` and `deep_zoom.txt`. **Distinctness is read before divergence**
+throughout: two paths that have both collapsed agree perfectly, and their agreement means nothing.
+`decode::distinct` compares all twelve state components bitwise, so a collapse is counted exactly.
+
+**Result 1 — the floor is a property of *where* you zoom, not of the renderer.** §5 recorded a
+plain-f64 cell-width floor at level 45.87. That is conditional on the chart coordinate being of
+order 1, and the condition was never stated. With 64 samples per quad:
+
+| chart | centre | `direct_f64` holds 64/64 to | `direct_f32` to |
+|---|---|---|---|
+| body_plane | \|c\| ~ 3 | depth 44 | depth 14 |
+| body_plane | **0** | **depth 55+ — no floor in range** | **depth 55+** |
+| shape | \|c\| ~ 3 | depth 35 | depth 14 |
+| shape | 0 | depth 45 | depth 45 |
+
+A quad centred at the chart origin has no O(1) neighbour for the increment to be absorbed into, so
+it has no cell-width floor at all in the tested range, **on either precision**. Quote the
+coordinate magnitude with any floor depth or the number means nothing.
+
+**Result 2 — the linearised decoder buys ~24 levels over f32 and none over f64.** On body_plane at
+\|c\| ~ 3:
+
+| path | 64/64 distinct to | collapsed to 1 by |
+|---|---|---|
+| `direct_f32` | depth 14 | depth 22 |
+| `L-naive_f32` — the literal formula | depth 14 | depth 22 |
+| `L-split_f32` | depth 44 | depth 50 |
+| `direct_f64` | depth 44 | depth 50 |
+
+The literal formula — `x0`, `J_D.delta` and the sum all in f32 — collapses on **exactly the same
+curve** as forming the chart coordinate in f32 in the first place (56, 18, 2, 1 at depths 16, 18,
+20, 22 for both). It buys nothing. The split form — `x0` in f64 on the CPU, `delta` and
+`J_D.delta` in f32, promoted and summed in f64 — tracks `direct_f64` rung for rung. So the gain
+is real but it is *for an f32 consumer*: it lets an f32 GPU reach the f64 CPU's floor, and does
+not push past it. The contract's "~50+" is f64's floor, not something the linearisation creates.
+
+That follows from a bound stated **before** the run: the initial conditions must be formed as
+absolute O(1) numbers before integration, because the three-body separations are O(1) and no
+nonlinear integrator can carry `(x0, delta)` separately through the march. The linearisation
+escapes the *chart-coordinate* floor and not the *IC-magnitude* one.
+
+One modest exception: on the **nonlinear** chart at \|c\| ~ 3, `L-split` holds 64/64 to depth 45
+where `direct_f64` has fallen to 10/64 — worth about six levels, from a single fused affine step
+losing fewer bits than a decode through `cos`, `sin` and a renormalisation. Conditioning, not the
+design's stated mechanism.
+
+**Result 3 — the linearisation matters at the coarse end, not the deep end.** On the shape chart
+`|direct - linearised|` against the sample spacing runs 0.39 at `half = 0.05`, 1.5e-3 at depth 8,
+3.6e-7 at depth 20: it *falls* as the box shrinks, because the discarded term is `O(h²)` against a
+spacing of `O(h)`. It exceeds one sample spacing only at `half >= 0.5`, larger than anything this
+project renders. The approximation is worst where it is least needed and best where it is used —
+the opposite of the intuition that a linearisation breaks down at depth. On `body_plane` the same
+column is **structurally zero** and is reported as structural, never as a measurement.
+
+**And the seam: a collapsed decode makes the criterion maximally confident.** When a path has
+collapsed, every footprint is the same initial condition and every copy the same trajectory, so
+the spread is ~5.6e-17 — twelve orders below `tau = 1e-4`. The criterion reads that as *perfectly
+resolved* and stops, with a small tidy tree built from nothing. This is the project's standing
+pattern from a new direction, and it is why collapse is counted exactly rather than thresholded.
+
+### 8.11 Slice variety: are the prior conclusions slice-conditional?
+
+`results/output/slice_variety.txt`. **The comparison holds the configuration fixed and rotates the
+plane through it** — all cases share near-field's centre (body 0 at `(1, 3)`, released from rest)
+with bases orthonormal in the 6D position metric, so a unit of chart coordinate moves the system
+the same distance in every row.
+
+A first version of this varied the chart at the same *coordinates* `(1.0, 3.0)`, which is not an
+orientation test: an oblique plane evaluated there lands on a completely different configuration,
+and the tamer spreads it reported were about the neighbourhood, not the angle. It was rewritten
+rather than reinterpreted. The `plane 0deg` row is the control and must reproduce `body_plane`
+exactly; the run asserts it and says so in the output.
 
 ## 9. Reproducing any of this
 

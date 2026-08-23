@@ -16,3 +16,8 @@ Resolve = mean of the copies' outcome colours. Spread is NOT resolve.
  deep interior     4       0.0972        3.796          164     4.754e-5        7.9
  deep interior     8       0.1141        4.280          191     4.967e-5       15.8
  deep interior    16       0.1264        4.760          195     5.169e-5       31.8
+ deep interior    32       0.1348        5.193          200     5.212e-5       63.1
+
+At E+1 = 1 the resolve is the nominal copy by definition, so 'moved frac' must be
+0.0000 there. It is the control: a nonzero value would mean the two paths disagree
+about the same single copy, which would be a bug in the resolve and not a finding.

@@ -1,4 +1,4 @@
-    Finished `release` profile [optimized] target(s) in 0.07s
+    Finished `release` profile [optimized] target(s) in 0.08s
      Running `target/release/examples/e_sweep 6000 1e-4 0.2`
 budget 6000 quads, tau=1e-4, alpha_hi=0.2, N=8, t=13, f64
 viewport 512x512 when the veto is on; camera framing the root box.
@@ -6,43 +6,27 @@ viewport 512x512 when the veto is on; camera framing the root box.
 PREDICTION ON RECORD: low E biases toward refine, as low N did (N=4 spent 4x the
 quads of N=16). 'trajectories' is the quantity that decides the tier question.
 
-        region   veto   E+1   quads  leaves  depth  floor screen   trajectories   sib range    wall_s
-           far     on     2      21      16      2      0      0           2048      0.0162       0.0
-           far     on     4      21      16      2      0      0           4096      0.0075       0.1
-           far     on     8      21      16      2      0      0           8192      0.0107       0.2
-           far     on    16      21      16      2      0      0          16384      0.0108       0.4
-           far     on    32      21      16      2      0      0          32768      0.0108       0.9
+**A budget-limited row is not a measurement.** If `capped` is yes, the leaf count is
+a floor set by the budget, not a number the criterion chose, and it cannot be
+compared against an uncapped row in the same column.
 
-           far    OFF     2      21      16      2      0      0           2048      0.0162       0.1
-           far    OFF     4      21      16      2      0      0           4096      0.0075       0.1
-           far    OFF     8      21      16      2      0      0           8192      0.0107       0.2
-           far    OFF    16      21      16      2      0      0          16384      0.0108       0.5
-           far    OFF    32      21      16      2      0      0          32768      0.0108       0.8
+        region   veto   E+1   quads  leaves  depth  floor screen capped   trajectories   sib range    wall_s
+           far     on     2      21      16      2      0      0     no           2048      0.0162       0.0
+           far     on     4      21      16      2      0      0     no           4096      0.0075       0.1
+           far     on     8      21      16      2      0      0     no           8192      0.0107       0.2
+           far     on    16      21      16      2      0      0     no          16384      0.0108       0.3
+           far     on    32      21      16      2      0      0     no          32768      0.0108       0.7
 
-    near-field     on     2     713     535      6    157    296          68480      1.0022      10.7
-    near-field     on     4     697     523      6    120    348         133888      0.5358      17.2
-    near-field     on     8     549     412      6    100    252         210944      0.4833      27.5
-    near-field     on    16     809     607      6    114    408         621568      0.5019      76.1
-    near-field     on    32     693     520      6    120    312        1064960      0.4653     132.0
+           far    OFF     2      21      16      2      0      0     no           2048      0.0162       0.0
+           far    OFF     4      21      16      2      0      0     no           4096      0.0075       0.1
+           far    OFF     8      21      16      2      0      0     no           8192      0.0107       0.2
+           far    OFF    16      21      16      2      0      0     no          16384      0.0108       0.3
+           far    OFF    32      21      16      2      0      0     no          32768      0.0108       0.6
 
-    near-field    OFF     2     989     742     10    258      0          94976      0.8997      11.2
-    near-field    OFF     4    3617    2713     10    602      0         694528      0.9852      82.6
-    near-field    OFF     8    4617    3463     12    609      0        1773056      1.2403     209.5
-    near-field    OFF    16    5997    4498     10    983      0        4605952      1.4259     545.0
-    near-field    OFF    32    5997    4498     10    903      0        9211904      1.4085    1122.8
+    near-field     on     2     713     535      6    157    296     no          68480      1.0022       8.0
+    near-field     on     4     697     523      6    120    348     no         133888      0.5358      15.6
+    near-field     on     8     549     412      6    100    252     no         210944      0.4833      24.8
+    near-field     on    16     809     607      6    114    408     no         621568      0.5019      73.1
+    near-field     on    32     693     520      6    120    312     no        1064960      0.4653     124.7
 
- deep interior     on     2      21      16      2      2      0           2048      1.7444       0.1
- deep interior     on     4     169     127      6     34     72          32512      1.3285       1.0
- deep interior     on     8      29      22      4      9      0          11264      1.5618       0.4
- deep interior     on    16      41      31      6     11      4          31744      7.0486       1.2
- deep interior     on    32     249     187      6     29    136         382976      2.0233      13.5
-
- deep interior    OFF     2      21      16      2      2      0           2048      1.7444       0.1
- deep interior    OFF     4     201     151      7     38      0          38656      1.1369       1.3
- deep interior    OFF     8      29      22      4      9      0          11264      1.5618       0.5
- deep interior    OFF    16      45      34      7     12      0          34816      4.3514       1.3
- deep interior    OFF    32    5997    4498     10     53      0        9211904      0.0383     289.7
-
-Read the 'sib range' column as the mechanism: if it falls with E while the leaf
-count also falls, the extra splits at low E were the estimator's noise, not
-structure. If it falls and the leaf count does not, the prediction is wrong.
+    near-field    OFF     2     989     742     10    258      0     no          94976      0.8997      11.2

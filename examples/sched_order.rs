@@ -20,11 +20,16 @@ fn main() {
     let ens = EnsembleCfg { refine_flagged: false, ..Default::default() };
     let budget: usize = std::env::args().nth(1).and_then(|s| s.parse().ok()).unwrap_or(10_000);
     let tau: f64 = std::env::args().nth(2).and_then(|s| s.parse().ok()).unwrap_or(1e-4);
+    let alpha_hi: f64 = std::env::args().nth(3).and_then(|s| s.parse().ok()).unwrap_or(0.2);
 
-    println!("budget {budget} quads, tau={tau:.0e}, N=8, t=13, f64");
+    println!("budget {budget} quads, tau={tau:.0e}, alpha_hi={alpha_hi}, N=8, t=13, f64");
     println!();
-    println!("{:>14}{:>14}{:>9}{:>9}{:>7}{:>14}{:>12}",
-             "region", "order", "quads", "leaves", "depth", "vs spread", "jaccard");
+    println!("**Order can only matter when the budget BINDS.** If the descent terminates before the");
+    println!("cap, every ordering computes the same set and a jaccard of 1.0000 is structural, not");
+    println!("a result. The budget-exhausted column says whether this run could see anything.");
+    println!();
+    println!("{:>14}{:>14}{:>9}{:>9}{:>7}{:>10}{:>10}{:>10}",
+             "region", "order", "quads", "leaves", "depth", "cap hit", "vs spread", "jaccard");
 
     for region in ["far", "near-field", "deep interior"] {
         let root = grid::region(region, 2, 2, 0.05).unwrap();
@@ -34,6 +39,8 @@ fn main() {
             let cfg = SchedCfg {
                 budget,
                 tau_display: tau,
+                alpha_hi,
+                alpha_lo: alpha_hi * 0.4,
                 order,
                 seed: 12345,
                 ..Default::default()
@@ -48,9 +55,9 @@ fn main() {
                     b.intersection(&s).count() as f64 / b.union(&s).count().max(1) as f64,
                 ),
             };
-            println!("{region:>14}{:>14}{:>9}{:>9}{:>7}{diff:>14}{jac:>12.4}",
+            println!("{region:>14}{:>14}{:>9}{:>9}{:>7}{:>10}{diff:>10}{jac:>10.4}",
                      order.name(), st.quads_computed, s.len(),
-                     t.depth_histogram().len().saturating_sub(1));
+                     t.depth_histogram().len().saturating_sub(1), st.budget_exhausted);
             if k == 0 {
                 base = Some(s);
             }

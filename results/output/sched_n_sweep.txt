@@ -1,0 +1,24 @@
+    Finished `release` profile [optimized] target(s) in 0.07s
+     Running `target/release/examples/sched_n_sweep 4000 1e-4`
+fixed budget 4000 QUADS (not trajectories), tau=1e-4, t=13, f64
+cost per quad is N^2*(E+1) trajectories, so equal budget is NOT equal compute
+
+        region   N  traj/q  crn frac   leaves  depth    floor     keep med alpha    wall s
+           far   4     128    25.00%       16      2        0       16    1.0013       0.1
+           far   7     392    32.65%       16      2        0       16    1.0010       0.1
+           far   8     512    25.00%       16      2        0       16    1.0010       0.1
+           far  16    2048    25.00%       16      2        0       16    1.0010       0.6
+
+    near-field   4     128    25.00%      106      5       57       49    0.2781       1.8
+    near-field   7     392    32.65%       31      5       14       17    0.3857       1.4
+    near-field   8     512    25.00%       19      3        5       14    0.3451       1.1
+    near-field  16    2048    25.00%       16      2        8        8    0.2108       3.6
+
+ deep interior   4     128    25.00%       40      4       24       16    0.3320       0.2
+ deep interior   7     392    32.65%       19      3        7       12    0.4941       0.3
+ deep interior   8     512    25.00%       19      3        6       13    0.3742       0.4
+ deep interior  16    2048    25.00%       16      2        5       11    0.2488       1.3
+
+If leaf count and depth track N monotonically, coarse N under-splits and the tier
+default matters. If N=7 breaks the trend against N=4/8/16, the parent-child CRN is
+doing work that the even-N sweep alone could not have separated.

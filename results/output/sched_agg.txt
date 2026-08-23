@@ -1,0 +1,26 @@
+    Finished `release` profile [optimized] target(s) in 0.01s
+     Running `target/release/examples/sched_agg 6000 1e-4 0.2`
+budget 6000 quads, tau=1e-4, alpha_hi=0.2, N=8, t=13, f64
+
+        region      agg    quads   leaves  depth   floor    keep   cap hit   vs median
+           far   median       21       16      2       0      16     false      1.0000
+           far     mean       21       16      2       0      16     false      1.0000
+           far      p90       21       16      2       0      16     false      1.0000
+                mean vs median: 0 of 21 shared quads decided differently (0.0%)
+                p90 vs median: 0 of 21 shared quads decided differently (0.0%)
+
+    near-field   median     4617     3463     12     609    2854     false      1.0000
+    near-field     mean     5997     4498      9     847    1139      true      0.0963
+    near-field      p90     1141      856     14     472     384     false      0.0283
+                mean vs median: 749 of 1385 shared quads decided differently (54.1%)
+                p90 vs median: 136 of 277 shared quads decided differently (49.1%)
+
+ deep interior   median       29       22      4       9      13     false      1.0000
+ deep interior     mean      161      121      7      38      83     false      0.1260
+ deep interior      p90       81       61      7      30      31     false      0.2388
+                mean vs median: 10 of 29 shared quads decided differently (34.5%)
+                p90 vs median: 10 of 29 shared quads decided differently (34.5%)
+
+A median is blind to a thin filament crossing a quad; a p90 is not, and a mean sits
+between while being hostage to one footprint. If the decisions move, the aggregation
+is a real parameter and cannot be picked silently.

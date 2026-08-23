@@ -45,8 +45,11 @@ fn main() {
     let ens = EnsembleCfg { refine_flagged: false, ..Default::default() };
     let budget: usize = std::env::args().nth(1).and_then(|s| s.parse().ok()).unwrap_or(10_000);
     let tau: f64 = std::env::args().nth(2).and_then(|s| s.parse().ok()).unwrap_or(1e-4);
+    let alpha_hi: f64 = std::env::args().nth(3).and_then(|s| s.parse().ok()).unwrap_or(0.2);
 
-    println!("equal budget {budget} quads, tau={tau:.0e}, N=8, t=13, f64");
+    println!("equal budget {budget} quads, tau={tau:.0e}, alpha_hi={alpha_hi}, N=8, t=13, f64");
+    println!("A comparison at a threshold where neither policy descends is not a comparison, so");
+    println!("alpha_hi comes from the sweep.");
     println!();
     println!("{:>14}{:>10}{:>9}{:>9}{:>8}{:>8}{:>8}{:>7}{:>12}{:>12}",
              "region", "policy", "quads", "leaves", "split", "floor", "keep", "depth",
@@ -56,7 +59,7 @@ fn main() {
         let root = grid::region(region, 2, 2, 0.05).unwrap();
         let mut trees = Vec::new();
         for policy in [Policy::Alpha, Policy::Sibling] {
-            let cfg = SchedCfg { budget, tau_display: tau, policy, ..Default::default() };
+            let cfg = SchedCfg { budget, tau_display: tau, alpha_hi, alpha_lo: alpha_hi * 0.4, policy, ..Default::default() };
             let (t, st) =
                 scheduler::descend(root.cx, root.cy, 0.05, root.body, &cfg, &ens, Precision::F64);
             let leaves: Vec<usize> = t.leaves().collect();

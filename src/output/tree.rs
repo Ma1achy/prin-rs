@@ -114,8 +114,14 @@ fn save(path: &Path, w: u32, h: u32, data: &[u8]) -> io::Result<()> {
 ///
 /// `base` is a uniform render of the *same* region at `res × res`, so the tree can be checked
 /// against the structure it is supposed to be tracking. §4 question 3.
+///
+/// **Which base matters.** The outcome image is nearly uniform in near-field (97.7% bounded), and
+/// the tree does not track outcome labels — it tracks `ensemble_spread`. Overlaying on the outcome
+/// image shows the tree refining where nothing appears to be happening, which is correct behaviour
+/// read against the wrong picture. The spread base is the direct check.
 pub fn overlay(
     stem: &str,
+    suffix: &str,
     tree: &QuadTree,
     base: &[PixelOut],
     res: usize,
@@ -171,5 +177,5 @@ pub fn overlay(
         }
     }
 
-    save(Path::new(&format!("{stem}_tree.png")), res as u32, res as u32, &img)
+    save(Path::new(&format!("{stem}_{suffix}.png")), res as u32, res as u32, &img)
 }

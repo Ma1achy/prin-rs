@@ -287,3 +287,27 @@ Confounds to dump, not hide:
 - [x] the two-resolution method's own residual is `+0.0227`, visible independently in the
       `sigma_E(0)` control and the tame-region `alpha_shape` median `1.0229`
 - [x] Halton-advantage-grows anomaly reported, not chased; control variate stays dropped
+
+## The refinement scheduler · **TENTH PR**
+
+- [x] `SCHEDULER_BRIEF.md` with §2.1/§3.4/§3.6 fixed, plus §2.5 (shared-footprint geometry, verified)
+      and §2.6 (precision floor at level 45.87, guard at 35.90)
+- [x] `src/quad.rs`, `src/scheduler.rs`, `src/output/tree.rs`, `src/bin/prinq.rs`
+- [x] `tests/quadtree.rs` — 9 invariants incl. bitwise cell-width halving and never-pooled
+- [x] **q1 terminates**: 100% of leaves in all three regions, well inside a 50k budget
+- [!] but termination is **at `tau = 1e-4`**; at `tau = 1e-8` near-field exhausted 2000 quads with
+      869 leaves still wanting. Bounded, not general
+- [x] **q2 floor engages**: 40.9% deep interior, 17.6% near-field, 0% far
+- [!] `tau` terminates the descent, not the floor — 82.4% of near-field leaves exit through *keep*
+- [!] **q3 the tree is wrong in deep interior**: leaves the largest high-spread structures at
+      level 2. And the first overlay used the outcome base, which would have passed inspection
+- [x] **q4 thrash real and falls with N**: 0.339, 0.218, 0.073. Edge sharing suppresses it, so the
+      trend is understated
+- [x] **q5 sibling policy 9.3x cheaper** for depth 11 vs 12; floors 63% vs 18%. Cheaper, not
+      obviously better — leaves an order more spread unresolved
+- [x] **q6 ordering matters (42% of leaves), which ordering does not** (spread == spread x area)
+- [x] **q7 `alpha_hi` dominates, `tau` inert over four orders**
+- [x] **§3.4 aggregation flips half the decisions** — the largest single effect measured here
+- [!] **N sweep: coarse N OVER-refines**, opposite to the stated concern. N=7 CRN probe inconclusive
+- [x] three measurements of mine that could not have failed, caught and fixed: the leaf `Split`
+      column (always 0), `far`'s thrash on a uniform tree, and order at a budget that never bound

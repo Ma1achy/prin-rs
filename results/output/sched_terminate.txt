@@ -1,0 +1,44 @@
+    Finished `release` profile [optimized] target(s) in 0.06s
+     Running `target/release/examples/sched_terminate 50000 1e-4 0.2`
+budget 50000 quads, NO max_level, tau=1e-4, alpha_hi=0.2, N=8, t=13, f64
+alpha_hi is taken from the sweep, not from a default: at 0.5 the descent stops at 25
+quads in every region and the budget is never touched, which answers nothing.
+
+=== far ===
+  21 quads computed of 50000, 16 leaves, 3 iterations, 0.2 s
+  budget exhausted: false
+  5 quads decided to split (over all quads; a leaf never carries Split)
+  leaf decisions: floor 0 keep 16 precision_floor 0 budget 0
+  TERMINATED of its own accord: 16/16 leaves (100.0%)
+  floored specifically:         0.0%  <- if ~0, the floor branch is not working
+  depth histogram: 2:16
+  leaves per iteration: 1 4 16
+
+=== near-field ===
+  4617 quads computed of 50000, 3463 leaves, 13 iterations, 205.3 s
+  budget exhausted: false
+  1154 quads decided to split (over all quads; a leaf never carries Split)
+  leaf decisions: floor 609 keep 2854 precision_floor 0 budget 0
+  TERMINATED of its own accord: 3463/3463 leaves (100.0%)
+  floored specifically:         17.6%  <- if ~0, the floor branch is not working
+  depth histogram: 2:3 3:28 4:64 5:65 6:108 7:331 8:661 9:1092 10:621 11:450 12:40
+  leaves per iteration: 1 4 16 55 127 223 412 844 1579 2536 3088 3433 3463
+  in the deepest two levels (1111 leaves):
+    alpha  p10 +2.256  median +3.945  p90 +5.825
+    spread p10 5.638e-6  median 1.402e-5  p90 6.194e-5
+
+=== deep interior ===
+  29 quads computed of 50000, 22 leaves, 5 iterations, 0.4 s
+  budget exhausted: false
+  7 quads decided to split (over all quads; a leaf never carries Split)
+  leaf decisions: floor 9 keep 13 precision_floor 0 budget 0
+  TERMINATED of its own accord: 22/22 leaves (100.0%)
+  floored specifically:         40.9%  <- if ~0, the floor branch is not working
+  depth histogram: 2:15 3:3 4:4
+  leaves per iteration: 1 4 16 19 22
+  in the deepest two levels (22 leaves):
+    alpha  p10 -0.356  median +0.054  p90 +0.865
+    spread p10 4.023e-5  median 9.446e-5  p90 1.429e-1
+
+A descent that exhausts the budget with most leaves still wanting to split has NOT
+terminated, and no cap makes that a different answer.

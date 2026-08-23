@@ -32,6 +32,8 @@ prinq — minimal refinement scheduler for prin-rs
   --tau <x>             tau_display, the spread below which a quad is kept (default 1e-2)
   --alpha-hi <x>        split at or above this exponent (default 0.5)
   --alpha-lo <x>        floor below this exponent (default 0.2)
+  --alpha-band <f>      set alpha_lo = f * alpha_hi; give it AFTER --alpha-hi. Without it,
+                        raising alpha_hi alone leaves a zero-width keep band
   --sib-tau <x>         floor above this sibling range, sibling policy (default 0.5)
   --policy <p>          alpha | sibling (default alpha)
   --order <o>           spread | spread-area | shuffled (default spread)
@@ -74,6 +76,13 @@ fn main() {
             "--max-level" => { cfg.max_level = Some(get(i).parse().unwrap()); i += 1; }
             "--tau" => { cfg.tau_display = get(i).parse().unwrap(); i += 1; }
             "--alpha-hi" => { cfg.alpha_hi = get(i).parse().unwrap(); i += 1; }
+            "--alpha-band" => {
+                // Set alpha_lo as a fraction of alpha_hi, so the keep band is not silently
+                // zero-width when only --alpha-hi is given.
+                let f: f64 = get(i).parse().unwrap();
+                cfg.alpha_lo = cfg.alpha_hi * f;
+                i += 1;
+            }
             "--alpha-lo" => { cfg.alpha_lo = get(i).parse().unwrap(); i += 1; }
             "--sib-tau" => { cfg.sib_tau = get(i).parse().unwrap(); i += 1; }
             "--policy" => { cfg.policy = Policy::parse(&get(i)).expect("policy"); i += 1; }
@@ -148,8 +157,38 @@ fn main() {
     if let Some(res) = overlay {
         let slice = grid::Slice { nx: res, ny: res, cx: root.cx, cy: root.cy, half, body: root.body };
         let base = render::render(&slice, &ens, precision);
-        treeout::overlay(&out, &tree, &base, res, png::outcome_rgb).expect("overlay");
-        println!("wrote {out}_tree.png ({res}x{res} base, leaf boundaries over it)");
+        treeout::overlay(&out, "tree_outcome", &tree, &base, res, png::outcome_rgb)
+            .expect("overlay");
+
+        // The spread base is the direct check: the tree tracks ensemble_spread, not outcome
+        // labels, and near-field's outcome image is 97.7% one colour. Log scaled over the
+        // grid's own p1..p99, as the uniform kernel's spread image is.
+        let mut fin: Vec<f64> = base
+            .iter()
+            .map(|p| p.ensemble_spread)
+            .filter(|x| x.is_finite() && *x > 0.0)
+            .collect();
+        fin.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let q = |f: f64| fin[(((fin.len() - 1) as f64) * f).round() as usize];
+        let (lo, hi) = (q(0.01).max(1e-12), q(0.99));
+        let (ll, lh) = (lo.ln(), hi.ln());
+        treeout::overlay(&out, "tree_spread", &tree, &base, res, move |p| {
+            let v = p.ensemble_spread;
+            let t = if !v.is_finite() {
+                1.0
+            } else if v <= 0.0 {
+                0.0
+            } else {
+                ((v.ln() - ll) / (lh - ll)).clamp(0.0, 1.0)
+            };
+            [(255.0 * t.powf(0.6)) as u8,
+             (255.0 * (t * (1.0 - t) * 4.0).powf(0.8)) as u8,
+             (255.0 * (1.0 - t).powf(0.6)) as u8]
+        })
+        .expect("overlay");
+        println!("wrote {out}_tree_outcome.png and {out}_tree_spread.png ({res}x{res} base)");
+        println!("spread base log scaled over [{lo:.3e}, {hi:.3e}]; the tree tracks spread, not");
+        println!("outcome labels, so that is the base the tree should be checked against.");
     }
 
     println!();

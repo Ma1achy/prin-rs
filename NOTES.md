@@ -1146,3 +1146,291 @@ remedy if it ever matters; nothing here depends on it.
 The **control variate** stays dropped. Two variance reductions targeted the same component and
 the cheaper one won: the offset scheme had already removed what the control variate would have
 corrected, which is why `beta = -153.76` was a division by nothing.
+
+---
+
+## 11. The scheduler — the criterion in a loop
+
+Every measurement before this ran the criterion on **one split in isolation**. `prinq` descends
+from one quad, adaptively, at a fixed playhead, and dumps the tree with every decision and reason.
+
+Three regions: `near-field` (mixed), `deep interior` (richest), `far` (tame control). `N = 8`
+footprints per quad axis, `E+1 = 8` copies per footprint, so **one quad is 512 trajectories**.
+
+### The sweep had to run first, and it is the result
+
+`tau_display` cannot be chosen before measuring, because the quad spread spans **six orders across
+regions**: `~4e-8` in `far`, `~2e-3` in near-field, median `7.5e-5` but p90 `1.4e-1` in
+`deep interior`. Any `tau` picked in advance would be the arbitrary constant that has already
+disqualified two candidate designs here.
+
+### `alpha_hi` dominates the criterion; `tau` is inert over most of its range
+
+near-field, budget 2000 quads:
+
+| tau | alpha_hi | quads | leaves | floor | keep | budget | depth |
+|---|---|---|---|---|---|---|---|
+| 1e-8 | **0.20** | 1997 | 1498 | 428 | 201 | **869** | **8** |
+| 1e-8 | 0.50 | 25 | 19 | 5 | 14 | 0 | 3 |
+| 1e-6 | **0.20** | 1997 | 1498 | 428 | 201 | **869** | **8** |
+| 1e-6 | 0.50 | 25 | 19 | 5 | 14 | 0 | 3 |
+| 1e-4 | 0.20 | 1997 | 1498 | 423 | 732 | 343 | 8 |
+| 1e-3 | 0.20 | 441 | 331 | 131 | 200 | 0 | 8 |
+| 1e-2 | 0.20 | 21 | 16 | 0 | 16 | 0 | 2 |
+
+`tau = 1e-8` and `1e-6` produce **identical** trees — the spread never falls that low, so `tau`
+never binds. Meanwhile `alpha_hi` from 0.20 to 0.50 collapses the tree **80x**, from 1997 quads at
+depth 8 to 25 at depth 3.
+
+near-field's `alpha` median is **+0.389**, so the threshold sits *inside* the distribution and a
+small move flips most decisions. That is §4 question 7's "a criterion whose output is dominated by
+an arbitrary threshold is not a criterion" — and it is the case that the sibling-reliability policy
+(§3.3) exists to sidestep, since that one does not need a trustworthy `alpha` value at all.
+
+Which knob binds is **region-dependent**: at `tau = 1e-4`, deep interior stops at 29 quads (its
+median spread `7.5e-5` is below `tau`) while near-field runs to the cap (`2.3e-3` is above it).
+
+### Coarse `N` OVER-splits — the opposite of the stated concern
+
+The concern on record was that too low an `N` makes a quad misclassify itself as **coherent** by
+undersampling its own area. Measured, at a fixed budget of 4000 quads and `tau = 1e-4`:
+
+| region | N | traj/quad | leaves | depth | floor | keep | median alpha |
+|---|---|---|---|---|---|---|---|
+| far | 4 | 128 | 16 | 2 | 0 | 16 | 1.0013 |
+| far | 7 | 392 | 16 | 2 | 0 | 16 | 1.0010 |
+| far | 8 | 512 | 16 | 2 | 0 | 16 | 1.0010 |
+| far | 16 | 2048 | 16 | 2 | 0 | 16 | 1.0010 |
+| near-field | 4 | 128 | **106** | **5** | 57 | 49 | 0.2781 |
+| near-field | 7 | 392 | 31 | 5 | 14 | 17 | 0.3857 |
+| near-field | 8 | 512 | 19 | 3 | 5 | 14 | 0.3451 |
+| near-field | 16 | 2048 | **16** | **2** | 8 | 8 | 0.2108 |
+| deep interior | 4 | 128 | **40** | **4** | 24 | 16 | 0.3320 |
+| deep interior | 7 | 392 | 19 | 3 | 7 | 12 | 0.4941 |
+| deep interior | 8 | 512 | 19 | 3 | 6 | 13 | 0.3742 |
+| deep interior | 16 | 2048 | **16** | **2** | 5 | 11 | 0.2488 |
+
+Leaf count and depth fall **monotonically with `N`** in both chaotic regions: near-field 106 → 31 →
+19 → 16, deep interior 40 → 19 → 19 → 16. A coarse quad does not call itself coherent; it calls
+itself **uncertain** and demands refinement. The mechanism is the one §5 warns about — a noisy,
+undersampled spread estimate biases toward *refine*, the conservative failure direction — and under
+a budget that is not benign: **`N = 4` spends four times as many quads as `N = 16` to cover the same
+region.** Cheaper quads, more of them, and the saving is smaller than it looks.
+
+`far` is flat at 16 leaves for every `N`, with `alpha = 1.001` — the tame control both terminates
+immediately and reproduces the uniform kernel's tame-region exponent independently.
+
+**The `N = 7` CRN probe is inconclusive, and honestly so.** It was included because the parent–child
+common-random-numbers overlap is 32.65% at `N = 7` against exactly 25.00% at every even `N`, so it
+is the only lever that varies CRN strength. Measured, `N = 7` sits between `N = 4` and `N = 8` on
+leaf count in near-field (31, between 106 and 19) and is *identical* to `N = 8` in deep interior
+(19 leaves, depth 3). The `N` trend dominates; no separable CRN effect. It carries the highest
+median `alpha` in two of three regions (0.3857, 0.4941), which is the direction more CRN would
+predict, but one region disagrees and the effect is inside the scatter. **Reported as not
+separated, rather than claimed.**
+
+### Thrash is real, and falls with `N` for a reason the confound cannot explain
+
+Adjacent leaf pairs whose spreads are within a factor of 1.5, at `tau = 1e-4`, `alpha_hi = 0.2`,
+budget 4000 quads. "Thrash" is the fraction of those that sit at **different levels**:
+
+| region | N | leaves | depth | similar pairs | diff level | thrash | edge share |
+|---|---|---|---|---|---|---|---|
+| far | 4 | 16 | 2 | 24 | 0 | 0.0000 | 25.0% |
+| far | 8 | 16 | 2 | 24 | 0 | 0.0000 | 12.5% |
+| far | 16 | 16 | 2 | 24 | 0 | 0.0000 | 6.2% |
+| near-field | 4 | 2998 | 9 | 3579 | 1214 | **0.3392** | 25.0% |
+| near-field | 8 | 2998 | 10 | 2529 | 551 | **0.2179** | 12.5% |
+| near-field | 16 | 2569 | 10 | 2688 | 197 | **0.0733** | 6.2% |
+| deep interior | 4 | 1936 | 10 | 3453 | 31 | 0.0090 | 25.0% |
+| deep interior | 8 | 22 | 4 | 20 | 6 | 0.3000 | 12.5% |
+| deep interior | 16 | 16 | 2 | 13 | 0 | 0.0000 | 6.2% |
+
+**In near-field thrash is substantial and falls with `N`: 34% → 22% → 7%.** More samples per quad
+means a less noisy spread estimate, so neighbours agree more often — which is the direct
+confirmation that the thrash is *per-quad noise* rather than real structure.
+
+**The edge-sharing confound cannot explain that trend, and the direction is the argument.** Shared
+footprints make neighbours *more alike*, so they *suppress* apparent thrash. The sharing is 25% at
+`N = 4` and 6.25% at `N = 16` — so the most-suppressed row is the one showing the **most** thrash.
+The true `N = 4` figure is higher than 0.3392, and the fall with `N` is if anything understated.
+
+**`far` reads 0.0000 at every `N` and that is not evidence.** The tree stops at the bootstrap, so
+every leaf is level 2 and "different level" is structurally impossible. A uniform tree cannot
+thrash. Depth is printed beside thrash for exactly this reason — the same "a test that cannot fail
+is indistinguishable from a test that passes" rule, arriving inside a diagnostic of my own.
+
+**`deep interior` is not comparable across `N`.** At `tau = 1e-4` its median spread (`7.5e-5`) sits
+*below* `tau` at `N = 8`, so the descent stops at 22 leaves; at `N = 4` the noisier estimate reads
+above `tau` and it runs to 1936. Trees of 1936 and 22 leaves do not have comparable thrash
+statistics, and the 0.3000 at `N = 8` rests on 20 similar pairs. Reported, not averaged.
+
+### §4 q1 and q2: it terminates, and the floor engages
+
+`alpha_hi = 0.2`, `tau = 1e-4`, **no `max_level`**, budget 50 000 quads:
+
+| region | quads used | leaves | depth | terminated | floored | budget hit |
+|---|---|---|---|---|---|---|
+| far | **21** | 16 | 2 | 100% | 0.0% | no |
+| near-field | **4617** | 3463 | 12 | 100% | 17.6% | no |
+| deep interior | **29** | 22 | 4 | 100% | 40.9% | no |
+
+**The descent terminates of its own accord in every region, well inside the budget.** The
+Wada-dense-boundary fear — that spread stays high however far you refine, flagged at the outset of
+this work and never tested — does not materialise at this playhead and these thresholds. Not one
+leaf hit the cap, the depth cap, or the precision floor.
+
+**The floor branch engages, and hardest where it should**: 40.9% of leaves in `deep interior`,
+17.6% in near-field, 0% in `far`. A tame region has nothing to floor — its spread is below `tau`,
+so it exits through *keep*, which is the correct branch for "already resolved".
+
+near-field's leaf-count-against-iteration is a clean saturation:
+`1, 4, 16, 55, 127, 223, 412, 844, 1579, 2536, 3088, 3433, 3463` — the last three iterations add
+345, then 30, then nothing.
+
+**What terminates it is `tau`, not the floor.** In near-field's deepest two levels the exponent has
+median **+3.945** (p10 +2.256, p90 +5.825) — far above the `alpha = 1` that a halving represents —
+while the spread there is `1.4e-5`, below `tau = 1e-4`. Those quads split because their *parents*
+were above `tau`, and the split collapsed the spread by ~2^4 rather than 2^1. So the descent ends
+by crossing `tau` from above, and 82.4% of near-field's leaves exit through *keep*. The floor is
+real but it is the minority branch.
+
+That also means **the termination result is a statement about `tau`**, and `tau` is the knob the
+sweep shows to be inert over four orders in this region. Termination at `tau = 1e-4` is not
+evidence of termination at `tau = 1e-8`, where the same sweep exhausted a 2000-quad budget with 869
+leaves still wanting to split. **Reported as bounded, not as general.**
+
+### §4 q5: the sibling policy is 9x cheaper for the same depth
+
+Equal budget 10 000 quads, `tau = 1e-4`, `alpha_hi = 0.2`:
+
+| region | policy | quads | leaves | floor | keep | depth | median quad spread |
+|---|---|---|---|---|---|---|---|
+| far | alpha | 21 | 16 | 0 | 16 | 2 | 4.268e-8 |
+| far | sibling | 21 | 16 | 0 | 16 | 2 | 4.268e-8 |
+| near-field | alpha | **4617** | 3463 | 609 | 2854 | 12 | 5.775e-5 |
+| near-field | sibling | **497** | 373 | 235 | 138 | 11 | 7.970e-4 |
+| deep interior | alpha | 29 | 22 | 9 | 13 | 4 | 9.446e-5 |
+| deep interior | sibling | 21 | 16 | 6 | 10 | 2 | 7.533e-5 |
+
+In near-field the sibling policy reaches depth **11 against 12** for **497 quads against 4617** — a
+factor of **9.3**. It floors 63% of its leaves against the alpha policy's 18%, which is exactly the
+intended behaviour: where the four sibling exponents scatter, the unreliability *is* the answer and
+no trustworthy `alpha` is needed.
+
+**It is cheaper, not obviously better, and the distinction matters.** Its median quad spread is
+`7.97e-4` against `5.78e-5` — an order of magnitude more uncertainty left on the table. The alpha
+policy spent 4617 quads driving the median spread down by 13x. Whether that was worth it is a
+budget question, not a correctness one, and this measurement does not settle it. What it does
+settle is that the reliability signal **works as a floor detector**: it identifies the chaotic sea
+and declines to spend there.
+
+Leaf overlap in near-field: 264 shared, 3199 alpha-only, 109 sibling-only. The two trees are not
+nested — the sibling policy refines 109 leaves the alpha policy does not — so it is not simply a
+truncation of the other.
+
+**The caveat stands and is now the next thing to do.** `alpha_sibling_spread` is the **range** of
+four samples, which is itself a noisy statistic. This result makes the policy worth pursuing, so
+characterising that noise is the next step rather than the first thing to trust.
+
+### §4 q6: priority matters, but the choice of priority does not
+
+The first attempt at this question answered nothing, and the reason is worth keeping. At a budget
+of 10 000 the descent terminated at 4617 quads in near-field and 21–29 elsewhere, so the cap never
+bound — and **when the cap does not bind, every ordering computes the same set and a jaccard of
+1.0000 is structural, not a result.** The run had to be repeated at a budget *below* the natural
+termination point. The table now prints a `cap hit` column so the reading cannot be made without
+it.
+
+Budget 1500 quads, `tau = 1e-4`, `alpha_hi = 0.2`:
+
+| region | order | quads | leaves | depth | cap hit | vs spread | jaccard |
+|---|---|---|---|---|---|---|---|
+| far | spread / spread_area / shuffled | 21 | 16 | 2 | **no** | 0 | 1.0000 |
+| near-field | spread | 1497 | 1123 | 8 | **yes** | 0 | 1.0000 |
+| near-field | spread_area | 1497 | 1123 | 8 | **yes** | **0** | **1.0000** |
+| near-field | shuffled | 1497 | 1123 | 8 | **yes** | **600** | **0.5784** |
+| deep interior | spread / spread_area / shuffled | 29 | 22 | 4 | **no** | 0 | 1.0000 |
+
+Where the budget binds, **ordering is load-bearing**: shuffling changes 600 of 1123 leaves, 42% of
+the tree, at identical cost. But **spread and spread × area produce byte-identical trees** — the
+symmetric difference is exactly zero. So the priority function is doing real work and the choice
+between these two candidates is free; area weighting buys nothing here, because within one
+iteration the frontier is mostly at a single level and the area factor is then a constant.
+
+`far` and `deep interior` show 1.0000 for the other reason — their descents finish in 21 and 29
+quads, so a 1500-quad cap cannot bind. Same non-answer as the first attempt, correctly labelled
+this time rather than read as a result.
+
+### §4 q3: the tree is sensible in near-field and **not** in deep interior
+
+The overlay was initially drawn over the **outcome** image, which was the wrong base and hid this.
+near-field's outcome image is 97.7% one colour, so a tree refining "where nothing is happening"
+looked fine. The tree does not track outcome labels — it tracks `ensemble_spread` — so the spread
+image is the direct check, and both are now written
+(`sched-*_tree_outcome.png`, `sched-*_tree_spread.png`).
+
+Against the spread base:
+
+- **near-field** — dense refinement in coherent bands, sparse elsewhere. Plausibly right in shape.
+  But the **brightest, thinnest spread filaments (the lower-left diagonals) sit in coarse quads.**
+- **deep interior** — the tree fails. It leaves the large high-spread wedge in the top-left and the
+  bright diagonal bands in the lower-right at **level 2**, while spending its only fine refinement
+  on an unremarkable patch in the middle. 22 leaves, depth 4, against structure spanning the whole
+  box.
+- **far** — uniform at level 2, which is correct: there is no structure to track.
+
+**The cause is `tau` and the aggregation together, and both are measured elsewhere here.** Deep
+interior's median quad spread is `7.5e-5`, below `tau = 1e-4`, so nearly every quad is kept at
+once. And a **median is blind to a thin filament crossing a quad**: most of that quad's footprints
+are still in the smooth sea, so the median reads low however bright the filament is. §3.4's warning
+was not a formality — it is the mechanism behind the failure in the picture.
+
+**This is the honest answer to "does the tree look right?": in one region yes, in another no, and
+the picture is what surfaced it.** It is also a caution about the picture itself — the first
+overlay, on the wrong base, would have passed inspection.
+
+### §3.4: the aggregation changes half the decisions — three schedulers, not one
+
+Budget 6000 quads, `tau = 1e-4`, `alpha_hi = 0.2`:
+
+| region | agg | quads | leaves | depth | floor | keep | cap hit | leaf jaccard vs median |
+|---|---|---|---|---|---|---|---|---|
+| far | median / mean / p90 | 21 | 16 | 2 | 0 | 16 | no | 1.0000 |
+| near-field | median | 4617 | 3463 | 12 | 609 | 2854 | no | — |
+| near-field | mean | 5997 | 4498 | 9 | 847 | 1139 | **yes** | **0.0963** |
+| near-field | p90 | 1141 | 856 | **14** | 472 | 384 | no | **0.0283** |
+| deep interior | median | 29 | 22 | 4 | 9 | 13 | no | — |
+| deep interior | mean | 161 | 121 | 7 | 38 | 83 | no | 0.1260 |
+| deep interior | p90 | 81 | 61 | 7 | 30 | 31 | no | 0.2388 |
+
+**Decision-level disagreement over quads present in both trees** — the figure the brief asks for:
+
+| region | mean vs median | p90 vs median |
+|---|---|---|
+| near-field | **54.1%** (749 of 1385) | **49.1%** (136 of 277) |
+| deep interior | **34.5%** (10 of 29) | **34.5%** (10 of 29) |
+
+**Half the shared decisions flip, and the resulting trees overlap by 3–13%.** This is not a
+detail to pick quietly; it is three different schedulers wearing one name. §3.4's instruction not
+to choose silently was right, and the reason turns out to be much larger than the kurtosis argument
+that motivated it.
+
+Each behaves distinctly, and the behaviours are intelligible:
+
+- **median under-refines structure.** Blind to a thin filament crossing a quad, because most of
+  that quad's footprints remain in the smooth sea. This is the mechanism behind the `deep interior`
+  failure in the overlay — at `median` it stops at 29 quads and leaves the largest high-spread
+  regions at level 2; at `mean` it takes 161 and at `p90` 81.
+- **mean over-refines and blows the budget.** 5997 of 6000 quads in near-field, the only
+  configuration in this study to hit a cap. Hostage to a single footprint, exactly as expected with
+  excess kurtosis 110.
+- **p90 refines deepest and narrowest.** Fewest quads (1141) but the greatest depth (14), and it
+  **floors 55% of its leaves** against median's 18%. It sees the filament, observes that refining
+  does not reduce the extreme, and floors — which is arguably the *correct* answer, since a
+  filament genuinely is unresolvable at that scale.
+
+**No recommendation is made here.** The three encode different intentions — "resolve the typical
+footprint", "resolve the total", "resolve the worst" — and which is wanted is a display question
+this measurement cannot settle. What it settles is that the choice is load-bearing and must be
+stated wherever a tree is quoted.

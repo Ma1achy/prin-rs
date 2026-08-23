@@ -23,14 +23,17 @@ fn main() {
         .and_then(|s| s.parse().ok())
         .unwrap_or(50_000);
     let tau: f64 = std::env::args().nth(2).and_then(|s| s.parse().ok()).unwrap_or(1e-4);
+    let alpha_hi: f64 = std::env::args().nth(3).and_then(|s| s.parse().ok()).unwrap_or(0.2);
 
     let ens = EnsembleCfg { refine_flagged: false, ..Default::default() };
-    println!("budget {budget} quads, NO max_level, tau={tau:.0e}, alpha_hi=0.5, N=8, t=13, f64");
+    println!("budget {budget} quads, NO max_level, tau={tau:.0e}, alpha_hi={alpha_hi}, N=8, t=13, f64");
+    println!("alpha_hi is taken from the sweep, not from a default: at 0.5 the descent stops at 25");
+    println!("quads in every region and the budget is never touched, which answers nothing.");
     println!();
 
     for region in ["far", "near-field", "deep interior"] {
         let root = grid::region(region, 2, 2, 0.05).unwrap();
-        let cfg = SchedCfg { budget, tau_display: tau, max_level: None, ..Default::default() };
+        let cfg = SchedCfg { budget, tau_display: tau, alpha_hi, alpha_lo: alpha_hi * 0.4, max_level: None, ..Default::default() };
         let (t, st) =
             scheduler::descend(root.cx, root.cy, 0.05, root.body, &cfg, &ens, Precision::F64);
 

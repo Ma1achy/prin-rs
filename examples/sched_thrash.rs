@@ -30,17 +30,22 @@ fn adjacent(t: &QuadTree, i: usize, j: usize) -> bool {
 fn main() {
     let ens = EnsembleCfg { refine_flagged: false, ..Default::default() };
     let tau: f64 = std::env::args().nth(1).and_then(|s| s.parse().ok()).unwrap_or(1e-4);
+    let alpha_hi: f64 = std::env::args().nth(2).and_then(|s| s.parse().ok()).unwrap_or(0.2);
 
-    println!("adjacent leaf pairs, tau={tau:.0e}, budget 4000 quads, t=13, f64");
+    println!("adjacent leaf pairs, tau={tau:.0e}, alpha_hi={alpha_hi}, budget 4000 quads, t=13, f64");
+    println!();
+    println!("**A uniform tree cannot thrash.** Where the descent stops at the bootstrap every leaf");
+    println!("is the same level, so `diff level` is structurally 0 and a thrash of 0.0000 means the");
+    println!("tree never descended - not that neighbours agreed. Read the depth column with it.");
     println!("'similar spread' = within a factor of 1.5 of each other");
     println!();
-    println!("{:>14}{:>5}{:>9}{:>10}{:>12}{:>12}{:>10}{:>12}",
-             "region", "N", "leaves", "adj pairs", "similar", "diff level", "thrash", "edge share");
+    println!("{:>14}{:>5}{:>8}{:>7}{:>10}{:>9}{:>10}{:>9}{:>12}",
+             "region", "N", "leaves", "depth", "adj pairs", "similar", "diff lvl", "thrash", "edge share");
 
     for region in ["far", "near-field", "deep interior"] {
         for n in [4usize, 8, 16] {
             let root = grid::region(region, 2, 2, 0.05).unwrap();
-            let cfg = SchedCfg { n, budget: 4000, tau_display: tau, ..Default::default() };
+            let cfg = SchedCfg { n, budget: 4000, tau_display: tau, alpha_hi, alpha_lo: alpha_hi * 0.4, ..Default::default() };
             let (t, _) =
                 scheduler::descend(root.cx, root.cy, 0.05, root.body, &cfg, &ens, Precision::F64);
             let leaves: Vec<usize> = t.leaves().collect();
@@ -62,8 +67,8 @@ fn main() {
                 }
             }
             let thrash = if similar > 0 { diff as f64 / similar as f64 } else { f64::NAN };
-            println!("{region:>14}{n:>5}{:>9}{adj:>10}{similar:>12}{diff:>12}{thrash:>10.4}{:>11.1}%",
-                     leaves.len(), 100.0 / n as f64);
+            println!("{region:>14}{n:>5}{:>8}{:>7}{adj:>10}{similar:>9}{diff:>10}{thrash:>9.4}{:>11.1}%",
+                     leaves.len(), t.depth_histogram().len().saturating_sub(1), 100.0 / n as f64);
         }
     }
 

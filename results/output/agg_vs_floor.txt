@@ -55,3 +55,13 @@ The share of leaves in that pile is what the truncation cost.
     near-field    2048^2     8      p90     509     382      8    167     67     148       0 2:6 3:23 4:51 5:49 6:54 7:51 8:148
 
     near-field      none     -   median    4617    3463     12    609   2854       0       0 2:3 3:28 4:64 5:65 6:108 7:331 8:661 9:1092 10:621 11:450 12:40
+    near-field      none     -     mean    5997    4498      9    847   1139       0       0 2:5 3:24 4:45 5:71 6:87 7:213 8:1545 9:2508
+    near-field      none     -      p90    1141     856     14    472    384       0       0 2:6 3:23 4:51 5:49 6:54 7:51 8:111 9:101 10:150 11:128 12:87 13:33 14:12
+
+If a row's histogram is identical to the no-viewport row up to the cap level and
+then piles up at it, the veto TRUNCATED that aggregation rather than changing it.
+The share of leaves in that pile is what the truncation cost.
+
+`screen` and `relcap` are different caps and a row can be bound by either. Where
+relcap is nonzero and screen is zero, the SCREEN FLOOR was not what stopped the
+descent — MAX_REL_DEPTH was, and that is a policy default rather than arithmetic.

@@ -885,8 +885,10 @@ design conflict: the aggregation the region needs is affordable one viewport ste
 descent is **criterion-bound**: the veto touches 4 of p90's leaves at 512² and none at 2048², so
 raising the viewport hands the region straight back to the criterion. near-field's is
 **view-bound at every viewport tested** — at 1024² with `MAX_REL_DEPTH = 7` it still floors 576 of
-median's 844 leaves, 756 of mean's 988 and 88 of p90's 271. Its structure is dense at every scale,
-so more pixels buy more tree without ever reaching the point where the criterion decides.
+median's 844 leaves, 756 of mean's 988 and 88 of p90's 271, and at **2048² with `MAX_REL_DEPTH = 8`**
+it still floors 2172 of mean's 2617 and 148 of p90's 382. Uncapped, p90 there reaches **depth 14**.
+Its structure is dense at every scale, so more pixels buy more tree without ever reaching the point
+where the criterion decides.
 
 So "does the aggregation fix collide with the floor" has no single answer: in the region the fix
 was *for*, it does not, at one viewport step up. In near-field the question does not arise,

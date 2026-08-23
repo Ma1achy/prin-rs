@@ -1688,7 +1688,8 @@ column, wrong conclusion.
 **criterion-bound** — the veto touches 4 of p90's 61 leaves at 512² and none at 2048², so a
 viewport step hands the region back to the criterion. near-field is **view-bound at every viewport
 tested**: at 1024² with `MAX_REL_DEPTH = 7` it still floors 576 of median's 844 leaves, 756 of
-mean's 988, 88 of p90's 271. Its structure is dense at every scale, so more pixels buy more tree
+mean's 988, 88 of p90's 271; at 2048² with `MAX_REL_DEPTH = 8`, 2172 of mean's 2617 and 148 of
+p90's 382. Uncapped, p90 reaches **depth 14** there. Its structure is dense at every scale, so more pixels buy more tree
 and never reach the point where the criterion decides. A question about "the" collision has no
 single answer; it is a per-region property and has to be reported as one.
 

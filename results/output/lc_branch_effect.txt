@@ -1,4 +1,5 @@
-    Finished `release` profile [optimized] target(s) in 0.01s
+   Compiling prin-rs v0.1.0 (/Users/malachy/src/principia-rs-test)
+    Finished `release` profile [optimized] target(s) in 2.14s
      Running `target/release/examples/lc_branch_effect`
 near-field 8x8 nominal, eta=0.01, n_sync scaled to a fixed 13/32 sub-interval
 

@@ -1,4 +1,5 @@
-    Finished `release` profile [optimized] target(s) in 0.02s
+   Compiling prin-rs v0.1.0 (/Users/malachy/src/principia-rs-test)
+    Finished `release` profile [optimized] target(s) in 3.79s
      Running tests/ensemble_stats.rs (target/release/deps/ensemble_stats-cac922668c8669a0)
 
 running 5 tests

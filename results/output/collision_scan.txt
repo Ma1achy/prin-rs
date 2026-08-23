@@ -1,4 +1,5 @@
-    Finished `release` profile [optimized] target(s) in 0.01s
+   Compiling prin-rs v0.1.0 (/Users/malachy/src/principia-rs-test)
+    Finished `release` profile [optimized] target(s) in 2.00s
      Running `target/release/examples/collision_scan`
 far = 100, n_sync = 1 (one registration, no re-registration loss)
        eta         d_min        |dE/E|     gamma_max     steps

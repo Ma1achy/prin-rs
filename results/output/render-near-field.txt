@@ -1,21 +1,21 @@
-    Finished `release` profile [optimized] target(s) in 0.03s
+    Finished `release` profile [optimized] target(s) in 0.01s
      Running `target/release/prin --region near-field --size 256 --out results/near-field`
 region near-field 256x256 half=0.05 body=0  precision=f64  t_max=13 eta=0.01 copies=8
-  67.16 s wall, 1.02 ms/pixel
+  46.92 s wall, 0.72 ms/pixel
 
-  error_ratio   max 9.9785e0  p99 1.2622e0  median 1.000000  argmax pixel 4206
-  sigma_E(0)    median 2.436119e-4   <- proportional to cell width; see below
-  |dE/E|        median 1.849e-9  max 3.120e-4
+  error_ratio   max 9.7695e0  p99 1.2190e0  median 1.000000  argmax pixel 6226
+  sigma_E(0)    median 1.936293e-4   <- proportional to cell width; see below
+  |dE/E|        median 1.843e-9  max 2.002e-4
   d_min_gap     median 0.000e0  max 0.000e0
-  ref_disagree  total 30084
+  ref_disagree  total 29156
   t_end         median 13.0000
   outcomes      bounded 0.977 collision 0.023
-  refined       890 of 65536 pixels re-integrated at finer eta (0 still flagged)
-  |dE/E| max    1.377e7 before refinement, 3.120e-4 after
+  refined       914 of 65536 pixels re-integrated at finer eta (0 still flagged)
+  |dE/E| max    1.377e7 before refinement, 2.002e-4 after
   pixels with a non-finite copy: 0 of 65536
 
 wrote results/near-field.raw, results/near-field_outcome.png, results/near-field_spread.png
-spread image is LOG scaled over [3.932e-5, 8.912e-3] (this grid's
+spread image is LOG scaled over [4.169e-5, 8.394e-3] (this grid's
 p1 to p99); non-finite is painted at full scale. The dump is the product.
 
 error_ratio uses the maximum deviation within a footprint and aggregates across

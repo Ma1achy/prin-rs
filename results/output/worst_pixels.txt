@@ -1,33 +1,34 @@
-    Finished `release` profile [optimized] target(s) in 0.07s
+   Compiling prin-rs v0.1.0 (/Users/malachy/src/principia-rs-test)
+    Finished `release` profile [optimized] target(s) in 2.68s
      Running `target/release/examples/worst_pixels`
 worst 8 pixels by max |dE/E| over the ensemble:
   pixel    drift_max     er (MAD)   er (max dev)   d_min_true
-   1012     3.070e-1       1.0000       2.6103e3     2.193e-3
-    991     7.045e-2       1.9256       3.9116e2     1.554e-3
-     40     5.895e-2       1.0000       4.6136e2     1.042e-2
-    105     4.725e-2       2.3521       2.3726e2     1.032e-2
-     75     3.618e-2       0.9260       2.0043e2     1.044e-2
-     73     2.911e-2       0.9396       2.3109e2     1.040e-2
-     74     2.186e-2       1.7029       1.4925e2     1.041e-2
-     77     2.006e-2       0.7207       9.8215e1     1.048e-2
+     28     1.239e-1       1.0669       9.7645e2     1.096e-2
+     77     2.006e-2       1.1527       1.5930e2     1.049e-2
+     80     1.120e-2       1.3488       8.8524e1     1.055e-2
+     18     1.074e-2       1.2167       8.4458e1     1.073e-2
+    102     9.832e-3       1.1608       7.8823e1     1.027e-2
+    990     9.257e-3       1.1477       7.5415e1     2.043e-3
+    989     8.009e-3       1.1424       6.5706e1     1.610e-3
+     70     7.515e-3       1.0638       5.8781e1     1.033e-2
 
-drift_max distribution: median 2.755e-9  p90 4.319e-8  p99 9.257e-3  max 3.070e-1
-pixels with drift_max > 1e-3: 22
+drift_max distribution: median 2.825e-9  p90 4.262e-8  p99 3.684e-3  max 1.239e-1
+pixels with drift_max > 1e-3: 21
 
 Spearman against drift_max over ALL pixels:
-  error_ratio built on MAD        -0.0439
-  error_ratio built on max dev    +0.0595
+  error_ratio built on MAD        -0.0676
+  error_ratio built on max dev    -0.0516
 
 Both near zero - but Spearman over every pixel is the wrong summary for a
 statistic BRIEF §4 itself calls a boolean flag. 1024 healthy pixels sit at
 ratio ~= 1 plus noise, and their ranks swamp the 23 damaged ones. Detection is
 the question that matters:
 
-  22 damaged pixels (drift_max > 1e-3), 1002 healthy
+  21 damaged pixels (drift_max > 1e-3), 1003 healthy
 
        statistic   damaged med   healthy p99      separation
-             MAD      1.3910e0      1.1439e0            1.22
-   max deviation      6.0864e1      1.1845e0           51.38
+             MAD      1.1212e0      1.1405e0            0.98
+   max deviation      2.8177e1      1.2071e0           23.34
 
 Separation is the damaged median over the healthy p99: how far a threshold
 could be placed between them. Below ~1 the flag cannot separate the two

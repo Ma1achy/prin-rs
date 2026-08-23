@@ -247,3 +247,27 @@ Confounds to dump, not hide:
 - [x] `RESULTS.md` §5 lists what this invalidates in the prior numpy work
 - [x] comparison tests and experiment examples pin `refine_flagged: false`, so they measure
       arithmetic rather than which pixels got a second pass
+
+## Ensemble offsets — fixed Halton (2,3) · **EIGHTH PR**
+
+- [x] `jitter::Scheme::{Halton, Pcg}`; Halton the default, `--jitter-pcg` reproduces prior results
+- [x] `halton_offset(k)` is a pure function of `k` — no RNG, no per-pixel seed, no ordering.
+      Per-pixel seeding survives only on the PCG path
+- [x] `tests/halton_offsets.rs`: radical inverse against hand-computed values, offsets bitwise
+      fixed across resolutions and footprints, L2 star discrepancy below PCG at every `E`
+- [!] discrepancy advantage **grows** with `E` (0.748, 0.624, 0.489, 0.395 at `E+1 = 4..32`) —
+      the opposite of the expectation that it would be largest at small `E`
+- [x] **Experiment 1**: control noise floor `0.4796 -> 0.0010` at `E+1 = 8` (480x), parent/child
+      correlation `0.175 -> 0.9998`
+- [!] but `alpha_shape` scatter is **unchanged**, 0.6313 -> 0.6326. Sampling noise is ~7% of its
+      variance; the other 93% is chaotic divergence. More copies will not help either
+- [!] RESULTS.md's "0.48 per-quad floor" was the **control's** floor presented as the criterion's.
+      Corrected to 0.63. The regions-not-quads conclusion survives with a different reason
+- [!] the +7.6% bias is **not** a sample-size artefact. It is +38.6% under Halton with no scatter,
+      falls as `1/E`, and is a geometric property of the 2x2 aggregation as a parent surrogate
+- [x] **Experiment 2**: `alpha_E` control variate is a clean null. `rho = -0.079` (Halton),
+      `-0.042` (PCG); regression form makes the floor worse both ways. Dropped
+- [!] under Halton the control variate is **degenerate** — `var(alpha_E) = 1.4e-7`, so beta is a
+      ratio to nothing. Nothing left to correct, which is the outcome the switch was for
+- [x] `alpha` **not** smoothed over neighbouring quads, per the instruction
+- [x] all captured output and images regenerated under the new default

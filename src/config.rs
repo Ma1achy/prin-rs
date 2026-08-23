@@ -37,7 +37,8 @@ prin — uniform-resolution three-body initial-condition kernel
   --eta <x>           timestep parameter (default 0.01)
   --copies <n>        E+1 copies per pixel (default 8)
   --jitter-frac <x>   jitter as a fraction of cell width (default 0.5)
-  --seed <n>          per-pixel seed (default 0)
+  --seed <n>          per-pixel seed, PCG scheme only (default 0)
+  --jitter-pcg        use the reference's per-pixel PCG stream instead of fixed Halton
   --precision <p>     f32 | f64 (default f64)
   --shared-reference  force all copies onto the nominal copy's reference body
   --lc-unstable       use the reference's unconditioned inverse LC branch
@@ -82,6 +83,7 @@ pub fn parse(args: &[String]) -> Result<Config, String> {
                 };
                 i += 1;
             }
+            "--jitter-pcg" => c.ens.jitter_scheme = crate::ensemble::jitter::Scheme::Pcg,
             "--shared-reference" => c.ens.ref_policy = RefPolicy::Shared,
             "--lc-unstable" => c.ens.lc_stable = false,
             "--r-coll" => { c.ens.r_coll_frac = get(i)?.parse().map_err(|e| format!("{e}"))?; i += 1; }

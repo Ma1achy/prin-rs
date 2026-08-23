@@ -192,7 +192,19 @@ jittered by a small random offset. Their disagreement measures whether the pixel
 well-defined at all.
 
 **The jitter must scale with the cell size** — `jitter = jitter_frac × cell_width`, `jitter_frac ~ 0.5`.
-A *fixed* perturbation would make measured spreads drift with resolution for a purely trivial reason.
+A perturbation of *fixed absolute size* would make measured spreads drift with resolution for a
+purely trivial reason.
+
+**The offsets themselves are a fixed low-discrepancy Halton (2,3) prefix, indexed by copy index** —
+quasi-random, not pseudo-random, and *fixed*, not drawn per pixel. Copy `k` sits at the same
+fractional offset in every footprint at every refinement level, so a parent ensemble and its
+children share the perturbation pattern: common random numbers by construction. Measured, the
+control exponent's per-quad noise floor at `E+1 = 8` falls from **0.4796 to 0.0010** and the
+parent/child correlation from 0.175 to **0.9998**. The offsets need no RNG, no per-pixel seed and
+no ordering.
+
+*What it does not buy:* the scatter in the `spread_shape` exponent is unchanged (0.63 either way).
+Sampling noise is ~7% of it; the rest is chaotic divergence, which no offset scheme reaches.
 
 **Every pixel always carries exactly `E+1` copies. Never discard one.** If a copy integrates badly it
 is still a *measurement outcome* — "this could not be determined" — which is the strongest available

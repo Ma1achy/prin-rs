@@ -1,13 +1,14 @@
-    Finished `release` profile [optimized] target(s) in 0.04s
+   Compiling prin-rs v0.1.0 (/Users/malachy/src/principia-rs-test)
+    Finished `release` profile [optimized] target(s) in 2.60s
      Running `target/release/examples/flag_effect`
 f64, lc_stable=false:
   pixels whose drift changed at all: 1024/1024
   pixels whose spread_shape changed: 1024/1024
   pixels whose error_ratio changed:  1024/1024
-  worst relative change in spread_shape: 6.711e-2
+  worst relative change in spread_shape: 2.423e-3
 f64, shared refs:
-  pixels whose drift changed at all: 150/1024
-  pixels whose spread_shape changed: 261/1024
-  pixels whose error_ratio changed:  190/1024
-  worst relative change in spread_shape: 3.451e3
-  ^ an individual pixel moved by 345110% while the median moved by ~1%.
+  pixels whose drift changed at all: 136/1024
+  pixels whose spread_shape changed: 246/1024
+  pixels whose error_ratio changed:  170/1024
+  worst relative change in spread_shape: 1.815e1
+  ^ an individual pixel moved by 1815% while the median moved by ~1%.

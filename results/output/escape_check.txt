@@ -1,4 +1,5 @@
-    Finished `release` profile [optimized] target(s) in 0.01s
+   Compiling prin-rs v0.1.0 (/Users/malachy/src/principia-rs-test)
+    Finished `release` profile [optimized] target(s) in 2.38s
      Running `target/release/examples/escape_check`
 t_max = 13: classify_legacy [0, 0, 0, 1024] (0,1,2 = escaping body, 3 = bound)
   escape arm fired at some sync boundary on 0 of 1024 pixels

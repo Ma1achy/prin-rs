@@ -1,4 +1,5 @@
-    Finished `release` profile [optimized] target(s) in 0.01s
+   Compiling prin-rs v0.1.0 (/Users/malachy/src/principia-rs-test)
+    Finished `release` profile [optimized] target(s) in 3.73s
      Running tests/burrau_constants.rs (target/release/deps/burrau_constants-e5e83f2b4e739c70)
 
 running 3 tests

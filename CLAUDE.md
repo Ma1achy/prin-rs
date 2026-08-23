@@ -111,6 +111,27 @@ spans less than one decade. No threshold in that range is a physical event bound
 appears in every output header. The default `1e-3` separates tail from bulk on this slice and
 claims nothing more.
 
+**Ensemble offsets are a FIXED Halton (2,3) prefix indexed by copy index.**
+Not per-pixel, not pseudo-random. Fixed, so copy `k` sits at the same offset in every footprint
+at every refinement level and a parent shares its children's perturbation pattern — common
+random numbers by construction. Measured: the control's per-quad noise floor falls from 0.4796
+to **0.0010** at `E+1 = 8` and the parent/child correlation from 0.175 to **0.9998**.
+`Scheme::Pcg` reproduces the reference's stream and every result measured before the switch;
+never make it the default again.
+
+**But it does not reduce the scatter in `alpha_shape`, and more copies will not either.**
+Sampling noise is only ~7% of that scatter (`var` falls 5.725e-1 -> 5.331e-1, against
+`var(alpha_E) = 3.75e-2`). The other 93% is chaotic divergence. The per-quad scatter is **0.63**
+under either scheme against a region separation of ~1.0 — so the criterion resolves regions, not
+quads, for a reason compute cannot buy off.
+
+**The 2x2 aggregation is a weaker parent surrogate than "a fine grid contains every coarser
+scale" implies.** True of the positions, false of the ensemble: with fixed offsets a pooled block
+is four *exact repeats* of one pattern at four cell centres, so `alpha_E` carries a geometric
+bias of +38.6% at `E+1 = 8` that falls as `1/E`. Deterministic, therefore calibratable — but do
+not subtract it from `alpha_shape`, which does not share it (chaos washes the geometry out by
+`t = 13`).
+
 **Never discard an ensemble copy.**
 Every pixel carries exactly `E+1` copies, always. A badly-integrated trajectory is a *measurement
 outcome* — "this could not be determined" — not missing data. Discarding biases the sample toward

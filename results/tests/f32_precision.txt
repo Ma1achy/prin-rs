@@ -1,13 +1,14 @@
-    Finished `release` profile [optimized] target(s) in 0.01s
+   Compiling prin-rs v0.1.0 (/Users/malachy/src/principia-rs-test)
+    Finished `release` profile [optimized] target(s) in 4.38s
      Running tests/f32_precision.rs (target/release/deps/f32_precision-3bdea685ecb06ec5)
 
 running 4 tests
 test f32_renders_the_grid_and_agrees_with_f64_on_the_labels ... 16x16 near-field, t=13, conditioned LC branch:
-  median |dE/E|      f64 3.644e-9   f32 9.861e-6
-  median spread_shape f64 2.5833e-3  f32 2.5697e-3
+  median |dE/E|      f64 3.387e-9   f32 9.341e-6
+  median spread_shape f64 2.4508e-3  f32 2.4006e-3
   outcome label flips f32 vs f64: 0 of 256
   non-finite pixels   f64 0  f32 0
-  spread_shape median differs from f64 by 0.53%
+  spread_shape median differs from f64 by 2.05%
 ok
 test the_reference_floors_do_not_survive_the_cast_to_f32 ...         constant             f64          as f32      f32 in use
             TINY      1.000e-300         0.000e0       1.000e-37
@@ -40,5 +41,5 @@ energy half cannot: 1e-12 is five orders below f32 eps, and f32 delivers
 2.8553e-6 - a statement about the type, not about the port.
 ok
 
-test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.84s
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.67s
 

@@ -6,6 +6,7 @@ use crate::outcome::{self, Outcome, State};
 use crate::physics::{burrau, energy, shape};
 use crate::Real;
 
+use super::jitter::Scheme;
 use super::{jitter, stats};
 
 #[derive(Clone, Copy, Debug)]
@@ -13,6 +14,9 @@ pub struct EnsembleCfg {
     /// `E` extra copies; the pixel always carries `E + 1`.
     pub n_extra: usize,
     pub jitter_frac: f64,
+    /// How copy offsets are chosen. Default is the spec's fixed Halton (2,3) prefix; `Pcg`
+    /// reproduces the reference's per-pixel stream and every result measured before the switch.
+    pub jitter_scheme: Scheme,
     pub seed: u64,
     pub t_max: f64,
     pub n_sync: usize,
@@ -69,6 +73,7 @@ impl Default for EnsembleCfg {
         Self {
             n_extra: 7, // E + 1 = 8, per BRIEF §3
             jitter_frac: 0.5,
+            jitter_scheme: Scheme::Halton,
             seed: 0,
             t_max: 13.0,
             n_sync: 32,
@@ -264,7 +269,9 @@ pub fn evaluate<T: Real>(slice: &Slice, idx: usize, cfg: &EnsembleCfg) -> PixelO
 /// The single pass. `eta` is explicit so the refinement pass can differ from `cfg.eta`.
 pub fn evaluate_at<T: Real>(slice: &Slice, idx: usize, cfg: &EnsembleCfg, eta_v: f64) -> PixelOut {
     let m = burrau::masses::<T>();
-    let copies = jitter::copies::<T>(slice, idx, cfg.n_extra, cfg.jitter_frac, cfg.seed);
+    let copies = jitter::copies_with::<T>(
+        slice, idx, cfg.n_extra, cfg.jitter_frac, cfg.seed, cfg.jitter_scheme,
+    );
     let n = copies.len();
 
     let t_max = T::lit(cfg.t_max);

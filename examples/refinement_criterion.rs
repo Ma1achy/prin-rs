@@ -16,6 +16,7 @@
 
 use rayon::prelude::*;
 
+use prin_rs::ensemble::jitter::Scheme;
 use prin_rs::ensemble::{jitter, stats};
 use prin_rs::grid::{self, Slice};
 use prin_rs::integrate::az::{self, AzOpts};
@@ -32,8 +33,12 @@ struct Copies {
 }
 
 fn copies_of(s: &Slice, idx: usize) -> Copies {
+    copies_of_with(s, idx, N_EXTRA, Scheme::default())
+}
+
+fn copies_of_with(s: &Slice, idx: usize, n_extra: usize, scheme: Scheme) -> Copies {
     let m = burrau::masses::<f64>();
-    let c = jitter::copies::<f64>(s, idx, N_EXTRA, 0.5, 0);
+    let c = jitter::copies_with::<f64>(s, idx, n_extra, 0.5, 0, scheme);
     let mut e0 = Vec::new();
     let mut et = Vec::new();
     let mut shapes = Vec::new();
@@ -136,21 +141,27 @@ fn run_region(region: &str) -> (Vec<f64>, Vec<f64>, Vec<f64>, Vec<f64>) {
 /// spread estimator's expectation depends on sample size). The subsampled column removes the
 /// bias by drawing `E+1` of the parent's pooled copies, leaving only the scatter.
 fn control_noise_floor() {
+    for scheme in [Scheme::Halton, Scheme::Pcg] {
+        control_noise_floor_for(scheme);
+    }
+}
+
+fn control_noise_floor_for(scheme: Scheme) {
     use prin_rs::rng::SplitMix64;
     let m = burrau::masses::<f64>();
-    println!("=== the control's noise floor against ensemble size ===");
+    println!("=== the control's noise floor against ensemble size — {scheme:?} ===");
     println!("alpha for sigma_E(0). True value is exactly 1.0: sigma_E(0) is proportional to");
     println!("the jitter and so to cell width, so doubling the cell doubles it.");
     println!();
     println!("{:>8}{:>12}{:>10}{:>10}{:>10}{:>14}{:>10}",
              "E+1", "estimator", "p10", "median", "p90", "p90-p10", "subsamp med");
 
-    for n_copies in [8usize, 16, 32, 64] {
+    for n_copies in [4usize, 8, 16, 32, 64] {
         let s = grid::region("near-field", FINE, FINE, 0.05).unwrap();
         let e0: Vec<Vec<f64>> = (0..s.npix())
             .into_par_iter()
             .map(|i| {
-                jitter::copies::<f64>(&s, i, n_copies - 1, 0.5, 0)
+                jitter::copies_with::<f64>(&s, i, n_copies - 1, 0.5, 0, scheme)
                     .iter()
                     .map(|x| energy::energy(&x.r, &x.v, &m, 0.0))
                     .collect()

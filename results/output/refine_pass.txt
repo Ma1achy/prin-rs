@@ -1,31 +1,32 @@
-    Finished `release` profile [optimized] target(s) in 0.08s
+   Compiling prin-rs v0.1.0 (/Users/malachy/src/principia-rs-test)
+    Finished `release` profile [optimized] target(s) in 2.82s
      Running `target/release/examples/refine_pass`
 near-field 128x128, t=13, E+1=8, eta=1e-2, f64
 second pass: error_ratio > 10 re-integrated at eta x 0.25
 
                                no refinement with refinement
-                   drift max        1.4909e4       5.0876e-4
-                   drift p99       5.0117e-3       3.2498e-5
-                drift median       2.1312e-9       1.8791e-9
-             error_ratio max        3.9615e8        9.7747e0
-           pixels |dE/E| > 1               7               0
-        pixels |dE/E| > 1e-3             231               0
-        pixels re-integrated               0             266
-              wall clock (s)           16.26           16.55
+                   drift max        3.2322e2       3.2282e-4
+                   drift p99       2.2750e-3       3.5604e-5
+                drift median       2.1007e-9       1.8766e-9
+             error_ratio max        1.0788e7        9.9064e0
+           pixels |dE/E| > 1               5               0
+        pixels |dE/E| > 1e-3             209               0
+        pixels re-integrated               0             261
+              wall clock (s)           11.11           11.86
 
-266 of 16384 pixels re-integrated (1.62% of the grid), costing 2% wall clock.
+261 of 16384 pixels re-integrated (1.59% of the grid), costing 7% wall clock.
 
 The worst 8 refined pixels — coarse against refined, both recorded:
   drift coarse    drift fine       er coarse         er fine    eta used
-      1.4909e4     1.7130e-9        3.9615e8       9.9999e-1      2.5e-3
-      4.0856e1     1.8017e-9        7.3239e5       9.9999e-1      2.5e-3
-      6.3484e0     1.7572e-9        1.9212e5        1.0000e0      2.5e-3
-      6.1218e0     1.9238e-9        1.7145e5       9.9999e-1      2.5e-3
-      5.7369e0     2.3946e-9        1.1245e5       9.9999e-1      2.5e-3
-      5.4529e0     1.8215e-9        1.3353e5        1.0000e0      2.5e-3
-      2.0875e0     1.8953e-9        4.3491e4       9.9999e-1      2.5e-3
-     9.3135e-1     2.0379e-9        2.1804e4       9.9999e-1      2.5e-3
+      3.2322e2     1.7450e-9        1.0788e7       9.9999e-1      2.5e-3
+      5.4529e0     1.8318e-9        1.8189e5        1.0000e0      2.5e-3
+      5.2553e0     1.9411e-9        1.7531e5        1.0000e0      2.5e-3
+      4.0437e0     2.1615e-9        1.3508e5       9.9999e-1      2.5e-3
+      1.4100e0     2.0755e-9        4.7130e4        1.0000e0      2.5e-3
+     9.3135e-1     2.2194e-9        3.1110e4       9.9999e-1      2.5e-3
+     4.4267e-1     1.9794e-9        1.4807e4       9.9999e-1      2.5e-3
+     2.1583e-1     1.7017e-9        7.2074e3        1.0000e0      2.5e-3
 
-refined pixels still above 1e-3 drift: 0 of 266
+refined pixels still above 1e-3 drift: 0 of 261
 Both values are dumped for every pixel, so a refinement that did not help is
 visible rather than hidden behind a replaced number.

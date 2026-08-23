@@ -8,6 +8,10 @@ What the uniform kernel measured, written to be read cold. Raw output for every 
 Everything below is Burrau (masses 3-4-5, released from rest), Aarseth–Zare with two-pair
 Levi-Civita regularisation, `E+1 = 8` copies per pixel, `t_max = 13`, f64 unless stated.
 
+Copy offsets are the spec's **fixed Halton (2,3) prefix indexed by copy index**. The port
+originally inherited the reference's per-pixel PCG stream; §1 measures both, since every result
+recorded before that correction was produced on the PCG path and `--jitter-pcg` reproduces it.
+
 ---
 
 ## 1. The refinement criterion resolves regions, not quads
@@ -39,54 +43,122 @@ must, so halving the cell halves the spread and refinement pays. In the chaotic 
 nothing — those pixels are **undetermined, not under-resolved**. Making that distinction is what
 the criterion is for, and it makes it cleanly.
 
-### The cost curve
+### The cost curve, and what it is a cost curve *for*
 
 `alpha` for `sigma_E(0)` is a control whose true value is **exactly 1.0**: `sigma_E(0)` is
 proportional to the jitter and therefore to the cell width, so doubling the cell doubles it.
-Measured, near-field:
+Measured on both offset schemes — the fixed Halton (2,3) prefix the spec calls for, and the
+per-pixel PCG stream the port originally inherited:
 
-| E+1 | estimator | p10 | median | p90 | **p90−p10** | matched-count median |
-|---|---|---|---|---|---|---|
-| 8 | rms | 0.8525 | 1.0762 | 1.3321 | **0.4796** | 1.0191 |
-| 8 | max_dev | 0.8787 | 1.1248 | 1.3855 | 0.5067 | 0.9865 |
-| 16 | rms | 0.8614 | 1.0137 | 1.1817 | **0.3203** | 0.9999 |
-| 32 | rms | 0.8902 | 0.9887 | 1.1025 | **0.2123** | 0.9884 |
-| 64 | rms | 0.9169 | 0.9862 | 1.0663 | **0.1493** | 0.9949 |
+| E+1 | scheme | median | **p90−p10** | parent/child r |
+|---|---|---|---|---|
+| 4 | Halton | 1.6678 | **0.0242** | 0.9134 |
+| 4 | Pcg | 1.2798 | 0.8397 | 0.1750 |
+| 8 | Halton | 1.3857 | **0.0010** | 0.9998 |
+| 8 | Pcg | 1.0762 | 0.4796 | 0.1746 |
+| 16 | Halton | 1.1668 | **0.0005** | 1.0000 |
+| 16 | Pcg | 1.0137 | 0.3203 | 0.2236 |
+| 32 | Halton | 1.0661 | 0.0029 | 0.9983 |
+| 32 | Pcg | 0.9887 | 0.2123 | 0.2742 |
+| 64 | Halton | 1.0308 | 0.0018 | 0.9994 |
+| 64 | Pcg | 0.9862 | 0.1493 | 0.3018 |
 
-The interdecile width is the per-quad noise floor: how far a single quad's `alpha` scatters when
-the true value is exactly 1. It falls as `1/sqrt(E)` — measured ratios 0.667, 0.663, 0.703
-against the predicted 0.707.
+The fixed prefix is decisively better at what it controls. At `E+1 = 8` the control's noise floor
+falls from **0.4796 to 0.0010** — a factor of 480 — and the parent/child correlation rises from
+0.175 to **0.9998**, which is the common-random-numbers structure a fixed offset set is supposed
+to produce, arriving exactly as predicted.
 
-**The design constraint, stated as a trade:**
+**But this is a cost curve for the control, not for the criterion.** `alpha` for `spread_shape`,
+same grid, `E+1 = 8`:
 
-- `E+1 = 8` buys a per-quad noise floor of **0.48** in `alpha`.
-- The measured region separation is about **1.0** — roughly twice that floor.
-- So `E+1 = 8` resolves **regions** comfortably and **individual quads** not at all.
-- **Halving the floor costs 4× the compute.** `E+1 = 32` gives 0.21; `E+1 = 128` would give
-  about 0.075 for sixteen times the work of 8.
+| scheme | median | p90−p10 | var |
+|---|---|---|---|
+| Halton | 0.1386 | **0.6326** | 5.331e-1 |
+| Pcg | 0.1722 | **0.6313** | 5.725e-1 |
 
-A scheduler that thresholds `alpha` per quad at `E+1 = 8` is acting on noise. One that
-thresholds on a region aggregate is not. If per-quad decisions are wanted, the ensemble size is
-the price and the curve above says what it is.
+The interdecile scatter is unchanged. The variance falls by 6.9%, and the arithmetic says why:
+`var(alpha_shape)` drops by `3.94e-2`, against `var(alpha_E) = 3.75e-2` under PCG. **Sampling
+noise adds in, it was about 7% of the total, and the fixed prefix removes essentially all of
+it** — `var(alpha_E)` falls to `1.40e-7`, a factor of 267,000.
 
-### The bias only a control could have caught
+The other 93% is not sampling noise and no offset scheme can touch it. `sigma_E(0)` is a smooth
+function of position, so its ensemble spread is pure geometry; `spread_shape` at `t = 13` is
+dominated by trajectories that have genuinely separated.
 
-There is also a **+7.6% median bias** at `E+1 = 8`. Its cause: a parent pools `4(E+1)` copies
-against a child's `E+1`, and a spread estimator's expectation depends on sample size. Drawing
-`E+1` of the parent's pooled copies puts matched counts on both sides, and the median goes to
-1.0191 at `E+1 = 8` and 0.9999 at 16.
+**The design constraint, restated with the right number:**
 
-**No estimator without a known-true-value control could have found this.** The bias is a smooth
-7.6% offset on a quantity with no independent oracle — it does not look like an error, it looks
-like a result. It would have been read as "parent spread grows slightly faster than linearly in
-cell width", which is a plausible physical statement and completely wrong. It was visible only
-because `sigma_E(0)` has an *exactly* known answer.
+- The criterion's per-quad scatter in `alpha_shape` is **0.63**, under either scheme.
+- The measured region separation is about **1.0** — roughly 1.6× that scatter.
+- So `E+1 = 8` resolves **regions** and not **individual quads**.
+- **More copies will not fix it.** Only ~7% of the scatter is sampling error, and the fixed
+  prefix has already removed essentially all of that. The remainder is the physics the
+  instrument exists to measure.
 
-The same reasoning chose the estimator: this experiment uses an rms deviation rather than
-`error_ratio`'s max deviation, because an order statistic's sample-size bias is far larger — the
-`max_dev` rows above carry it too, and worse.
+An earlier version of this document gave the floor as **0.48 and attributed it to the criterion**.
+That was the control's sampling floor, presented as though it bounded `alpha_shape`. The
+conclusion it supported survives — regions yes, quads no — but for a reason that cannot be bought
+off with compute rather than one that can.
 
-**Match the counts, or the exponent is biased before any physics enters.**
+### The bias is geometric, and only a control could have found it
+
+There is also a bias in the control: **+7.6% at `E+1 = 8` under PCG, and +38.6% under Halton with
+essentially no scatter** (p90−p10 = 0.0010). It falls as `1/E`:
+
+| E+1 | \|median−1\| | × (E+1) |
+|---|---|---|
+| 4 | 0.6678 | 2.671 |
+| 8 | 0.3857 | 3.086 |
+| 16 | 0.1668 | 2.669 |
+| 32 | 0.0661 | 2.117 |
+| 64 | 0.0308 | 1.974 |
+| 128 | 0.0173 | 2.220 |
+
+Constant to within ±25% with no trend, so `1/E`.
+
+**The mechanism is geometric and it indicts the aggregation, not the estimator.** With fixed
+offsets, a pooled 2×2 block is four *exact repeats* of one offset pattern at four different cell
+centres — not `4(E+1)` samples of a genuinely wider footprint. At small `E` the pooled spread is
+set by the child-centre separation rather than by the offset set. As `E` grows the offset set
+fills the footprint and the surrogate converges, which is the `1/E`.
+
+An earlier version attributed this to sample-size bias, on the evidence that matched-count
+subsampling removed most of it (1.0762 → 1.0191). **That was wrong**: subsampling was removing a
+symptom of the randomisation, not the cause. Under a fixed scheme there is no randomisation left
+to hide behind and the geometry is visible directly.
+
+So "a fine uniform grid already contains every coarser scale by aggregation" is true of the
+*positions* and false of the *ensemble*. The synthesised parent is a weaker surrogate than that
+sentence implies, and the fixed offset scheme is what made it measurable.
+
+**No estimator without a known-true-value control could have found any of this.** A smooth bias
+on a quantity with no oracle does not look like an error, it looks like a result — it would have
+read as "parent spread grows faster than linearly in cell width", a plausible physical statement
+and completely wrong. It was visible only because `sigma_E(0)` has an *exactly* known answer.
+
+### The `alpha_E` control variate buys nothing
+
+Energy's exponent is known exactly, so `(alpha_E − 1)` is observed noise sharing a source with
+`alpha_shape` — textbook control-variate structure. Measured per-quad, across quads:
+
+| scheme | rho | fitted beta | floor ratio, regression | floor ratio, additive |
+|---|---|---|---|---|
+| Halton | −0.0789 | −153.76 | 1.0396 | 1.0008 |
+| Pcg | −0.0419 | −0.1637 | 1.0544 | 1.2574 |
+
+`rho` is near zero under both, and the regression form makes the floor slightly *worse* — fitting
+a coefficient on noise costs a degree of freedom and returns nothing. **Dropped.**
+
+The Halton `beta = −153.76` is not a result but a division by nothing: `var(alpha_E) = 1.4e-7`
+there. **The control variate is degenerate under Halton precisely because the switch already
+removed what it would have corrected.**
+
+(This is a different correlation from the −0.035 reported earlier, which compared two
+within-footprint *estimators* per pixel. This compares two per-quad *exponents* across quads.
+Both null, but they are not the same measurement.)
+
+`alpha` was **not** smoothed over neighbouring quads. It is the obvious variance reduction and it
+is wrong here: `alpha` varies smoothly except at boundaries, and boundaries are exactly what a
+refinement decision is about.
 
 ---
 
@@ -409,6 +481,8 @@ Every table above comes from a committed example. Raw output for all of them is 
 | §5 branch cut | `cargo run --release --example lc_cut_proximity` |
 | §5 deep interior | `cargo run --release --example deep_interior` |
 | §5 event class | `cargo run --release --example spread_event_correction` |
+| §1 offset schemes | `cargo run --release --example halton_noise_floor` |
+| the offset properties | `cargo test --release --test halton_offsets -- --nocapture` |
 | a full slice | `cargo run --release --bin prin -- --region near-field --size 256 --out out` |
 | the acceptance gates | `cargo test --release -- --nocapture` |
 | the NumPy cross-check | `cargo test --release --test xcheck -- --ignored --nocapture` |

@@ -1,4 +1,5 @@
-    Finished `release` profile [optimized] target(s) in 0.01s
+   Compiling prin-rs v0.1.0 (/Users/malachy/src/principia-rs-test)
+    Finished `release` profile [optimized] target(s) in 3.91s
      Running tests/az_hamiltonian_fd.rs (target/release/deps/az_hamiltonian_fd-f25d8d73ebd28874)
 
 running 3 tests

@@ -1,29 +1,30 @@
-    Finished `release` profile [optimized] target(s) in 0.01s
+   Compiling prin-rs v0.1.0 (/Users/malachy/src/principia-rs-test)
+    Finished `release` profile [optimized] target(s) in 3.91s
      Running `target/release/examples/f32_report`
 near-field 32x32, t=13, E+1=8, eta=0.01, r_coll=1e-3 R
 ICs built once in f64 and cast down, so no row differs by its initial condition.
 
 === the four combinations ===
   prec    shared   drift med   drift max      er med      er max  ens_sp medsp_shape med   refdis
-   f64       off    2.755e-9    3.070e-1    1.0000e0    2.6103e3   1.9095e-3   1.9095e-3     1174
-   f64        on    2.755e-9    3.070e-1    1.0000e0    2.6103e3   1.8884e-3   1.8884e-3        0
-   f32       off    9.293e-6     1.676e1    1.0039e0    1.1978e5   1.8875e-3   1.8875e-3     1152
-   f32        on    9.307e-6     2.613e1    1.0028e0    1.8671e5   1.8777e-3   1.8777e-3        0
+   f64       off    2.825e-9    1.239e-1    1.0000e0    9.7645e2   1.8398e-3   1.8398e-3     1153
+   f64        on    2.825e-9    2.006e-2    1.0000e0    1.5911e2   1.8335e-3   1.8335e-3        0
+   f32       off    9.417e-6    3.037e-1    1.0006e0    2.3945e3   1.8394e-3   1.8394e-3     1164
+   f32        on    9.460e-6    6.233e-2   9.9883e-1    4.8508e2   1.8437e-3   1.8437e-3        0
 
   prec    shared   sp_event nz  sp_event max   nonfinite outcome flips
-   f64       off       35/1024        0.5714           0             0
-   f64        on       34/1024        0.5714           0             0
-   f32       off       40/1024        0.5714           0             2
-   f32        on       34/1024        0.5714           0             2
+   f64       off       41/1024        0.5714           0             0
+   f64        on       38/1024        0.5714           0             0
+   f32       off       38/1024        0.5714           0             2
+   f32        on       37/1024        0.5714           0             2
 
 'outcome flips' is against the f64 unshared row - the reference configuration.
 
 === the drift tail, which the medians hide ===
   prec    shared         p50         p90         p99         max        > 1e-3           > 1
-   f64       off    2.755e-9    4.319e-8    9.257e-3    3.070e-1            22             0
-   f64        on    2.755e-9    4.314e-8    1.108e-3    3.070e-1            11             0
-   f32       off    9.293e-6    1.937e-5    1.740e-2     1.676e1            51             2
-   f32        on    9.307e-6    1.939e-5    1.187e-2     2.613e1            42             2
+   f64       off    2.825e-9    4.262e-8    3.684e-3    1.239e-1            21             0
+   f64        on    2.825e-9    4.254e-8    1.240e-3    2.006e-2            12             0
+   f32       off    9.417e-6    1.977e-5    1.133e-2    3.037e-1            52             0
+   f32        on    9.460e-6    1.977e-5    9.708e-3    6.233e-2            43             0
 
 The last two columns are the ones that decide usability: a pixel with |dE/E| > 1
 has lost more than the total energy of the system and its trajectory means
@@ -31,17 +32,17 @@ nothing. error_ratio flags them, which is what it is for.
 
 === 1. does the conditioned LC branch fix spread_shape at f32? ===
   prec          lc    sp_shape med    sp_shape p99    sp_shape max   nonfinite
-   f64 conditioned       1.9095e-3       2.1457e-1       2.8315e-1           0
-   f64   reference       1.9095e-3       2.1457e-1       2.8315e-1           0
-   f32 conditioned       1.8875e-3       2.2874e-1       3.3302e-1           0
-   f32   reference       6.1582e-2       2.8454e-1       3.6668e-1           0
+   f64 conditioned       1.8398e-3       2.1208e-1       2.8374e-1           0
+   f64   reference       1.8398e-3       2.1208e-1       2.8374e-1           0
+   f32 conditioned       1.8394e-3       2.1206e-1       2.8375e-1           0
+   f32   reference       6.2627e-2       2.8696e-1       3.9170e-1           0
 
-f64 conditioned is the truth column: 1.909534e-3
+f64 conditioned is the truth column: 1.839790e-3
 
 === 2. does the shared-reference flag matter? ===
 Read the four-combination table above. Summarised, shared against unshared:
-  f64: drift med x1.000   drift max x1.000   er max x1.000   sp_shape med x0.9889
-  f32: drift med x1.001   drift max x1.559   er max x1.559   sp_shape med x0.9948
+  f64: drift med x1.000   drift max x0.162   er max x0.163   sp_shape med x0.9966
+  f32: drift med x1.005   drift max x0.205   er max x0.203   sp_shape med x1.0023
 Ratios are shared/unshared, so >1 means sharing made it worse.
 
 === 3. does the branch cut reach the outcome encoding at f32? ===

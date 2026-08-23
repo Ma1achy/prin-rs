@@ -3,20 +3,24 @@
 
 running 2 tests
 test at_f32_the_unstable_branch_destroys_spread_shape ...         region     f64 truth  f32 unstable    f32 stable   NaN pix
-    near-field     2.8971e-2     1.4153e-1     2.8952e-2         0
-    body2 core     7.3475e-2     1.6101e-1     7.3517e-2         0
-   body1 slice     5.8483e-2     1.5838e-1     5.8446e-2         0
-     mid-field     1.7355e-6     8.6146e-5     1.7421e-6         0
+    near-field     1.6057e-2     1.2747e-1     2.0958e-2         0
+                median per-pixel rel err, conditioned f32 vs f64: 0.0156
+    body2 core     6.6202e-2     1.5287e-1     6.4658e-2         0
+                median per-pixel rel err, conditioned f32 vs f64: 0.0073
+   body1 slice     4.2682e-2     1.6837e-1     4.2519e-2         0
+                median per-pixel rel err, conditioned f32 vs f64: 0.0107
+     mid-field     1.4817e-6     6.5234e-3     1.4829e-6         0
+                median per-pixel rel err, conditioned f32 vs f64: 0.0119
 
 The conditioned branch holds at f32. The unstable one does not: it returns NaN
 pixels or inflates the spread by an order of magnitude, while single-trajectory
 energy drift stays superficially reasonable. That is the reported f32 symptom.
 ok
-test at_f64_the_branch_cut_barely_leaks_into_spread_shape ...     near-field  unstable 2.897117e-2  stable 2.897117e-2  rel 5.44e-10
-    body2 core  unstable 7.347487e-2  stable 7.347488e-2  rel 1.64e-7
-   body1 slice  unstable 5.848339e-2  stable 5.848343e-2  rel 8.18e-7
-     mid-field  unstable 1.735504e-6  stable 1.735508e-6  rel 2.34e-6
+test at_f64_the_branch_cut_barely_leaks_into_spread_shape ...     near-field  unstable 1.605684e-2  stable 1.605684e-2  rel 1.14e-9
+    body2 core  unstable 6.620190e-2  stable 6.620192e-2  rel 3.35e-7
+   body1 slice  unstable 4.268229e-2  stable 4.268229e-2  rel 2.70e-8
+     mid-field  unstable 1.481659e-6  stable 1.481666e-6  rel 5.02e-6
 ok
 
-test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.98s
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.63s
 

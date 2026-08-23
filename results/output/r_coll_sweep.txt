@@ -1,4 +1,5 @@
-    Finished `release` profile [optimized] target(s) in 0.01s
+   Compiling prin-rs v0.1.0 (/Users/malachy/src/principia-rs-test)
+    Finished `release` profile [optimized] target(s) in 2.73s
      Running `target/release/examples/r_coll_sweep`
 near-field 64x64, t=13, E+1=8, eta=0.01, f64
 
@@ -21,9 +22,9 @@ ever has two pairs below r_coll at once, so the >=2-pair rule is exercised only
 by construction in tests/outcome_encoding.rs, never by this data.
 
 === 1b. cross-check: the same fractions from d_min directly ===
-d_min_true/R over the grid: min 5.909e-4  median 3.769e-3  max 4.931e-3
+d_min_true/R over the grid: min 5.909e-4  median 3.779e-3  max 4.931e-3
   fraction with d_min_true < 1e-4 R: 0.0000
-  fraction with d_min_true < 1e-3 R: 0.0281
+  fraction with d_min_true < 1e-3 R: 0.0273
   fraction with d_min_true < 1e-2 R: 1.0000
 These are per-pixel minima over the ensemble, so they bound the nominal-copy
 fractions above from one side rather than matching them exactly.

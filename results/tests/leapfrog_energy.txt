@@ -1,4 +1,5 @@
-    Finished `release` profile [optimized] target(s) in 0.01s
+   Compiling prin-rs v0.1.0 (/Users/malachy/src/principia-rs-test)
+    Finished `release` profile [optimized] target(s) in 3.92s
      Running tests/leapfrog_energy.rs (target/release/deps/leapfrog_energy-12096b6f799565e9)
 
 running 5 tests
@@ -29,5 +30,5 @@ body2 core          13      25         0      4.967e-4      5.287e-2
 AZ reference at near-field t=13 reaches |dE/E| ~ 3.9e-09 for comparison.
 ok
 
-test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.19s
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.20s
 

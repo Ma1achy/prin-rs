@@ -12,8 +12,10 @@ pub mod integrate;
 pub mod outcome;
 pub mod physics;
 pub mod output;
+pub mod quad;
 pub mod render;
 pub mod rng;
+pub mod scheduler;
 
 pub use real::Real;
 pub use vec2::Vec2;

@@ -2,3 +2,4 @@
 
 pub mod png;
 pub mod raw;
+pub mod tree;

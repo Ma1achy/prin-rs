@@ -587,7 +587,105 @@ not earliness.
 
 ---
 
-## 7. Reproducing any of this
+## 8. The vertical slice — the screen floor, and what it changes
+
+Every build before this one was isolated, and each isolation hid something the next found. This
+one put the camera, the screen floor, the adaptive render, SSAA and the linearised decoder
+together. **The screen floor is the change that matters**, and it revises §5.
+
+### 8.1 The arithmetic, and why four of §5's answers had to be re-run
+
+One sample, one tile, no interpolation, so a fully-refined tree at level `L` holds `4^L x N²`
+samples. At `N = 8` on a 512² viewport that reaches 262144 at **level 6**. §5's descent reached
+**level 12** — 4096x past the point where samples stop being displayable.
+
+So §5's q1, q2, q3 and q7 measured the criterion **minus its principal stop condition**. They are
+not wrong; they describe a regime the real system never enters.
+
+**A structural cap, stated before the numbers:** under the veto a tree cannot exceed `4^6 = 4096`
+leaves. near-field's 4617 cannot recur, and its absence is arithmetic, not improvement.
+
+### 8.2 q1 and q2 re-run: in near-field the criterion decides 39% of leaves
+
+`results/output/sched_screen.txt`, budget 50000 quads, `tau = 1e-4`, `alpha_hi = 0.2`, N = 8,
+E+1 = 8, `t = 13`, f64, viewport 512², camera framing the root box.
+
+| region | veto | quads | leaves | depth | floor | keep | screen | wall s |
+|---|---|---|---|---|---|---|---|---|
+| far | off | 21 | 16 | 2 | 0 | 16 | 0 | 0.2 |
+| far | **on** | 21 | 16 | 2 | 0 | 16 | 0 | 0.2 |
+| near-field | off | 4617 | 3463 | 12 | 609 | 2854 | 0 | 236.3 |
+| near-field | **on** | 549 | 412 | 6 | 100 | 60 | **252** | 27.1 |
+| deep interior | off | 29 | 22 | 4 | 9 | 13 | 0 | 0.4 |
+| deep interior | **on** | 29 | 22 | 4 | 9 | 13 | 0 | 0.5 |
+
+Three separate results:
+
+**near-field: the view stops 252 of 412 leaves — 61.2%.** The criterion decides the other 39%.
+§5's "terminates at 4617 quads" describes a descent the real system stops at 549, an **8.4x**
+reduction in compute for a tree that is by construction all anyone can see. Depth 12 becomes 6.
+
+**deep interior is byte-identical with the veto on and off.** Its tree never reaches level 6, so
+the veto never fires. **The screen floor does not fix q3's failure** — the tree still leaves the
+largest high-spread structures shallow, and the veto is not the explanation or the remedy.
+
+**far is unchanged, which is the control working.** It stops at level 2 either way; a region that
+never descends cannot be vetoed, and a difference there would have meant the veto was firing on
+something other than tile size.
+
+`relcap` is zero everywhere: `MAX_REL_DEPTH = 6` coincides with the screen floor at camera depth
+0, and the floor is checked first. That is the contract's `MAX_REL_DEPTH <= screen floor`, visible
+as a column rather than asserted.
+
+### 8.3 q7 inverts: `tau` is not inert, and it is now the dominant knob
+
+`results/output/sweep_screen.txt`, budget 2000 quads, against §5's `sched_sweep.txt`.
+
+§5 concluded: *"`alpha_hi` from 0.20 to 0.50 collapses the tree 80x, while `tau` is inert over
+four orders."* Under the veto, at `tau = 1e-4`:
+
+| region | `alpha_hi` 0.20 -> 0.50 | §5 | `tau` sensitivity | §5 |
+|---|---|---|---|---|
+| far | **x1.00** (no effect at all) | x80 | 1e-8 -> 1e-6: **x64** | identical |
+| near-field | **x21.7** | x80 | 1e-3 -> 1e-2: **x16** | identical |
+| deep interior | x1.16 at 1e-4 | x80 | 1e-6 -> 1e-4: **x7** | identical |
+
+Both halves of §5's answer move, and they move in opposite directions.
+
+**The mechanism is depth, and it is not subtle.** `alpha` is a *rate* statistic —
+`log2(spread_parent / spread_child)` — and it needs levels to express itself. With
+`bootstrap_levels = 2` and a floor at level 6, the descent has **four discretionary levels**;
+`alpha_hi`'s 80x collapse was measured over twelve. `tau` is a *level* statistic, compared against
+the spread directly, and it has exactly the same room it always had. Truncating the tree therefore
+demotes `alpha` and promotes `tau`.
+
+**So "sweep both before quoting any tree" survives, but its emphasis inverts.** §5 said `alpha_hi`
+does more work than the criterion and `tau` is often inert. Under the veto `tau` decides whether a
+region descends at all — `far` goes from 1024 leaves at `tau = 1e-8` to 16 at `1e-6`, a 64x swing
+on a region whose whole point is that it is tame — while `alpha_hi` does nothing there whatsoever.
+
+### 8.4 The adaptive render, and the test that rejects the old instrument
+
+§5's overlay drew leaf boundaries over a **uniform** render, so every texel was the same size. It
+showed where boundaries fell, not what the system displays, and the tree could not be judged by
+eye at all.
+
+`output::adaptive` rasterises each leaf's `N²` samples across its own screen footprint: a level-3
+leaf's texels are 4x the linear size of a level-5 leaf's, one sample one tile, no interpolation. A
+coarse quad is never upsampled smoothly, because that fabricates structure — the one thing a chaos
+instrument's picture must not do.
+
+`texel_scaling` fits `log2(texel_px)` against level. **The assertion is that it is exactly -1, and
+the same assertion must reject a uniform render** — which fits 0, because every texel is the same
+size whatever the level. §5's failure now has a test that fires on it
+(`tests/vertical_slice.rs::texel_size_varies_as_two_to_the_minus_level_and_uniform_is_rejected`).
+
+A known geometric cost, stated rather than hidden: `Slice::axis` is endpoint-inclusive, so a
+sample-centred tile overhangs its quad by half a cell. Leaves are painted coarsest-first so a
+finer neighbour overwrites the overhang. It is the same endpoint-inclusive duplication already
+recorded at sibling edges (1/N of a quad, 12.5% at N = 8), seen from the render side.
+
+## 9. Reproducing any of this
 
 Every table above comes from a committed example. Raw output for all of them is in
 [`results/output/`](results/output/), the acceptance-gate and cross-check output is in

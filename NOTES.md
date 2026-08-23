@@ -1434,3 +1434,127 @@ Each behaves distinctly, and the behaviours are intelligible:
 footprint", "resolve the total", "resolve the worst" — and which is wanted is a display question
 this measurement cannot settle. What it settles is that the choice is load-bearing and must be
 stated wherever a tree is quoted.
+
+---
+
+## 12. The vertical slice — what the isolation was hiding
+
+Every build before this one was deliberately isolated, and each isolation hid something the next
+one found. This build put the camera, the screen floor, the adaptive render, SSAA, and the
+linearised decoder together for the first time. Three of the findings below are in the **seams**
+rather than in any component, which is where the brief predicted they would be.
+
+### 12.1 A standing rule: a small difference can mean both sides are dead
+
+**Before reading any agreement number, assert that each side still resolves what it is supposed to
+resolve.** Two things that have both collapsed agree perfectly, and their agreement carries no
+information whatever.
+
+This is not the same rule as "a test that cannot fail" (§ CLAUDE.md), though it is a cousin. That
+rule is about a *configuration* in which nothing could have gone wrong. This one is about a
+*statistic* that reports success from two simultaneous failures. The tell is different: ask not
+"what would make this fire" but "what would make this quantity small", and check that "both sides
+lost their data" is not on the list.
+
+Three catches in planning this build alone:
+
+- a **curvature term on an affine chart** — `Slice::decode_pos` is a linspace, so `J_D` is
+  constant, `x = x0 + J_D.delta` is exact, and "where does the linearisation start to matter"
+  answers "never" at every depth;
+- a **linearised f32 sum whose samples all collapse to `x0`** — at depth 40 the increment is
+  ~1e-13 against an O(1) centre, so every sample is the same initial condition, agreeing
+  perfectly with a direct path that collapsed too;
+- an **`E` null that a veto-capped tree would have produced whatever `E` did** — the screen floor
+  caps a tree at `4^6 = 4096` leaves, so an over-refining low-`E` run saturates and the sweep
+  reports a null the veto manufactured.
+
+The remedy in each case was to measure the *resolving power* first and the agreement second.
+`decode::distinct` exists for exactly this: it counts how many of a quad's `N²` sample initial
+conditions are actually different, and a divergence figure is only admissible where both sides
+are fully distinct.
+
+### 12.2 A collapsed decode makes the criterion maximally confident
+
+The consequence of §12.1 inside the scheduler, and the sharpest seam in this build.
+
+When a decode path has collapsed, every footprint in a quad is the **same** initial condition and
+every copy is the **same** trajectory. `ensemble_spread` is then exactly zero. The criterion reads
+zero spread as *"this quad is perfectly resolved"* and stops — confidently, with a small tidy
+tree, having integrated nothing distinguishable at all.
+
+This is the project's own standing pattern arriving from a new direction: *a statistic can report
+maximum confidence precisely when it is least informed*. It has now been caught four times, in
+`drift max` scatter, in terminal-outcome purity under lockstep, in the `Gamma` residual, and here.
+
+The guard is not a threshold. It is to count distinct initial conditions per quad and treat a
+collapsed quad as **undetermined**, in the same way a non-finite copy is a measurement outcome
+rather than missing data.
+
+### 12.3 The deep-zoom floor is a property of *where* you zoom, not of the renderer
+
+PR #11 recorded a plain-f64 cell-width floor at level **45.87**. That figure is conditional on the
+chart coordinate being of order 1, and the condition was never stated.
+
+Measured over four configurations at matched settings (`results/output/decode_ladder.txt`), with
+64 samples per quad:
+
+| chart | centre | `direct_f64` still resolves 64/64 to | `direct_f32` to |
+|---|---|---|---|
+| `body_plane` | \|c\| ~ 3 | depth 44 | depth 14 |
+| `body_plane` | 0 | **depth 55+ (no floor at all)** | **depth 55+** |
+| `shape` | \|c\| ~ 3 | depth 35 | depth 14 |
+| `shape` | 0 | depth 45 | depth 45 |
+
+A quad centred at the chart origin has **no O(1) neighbour for the increment to be absorbed
+into**, and therefore no cell-width floor in the tested range — on either precision. So 45.87 is
+not a universal limit on zoom depth; it is the limit at coordinates of order one, and moving the
+same box to the origin removes it entirely. Quote the coordinate magnitude alongside any floor
+depth, or the number means nothing.
+
+### 12.4 The linearised decoder buys ~24 levels over f32 and none over f64
+
+The contract's claim is that quad-local relative coordinates extend usable zoom from ~23 to ~50+.
+Measured on `body_plane` at \|c\| ~ 3:
+
+| path | all 64 samples distinct to | collapsed to 1 by |
+|---|---|---|
+| `direct_f32` | depth 14 | depth 22 |
+| `L-naive_f32` (the literal formula) | depth 14 | depth 22 |
+| `L-split_f32` | depth 44 | depth 50 |
+| `direct_f64` | depth 44 | depth 50 |
+
+Two results, and the second is the one to carry:
+
+**The literal formula buys nothing.** `L-naive` — `x0`, `J_D.delta` and the sum all in f32 —
+collapses on **exactly the same curve** as forming the chart coordinate in f32 in the first place
+(56, 18, 2, 1 at depths 16, 18, 20, 22 for both). Adding a ~1e-13 term to an O(1) f32 quantity is
+the same operation as never having the term.
+
+**The split form reaches f64's floor and stops there.** `L-split` — `x0` in f64 on the CPU,
+`delta` and `J_D.delta` in f32, promoted and summed in f64 — tracks `direct_f64` rung for rung.
+So the gain is ~24 levels *for an f32 consumer*, and **exactly zero over f64**. The "~50+" in the
+contract is f64's floor, not something the linearisation creates. That follows from the bound
+stated before the run: the initial conditions must be formed as absolute O(1) numbers before
+integration, because the three-body separations are O(1) and no nonlinear integrator can carry
+`(x0, delta)` separately through the march.
+
+One exception, and it is modest: on the **nonlinear** chart at \|c\| ~ 3, `L-split` holds 64/64 to
+depth 45 where `direct_f64` has fallen to 10/64. A single fused affine step loses fewer bits than
+a decode through `cos`, `sin` and a renormalisation. Worth ~6 levels, from conditioning rather
+than from the design's stated mechanism.
+
+### 12.5 Where the linearisation actually matters is the coarse end, not the deep end
+
+On the shape chart the linearisation error relative to the sample spacing runs `0.39` at
+`half = 0.05`, `1.5e-3` at depth 8, `3.6e-7` at depth 20 — it falls as the box shrinks, because
+the discarded term is `O(h²)` against a spacing of `O(h)`. It exceeds one sample spacing only at
+`half >= 0.5`, i.e. boxes larger than any this project renders.
+
+So the approximation is worst exactly where it is least needed and best exactly where it is used.
+That is the opposite of the intuition that a linearisation "breaks down at depth", and it is worth
+saying plainly because the intuition is load-bearing in the caching design.
+
+On `body_plane` the same column is **structurally zero**, and is reported as structural rather
+than as a measurement. What it does show at depth 44 is `0.55` — that is not curvature but
+accumulation rounding reaching half a sample spacing, arriving exactly where distinctness starts
+to fail.

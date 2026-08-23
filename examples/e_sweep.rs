@@ -46,8 +46,11 @@ fn main() {
     println!("viewport 512x512 when the veto is on; camera framing the root box.\n");
     println!("PREDICTION ON RECORD: low E biases toward refine, as low N did (N=4 spent 4x the");
     println!("quads of N=16). 'trajectories' is the quantity that decides the tier question.\n");
-    println!("{:>14} {:>6} {:>5} {:>7} {:>7} {:>6} {:>6} {:>6} {:>14} {:>11} {:>9}",
-             "region", "veto", "E+1", "quads", "leaves", "depth", "floor", "screen",
+    println!("**A budget-limited row is not a measurement.** If `capped` is yes, the leaf count is");
+    println!("a floor set by the budget, not a number the criterion chose, and it cannot be");
+    println!("compared against an uncapped row in the same column.\n");
+    println!("{:>14} {:>6} {:>5} {:>7} {:>7} {:>6} {:>6} {:>6} {:>6} {:>14} {:>11} {:>9}",
+             "region", "veto", "E+1", "quads", "leaves", "depth", "floor", "screen", "capped",
              "trajectories", "sib range", "wall_s");
 
     for region in ["far", "near-field", "deep interior"] {
@@ -73,16 +76,17 @@ fn main() {
                     .filter(|x| x.is_finite())
                     .collect();
                 let traj = leaves.len() * N * N * e1;
-                println!("{:>14} {:>6} {:>5} {:>7} {:>7} {:>6} {:>6} {:>6} {:>14} {:>11.4} {:>9.1}",
+                println!("{:>14} {:>6} {:>5} {:>7} {:>7} {:>6} {:>6} {:>6} {:>6} {:>14} {:>11.4} {:>9.1}",
                          region, if veto { "on" } else { "OFF" }, e1,
                          st.quads_computed, leaves.len(), depth, c(D::Floor), c(D::ScreenFloor),
+                         if st.budget_exhausted { "YES" } else { "no" },
                          traj, median(&mut sib), st.wall_seconds);
             }
             println!();
         }
     }
 
-    println!("Read the 'sib range' column as the mechanism: if it falls with E while the leaf");
+    println!("Read `capped` first. Then read 'sib range' as the mechanism: if it falls with E while the leaf");
     println!("count also falls, the extra splits at low E were the estimator's noise, not");
     println!("structure. If it falls and the leaf count does not, the prediction is wrong.");
 }

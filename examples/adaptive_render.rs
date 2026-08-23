@@ -17,6 +17,7 @@ use prin_rs::grid;
 use prin_rs::output::adaptive::{self, TexelMode};
 use prin_rs::output::png::outcome_rgb;
 use prin_rs::output::ssaa;
+use prin_rs::output::tree as treedump;
 use prin_rs::quad::Decision as D;
 use prin_rs::render::Precision;
 use prin_rs::scheduler::{self, SchedCfg};
@@ -81,6 +82,13 @@ fn main() -> std::io::Result<()> {
                  slope.map(|s| format!("{s:+.6}")).unwrap_or_else(|| "n/a (one level)".into()));
         Ok(slope)
     };
+
+    // The raw dump beside every picture. Self-describing header, same PRNQ format as prinq.
+    {
+        let mut w = std::io::BufWriter::new(std::fs::File::create(format!("{stem}.prnq"))?);
+        treedump::write(&mut w, &t, &cfg, &ens, &st, &region, "f64")?;
+        println!("  wrote {stem}.prnq ({} quads, 24 fields each)", t.nodes.len());
+    }
 
     println!("\nspread window for the false colour: 1e-8 .. 1e-1, log.");
     let ad = report("adaptive_spread", TexelMode::Adaptive, &spread_rgb)?;

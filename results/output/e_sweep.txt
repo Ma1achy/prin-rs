@@ -23,3 +23,9 @@ quads of N=16). 'trajectories' is the quantity that decides the tier question.
     near-field     on     4     697     523      6    120    348         133888      0.5358      17.2
     near-field     on     8     549     412      6    100    252         210944      0.4833      27.5
     near-field     on    16     809     607      6    114    408         621568      0.5019      76.1
+    near-field     on    32     693     520      6    120    312        1064960      0.4653     132.0
+
+    near-field    OFF     2     989     742     10    258      0          94976      0.8997      11.2
+    near-field    OFF     4    3617    2713     10    602      0         694528      0.9852      82.6
+    near-field    OFF     8    4617    3463     12    609      0        1773056      1.2403     209.5
+    near-field    OFF    16    5997    4498     10    983      0        4605952      1.4259     545.0

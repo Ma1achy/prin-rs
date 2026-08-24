@@ -1,0 +1,49 @@
+   Compiling prin-rs v0.1.0 (/Users/malachy/src/principia-rs-test)
+    Finished `release` profile [optimized] target(s) in 4.26s
+     Running `target/release/examples/colour_check 256 13`
+res 256^2, t=13, n_sync=32, E+1=8, kappa=3
+sites (computed from the masses, never hard-coded):
+    collision(0,1)  n = [-1.0000, +0.0000, +0.0000]
+    collision(0,2)  n = [+0.2857, -0.9583, -0.0000]
+    collision(1,2)  n = [+0.5238, +0.8518, +0.0000]
+          lambda=0  n = [+1.0000, +0.0000, +0.0000]
+       lagrange(+)  n = [-0.1246, -0.0816, -0.9888]
+       lagrange(-)  n = [-0.1246, -0.0816, +0.9888]
+      euler(mid=0)  n = [-0.6398, -0.7686, +0.0000]
+      euler(mid=1)  n = [-0.6100, +0.7924, +0.0000]
+      euler(mid=2)  n = [+0.9751, -0.2218, -0.0000]
+  worst angular gap to the nearest site over the sphere: 1.111 rad
+
+        region          field  distinct   finite   modal%         p1        p99    event%
+    near-field         spread     64396    65536     0.7%   4.186e-5   2.857e-1      1.7%
+    near-field   spread_shape     65536    65536     0.0%   4.186e-5   2.244e-2      1.7%
+    near-field   spread_event         5    65536    98.2%    0.000e0   2.857e-1      1.7%
+    near-field             -- n0 span = 1.9946  n0 interdecile = 0.0665  (0 nonfinite shapes)
+    near-field   hue coverage  k=0.5: 0.0013  k=1: 0.0026  k=2: 0.0047  k=3: 0.0058  k=6: 0.0057  k=12: 0.0054
+
+           far         spread     65536    65536     0.0%   4.616e-9   4.736e-9      0.0%
+           far   spread_shape     65536    65536     0.0%   4.616e-9   4.736e-9      0.0%
+           far   spread_event         1    65536   100.0%    0.000e0    0.000e0      0.0%
+           far             -- n0 span = 0.0000  n0 interdecile = 0.0000  (0 nonfinite shapes)
+           far   hue coverage  k=0.5: 0.0000  k=1: 0.0000  k=2: 0.0000  k=3: 0.0000  k=6: 0.0000  k=12: 0.0000
+
+ deep interior         spread     58427    65536     2.4%   8.221e-6   8.571e-1     10.7%
+ deep interior   spread_shape     65406    65406     0.0%   8.215e-6   4.782e-1     10.7%
+ deep interior   spread_event         8    65536    88.6%    0.000e0   8.571e-1     10.7%
+ deep interior             -- n0 span = 1.9994  n0 interdecile = 0.1684  (18 nonfinite shapes)
+ deep interior   hue coverage  k=0.5: 0.0045  k=1: 0.0092  k=2: 0.0170  k=3: 0.0217  k=6: 0.0256  k=12: 0.0261
+
+Read `distinct` and `modal%` before either image. A field whose modal value covers a
+large fraction of the region has that many pixels painted one colour, and the picture
+is describing the estimator rather than the physics. `event%` says whether the event
+arm is what is doing it -- it is a count ratio over E+1 copies and is quantised by
+construction, so where it dominates, `spread_shape` is the field with structure in it.
+
+`n0 span` is the extent of the shape-sphere axis the previous hue map discarded. It is
+the size of what was invisible, measured per region rather than asserted -- but it
+is a MAX statistic, so read `n0 interdecile` beside it. A span of 2 with a tiny
+interdecile means the axis was reached by a few pixels, not used by the region.
+
+`hue coverage` chooses kappa on a number. A region that genuinely visits one kind
+of configuration SHOULD read near zero at every kappa, and that is a true answer
+rather than a broken palette -- `far` is the control for exactly that.

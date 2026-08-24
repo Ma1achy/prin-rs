@@ -68,8 +68,9 @@ pub enum Colouring {
     /// jittered — which is what removes the brief's reference-resolution caveat for the base
     /// metric. The caveat returns for any colouring that reads the ensemble.
     Outcome,
-    /// Hue from the shape sphere, lightness from a scalar. The production scheme.
-    Bivariate(crate::output::bivariate::Lightness),
+    /// Hue from the shape sphere by vMF site-blend, lightness from a scalar. The production
+    /// scheme. See [`crate::output::colour`].
+    Bivariate(crate::output::colour::Scalar),
 }
 
 impl Colouring {
@@ -117,6 +118,11 @@ pub struct Cache {
     pub colouring: Colouring,
     /// The `[p1, p99]` the lightness ramp was normalised against, region-wide.
     pub ramp: (f64, f64),
+    /// The hue sites, **fixed for the whole cache**. A colouring has to be one map: if the site
+    /// set were rebuilt per footprint from that footprint's own masses, two pixels with
+    /// different masses would be read against different palettes and the image would not be a
+    /// picture of anything. Built from the chart's nominal masses.
+    pub sites: crate::output::colour::SiteSet,
 }
 
 impl Cache {
@@ -195,7 +201,16 @@ impl Cache {
     /// of a level-5 leaf's. Never upsampled smoothly, which would fabricate structure that was
     /// not sampled.
     pub fn render(&self, leaves: &[Key]) -> Vec<u8> {
-        let mut img = vec![0u8; self.res * self.res * 3];
+        // Background is `BACKGROUND`, never black. A NaN shape renders `DEBUG_NAN`, and both
+        // must differ from "no leaf covered this pixel" -- previously a NaN pixel came out
+        // `[0,0,0]` from the `u8` cast and was bitwise identical to the background, so
+        // `err_sum` scored an undetermined pixel as a perfect match.
+        let mut img: Vec<u8> = crate::output::colour::BACKGROUND
+            .iter()
+            .cloned()
+            .cycle()
+            .take(self.res * self.res * 3)
+            .collect();
         for &k in leaves {
             let (l, ix, iy) = k;
             let span = self.res >> l;
@@ -318,10 +333,16 @@ pub fn build_multi(
         n,
         res,
         quads: HashMap::new(),
-        reference: vec![0u8; res * res * 3],
+        reference: crate::output::colour::BACKGROUND
+            .iter()
+            .cloned()
+            .cycle()
+            .take(res * res * 3)
+            .collect(),
         trajectories: 0,
         colouring: colourings[0],
         ramp: (0.0, 1.0),
+        sites: crate::output::colour::landmarks(&crate::physics::burrau::MASSES),
     };
 
     // ---- integrate every quad at every level ----
@@ -361,21 +382,23 @@ pub fn build_multi(
     let mut out: Vec<Cache> = Vec::with_capacity(colourings.len());
     for &colouring in colourings {
         let mut c = Cache { colouring, trajectories: base_trajectories, ..c.clone() };
+        let sites = c.sites.clone();
         let ramp = match colouring {
             Colouring::Outcome => (0.0, 1.0),
-            Colouring::Bivariate(l) => {
+            Colouring::Bivariate(sc) => {
                 let all_px: Vec<PixelOut> =
                     computed.iter().flat_map(|(_, _, px)| px.iter().cloned()).collect();
-                crate::output::bivariate::range(&all_px, l)
+                crate::output::colour::range(&all_px, sc)
             }
         };
         c.ramp = ramp;
         for (k, red, px) in &computed {
             let rgb: Vec<[u8; 3]> = match colouring {
                 Colouring::Outcome => px.iter().map(outcome_rgb).collect(),
-                Colouring::Bivariate(l) => {
-                    px.iter().map(|p| crate::output::bivariate::rgb(p, l, ramp.0, ramp.1)).collect()
-                }
+                Colouring::Bivariate(sc) => px
+                    .iter()
+                    .map(|p| crate::output::colour::rgb(p, sc, &sites, ramp.0, ramp.1))
+                    .collect(),
             };
             c.quads.insert(*k, CachedQuad { key: *k, red: *red, rgb, err_sum: 0.0 });
         }

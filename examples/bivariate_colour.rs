@@ -36,7 +36,7 @@
 use prin_rs::ensemble::pixel::EnsembleCfg;
 use prin_rs::grid::{self, Chart};
 use prin_rs::metric::{self, Colouring, Rank};
-use prin_rs::output::bivariate::Lightness;
+use prin_rs::output::colour::Scalar;
 use prin_rs::physics::ftle::FtleOpts;
 use prin_rs::quad::{Agg, Criterion};
 
@@ -71,9 +71,9 @@ fn main() {
 
     let colourings = [
         Colouring::Outcome,
-        Colouring::Bivariate(Lightness::Spread),
-        Colouring::Bivariate(Lightness::Diffusion),
-        Colouring::Bivariate(Lightness::Ftle),
+        Colouring::Bivariate(Scalar::Spread),
+        Colouring::Bivariate(Scalar::Diffusion),
+        Colouring::Bivariate(Scalar::Ftle),
     ];
 
     let budgets = [21usize, 85, 341, full];

@@ -6,7 +6,7 @@ pub mod plot;
 pub mod qcache;
 pub mod raw;
 pub mod apng;
-pub mod bivariate;
+pub mod colour;
 pub mod oklab;
 pub mod ssaa;
 pub mod tree;

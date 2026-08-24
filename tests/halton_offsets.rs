@@ -38,8 +38,8 @@ fn copy_zero_is_never_jittered() {
             let c = jitter::copies_with::<f64>(&s, i, 7, 0.5, 0, scheme);
             let nom = s.nominal::<f64>(i);
             for b in 0..3 {
-                assert_eq!(c[0].r[b].x, nom.r[b].x, "{scheme:?} pixel {i}: copy 0 moved");
-                assert_eq!(c[0].r[b].y, nom.r[b].y, "{scheme:?} pixel {i}: copy 0 moved");
+                assert_eq!(c[0].s.r[b].x, nom.r[b].x, "{scheme:?} pixel {i}: copy 0 moved");
+                assert_eq!(c[0].s.r[b].y, nom.r[b].y, "{scheme:?} pixel {i}: copy 0 moved");
             }
         }
     }
@@ -63,8 +63,8 @@ fn halton_offsets_are_fixed_across_pixels_and_resolutions() {
                 .iter()
                 .map(|x| {
                     (
-                        (x.r[s.body].x - nom.r[s.body].x) / (frac * hx),
-                        (x.r[s.body].y - nom.r[s.body].y) / (frac * hy),
+                        (x.s.r[s.body].x - nom.r[s.body].x) / (frac * hx),
+                        (x.s.r[s.body].y - nom.r[s.body].y) / (frac * hy),
                     )
                 })
                 .collect();
@@ -108,7 +108,7 @@ fn halton_offsets_are_fixed_across_pixels_and_resolutions() {
     let s = grid::region("near-field", 8, 8, 0.05).unwrap();
     let a = jitter::copies_with::<f64>(&s, 0, 7, frac, 0, Scheme::Pcg);
     let b = jitter::copies_with::<f64>(&s, 1, 7, frac, 0, Scheme::Pcg);
-    let differs = (1..8).any(|k| a[k].r[s.body].x != b[k].r[s.body].x);
+    let differs = (1..8).any(|k| a[k].s.r[s.body].x != b[k].s.r[s.body].x);
     assert!(differs, "PCG offsets should differ between footprints; if not, the test is empty");
     println!("PCG offsets differ between footprints, as expected — no shared pattern.");
 }
@@ -143,14 +143,14 @@ fn the_halton_prefix_covers_the_footprint_better_than_pcg_draws() {
     println!("{:>6}{:>16}{:>16}{:>12}", "E+1", "Halton L2*", "PCG L2* (mean)", "ratio");
     let mut wins = 0usize;
     for n_copies in [4usize, 8, 16, 32] {
-        let unit = |c: &Vec<prin_rs::physics::Cart<f64>>, idx: usize| -> Vec<(f64, f64)> {
+        let unit = |c: &Vec<prin_rs::physics::Ic<f64>>, idx: usize| -> Vec<(f64, f64)> {
             let nom = s.nominal::<f64>(idx);
             c[1..]
                 .iter()
                 .map(|x| {
                     (
-                        0.5 * ((x.r[s.body].x - nom.r[s.body].x) / (frac * hx) + 1.0),
-                        0.5 * ((x.r[s.body].y - nom.r[s.body].y) / (frac * hy) + 1.0),
+                        0.5 * ((x.s.r[s.body].x - nom.r[s.body].x) / (frac * hx) + 1.0),
+                        0.5 * ((x.s.r[s.body].y - nom.r[s.body].y) / (frac * hy) + 1.0),
                     )
                 })
                 .collect()

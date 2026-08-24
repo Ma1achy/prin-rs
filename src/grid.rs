@@ -16,7 +16,7 @@
 //! exists so that question has something to measure. [`Chart::BodyPlane`] is the old
 //! behaviour, preserved **bitwise** and asserted so in `tests/vertical_slice.rs`.
 
-use crate::physics::{burrau, shape, Cart};
+use crate::physics::{burrau, shape, Cart, Ic};
 use crate::{Real, Vec2};
 
 /// How a chart coordinate `(u, v)` becomes a three-body state.
@@ -162,7 +162,7 @@ impl Slice {
     /// **The decode**: chart coordinate `(u, v)` to a full state, in `f64`.
     ///
     /// Public because the deep-zoom ladder decodes directly, without a grid.
-    pub fn decode_state(&self, u: f64, v: f64) -> Cart<f64> {
+    pub fn decode_state(&self, u: f64, v: f64) -> Ic<f64> {
         decode_state(&self.chart, self.body, u, v)
     }
 
@@ -173,25 +173,35 @@ impl Slice {
     /// nominal-only cross-check possible with no RNG on either side.
     pub fn nominal<T: Real>(&self, idx: usize) -> Cart<T> {
         let (x, y) = self.decode_pos(idx);
+        self.decode_state(x, y).s.cast::<T>()
+    }
+
+    /// Nominal initial condition **with its masses**.
+    ///
+    /// [`Self::nominal`] drops them, which is correct at the many call sites that predate the
+    /// chart families and are all Burrau. Anything that decodes a chart which can vary mass must
+    /// use this instead, or it integrates the right configuration with the wrong bodies.
+    pub fn nominal_ic<T: Real>(&self, idx: usize) -> Ic<T> {
+        let (x, y) = self.decode_pos(idx);
         self.decode_state(x, y).cast::<T>()
     }
 }
 
 /// The decode, free of any grid. `body` is read only by [`Chart::BodyPlane`].
-pub fn decode_state(chart: &Chart, body: usize, u: f64, v: f64) -> Cart<f64> {
+pub fn decode_state(chart: &Chart, body: usize, u: f64, v: f64) -> Ic<f64> {
     match *chart {
         // Bitwise what this function did before the chart existed. Asserted in a test.
         Chart::BodyPlane => {
             let mut s = burrau::state::<f64>();
             s.r[body] = Vec2::new(u, v);
-            s
+            Ic { m: burrau::MASSES, s }
         }
         Chart::Plane { origin, u: uu, v: vv } => {
             let mut s = origin;
             for k in 0..3 {
                 s.r[k] = s.r[k] + uu[k] * u + vv[k] * v;
             }
-            s
+            Ic { m: burrau::MASSES, s }
         }
         Chart::Shape { n0, e1, e2, inertia, phase } => {
             let t = [
@@ -202,7 +212,7 @@ pub fn decode_state(chart: &Chart, body: usize, u: f64, v: f64) -> Cart<f64> {
             let n = shape::exp_map(n0, t);
             let r = shape::from_shape(n, inertia, phase, &burrau::MASSES);
             // Released from rest, like every configuration in this project.
-            Cart { r, v: [Vec2::zero(); 3] }
+            Ic { m: burrau::MASSES, s: Cart { r, v: [Vec2::zero(); 3] } }
         }
     }
 }

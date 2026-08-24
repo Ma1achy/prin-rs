@@ -31,7 +31,7 @@
 
 use crate::decode::{self, Path};
 use crate::grid::Slice;
-use crate::physics::Cart;
+use crate::physics::Ic;
 use crate::rng::SplitMix64;
 use crate::Real;
 
@@ -102,7 +102,7 @@ pub fn copies<T: Real>(
     n_extra: usize,
     jitter_frac: f64,
     seed: u64,
-) -> Vec<Cart<T>> {
+) -> Vec<Ic<T>> {
     copies_with(slice, idx, n_extra, jitter_frac, seed, Scheme::default())
 }
 
@@ -114,7 +114,7 @@ pub fn copies_with<T: Real>(
     jitter_frac: f64,
     seed: u64,
     scheme: Scheme,
-) -> Vec<Cart<T>> {
+) -> Vec<Ic<T>> {
     copies_with_path(slice, idx, n_extra, jitter_frac, seed, scheme, Path::DirectF64)
 }
 
@@ -135,7 +135,7 @@ pub fn copies_with_path<T: Real>(
     seed: u64,
     scheme: Scheme,
     path: Path,
-) -> Vec<Cart<T>> {
+) -> Vec<Ic<T>> {
     let (hx, hy) = slice.cell_widths();
     let jx = jitter_frac * hx;
     let jy = jitter_frac * hy;
@@ -144,13 +144,21 @@ pub fn copies_with_path<T: Real>(
     // Only built when a non-default path asks for it: five extra f64 decodes per footprint.
     let lin = (path != Path::DirectF64)
         .then(|| decode::linearise(&slice.chart, slice.body, slice.cx, slice.cy, slice.half));
-    let make = |u: f64, v: f64| -> Cart<f64> {
+    // Masses travel with the copy, not with the footprint: on a chart that varies mass, two
+    // jittered copies of one pixel are two different three-body systems. Under `Path::DirectF64`
+    // the whole `Ic` comes from one decode; under a linearised path the configuration comes from
+    // the linearisation and the masses from a direct decode at the same point, which is exact
+    // (see `decode::linearise`).
+    let make = |u: f64, v: f64| -> Ic<f64> {
         match &lin {
             None => slice.decode_state(u, v),
-            Some(l) => decode::sample(
-                path, &slice.chart, slice.body, slice.cx, slice.cy, slice.half,
-                (u - slice.cx) / slice.half, (v - slice.cy) / slice.half, l,
-            ),
+            Some(l) => Ic {
+                m: slice.decode_state(u, v).m,
+                s: decode::sample(
+                    path, &slice.chart, slice.body, slice.cx, slice.cy, slice.half,
+                    (u - slice.cx) / slice.half, (v - slice.cy) / slice.half, l,
+                ),
+            },
         }
     };
 

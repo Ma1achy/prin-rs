@@ -16,7 +16,7 @@ use rayon::prelude::*;
 use prin_rs::ensemble::jitter::{self, Scheme};
 use prin_rs::grid::{self, Slice};
 use prin_rs::ensemble::pixel::{evaluate, EnsembleCfg};
-use prin_rs::physics::{burrau, energy};
+use prin_rs::physics::energy;
 
 const FINE: usize = 64;
 
@@ -43,13 +43,12 @@ fn qs(v: &[f64]) -> (f64, f64, f64, f64, f64) {
 
 /// `sigma_E(0)` per pixel — no integration, so a whole grid is cheap.
 fn sigma_e0(s: &Slice, n_copies: usize, scheme: Scheme) -> Vec<f64> {
-    let m = burrau::masses::<f64>();
     (0..s.npix())
         .into_par_iter()
         .map(|i| {
             let e: Vec<f64> = jitter::copies_with::<f64>(s, i, n_copies - 1, 0.5, 0, scheme)
                 .iter()
-                .map(|x| energy::energy(&x.r, &x.v, &m, 0.0))
+                .map(|x| energy::energy(&x.s.r, &x.s.v, &x.m, 0.0))
                 .collect();
             rms_dev(&e)
         })
@@ -58,13 +57,12 @@ fn sigma_e0(s: &Slice, n_copies: usize, scheme: Scheme) -> Vec<f64> {
 
 /// Pooled: the parent's copies are the union of its four children's.
 fn pooled_alpha(s: &Slice, n_copies: usize, scheme: Scheme) -> Vec<f64> {
-    let m = burrau::masses::<f64>();
     let per_pixel: Vec<Vec<f64>> = (0..s.npix())
         .into_par_iter()
         .map(|i| {
             jitter::copies_with::<f64>(s, i, n_copies - 1, 0.5, 0, scheme)
                 .iter()
-                .map(|x| energy::energy(&x.r, &x.v, &m, 0.0))
+                .map(|x| energy::energy(&x.s.r, &x.s.v, &x.m, 0.0))
                 .collect()
         })
         .collect();

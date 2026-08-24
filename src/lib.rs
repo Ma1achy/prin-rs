@@ -11,6 +11,7 @@ pub mod decode;
 pub mod ensemble;
 pub mod grid;
 pub mod integrate;
+pub mod metric;
 pub mod outcome;
 pub mod physics;
 pub mod output;

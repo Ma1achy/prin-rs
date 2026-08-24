@@ -481,6 +481,72 @@ impl QuadTree {
         (0..self.nodes.len()).filter(|&i| self.nodes[i].is_leaf())
     }
 
+    /// The same-or-coarser neighbour across one edge, or `None` at the root box's border.
+    ///
+    /// Descends from the root toward a point just outside the edge, stopping at the deepest
+    /// existing node that is **no finer than the query quad**. Same-or-coarser is the right
+    /// answer rather than a limitation: a finer neighbour is several quads, and picking one of
+    /// them would make the contrast depend on which.
+    ///
+    /// `O(level)`, no neighbour pointers, nothing cached. The only adjacency code that existed
+    /// before this was an `O(n^2)` geometric box-touch test inside `examples/sched_thrash.rs`;
+    /// `tests/criterion.rs` checks this against that predicate over a whole tree, which is a
+    /// comparison against an independent implementation rather than against itself.
+    pub fn neighbour(&self, i: usize, dir: Dir) -> Option<usize> {
+        let q = &self.nodes[i];
+        // Just outside the edge. A fraction of the quad's own half-width, so the probe scales
+        // with the box and cannot fall through a neighbour at any depth.
+        let e = q.half * 1e-6;
+        let (px, py) = match dir {
+            Dir::NegX => (q.cx - q.half - e, q.cy),
+            Dir::PosX => (q.cx + q.half + e, q.cy),
+            Dir::NegY => (q.cx, q.cy - q.half - e),
+            Dir::PosY => (q.cx, q.cy + q.half + e),
+        };
+
+        let root = &self.nodes[0];
+        if (px - root.cx).abs() > root.half || (py - root.cy).abs() > root.half {
+            return None;
+        }
+
+        let mut cur = 0usize;
+        while self.nodes[cur].level < q.level {
+            let Some(kids) = self.nodes[cur].children else { break };
+            let node = &self.nodes[cur];
+            let jx = usize::from(px >= node.cx);
+            let jy = usize::from(py >= node.cy);
+            cur = kids[jy * 2 + jx];
+        }
+        Some(cur)
+    }
+
+    /// Neighbour contrast: `max` over the four edges of `|signal_self - signal_neighbour|`.
+    ///
+    /// **Computed at decision time and never stored on a `Quad`.** It is a relative quantity,
+    /// and freezing one onto a node is the mistake the screen floor's "never cached as a quad
+    /// fact" rule exists to prevent — a neighbour can be split after this is read.
+    ///
+    /// Returns the contrast and how many edges contributed. The count matters: a quad on the
+    /// root border has fewer neighbours, so its contrast is a max over a smaller set and is
+    /// biased low by construction. Reported, never silently absorbed.
+    pub fn contrast(&self, i: usize, criterion: Criterion, agg: Agg) -> (f64, u8) {
+        let me = self.nodes[i].red.signal(criterion, agg);
+        let (mut best, mut count) = (0.0f64, 0u8);
+        for d in Dir::ALL {
+            if let Some(j) = self.neighbour(i, d) {
+                if self.nodes[j].red.n_footprints == 0 {
+                    continue; // not yet computed; not a zero contrast
+                }
+                let v = self.nodes[j].red.signal(criterion, agg);
+                if v.is_finite() && me.is_finite() {
+                    best = best.max((me - v).abs());
+                    count += 1;
+                }
+            }
+        }
+        (if count == 0 { f64::NAN } else { best }, count)
+    }
+
     pub fn depth_histogram(&self) -> Vec<usize> {
         let mut h = Vec::new();
         for i in self.leaves() {
@@ -491,6 +557,27 @@ impl QuadTree {
             h[l] += 1;
         }
         h
+    }
+}
+
+/// One of the four edges of a quad.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Dir {
+    NegX,
+    PosX,
+    NegY,
+    PosY,
+}
+
+impl Dir {
+    pub const ALL: [Dir; 4] = [Dir::NegX, Dir::PosX, Dir::NegY, Dir::PosY];
+    pub fn opposite(self) -> Dir {
+        match self {
+            Dir::NegX => Dir::PosX,
+            Dir::PosX => Dir::NegX,
+            Dir::NegY => Dir::PosY,
+            Dir::PosY => Dir::NegY,
+        }
     }
 }
 

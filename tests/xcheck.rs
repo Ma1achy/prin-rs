@@ -76,3 +76,20 @@ fn long_horizon_t13() {
     println!("coordinate passes near zero. See tools/xcheck/horizon.py for the growth curve.");
     assert!(ok, "az_t13 cross-check failed");
 }
+
+/// Benettin FTLE and the diffusion regression, against `tb_ftle.integrate_full`.
+///
+/// This is the pair with a reference: `tb_ftle.py` sits on `tb.py`'s fixed-step leapfrog, not
+/// on Aarseth-Zare, and there is **no AZ+shadow reference** anywhere. So this validates the
+/// estimator, and carrying a shadow through AZ is a separate step validated against this one
+/// where both resolve.
+///
+/// The perturbation direction is pinned analytically on both sides. numpy's Ziggurat is not
+/// ported and reproducing it is not required — the direction only seeds the shadow, and a
+/// comparison needs both sides to use the same one. The Python side substitutes it into the
+/// reference without reimplementing any of the reference's algebra.
+#[test]
+#[ignore]
+fn ftle_matches_the_reference() {
+    assert!(run_case("ftle", "1e-10", "1e-12"), "ftle cross-check failed");
+}

@@ -1,0 +1,44 @@
+    Finished `release` profile [optimized] target(s) in 0.02s
+     Running `target/release/examples/sibling_noise 5 3`
+PART 1 -- control: sigma_E(0), true alpha EXACTLY 1.0, true sibling range EXACTLY 0.
+near-field, levels 0..5, no integration.
+This measures the GEOMETRIC residual only. Under the fixed Halton prefix there is no
+sampling randomness in it at all, so it CANNOT measure sampling noise -- it is a floor,
+and anything above it in part 2 is not geometry.
+
+      N   E+1 parents     a p50    a idec   sib p50   sib p90
+      4     2     341    1.0008    0.0032    0.0022    0.0044
+      4     8     341    1.0008    0.0032    0.0022    0.0044
+      4    32     341    1.0008    0.0032    0.0022    0.0044
+      8     2     341    1.0008    0.0032    0.0022    0.0044
+      8     8     341    1.0008    0.0032    0.0022    0.0044
+      8    32     341    1.0008    0.0032    0.0022    0.0044
+     16     2     341    1.0008    0.0032    0.0022    0.0044
+     16     8     341    1.0008    0.0032    0.0022    0.0044
+     16    32     341    1.0008    0.0032    0.0022    0.0044
+
+PART 2 -- the REAL signal (ensemble_spread, median), under Scheme::Pcg so that
+varying the seed is an independent draw. Levels 0..3, t=13.
+Pcg is used HERE ONLY and is never a default: the shipped Halton prefix is fixed by
+design, so there is no second draw of it to compare against.
+
+        region  seed parents     a p50    a idec   sib p50   sib p90  seed move
+    near-field     0      21    0.2698    0.6605    0.4501    0.9466        NaN
+    near-field     1      21    0.2602    0.8794    0.4193    0.9691     0.2641
+    near-field     2      21    0.2991    0.7555    0.4826    0.9151     0.2091
+ deep interior     0      21    0.1305    3.8809    0.7869   13.8295        NaN
+ deep interior     1      21    0.0731    1.6555    0.9612   13.8885     0.2868
+ deep interior     2      21    0.1462    2.7090    1.0514   13.8957     0.3636
+
+Part 1's columns have TRUE values of 1.0000 and 0.0000. Part 2's do not -- there is no
+known answer for the real signal, which is exactly why part 1 exists as a floor.
+
+`seed move` is the p90 of |alpha(seed k) - alpha(seed 0)| over the same quads: sampling
+noise on the real signal, everything else fixed. Compare it against `sib p90`.
+
+If seed move ~ sib p90, the sibling range is measuring its own draw and the Sibling
+policy is thresholding on sampling error. If seed move << sib p90, the siblings
+genuinely disagree and the statistic carries signal -- though `alpha` is a chaotic
+quantity, so part of any residual is divergence that no ensemble size reduces.
+
+Both are compared against the shipped `sib_tau = 0.5`.

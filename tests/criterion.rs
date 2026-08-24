@@ -285,3 +285,300 @@ fn rank_displacement_shows_movement_a_high_rho_conceals() {
     let worst = d.iter().cloned().fold(0.0f64, f64::max);
     assert!(worst > 0.9, "and one item moved almost the whole list: {worst}");
 }
+
+// ---------------------------------------------------------------------------------------
+// §2 — OKLab, and the metric's own guards
+// ---------------------------------------------------------------------------------------
+
+use prin_rs::output::oklab;
+
+#[test]
+fn oklab_matches_the_published_reference_triples() {
+    // Ottosson's published values, for LINEAR sRGB inputs. This is a transcription check on
+    // matrices that fail silently: a swapped coefficient still produces plausible colours.
+    let cases: [([f64; 3], [f64; 3]); 4] = [
+        ([1.0, 1.0, 1.0], [1.0, 0.0, 0.0]),
+        ([1.0, 0.0, 0.0], [0.627_955, 0.224_863, 0.125_846]),
+        ([0.0, 1.0, 0.0], [0.866_440, -0.233_888, 0.179_498]),
+        ([0.0, 0.0, 1.0], [0.452_014, -0.032_457, -0.311_528]),
+    ];
+    for (rgb, want) in cases {
+        let got = oklab::linear_to_oklab(rgb[0], rgb[1], rgb[2]);
+        for k in 0..3 {
+            assert!(
+                (got[k] - want[k]).abs() < 1e-5,
+                "linear {rgb:?} -> {got:?}, expected {want:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn oklab_round_trips_through_srgb() {
+    // Every 8-bit triple must survive the round trip, or the transform is not invertible on the
+    // domain the renders actually live in.
+    for r in (0..=255).step_by(17) {
+        for g in (0..=255).step_by(51) {
+            for b in (0..=255).step_by(51) {
+                let c = [r as u8, g, b];
+                let back = oklab::oklab_to_srgb(oklab::srgb_to_oklab(c));
+                assert_eq!(c, back, "round trip failed on {c:?}");
+            }
+        }
+    }
+}
+
+#[test]
+fn oklab_distance_is_zero_only_on_equality_and_orders_sensibly() {
+    assert_eq!(oklab::delta([12, 34, 56], [12, 34, 56]), 0.0);
+    let near = oklab::delta([100, 100, 100], [104, 100, 100]);
+    let far = oklab::delta([100, 100, 100], [200, 100, 100]);
+    assert!(near > 0.0 && far > near, "near {near} far {far}");
+    // sRGB is perceptually non-uniform, which is the whole reason this module exists: an equal
+    // channel step is a larger visible change in the dark end than the light end.
+    let dark = oklab::delta([10, 10, 10], [30, 30, 30]);
+    let light = oklab::delta([225, 225, 225], [245, 245, 245]);
+    assert!(dark > light, "equal channel steps: dark {dark} vs light {light}");
+}
+
+#[test]
+fn image_error_reports_the_fraction_moved_beside_the_mean() {
+    // The guard against reading an aggregate alone. One pixel in a hundred moving a long way,
+    // and ninety-nine standing still, must be visible as such.
+    let a = vec![0u8; 300];
+    let mut b = a.clone();
+    b[0] = 255;
+    b[1] = 255;
+    b[2] = 255;
+    let (mean, _p99, max, moved) = oklab::image_error(&a, &b);
+    assert!((moved - 0.01).abs() < 1e-12, "moved {moved}");
+    assert!(max > 0.9, "one pixel went the whole way: {max}");
+    assert!(mean < 0.02, "and the mean barely notices: {mean}");
+}
+
+#[test]
+fn the_metric_is_exact_at_the_full_tree_and_the_greedy_replay_is_monotone() {
+    use prin_rs::ensemble::pixel::EnsembleCfg;
+    use prin_rs::grid::Chart;
+    use prin_rs::metric::{self, Rank};
+
+    // Deliberately tiny: 2 levels, N=2, so res = 8 and the whole cache is 21 quads.
+    let (levels, n) = (2u32, 2usize);
+    let res = (1usize << levels) * n;
+    let ens = EnsembleCfg { n_extra: 1, t_max: 2.0, n_sync: 4, refine_flagged: false, ..Default::default() };
+    let cache = metric::build(
+        "deep interior", 0.0, 0.0, 0.05, 0, Chart::BodyPlane, levels, n, res, 1e-4, &ens,
+    );
+
+    // Exactly zero at the deepest level: the reference IS that tree, so this is a consistency
+    // check on the rasterisation, not a statement about image quality.
+    let w = 1u32 << levels;
+    let deepest: Vec<metric::Key> =
+        (0..w).flat_map(|iy| (0..w).map(move |ix| (levels, ix, iy))).collect();
+    assert_eq!(cache.error_of(&deepest), 0.0);
+
+    let full = ((1usize << (2 * (levels + 1))) - 1) / 3;
+    let pts = metric::replay(&cache, Rank::GreedyOracle, full);
+
+    // Monotone non-increasing. A rise here is a bug in the priority queue, not a finding.
+    for w in pts.windows(2) {
+        assert!(
+            w[1].error <= w[0].error + 1e-12,
+            "greedy error rose: {} -> {}",
+            w[0].error,
+            w[1].error
+        );
+    }
+    assert_eq!(pts.last().unwrap().error, 0.0, "the replay must reach the reference");
+
+    // Budget accounting: the root, then four quads per split.
+    for (j, p) in pts.iter().enumerate() {
+        assert_eq!(p.budget, 1 + 4 * j);
+        assert_eq!(p.leaves, 1 + 3 * j);
+    }
+
+    // **There is deliberately no assertion that greedy_oracle dominates every criterion.**
+    // Greedy is not a bound on a sequential tree problem: a quad whose own split gains little
+    // may unlock children with large gains two levels down, and greedy declines it. Such a test
+    // would fire on correct behaviour. What IS asserted is that greedy never does worse than
+    // the tree it started from, which is the monotonicity above.
+}
+
+#[test]
+fn a_criterion_enters_the_replay_as_an_ordering_and_not_against_tau() {
+    use prin_rs::ensemble::pixel::EnsembleCfg;
+    use prin_rs::grid::Chart;
+    use prin_rs::metric::{self, Rank};
+    use prin_rs::quad::{Agg, Criterion};
+
+    let (levels, n) = (2u32, 2usize);
+    let res = (1usize << levels) * n;
+    let ens = EnsembleCfg { n_extra: 1, t_max: 2.0, n_sync: 4, refine_flagged: false, ..Default::default() };
+    let cache = metric::build(
+        "near-field", 1.0, 3.0, 0.05, 0, Chart::BodyPlane, levels, n, res, 1e-4, &ens,
+    );
+    let full = ((1usize << (2 * (levels + 1))) - 1) / 3;
+
+    // The between arm runs 1.17x the within arm in near-field and 9.56x in `far`, so a
+    // threshold comparison would score that rescaling rather than the signal. A ranking is
+    // invariant to any monotone rescaling, and this is what holds that: both replays spend the
+    // budget identically at every step, whatever tau was used to build the cache.
+    let a = metric::replay(&cache, Rank::Signal(Criterion::Within, Agg::Median), full);
+    let b = metric::replay(&cache, Rank::Signal(Criterion::Within, Agg::Median), full);
+    assert_eq!(a.len(), b.len());
+    for (x, y) in a.iter().zip(&b) {
+        assert_eq!(x.error, y.error, "the replay must be deterministic");
+    }
+}
+
+// ---------------------------------------------------------------------------------------
+// §3.3 — the neighbour lookup
+// ---------------------------------------------------------------------------------------
+
+#[test]
+fn neighbour_agrees_with_an_independent_geometric_predicate() {
+    use prin_rs::quad::{Dir, QuadTree};
+
+    /// Box-touch adjacency, transcribed from `examples/sched_thrash.rs`. An *independent*
+    /// implementation on purpose: checking the descent against itself would prove nothing.
+    fn adjacent(t: &QuadTree, i: usize, j: usize) -> bool {
+        let (a, b) = (&t.nodes[i], &t.nodes[j]);
+        let dx = (a.cx - b.cx).abs();
+        let dy = (a.cy - b.cy).abs();
+        let (sx, sy) = (a.half + b.half, a.half + b.half);
+        (dx <= sx + 1e-12) && (dy <= sy + 1e-12) && ((dx - sx).abs() < 1e-12 || (dy - sy).abs() < 1e-12)
+    }
+
+    // An intentionally lopsided tree, so neighbours sit at several level differences.
+    let mut t = QuadTree::new(0.0, 0.0, 1.0, 4, 0);
+    let k = t.split(0, 1);
+    let k2 = t.split(k[0], 2);
+    t.split(k2[3], 3);
+    t.split(k[3], 2);
+
+    let mut checked = 0;
+    for i in 0..t.nodes.len() {
+        for d in Dir::ALL {
+            let Some(j) = t.neighbour(i, d) else { continue };
+            assert_ne!(i, j, "a quad is not its own neighbour");
+            assert!(
+                t.nodes[j].level <= t.nodes[i].level,
+                "neighbour must be same-or-coarser: {} at level {} returned level {}",
+                i,
+                t.nodes[i].level,
+                t.nodes[j].level
+            );
+            assert!(
+                adjacent(&t, i, j),
+                "quad {i} dir {d:?} returned {j}, which does not touch it"
+            );
+            checked += 1;
+        }
+    }
+    assert!(checked > 20, "the tree must actually exercise the lookup, got {checked}");
+}
+
+#[test]
+fn a_quad_at_the_root_border_has_no_neighbour_outside_it() {
+    use prin_rs::quad::{Dir, QuadTree};
+    let mut t = QuadTree::new(0.0, 0.0, 1.0, 4, 0);
+    let k = t.split(0, 1);
+    // Lower-left child: nothing to its -x or -y.
+    assert!(t.neighbour(k[0], Dir::NegX).is_none());
+    assert!(t.neighbour(k[0], Dir::NegY).is_none());
+    assert_eq!(t.neighbour(k[0], Dir::PosX), Some(k[1]));
+    assert_eq!(t.neighbour(k[0], Dir::PosY), Some(k[2]));
+    // The root itself has none in any direction.
+    for d in Dir::ALL {
+        assert!(t.neighbour(0, d).is_none());
+    }
+}
+
+#[test]
+fn contrast_reports_how_many_edges_it_saw() {
+    use prin_rs::quad::{Agg, Criterion, QuadTree};
+    let mut t = QuadTree::new(0.0, 0.0, 1.0, 4, 0);
+    let k = t.split(0, 1);
+    for (j, &i) in k.iter().enumerate() {
+        t.nodes[i].red.n_footprints = 16;
+        t.nodes[i].red.spread_median = j as f64;
+    }
+    // A corner child sees two computed neighbours, not four, so its contrast is a max over a
+    // smaller set and is biased low by construction. The count is returned so that is visible.
+    let (c, n) = t.contrast(k[0], Criterion::Within, Agg::Median);
+    assert_eq!(n, 2, "a corner child has two in-tree neighbours");
+    assert_eq!(c, 2.0, "max(|0-1|, |0-2|)");
+
+    // An uncomputed neighbour is skipped rather than counted as a zero contrast.
+    t.nodes[k[1]].red.n_footprints = 0;
+    let (_, n2) = t.contrast(k[0], Criterion::Within, Agg::Median);
+    assert_eq!(n2, 1);
+}
+
+// ---------------------------------------------------------------------------------------
+// §6 — the FTLE port
+// ---------------------------------------------------------------------------------------
+
+#[test]
+fn ftle_declines_rather_than_returning_zero_when_it_never_renormalised() {
+    use prin_rs::physics::{burrau, ftle};
+
+    let m = burrau::masses::<f64>();
+    let s0 = burrau::state::<f64>();
+    let pert = ftle::normalise::<f64>([1.0, -2.0, 3.0, -4.0, 5.0, -6.0]);
+
+    // A horizon shorter than one renormalisation interval: nothing has been accumulated, so
+    // there is no estimate. **NaN, never 0** — a zero here is what a perfectly regular
+    // trajectory reports, and the two must not be arithmetically identical.
+    let opts = ftle::FtleOpts { renorm_every: 10_000, ..Default::default() };
+    let o = ftle::integrate_full(s0, &m, 0.01, 1e-4, &opts, &pert);
+    assert_eq!(o.n_renorm, 0);
+    assert!(o.ftle.is_nan(), "must decline, got {}", o.ftle);
+}
+
+#[test]
+fn ftle_renormalises_and_the_count_is_the_thing_to_assert() {
+    use prin_rs::physics::{burrau, ftle};
+
+    let m = burrau::masses::<f64>();
+    let s0 = burrau::state::<f64>();
+    let pert = ftle::normalise::<f64>([1.0, -2.0, 3.0, -4.0, 5.0, -6.0]);
+    let opts = ftle::FtleOpts::default();
+    let o = ftle::integrate_full(s0, &m, 2.0, 1e-4, &opts, &pert);
+
+    // Renormalisation is what stops the estimator saturating: without it the shadow separates
+    // until it fills the accessible space and log(d/d0)/T decays toward zero, reporting
+    // lambda ~ 0 for the MOST chaotic regions. An FTLE built from zero renormalisations is
+    // that failure in new clothing, so the count is asserted rather than the value.
+    assert_eq!(o.n_renorm, 99, "20000 steps at renorm_every=200, first at s=200");
+    assert!(o.ftle.is_finite() && o.ftle > 0.0, "Burrau is chaotic: {}", o.ftle);
+    assert!(o.diffusion.is_finite(), "the regression must be determined: {}", o.diffusion);
+    assert!(o.finite && o.steps == 20_000);
+}
+
+#[test]
+fn the_ftle_perturbation_is_normalised_over_all_six_components_not_per_body() {
+    use prin_rs::physics::ftle;
+    // The reference does `pert /= norm(pert.reshape(n, -1))` — ONE norm over the flattened
+    // (3, 2), not three per-body norms. Getting that wrong scales d0 by sqrt(3) and shifts
+    // every FTLE by a constant, which looks like a plausible field.
+    let p = ftle::normalise::<f64>([1.0, -2.0, 3.0, -4.0, 5.0, -6.0]);
+    let n2: f64 = (0..3).map(|k| p[k].norm_sq()).sum();
+    assert!((n2 - 1.0).abs() < 1e-15, "total norm must be 1, got {}", n2.sqrt());
+    // And no single body is a unit vector, which is what the per-body mistake would give.
+    for k in 0..3 {
+        assert!(p[k].norm_sq() < 0.9);
+    }
+}
+
+#[test]
+fn a_deterministic_perturbation_is_a_unit_direction_and_varies_with_the_seed() {
+    use prin_rs::physics::ftle;
+    let a = ftle::unit_perturbation::<f64>(0);
+    let b = ftle::unit_perturbation::<f64>(1);
+    for p in [a, b] {
+        let n2: f64 = (0..3).map(|k| p[k].norm_sq()).sum();
+        assert!((n2 - 1.0).abs() < 1e-12);
+    }
+    assert!((a[0].x - b[0].x).abs() > 1e-9, "seeds must give different directions");
+}

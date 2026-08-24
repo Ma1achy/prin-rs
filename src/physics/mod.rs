@@ -2,6 +2,7 @@
 
 pub mod burrau;
 pub mod energy;
+pub mod ftle;
 pub mod newton;
 pub mod shape;
 

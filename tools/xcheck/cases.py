@@ -103,7 +103,24 @@ CASES = {
     "az_t4": _az_case(4.0),
     "az_t8": _az_case(8.0),
     "az_t13": _az_case(13.0),
+    # Benettin FTLE + the diffusion regression, on tb.py's fixed-step leapfrog -- the pair
+    # `tb_ftle.py` is actually built on, and therefore the only pair with a reference.
+    #
+    # The perturbation DIRECTION is pinned analytically rather than drawn: numpy's Ziggurat is
+    # not ported, and reproducing it is not required. The direction only seeds the shadow, and
+    # a comparison needs both sides to use the same one. The Python side substitutes it into
+    # `tb_ftle.integrate_full` without touching the reference's own code path.
+    "ftle": dict(
+        kind="ftle",
+        nx=4, ny=4, cx=1.0, cy=3.0, half=0.05, body=0,
+        t_max=2.0, dt=1e-4, eps=0.03, d0=1e-8,
+        renorm_every=200, sample_every=25,
+        columns="idx,ftle,diffusion,dmin,nre,S,rx0,ry0",
+    ),
 }
+
+# The pinned perturbation, flat over (body, axis). Normalised by the reference itself.
+FTLE_PERT = [1.0, -2.0, 3.0, -4.0, 5.0, -6.0]
 
 AZ_HORIZONS = ["az_t0p5", "az_t1", "az_t2", "az_t4", "az_t8", "az_t13"]
 
@@ -114,6 +131,14 @@ def header_lines(name):
         head = [
             f"# case={name} kind={c['kind']} n={c['n']} seed={c['seed']}",
             "# masses=3,4,5 G=1 eps2=0",
+        ]
+    elif c["kind"] == "ftle":
+        head = [
+            f"# case={name} kind={c['kind']} nx={c['nx']} ny={c['ny']}"
+            f" cx={c['cx']} cy={c['cy']} half={c['half']} body={c['body']}",
+            f"# t_max={c['t_max']} dt={c['dt']} eps={c['eps']} d0={c['d0']}"
+            f" renorm_every={c['renorm_every']} sample_every={c['sample_every']}"
+            f" masses=3,4,5 G=1 pert={','.join(str(x) for x in FTLE_PERT)}",
         ]
     else:
         head = [

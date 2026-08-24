@@ -144,8 +144,17 @@ pub fn render(
 }
 
 pub fn save(path: &str, res: usize, data: &[u8]) -> std::io::Result<()> {
+    save_rect(path, res, res, data)
+}
+
+/// As [`save`], for a non-square image. Plots and side-by-side frames are not square.
+pub fn save_rect(path: &str, w: usize, h: usize, data: &[u8]) -> std::io::Result<()> {
+    assert_eq!(data.len(), w * h * 3, "buffer is not {w}x{h} RGB8");
+    if let Some(dir) = Path::new(path).parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
     let file = File::create(Path::new(path))?;
-    let mut enc = png::Encoder::new(BufWriter::new(file), res as u32, res as u32);
+    let mut enc = png::Encoder::new(BufWriter::new(file), w as u32, h as u32);
     enc.set_color(png::ColorType::Rgb);
     enc.set_depth(png::BitDepth::Eight);
     enc.write_header()?.write_image_data(data)?;

@@ -1285,6 +1285,34 @@ splitting actually addresses is **exactly three keep**: one useful child, three 
 So anisotropy is worth roughly a twentieth of the quads, not two thirds. Costing only; nothing
 implemented.
 
+### 10.9 Looking at the slices, and at the trees
+
+`slice_variety` measured tree size as **slice-conditional to 4.3x** while the `alpha` distribution
+stayed put. That is a table, and it cannot say whether an oblique plane cuts the same structure
+at an angle or lands on different structure entirely. `slice_gallery` renders ten charts through
+**one shared centre configuration** — the axis-aligned body plane, oblique planes at 15/30/45deg,
+two cross-body mixes, and the shape chart at three fibre phases — with orthonormal bases in the
+6D position metric, so a unit of chart coordinate moves the system equally far in each.
+
+**The control pair caught a real error on the first run.** `body_plane` reads its centre from the
+chart coordinate; `Plane` and `Shape` carry it in `origin` and must be centred at zero. Centring
+them all at `(1, 3)` samples a box two units away from the shared configuration — a different
+slice of different physics rather than a rotation of the same one. It reported 549 quads against
+21 and was caught by the assertion that `plane_00deg` must be **bitwise** `body_plane`, which is
+the same chart written twice. Without that pair the run would have produced a gallery of
+plausible pictures of the wrong thing.
+
+**Every image in this build now has a `_wire` twin.** The plain render says *what is displayed* —
+texels at true per-quad sizes, so a coarse leaf is visibly coarse. The wire says *where the tree
+cut*, brightness graded by level. They answer different questions: a coarse texel tells you a
+leaf is coarse, and only the wire tells you whether the structure around it was subdivided
+*around* it or straight *through* it. **PR #11 drew boundaries over a uniform base**, which
+conflated the two, and that is how `deep interior`'s bad tree went unnoticed for a whole build.
+
+The most useful artefact is `budget_<region>_animated.png`: `greedy_oracle` on the left and
+`within/median` on the right, at the same budget, frame by frame. §10.3 says the shipped default
+is beaten by random past `B = 383`; the animation is what that looks like.
+
 ## 11. Reproducing any of this
 
 Every table above comes from a committed example. Raw output for all of them is in
@@ -1340,4 +1368,4 @@ Every table above comes from a committed example. Raw output for all of them is 
 | §10.8 panning | `cargo run --release --example pan_sequence -- 9 2000 512 near-field` |
 | §10.9 the two costings | `cargo run --release --example cost_and_anisotropy -- 5 8` |
 | the criterion gates | `cargo test --release --test criterion -- --nocapture` |
-
+| §10.9 the slice gallery | `cargo run --release --example slice_gallery -- 4000 1e-4 0.2 512` |

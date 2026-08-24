@@ -2,8 +2,12 @@
 
 pub mod adaptive;
 pub mod png;
+pub mod plot;
+pub mod qcache;
 pub mod raw;
+pub mod apng;
 pub mod bivariate;
 pub mod oklab;
 pub mod ssaa;
 pub mod tree;
+pub mod wire;

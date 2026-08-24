@@ -65,6 +65,12 @@ fn main() {
         "step", "cam cx", "quads", "in view", "new", "would-cache%", "recompute%", "floored"
     );
 
+    // Frames of the adaptive render at each camera position, so the pan is watchable and the
+    // "nothing changes" result is visible rather than only tabulated.
+    let mut frames: Vec<Vec<u8>> = Vec::new();
+    let mut wire_frames: Vec<Vec<u8>> = Vec::new();
+    let frame_res = 384usize;
+
     let mut prev: HashSet<(u32, i64, i64)> = HashSet::new();
     // Every quad ever computed, with its reduction, so a re-entering quad can be compared with
     // what it was the first time it was seen.
@@ -85,9 +91,37 @@ fn main() {
             alpha_hi: 0.2,
             alpha_lo: 0.2,
             camera: Some(cam),
+            keep_pixels: true,
             ..Default::default()
         };
-        let (t, _st) = scheduler::descend(s.cx, s.cy, half_world, s.body, &cfg, &ens, Precision::F64);
+        let (t, st) = scheduler::descend(s.cx, s.cy, half_world, s.body, &cfg, &ens, Precision::F64);
+
+        // Adaptive, at true per-quad texel sizes. A uniform render would show where boundaries
+        // fell rather than what the system displays, which is the instrument this project has
+        // already been caught using once.
+        let (img, _tex) = prin_rs::output::adaptive::render(
+            &t,
+            &st.pixels,
+            &cam,
+            frame_res,
+            prin_rs::output::adaptive::TexelMode::Adaptive,
+            prin_rs::output::png::outcome_rgb,
+        );
+        let stem = format!("results/criterion/pan_{}_{k:02}", region.replace(' ', "_"));
+        let _ = prin_rs::output::adaptive::save(&format!("{stem}.png"), frame_res, &img);
+        let mut wimg = img.clone();
+        {
+            let boxes = prin_rs::output::wire::boxes_from_tree(&t, &cam, frame_res);
+            let deepest = boxes.iter().map(|b| b.level).max().unwrap_or(1);
+            prin_rs::output::wire::draw(&mut wimg, frame_res, frame_res, &boxes, deepest.max(1));
+        }
+        let _ = prin_rs::output::adaptive::save(&format!("{stem}_wire.png"), frame_res, &wimg);
+        wire_frames.push(wimg);
+        if let Ok(f) = std::fs::File::create(format!("{stem}.prnq")) {
+            let mut w = std::io::BufWriter::new(f);
+            let _ = prin_rs::output::tree::write(&mut w, &t, &cfg, &ens, &st, &region, "f64");
+        }
+        frames.push(img);
 
         let computed: Vec<usize> =
             (0..t.nodes.len()).filter(|&i| t.nodes[i].red.n_footprints > 0).collect();
@@ -141,6 +175,23 @@ fn main() {
         );
         prev = cur;
     }
+
+    let _ = prin_rs::output::apng::write(
+        &format!("results/criterion/pan_{}_animated.png", region.replace(' ', "_")),
+        frame_res,
+        frame_res,
+        &frames,
+        1,
+        3,
+    );
+    let _ = prin_rs::output::apng::write(
+        &format!("results/criterion/pan_{}_wire_animated.png", region.replace(' ', "_")),
+        frame_res,
+        frame_res,
+        &wire_frames,
+        1,
+        3,
+    );
 
     println!(
         "\n{rechecks} quads recomputed after having been seen before.\n\

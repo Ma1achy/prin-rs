@@ -235,6 +235,58 @@ fn main() {
             }
             println!();
         }
+        // ---- the raw dump ----
+        //
+        // Without this the complete tree lives only in RAM for one process, and reproducing any
+        // table above means paying the 2.8M-trajectory integration again. Every criterion's
+        // scalar is dumped whatever this run ranked on, which is what makes offline comparison
+        // real rather than aspirational.
+        let stem0 = region.replace(' ', "_");
+        if let Ok(f) = std::fs::File::create(format!("results/criterion/{stem0}_t{t_max}.qcache")) {
+            let mut w = std::io::BufWriter::new(f);
+            let _ = prin_rs::output::qcache::write(&mut w, &cache, &ens, tau);
+        }
+
+        // ---- the error(B) curves as a figure ----
+        //
+        // Log y, because the curves span four decades and the interesting part is the bottom
+        // one. An exact zero cannot sit on a log axis, so it is drawn at the floor and ticked
+        // rather than dropped -- on several of these curves reaching zero IS the result.
+        {
+            use prin_rs::output::plot::{Plot, Series};
+            let palette: [[u8; 3]; 8] = [
+                [255, 210, 90], [120, 200, 255], [255, 120, 120], [140, 235, 150],
+                [220, 140, 255], [255, 170, 80], [150, 150, 255], [120, 235, 220],
+            ];
+            let mut ser: Vec<Series> = Vec::new();
+            let mut ci = 0usize;
+            for (name, curve) in &rows {
+                if name.starts_with("random") && name != "random[1]" {
+                    continue;
+                }
+                let control = name.starts_with("random") || name.starts_with("greedy");
+                let rgb = if name.starts_with("greedy_oracle") && !name.contains("cost") {
+                    [255, 255, 255]
+                } else if name.starts_with("random") {
+                    [130, 130, 140]
+                } else {
+                    let c = palette[ci % palette.len()];
+                    ci += 1;
+                    c
+                };
+                ser.push(Series {
+                    label: name,
+                    points: budgets.iter().zip(curve).map(|(&b, &e)| (b as f64, e)).collect(),
+                    rgb,
+                    dashed: control,
+                });
+            }
+            let mut pl = Plot::new(1100, 620);
+            let title = format!("{region}  error(b)  t={t_max}  n={n}  e+1={}", ens.n_extra + 1);
+            pl.draw(&title, &ser, full as f64, 1e-5, 0.1);
+            let _ = pl.save(&format!("results/criterion/curve_{stem0}_t{t_max}.png"));
+        }
+
         // ---- images: the reference, and the best and worst criteria at one budget ----
         //
         // Drawn at TRUE per-quad texel sizes, so a coarse leaf is visibly coarse. A uniform
@@ -246,6 +298,17 @@ fn main() {
             res,
             &cache.reference,
         );
+        // The reference's own tree is the complete one at the screen floor; its wire is the
+        // uniform mesh every other tree is being compared against.
+        let deepest: Vec<metric::Key> = {
+            let w = 1u32 << levels;
+            (0..w).flat_map(|iy| (0..w).map(move |ix| (levels, ix, iy))).collect()
+        };
+        let _ = prin_rs::output::adaptive::save(
+            &format!("results/criterion/{stem}_reference_wire.png"),
+            res,
+            &cache.render_wire(&deepest),
+        );
         let mid = full / 8;
         for r in [
             Rank::GreedyOracle,
@@ -255,14 +318,101 @@ fn main() {
             Rank::Random(1),
         ] {
             let leaves = cache.leaves_at(r, mid);
-            let img = cache.render(&leaves);
             let tag = r.name().replace('/', "_").replace(['[', ']'], "");
+            // Both, always. The texel size says what is displayed; the wire says where the tree
+            // cut. Neither substitutes for the other, and PR #11's failure was reading one as
+            // though it were the other.
             let _ = prin_rs::output::adaptive::save(
                 &format!("results/criterion/{stem}_B{mid}_{tag}.png"),
                 res,
-                &img,
+                &cache.render(&leaves),
+            );
+            let _ = prin_rs::output::adaptive::save(
+                &format!("results/criterion/{stem}_B{mid}_{tag}_wire.png"),
+                res,
+                &cache.render_wire(&leaves),
             );
         }
+        // ---- the animation: the budget being spent, oracle against the shipped default ----
+        //
+        // Side by side in one frame on purpose. Two separate animations would make a reader
+        // hold one in memory while watching the other, which is exactly the comparison the
+        // picture exists to remove. Drawn at TRUE per-quad texel sizes, so a coarse leaf is
+        // visibly coarse and the shipped default's misspent budget is legible rather than
+        // inferred from a table.
+        {
+            let mut frames: Vec<Vec<u8>> = Vec::new();
+            let mut wire_frames: Vec<Vec<u8>> = Vec::new();
+            let mut b = 5usize;
+            while b <= full {
+                let la = cache.leaves_at(Rank::GreedyOracle, b);
+                let lc = cache.leaves_at(Rank::Signal(Criterion::Within, Agg::Median), b);
+                let mut fr =
+                    prin_rs::output::apng::side_by_side(&cache.render(&la), &cache.render(&lc), res, res);
+                prin_rs::output::apng::divide(&mut fr, res, res, [230, 230, 240]);
+                frames.push(fr);
+                let mut fw = prin_rs::output::apng::side_by_side(
+                    &cache.render_wire(&la),
+                    &cache.render_wire(&lc),
+                    res,
+                    res,
+                );
+                prin_rs::output::apng::divide(&mut fw, res, res, [230, 230, 240]);
+                wire_frames.push(fw);
+                b = (b * 2 + 1).min(full).max(b + 1);
+                if b == full {
+                    let la = cache.leaves_at(Rank::GreedyOracle, full);
+                    let lc = cache.leaves_at(Rank::Signal(Criterion::Within, Agg::Median), full);
+                    let mut fr = prin_rs::output::apng::side_by_side(
+                        &cache.render(&la), &cache.render(&lc), res, res);
+                    prin_rs::output::apng::divide(&mut fr, res, res, [230, 230, 240]);
+                    frames.push(fr);
+                    let mut fw = prin_rs::output::apng::side_by_side(
+                        &cache.render_wire(&la), &cache.render_wire(&lc), res, res);
+                    prin_rs::output::apng::divide(&mut fw, res, res, [230, 230, 240]);
+                    wire_frames.push(fw);
+                    break;
+                }
+            }
+            let _ = prin_rs::output::apng::write(
+                &format!("results/criterion/budget_{stem0}_t{t_max}_animated.png"),
+                res * 2,
+                res,
+                &frames,
+                1,
+                2,
+            );
+            let _ = prin_rs::output::apng::write(
+                &format!("results/criterion/budget_{stem0}_t{t_max}_wire_animated.png"),
+                res * 2,
+                res,
+                &wire_frames,
+                1,
+                2,
+            );
+            // Every frame also as an ordinary PNG, so nothing here depends on APNG support.
+            for (i, fr) in frames.iter().enumerate() {
+                let _ = prin_rs::output::adaptive::save_rect(
+                    &format!("results/criterion/budget_{stem0}_t{t_max}_{i:02}.png"),
+                    res * 2,
+                    res,
+                    fr,
+                );
+            }
+            for (i, fr) in wire_frames.iter().enumerate() {
+                let _ = prin_rs::output::adaptive::save_rect(
+                    &format!("results/criterion/budget_{stem0}_t{t_max}_wire_{i:02}.png"),
+                    res * 2,
+                    res,
+                    fr,
+                );
+            }
+            println!(
+                "  {} animation frames (oracle | within/median) at true texel sizes",
+                frames.len()
+            );
+        }
+
         println!("  images at B={mid} written to results/criterion/{stem}_*.png\n");
     }
 

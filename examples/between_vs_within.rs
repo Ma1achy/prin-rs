@@ -88,6 +88,7 @@ fn main() {
     }) {
         let s = grid::region(region, 2, 2, 0.05).unwrap();
         let cfg = SchedCfg {
+            keep_pixels: true,
             budget,
             tau_display: tau,
             alpha_hi,
@@ -98,6 +99,31 @@ fn main() {
             ..Default::default()
         };
         let (t, st) = scheduler::descend(s.cx, s.cy, 0.05, s.body, &cfg, &ens, Precision::F64);
+
+        // The adaptive render of the tree this criterion built, and the same tree's spread
+        // overlay -- the diagnostic that exposed `deep interior`'s failure in the first place.
+        {
+            let cam = Camera::framing(s.cx, s.cy, 0.05, 512);
+            let (img, _t) = prin_rs::output::adaptive::render(
+                &t, &st.pixels, &cam, 512,
+                prin_rs::output::adaptive::TexelMode::Adaptive,
+                prin_rs::output::png::outcome_rgb,
+            );
+            let _ = prin_rs::output::adaptive::save(
+                &format!("results/criterion/tree_{}.png", region.replace(' ', "_")),
+                512,
+                &img,
+            );
+            let mut wimg = img.clone();
+            let boxes = prin_rs::output::wire::boxes_from_tree(&t, &cam, 512);
+            let deepest = boxes.iter().map(|b| b.level).max().unwrap_or(1);
+            prin_rs::output::wire::draw(&mut wimg, 512, 512, &boxes, deepest.max(1));
+            let _ = prin_rs::output::adaptive::save(
+                &format!("results/criterion/tree_{}_wire.png", region.replace(' ', "_")),
+                512,
+                &wimg,
+            );
+        }
 
         // The full v2 quad dump, so every column in this table can be recomputed offline and
         // every column NOT in it is still available.

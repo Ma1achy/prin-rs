@@ -235,7 +235,71 @@ The hue map is `atan2(n2, n1)` with chroma tied to `sqrt(n1² + n2²)`, in OKLCh
 discontinuity is invisible **by construction**: hue is undefined at the poles and chroma goes to
 zero there, so the two colours either side of the cut converge on the same grey.
 
-### Quad dumps — `between_<region>.prnq`
+### Wire twins — `*_wire.png`
+
+**Every image in this directory has a `_wire` twin, and neither replaces the other.** The plain
+render says *what is displayed* — texels at true per-quad sizes, so a coarse leaf is visibly
+coarse. The wire says *where the tree cut*, with brightness graded by level so a boundary can be
+attributed to a depth.
+
+They answer different questions. A coarse texel tells you a leaf is coarse; only the wire tells
+you whether the structure around it was subdivided *around* it or straight *through* it. PR #11
+drew boundaries over a **uniform** base, which conflated the two, and that is how `deep
+interior`'s bad tree went unnoticed for a whole build.
+
+### The budget animation — `budget_<region>_t<T>_animated.png`, `..._wire_animated.png`
+
+The single most useful artefact here. Each frame is **`greedy_oracle` on the left,
+`within/median` — the shipped default — on the right**, at the same budget, drawn at true texel
+sizes. Side by side in one frame on purpose: two separate animations would make you hold one in
+memory while watching the other, which is exactly the comparison the picture exists to remove.
+
+Watch where the right-hand side spends its budget. §10.3's table says it is beaten by random past
+`B = 383`; this is what that looks like.
+
+Every frame is also on disk as `budget_<region>_t<T>_NN.png`, so nothing depends on APNG support.
+
+### Slice gallery — `slice_<case>.png`, `slice_gallery_animated.png`
+
+Ten charts through **one shared centre configuration**, so only the 2-plane changes: the
+axis-aligned body plane, oblique planes at 15/30/45°, cross-body mixes, and the shape chart at
+three fibre phases. Bases are orthonormal in the 6D position metric, so a unit of chart
+coordinate moves the system equally far in each — otherwise a "different slice" would be a
+different *scale*.
+
+`slice_body_plane.png` and `slice_plane_00deg.png` are the **control pair**: the same chart
+written two ways, asserted **bitwise identical**. If they differ, every other panel is comparing
+different physics rather than different slices.
+
+`slice_variety` measured tree size as slice-conditional to **4.3×** while the `alpha` distribution
+stayed put (median 0.172–0.289). These are what that looks like.
+
+### `error(B)` curves — `curve_<region>_t<T>.png`
+
+Log y, because the curves span four decades and the interesting part is the bottom one. **An
+exact zero cannot sit on a log axis, so it is drawn at the floor and ticked rather than dropped**
+— on several of these curves reaching zero *is* the result. Controls (`greedy_oracle`, `random`)
+are dashed so they read as references rather than candidates.
+
+### The complete-tree cache — `<region>_t<T>.qcache`
+
+`PRQC`: magic, version, a text header naming every parameter, then 50 `f64` per quad for all
+5461 quads of the complete tree. **Without this the tree lived only in RAM for one process**, and
+reproducing any §10 table meant paying the 2.8-million-trajectory integration again.
+
+It carries `err_sum` — this quad's summed OKLab distance to the reference were it drawn as a leaf.
+That is a **constant of the quad**, because quads are disjoint, which is what makes the replay
+exact and the greedy priority queue static. It also carries **every criterion's scalar** whatever
+the run ranked on, so criteria can be compared offline without re-integrating.
+
+### Pan frames — `pan_<region>_NN.png`, `pan_<region>_animated.png`
+
+Nine camera positions across the region. **The animation showing nothing change is the result**:
+`Camera::veto` reads `tile_size_px`, which does not depend on `cx`/`cy`, so panning changes no
+scheduling decision at all. The `_wire` twin makes that unmissable — the mesh is identical in
+every frame.
+
+### Quad dumps — `between_<region>.prnq`, `slice_<case>.prnq`, `pan_<region>_NN.prnq`
 
 `PRNQ` **version 2**: the same self-describing format, now 48 `f64` fields per quad. v2 appends
 the between-footprint arm, the two matched-count controls, the hot-set layout, the

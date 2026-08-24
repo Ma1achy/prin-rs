@@ -132,11 +132,24 @@ fn main() {
                 c.colouring.name().replace('/', "_")
             );
             let _ = prin_rs::output::adaptive::save(&format!("{stem}_reference.png"), res, &c.reference);
+            let _ = prin_rs::output::adaptive::save(
+                &format!("{stem}_reference_wire.png"),
+                res,
+                &c.render_wire(&{
+                    let w = 1u32 << levels;
+                    (0..w).flat_map(|iy| (0..w).map(move |ix| (levels, ix, iy))).collect::<Vec<_>>()
+                }),
+            );
             let leaves = c.leaves_at(Rank::Signal(Criterion::Between, Agg::Median), full / 8);
             let _ = prin_rs::output::adaptive::save(
                 &format!("{stem}_B{}.png", full / 8),
                 res,
                 &c.render(&leaves),
+            );
+            let _ = prin_rs::output::adaptive::save(
+                &format!("{stem}_B{}_wire.png", full / 8),
+                res,
+                &c.render_wire(&leaves),
             );
             let _ = ci;
         }

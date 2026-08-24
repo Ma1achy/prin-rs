@@ -215,6 +215,30 @@ impl Cache {
         img
     }
 
+    /// The same render with the leaf wireframe drawn over it.
+    ///
+    /// Emitted **beside** the plain render, never instead of it: the texel size says what is
+    /// displayed and the wire says where the tree cut, and neither substitutes for the other.
+    pub fn render_wire(&self, leaves: &[Key]) -> Vec<u8> {
+        let mut img = self.render(leaves);
+        let boxes: Vec<crate::output::wire::Box2> = leaves
+            .iter()
+            .map(|&(l, ix, iy)| {
+                let span = (self.res >> l) as f64;
+                crate::output::wire::Box2 {
+                    x0: ix as f64 * span,
+                    y0: iy as f64 * span,
+                    x1: (ix + 1) as f64 * span,
+                    y1: (iy + 1) as f64 * span,
+                    level: l,
+                }
+            })
+            .collect();
+        let deepest = leaves.iter().map(|k| k.0).max().unwrap_or(0);
+        crate::output::wire::draw(&mut img, self.res, self.res, &boxes, deepest.max(1));
+        img
+    }
+
     /// The leaf set a replay holds at a given budget — what `render` needs to draw it.
     pub fn leaves_at(&self, rank: Rank, budget: usize) -> Vec<Key> {
         let pts = replay_with_leaves(self, rank, budget);

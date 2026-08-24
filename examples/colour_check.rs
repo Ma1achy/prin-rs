@@ -152,8 +152,82 @@ fn main() {
         println!();
     }
 
+    // ---------------------------------------------------------------------------------------
+    // 3. Does the lightness field mean the same thing at every level?
+    // ---------------------------------------------------------------------------------------
+    //
+    // An adaptive render draws leaves at several levels in one image, and `ensemble_spread` is
+    // a spread over copies jittered within the CELL -- so a coarse leaf's copies start further
+    // apart than a fine leaf's at the same place. If the field were proportional to cell width,
+    // a bivariate render would carry a brightness gradient tracking the TREE rather than the
+    // physics, and `error(B)` would partly measure "this leaf is coarse".
+    //
+    // The control is `t_end`, which is a nominal-copy quantity and has no cell width in it at
+    // all. If both fields move together the measurement is picking up something else.
+    {
+        use prin_rs::grid::Chart;
+        use prin_rs::metric::{self, Colouring};
+        let levels = 4u32;
+        let nq = 8usize;
+        println!("\nper-level scaling of the lightness field (levels 0..{levels}, N={nq}):");
+        println!(
+            "{:>14} {:>6} {:>7} {:>12} {:>12} {:>8} {:>12} {:>8}",
+            "region", "level", "quads", "cell width", "med spread", "ratio", "med t_end", "ratio"
+        );
+        for (name, cx, cy, body) in
+            [("near-field", 1.0, 3.0, 0usize), ("deep interior", 0.0, 0.0, 0usize)]
+        {
+            let (_c, px_of) = metric::build_multi_with_footprints(
+                name, cx, cy, 0.05, body, Chart::BodyPlane, levels, nq,
+                (1usize << levels) * nq, 1e-4, &ens,
+                &[Colouring::Bivariate(Scalar::ShapeSpread)],
+            );
+            let (mut ps, mut pt) = (f64::NAN, f64::NAN);
+            for l in 0..=levels {
+                let (mut sp, mut te, mut n) = (Vec::new(), Vec::new(), 0usize);
+                for (k, px) in &px_of {
+                    if k.0 != l {
+                        continue;
+                    }
+                    n += 1;
+                    for p in px {
+                        if p.spread_shape.is_finite() {
+                            sp.push(p.spread_shape);
+                        }
+                        if p.t_end.is_finite() {
+                            te.push(p.t_end);
+                        }
+                    }
+                }
+                let med = prin_rs::stats::quantile(&mut sp, 0.5);
+                let medt = prin_rs::stats::quantile(&mut te, 0.5);
+                let cell = 2.0 * (0.05 / (1u64 << l) as f64) / (nq - 1) as f64;
+                println!(
+                    "{:>14} {:>6} {:>7} {:>12.4e} {:>12.4e} {:>8.3} {:>12.4e} {:>8.3}",
+                    name, l, n, cell, med, ps / med, medt, pt / medt
+                );
+                ps = med;
+                pt = medt;
+            }
+        }
+        println!(
+            "\nCell width halves every level, so a field proportional to it would show `ratio`\n\
+             = 2.000 in every row. Measured 1.19-1.62, FALLING with depth: the dependence is\n\
+             sub-linear and saturates, which is the chaotic-divergence signature -- past some\n\
+             cell width the copies decohere fully however close they started. Consistent with\n\
+             the standing measurement that cell width falling 9x moves sigma_E(0) by 8.6x\n\
+             (proportional) and `ensemble_spread` by only 2.1x.\n\
+             \n\
+             So a bivariate render DOES carry a mild scale term: a level-0 leaf reads brighter\n\
+             than a level-4 leaf at the same place. Under the log ramp that is about 12% of the\n\
+             lightness range across five levels. Stated rather than corrected -- normalising by\n\
+             cell width would change what the field means. `t_end` is the scale-free control and\n\
+             is flat, which is what says the effect above is the cell width and not the depth."
+        );
+    }
+
     println!(
-        "Read `distinct` and `modal%` before either image. A field whose modal value covers a\n\
+        "\nRead `distinct` and `modal%` before either image. A field whose modal value covers a\n\
          large fraction of the region has that many pixels painted one colour, and the picture\n\
          is describing the estimator rather than the physics. `event%` says whether the event\n\
          arm is what is doing it -- it is a count ratio over E+1 copies and is quantised by\n\

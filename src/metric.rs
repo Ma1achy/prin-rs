@@ -295,12 +295,7 @@ pub fn build(
         .unwrap()
 }
 
-/// As [`build`], for several colourings over **one** integration pass.
-///
-/// The footprints are integrated once and coloured several ways. That matters for §6: the
-/// lightness field costs a second, fixed-step, unregularised march per footprint, and paying it
-/// three times to answer whether the *colouring* changes `error(B)` would be paying for the
-/// thing being held fixed.
+/// As [`build_multi_with_footprints`], discarding the footprints.
 #[allow(clippy::too_many_arguments)]
 pub fn build_multi(
     region: &str,
@@ -316,6 +311,30 @@ pub fn build_multi(
     ens: &EnsembleCfg,
     colourings: &[Colouring],
 ) -> Vec<Cache> {
+    build_multi_with_footprints(region, cx, cy, half, body, chart, levels, n, res, tau, ens, colourings).0
+}
+
+/// As [`build`], for several colourings over **one** integration pass.
+///
+/// The footprints are integrated once and coloured several ways. That matters for §6: the
+/// lightness field costs a second, fixed-step, unregularised march per footprint, and paying it
+/// three times to answer whether the *colouring* changes `error(B)` would be paying for the
+/// thing being held fixed.
+#[allow(clippy::too_many_arguments)]
+pub fn build_multi_with_footprints(
+    region: &str,
+    cx: f64,
+    cy: f64,
+    half: f64,
+    body: usize,
+    chart: Chart,
+    levels: u32,
+    n: usize,
+    res: usize,
+    tau: f64,
+    ens: &EnsembleCfg,
+    colourings: &[Colouring],
+) -> (Vec<Cache>, HashMap<Key, Vec<PixelOut>>) {
     assert!(!colourings.is_empty());
     assert_eq!(
         (1usize << levels) * n,
@@ -375,38 +394,58 @@ pub fn build_multi(
 
     let base_trajectories = computed.len() as u64 * (n * n) as u64 * (ens.n_extra + 1) as u64;
 
+    let px_of: HashMap<Key, Vec<PixelOut>> =
+        computed.iter().map(|(k, _, px)| (*k, px.clone())).collect();
+
+    let mut out: Vec<Cache> = Vec::with_capacity(colourings.len());
+    for &colouring in colourings {
+        let mut c = Cache { colouring, trajectories: base_trajectories, ..c.clone() };
+        for (k, red, _px) in &computed {
+            c.quads.insert(*k, CachedQuad { key: *k, red: *red, rgb: Vec::new(), err_sum: 0.0 });
+        }
+        repaint(&mut c, &px_of);
+        out.push(c);
+    }
+
+    (out, px_of)
+}
+
+/// Colour every quad, build the reference image, and compute each quad's `err_sum`.
+///
+/// Shared by [`build_multi`] and [`Cache::recolour`] so the two cannot drift: a replay that
+/// coloured by a slightly different path would produce an `error(B)` curve that looked like a
+/// measurement and was an artefact of the replay. `c.quads` must already hold every key with
+/// its `red`; only `rgb`, `reference` and `err_sum` are written.
+fn repaint(c: &mut Cache, px_of: &HashMap<Key, Vec<PixelOut>>) {
     // **The ramp is normalised over the whole region, once.** Per-quad normalisation would make
     // a quad's colour depend on which quads happen to be leaves, so refining one quad would
     // change the colour of another and `err_sum` would stop being a constant of the quad --
     // which is the property the greedy replay rests on.
-    let mut out: Vec<Cache> = Vec::with_capacity(colourings.len());
-    for &colouring in colourings {
-        let mut c = Cache { colouring, trajectories: base_trajectories, ..c.clone() };
-        let sites = c.sites.clone();
-        let ramp = match colouring {
-            Colouring::Outcome => (0.0, 1.0),
-            Colouring::Bivariate(sc) => {
-                let all_px: Vec<PixelOut> =
-                    computed.iter().flat_map(|(_, _, px)| px.iter().cloned()).collect();
-                crate::output::colour::range(&all_px, sc)
-            }
-        };
-        c.ramp = ramp;
-        for (k, red, px) in &computed {
-            let rgb: Vec<[u8; 3]> = match colouring {
-                Colouring::Outcome => px.iter().map(outcome_rgb).collect(),
-                Colouring::Bivariate(sc) => px
-                    .iter()
-                    .map(|p| crate::output::colour::rgb(p, sc, &sites, ramp.0, ramp.1))
-                    .collect(),
-            };
-            c.quads.insert(*k, CachedQuad { key: *k, red: *red, rgb, err_sum: 0.0 });
+    let ramp = match c.colouring {
+        Colouring::Outcome => (0.0, 1.0),
+        Colouring::Bivariate(sc) => {
+            let all_px: Vec<PixelOut> = px_of.values().flat_map(|v| v.iter().cloned()).collect();
+            crate::output::colour::range(&all_px, sc)
         }
-        out.push(c);
+    };
+    c.ramp = ramp;
+    let sites = c.sites.clone();
+    let colouring = c.colouring;
+    for (k, px) in px_of {
+        let rgb: Vec<[u8; 3]> = match colouring {
+            Colouring::Outcome => px.iter().map(outcome_rgb).collect(),
+            Colouring::Bivariate(sc) => px
+                .iter()
+                .map(|p| crate::output::colour::rgb(p, sc, &sites, ramp.0, ramp.1))
+                .collect(),
+        };
+        if let Some(q) = c.quads.get_mut(k) {
+            q.rgb = rgb;
+        }
     }
 
-    for c in out.iter_mut() {
     // ---- the reference image, from the deepest level ----
+    let (levels, n, res) = (c.levels, c.n, c.res);
     let w = 1u32 << levels;
     for iy in 0..w {
         for ix in 0..w {
@@ -449,9 +488,67 @@ pub fn build_multi(
     for (k, s) in sums {
         c.quads.get_mut(&k).unwrap().err_sum = s;
     }
+}
+
+impl Cache {
+    /// Rebuild this cache under a different colouring, from a footprint file.
+    ///
+    /// **The point of `PRQF`.** `err_sum` is a function of the colouring, so PR #13's curves
+    /// could not be recomputed under a new one without re-integrating 2.8 million trajectories
+    /// per region. With the footprints on disk, `error(B)` under any colouring is a replay.
+    ///
+    /// The reductions carry over unchanged: a `QuadReduction` is a property of the physics and
+    /// does not know what colour anything is drawn.
+    pub fn recolour(
+        &self,
+        fp: &crate::output::fcache::Footprints,
+        colouring: Colouring,
+    ) -> Result<Cache, String> {
+        fp.agrees_with(self)?;
+        let mut c = Cache { colouring, ..self.clone() };
+        let px_of: HashMap<Key, Vec<PixelOut>> = fp
+            .quads
+            .iter()
+            .map(|(k, rows)| (*k, rows.iter().map(|r| r.to_pixel()).collect()))
+            .collect();
+        for k in c.quads.keys().cloned().collect::<Vec<_>>() {
+            if !px_of.contains_key(&k) {
+                return Err(format!("footprint file is missing quad {k:?}"));
+            }
+        }
+        repaint(&mut c, &px_of);
+        Ok(c)
     }
 
-    out
+    /// Every footprint of this cache's tree, ready to write with [`crate::output::fcache::write`].
+    ///
+    /// Only available from [`build_multi_with_footprints`], because a `Cache` deliberately does
+    /// not retain its footprints — that is what keeps a complete tree in megabytes.
+    pub fn footprints_from(
+        &self,
+        px_of: &HashMap<Key, Vec<PixelOut>>,
+        chart: &str,
+        t_max: f64,
+    ) -> crate::output::fcache::Footprints {
+        crate::output::fcache::Footprints {
+            region: self.region.clone(),
+            chart: chart.to_string(),
+            cx: self.cx,
+            cy: self.cy,
+            half: self.half,
+            body: self.body,
+            levels: self.levels,
+            n: self.n,
+            res: self.res,
+            t_max,
+            quads: px_of
+                .iter()
+                .map(|(k, px)| {
+                    (*k, px.iter().map(crate::output::fcache::Row::of).collect())
+                })
+                .collect(),
+        }
+    }
 }
 
 /// How a replay chooses which leaf to refine next.

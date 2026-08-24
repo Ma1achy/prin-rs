@@ -1,5 +1,4 @@
-   Compiling prin-rs v0.1.0 (/Users/malachy/src/principia-rs-test)
-    Finished `release` profile [optimized] target(s) in 4.26s
+    Finished `release` profile [optimized] target(s) in 0.02s
      Running `target/release/examples/colour_check 256 13`
 res 256^2, t=13, n_sync=32, E+1=8, kappa=3
 sites (computed from the masses, never hard-coded):
@@ -32,6 +31,33 @@ sites (computed from the masses, never hard-coded):
  deep interior   spread_event         8    65536    88.6%    0.000e0   8.571e-1     10.7%
  deep interior             -- n0 span = 1.9994  n0 interdecile = 0.1684  (18 nonfinite shapes)
  deep interior   hue coverage  k=0.5: 0.0045  k=1: 0.0092  k=2: 0.0170  k=3: 0.0217  k=6: 0.0256  k=12: 0.0261
+
+
+per-level scaling of the lightness field (levels 0..4, N=8):
+        region  level   quads   cell width   med spread    ratio    med t_end    ratio
+    near-field      0       1    1.4286e-2    3.6675e-3      NaN     1.3000e1      NaN
+    near-field      1       4    7.1429e-3    2.4591e-3    1.491     1.3000e1    1.000
+    near-field      2      16    3.5714e-3    1.9301e-3    1.274     1.3000e1    1.000
+    near-field      3      64    1.7857e-3    1.5990e-3    1.207     1.3000e1    1.000
+    near-field      4     256    8.9286e-4    1.3423e-3    1.191     1.3000e1    1.000
+ deep interior      0       1    1.4286e-2    1.6006e-4      NaN     3.0709e0      NaN
+ deep interior      1       4    7.1429e-3    9.8841e-5    1.619     3.0435e0    1.009
+ deep interior      2      16    3.5714e-3    6.6131e-5    1.495     3.0503e0    0.998
+ deep interior      3      64    1.7857e-3    5.7061e-5    1.159     3.0457e0    1.001
+ deep interior      4     256    8.9286e-4    5.4424e-5    1.048     3.0466e0    1.000
+
+Cell width halves every level, so a field proportional to it would show `ratio`
+= 2.000 in every row. Measured 1.19-1.62, FALLING with depth: the dependence is
+sub-linear and saturates, which is the chaotic-divergence signature -- past some
+cell width the copies decohere fully however close they started. Consistent with
+the standing measurement that cell width falling 9x moves sigma_E(0) by 8.6x
+(proportional) and `ensemble_spread` by only 2.1x.
+
+So a bivariate render DOES carry a mild scale term: a level-0 leaf reads brighter
+than a level-4 leaf at the same place. Under the log ramp that is about 12% of the
+lightness range across five levels. Stated rather than corrected -- normalising by
+cell width would change what the field means. `t_end` is the scale-free control and
+is flat, which is what says the effect above is the cell width and not the depth.
 
 Read `distinct` and `modal%` before either image. A field whose modal value covers a
 large fraction of the region has that many pixels painted one colour, and the picture

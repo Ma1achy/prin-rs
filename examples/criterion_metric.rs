@@ -39,6 +39,15 @@ fn arg<T: std::str::FromStr>(i: usize, d: T) -> T {
     std::env::args().nth(i).and_then(|s| s.parse().ok()).unwrap_or(d)
 }
 
+/// The colouring the criterion is scored under.
+///
+/// **This is a criterion parameter, not a presentation one.** `error(B)` measures image change,
+/// so what is displayed decides which quads matter -- the standing rule is *choose a criterion
+/// under the colouring that will ship*. PR #13 scored every criterion under `Outcome`, which at
+/// `t = 13` is a saturated categorical label: near-field's reference image is two flat colours.
+const SHIPPING: metric::Colouring =
+    metric::Colouring::Bivariate(prin_rs::output::colour::Scalar::ShapeSpread);
+
 fn main() {
     let levels: u32 = arg(1, 6);
     let n: usize = arg(2, 8);
@@ -85,9 +94,47 @@ fn main() {
         .filter(|r| matches!(r.0, "far" | "near-field" | "deep interior"))
     {
         let t0 = std::time::Instant::now();
-        let cache = metric::build(
-            region, cx, cy, 0.05, body, Chart::BodyPlane, levels, n, res, tau, &ens, metric::Colouring::Outcome,
+        // The production colouring, and the outcome control beside it, from ONE integration
+        // pass. `outcome` is categorical and saturated at t = 13 -- near-field's reference image
+        // is two flat colours -- so it is kept as a control rather than as the target.
+        let (mut caches, px_of) = metric::build_multi_with_footprints(
+            region,
+            cx,
+            cy,
+            0.05,
+            body,
+            Chart::BodyPlane,
+            levels,
+            n,
+            res,
+            tau,
+            &ens,
+            &[SHIPPING, metric::Colouring::Outcome],
         );
+        let control = caches.pop().unwrap();
+        let cache = caches.pop().unwrap();
+
+        // The footprints, so no future colouring change costs another integration. PRQC stores
+        // a BAKED err_sum and cannot be replayed under a new colouring; this can.
+        let stem0 = region.replace(' ', "_");
+        if let Ok(f) = std::fs::File::create(format!("results/criterion/{stem0}_t{t_max}.fcache")) {
+            let mut w = std::io::BufWriter::new(f);
+            let fp = cache.footprints_from(&px_of, "body_plane", t_max);
+            let _ = prin_rs::output::fcache::write(&mut w, &fp);
+        }
+        // A cheap assertion that the replay path is live on real data, not only in the unit
+        // test: recolouring to the control must reproduce the control bitwise.
+        {
+            let fp = cache.footprints_from(&px_of, "body_plane", t_max);
+            match cache.recolour(&fp, metric::Colouring::Outcome) {
+                Ok(r) => println!(
+                    "  replay check: recolour to `outcome` reproduces the control reference {}",
+                    if r.reference == control.reference { "BITWISE" } else { "**DIFFERENTLY**" }
+                ),
+                Err(e) => println!("  replay check FAILED: {e}"),
+            }
+        }
+        drop(px_of);
         let build_s = t0.elapsed().as_secs_f64();
 
         // Reference sanity, before any curve is read: the deepest-level tree must give exactly
@@ -103,8 +150,18 @@ fn main() {
 
         println!(
             "--- {region} --- built in {build_s:.1}s, {} trajectories; \
-             error(root)={e_root:.5} error(full)={e_full:.1e}",
-            cache.trajectories
+             error(root)={e_root:.5} error(full)={e_full:.1e}\n\
+             {:>14} ramp [{:.4e}, {:.4e}]  span x{:.3}{}",
+            cache.trajectories,
+            "",
+            cache.ramp.0,
+            cache.ramp.1,
+            cache.ramp.1 / cache.ramp.0.max(f64::MIN_POSITIVE),
+            if cache.ramp.1 / cache.ramp.0.max(f64::MIN_POSITIVE) < 2.0 {
+                "  <-- AUTO-RANGED OVER NOISE: the ramp is normalised to this region's own p1-p99, so a field with no dynamic range is stretched to full scale and error(B) becomes nonzero for a region with nothing in it. Read the span before the curve."
+            } else {
+                ""
+            }
         );
 
         // ---- degeneracy, read BEFORE the curves ----
@@ -241,7 +298,6 @@ fn main() {
         // table above means paying the 2.8M-trajectory integration again. Every criterion's
         // scalar is dumped whatever this run ranked on, which is what makes offline comparison
         // real rather than aspirational.
-        let stem0 = region.replace(' ', "_");
         if let Ok(f) = std::fs::File::create(format!("results/criterion/{stem0}_t{t_max}.qcache")) {
             let mut w = std::io::BufWriter::new(f);
             let _ = prin_rs::output::qcache::write(&mut w, &cache, &ens, tau);

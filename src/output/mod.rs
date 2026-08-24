@@ -7,6 +7,7 @@ pub mod qcache;
 pub mod raw;
 pub mod apng;
 pub mod colour;
+pub mod fcache;
 pub mod oklab;
 pub mod ssaa;
 pub mod tree;

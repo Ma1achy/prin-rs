@@ -1,0 +1,36 @@
+level 5, N=8, res 256^2, 1365 quads per region, t=13
+
+--- near-field --- substeps per quad: p10 1876649  p50 1981003  p90 2041477  p99 2046765  max 2050044
+    p90/p50 = 1.03   p99/p50 = 1.03   max/p50 = 1.03
+           greedy_oracle   0.00138   0.00000   0.00000   0.00000
+      greedy_oracle/cost   0.00138   0.00000   0.00000   0.00000
+    tau=1e-5: 0.0% of splits give >=3 children that immediately keep, 0.0% give all four
+    tau=1e-4: 0.9% of splits give >=3 children that immediately keep, 0.3% give all four
+    tau=1e-3: 33.1% of splits give >=3 children that immediately keep, 24.3% give all four
+
+--- far --- substeps per quad: p10 321024  p50 321024  p90 321024  p99 321024  max 321024
+    p90/p50 = 1.00   p99/p50 = 1.00   max/p50 = 1.00
+           greedy_oracle   0.00000   0.00000   0.00000   0.00000
+      greedy_oracle/cost   0.00000   0.00000   0.00000   0.00000
+    tau=1e-5: 100.0% of splits give >=3 children that immediately keep, 100.0% give all four
+    tau=1e-4: 100.0% of splits give >=3 children that immediately keep, 100.0% give all four
+    tau=1e-3: 100.0% of splits give >=3 children that immediately keep, 100.0% give all four
+
+--- deep interior --- substeps per quad: p10 496253  p50 645606  p90 953387  p99 1723569  max 1951532
+    p90/p50 = 1.48   p99/p50 = 2.67   max/p50 = 3.02
+           greedy_oracle   0.02019   0.01408   0.00075   0.00000
+      greedy_oracle/cost   0.02019   0.01483   0.00076   0.00000
+    tau=1e-5: 0.0% of splits give >=3 children that immediately keep, 0.0% give all four
+    tau=1e-4: 66.3% of splits give >=3 children that immediately keep, 60.7% give all four
+    tau=1e-3: 81.2% of splits give >=3 children that immediately keep, 73.6% give all four
+
+Cost-aware priority is worth building only if the cost distribution is WIDE. Read
+p99/p50, not the mean: a long tail with a tight bulk buys nothing for the typical quad,
+which is what a scheduler decides about. If greedy_oracle and greedy_oracle/cost give
+the same curve, cost-weighting has nothing to move.
+
+Anisotropy: a high `all four keep` fraction means an isotropic split is mostly wasted
+and a 2-way split along the disagreement direction -- which §3.2's layout already
+measures -- would be strictly cheaper. This is a COSTING. Nothing anisotropic is
+implemented, and the tau sweep is there because a single tau would make the case look
+settled when it is a function of a knob that moves trees 64x.

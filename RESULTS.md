@@ -1223,6 +1223,68 @@ not ported, reproducing it is not required since the direction only seeds the sh
 saturating; without it `log(d/d0)/T` decays and reports `lambda ≈ 0` for the *most* chaotic
 trajectories — the inversion this project has now met four times.
 
+### 10.7 Panning: three of §7's four questions are identities
+
+`Camera::veto` reads `tile_size_px`, which depends on the quad's width and the camera's
+`half_world` and `viewport` — **and not on `cx` or `cy`**. There is no view culling and no cache.
+So panning changes no scheduling decision, and "the tree persists across a pan" is an identity
+rather than a finding.
+
+```
+ step    cam cx   quads in view       new would-cache%  recompute%   floored
+    0   0.95000     549     263       549         0.0%      100.0%       252
+    1   0.96250     549     353         0       100.0%      100.0%       252
+    4   1.00000     549     549         0       100.0%      100.0%       252
+    8   1.05000     549     323         0       100.0%      100.0%       252
+
+4392 quads recomputed after having been seen before.
+0 came back with a DIFFERENT reduction. 0 with a different decision.
+```
+
+What is not an identity: **a quad recomputed after leaving view comes back bitwise identical**,
+in reduction and in decision, across 4392 recomputes. That is the property a cache would need to
+be sound, and it holds because the ensemble offsets are a fixed Halton prefix indexed by *copy* —
+not by pixel, not by camera, not by time — so a quad's ensemble does not know the camera exists.
+
+`in view` runs 263 → 549 → 323 as the camera crosses: at the extremes **half the tree is off
+screen**, and that is what a cache would be sized against. `Camera::covers` computes it and the
+scheduler never consults it. Making it consult it would be view culling, and putting a position
+term into the screen floor would make a quad's decision depend on where the camera points —
+which is what "never cached as a quad fact" exists to keep out.
+
+### 10.8 Cost-aware priority is not worth building; anisotropy is narrower than it looks
+
+```
+region          p10       p50       p90       p99       max    p99/p50
+near-field   1876649   1981003   2041477   2046765   2050044     1.03
+far           321024    321024    321024    321024    321024     1.00
+deep int      496253    645606    953387   1723569   1951532     2.67
+```
+
+The cost distribution is **narrow**: 1.03 in near-field, 1.00 in `far`, 2.67 in `deep interior`.
+And ranking by `Δerror / cost` does not beat ranking by `Δerror` — it is identical in near-field
+and marginally *worse* in `deep interior` (0.01483 against 0.01408 at `B = 85`). **Cost-aware
+priority has nothing to move here.** Reported as a negative and not built.
+
+Anisotropy, at three `tau` because the answer is a strong function of it:
+
+```
+                 >=3 children keep    all four keep    the anisotropy case
+near-field  1e-4          0.9%              0.3%              0.6%
+near-field  1e-3         33.1%             24.3%              8.8%
+deep int    1e-4         66.3%             60.7%              5.6%
+deep int    1e-3         81.2%             73.6%              7.6%
+```
+
+**The headline number is the wrong one.** 60.7% of splits in `deep interior` producing four
+children that all immediately keep is an argument that *the split should not have happened* —
+i.e. about the criterion, which §10.3 already says is the problem. The case anisotropic
+splitting actually addresses is **exactly three keep**: one useful child, three wasted, where a
+2-way split along the disagreement direction would have captured it. That band is **5.6–8.8%**.
+
+So anisotropy is worth roughly a twentieth of the quads, not two thirds. Costing only; nothing
+implemented.
+
 ## 11. Reproducing any of this
 
 Every table above comes from a committed example. Raw output for all of them is in

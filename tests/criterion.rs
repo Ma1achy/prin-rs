@@ -666,3 +666,43 @@ fn boundary_shapes_are_only_recorded_when_asked_for() {
         assert!((norm - 1.0).abs() < 1e-10, "each must be a unit shape vector, got {norm}");
     }
 }
+
+#[test]
+fn a_signal_that_declines_to_score_does_not_block_the_ones_that_do() {
+    use prin_rs::ensemble::pixel::EnsembleCfg;
+    use prin_rs::grid::Chart;
+    use prin_rs::metric::{self, Rank};
+    use prin_rs::quad::{Agg, Criterion};
+
+    // `v > bv` is FALSE whenever `bv` is NaN, so a NaN at the first candidate would block every
+    // finite score behind it and collapse the ranking to scan order — silently, and worst on
+    // exactly the signals that decline to score part of the region. `term_grad` is NaN on 97.1%
+    // of near-field.
+    //
+    // "Undetermined never wins" is the intended semantics. "Undetermined blocks everything" was
+    // the bug, and it is invisible in the error curve, which just looks like a bad criterion.
+    let (levels, n) = (2u32, 2usize);
+    let res = (1usize << levels) * n;
+    let ens = EnsembleCfg { n_extra: 1, t_max: 2.0, n_sync: 4, refine_flagged: false, ..Default::default() };
+    let cache = metric::build(
+        "near-field", 1.0, 3.0, 0.05, 0, Chart::BodyPlane, levels, n, res, 1e-4, &ens,
+        metric::Colouring::Outcome,
+    );
+    let full = ((1usize << (2 * (levels + 1))) - 1) / 3;
+
+    // At t_max = 2 nothing terminates anywhere near-field, so term_grad is NaN everywhere and
+    // this signal has nothing to say. It must still complete the descent rather than stalling.
+    let nan_everywhere = cache
+        .quads
+        .values()
+        .all(|q| !q.red.signal(Criterion::TerminationGradient, Agg::Median).is_finite());
+    assert!(nan_everywhere, "the premise of this test: term_grad declines here");
+
+    let pts = metric::replay(&cache, Rank::Signal(Criterion::TerminationGradient, Agg::Median), full);
+    assert_eq!(
+        pts.last().unwrap().error,
+        0.0,
+        "an all-NaN signal must still spend its budget and reach the reference"
+    );
+    assert_eq!(pts.len(), 1 + (full - 1) / 4, "and must spend all of it");
+}

@@ -491,17 +491,18 @@ pub fn replay_with_leaves(cache: &Cache, rank: Rank, budget: usize) -> (Vec<Poin
                 cand[r % cand.len()]
             }
             _ => {
+                // **Non-finite maps to -inf, not to itself.** `v > bv` is false whenever `bv`
+                // is NaN, so a NaN at the first candidate would block every finite score
+                // behind it and collapse the ranking to scan order — silently, and worst on
+                // exactly the signals that decline to score part of the region (`term_grad`
+                // is NaN on 97.1% of near-field). "Undetermined never wins" is the intended
+                // semantics; "undetermined blocks everything" was the bug.
                 let score = |i: usize| -> f64 {
-                    let k = leaves[i];
-                    match rank {
-                        Rank::Signal(c, a) => cache.get(k).red.signal(c, a),
-                        Rank::GreedyOracle => cache.gain(k),
-                        Rank::GreedyOraclePerCost => {
-                            let c = cache.get(k).red.total_substeps.max(1) as f64;
-                            cache.gain(k) / c
-                        }
-                        Rank::Contrast(cr, ag) => cache.contrast(k, cr, ag),
-                        Rank::Random(_) => unreachable!(),
+                    let v = raw_score(cache, leaves[i], rank);
+                    if v.is_finite() {
+                        v
+                    } else {
+                        f64::NEG_INFINITY
                     }
                 };
                 // Ties broken by the earliest candidate, deterministically. A random tie-break
@@ -525,6 +526,19 @@ pub fn replay_with_leaves(cache: &Cache, rank: Rank, budget: usize) -> (Vec<Poin
         out.push(Point { budget: spent, leaves: leaves.len(), error: cache.error_of(&leaves) });
     }
     (out, leaves)
+}
+
+/// A ranking's raw score for one quad, before the non-finite convention is applied.
+fn raw_score(cache: &Cache, k: Key, rank: Rank) -> f64 {
+    match rank {
+        Rank::Signal(c, a) => cache.get(k).red.signal(c, a),
+        Rank::GreedyOracle => cache.gain(k),
+        Rank::GreedyOraclePerCost => {
+            cache.gain(k) / cache.get(k).red.total_substeps.max(1) as f64
+        }
+        Rank::Contrast(c, a) => cache.contrast(k, c, a),
+        Rank::Random(_) => f64::NAN,
+    }
 }
 
 /// The error each ranking reaches at a set of budgets — the shape a table wants.

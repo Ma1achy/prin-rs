@@ -65,6 +65,15 @@ pub struct EnsembleCfg {
     /// Keep each copy's packed outcome, for the SSAA resolve. Off by default: it is only
     /// wanted at render time, and it makes `PixelOut` allocate.
     pub keep_copy_outcomes: bool,
+    /// Keep each copy's `shape_vec`, for the criterion's **matched-count** comparison.
+    ///
+    /// Off by default, for the same reason as [`Self::keep_copy_outcomes`]: it allocates
+    /// `E+1` triples per footprint. It exists because comparing an `E+1`-sample within-cell
+    /// spread against an `N^2`-sample between-quad spread conflates *scale* with *sample
+    /// count*, and a spread estimator's expectation depends on the count — measured, `E+1 = 2`
+    /// reports 0.539 of `E+1 = 32`'s spread in near-field and 0.131 in `far`. `within_pooled`
+    /// needs every copy, not just the nominal, to hold the count fixed while the extent moves.
+    pub keep_copy_shapes: bool,
     /// Maximum refinement passes. **Bounded on purpose, and not a scheduler**: each pass is
     /// one extra evaluation of a shrinking flagged subset, with no tree and no state carried
     /// between pixels.
@@ -98,6 +107,7 @@ impl Default for EnsembleCfg {
             refine_eta_factor: 0.25,
             refine_max_passes: 3,
             keep_copy_outcomes: false,
+            keep_copy_shapes: false,
             decode_path: Path::DirectF64,
         }
     }
@@ -249,6 +259,33 @@ pub struct PixelOut {
     /// 4/4 has a large spread and a blended colour, and neither number substitutes for the
     /// other.
     pub copy_outcomes: Vec<u8>,
+
+    /// The **nominal copy's event class** at the final sync boundary: the identity of its
+    /// currently-tightest pair, or `TERMINAL_TAG + terminal` once it has stopped.
+    ///
+    /// One byte, always retained, and it exists so a *between*-footprint event statistic can
+    /// be built without reinstating a quantity the project has already rejected. The obvious
+    /// implementation of `between_event` is `spread_event` over the `N^2` footprints'
+    /// [`Self::outcome`] — and that is **the terminal outcome**, which is terminal-grain and
+    /// inverts under lockstep: early in the march nothing has terminated, every footprint
+    /// agrees, and the field reports maximum confidence at exactly the playhead where least is
+    /// known. The event class is defined at every playhead. Building the between-footprint arm
+    /// on `outcome` would be that regression at a new level, so the class is carried instead.
+    pub event_class: u8,
+
+    /// Integrator substeps summed over the `E+1` copies — the cost side of a cost-aware
+    /// priority. `AzOut::steps` was computed on every march and never read; ranking by
+    /// `spread / cost` only pays if the cost distribution is wide, and this is what says
+    /// whether it is.
+    pub total_substeps: u64,
+
+    /// Every copy's `shape_vec`, in copy order. Empty unless
+    /// [`EnsembleCfg::keep_copy_shapes`] is set.
+    ///
+    /// The input to `within_pooled` — the within-footprint arm evaluated at the *same* sample
+    /// count as the between-footprint arm, so the two can be differenced without the
+    /// small-sample bias standing in for a scale effect.
+    pub copy_shapes: Vec<[f64; 3]>,
 }
 
 /// Consecutive boundaries a disagreement must survive before the latch counts it.
@@ -498,5 +535,21 @@ pub fn evaluate_at<T: Real>(slice: &Slice, idx: usize, cfg: &EnsembleCfg, eta_v:
         energy_drift_max_coarse: drift_max,
         refined: false,
         copy_outcomes: if cfg.keep_copy_outcomes { packed.clone() } else { Vec::new() },
+        event_class: stats::event_class_at(&outs[0].tight, packed[0], cfg.n_sync - 1),
+        total_substeps: outs.iter().map(|o| o.steps as u64).sum(),
+        copy_shapes: if cfg.keep_copy_shapes {
+            shapes
+                .iter()
+                .map(|s| {
+                    [
+                        s[0].to_f64().unwrap(),
+                        s[1].to_f64().unwrap(),
+                        s[2].to_f64().unwrap(),
+                    ]
+                })
+                .collect()
+        } else {
+            Vec::new()
+        },
     }
 }

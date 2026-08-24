@@ -14,7 +14,11 @@ use crate::quad::QuadTree;
 use crate::scheduler::{SchedCfg, SchedStats};
 
 pub const MAGIC: &[u8; 4] = b"PRNQ";
-pub const VERSION: u32 = 1;
+pub const VERSION: u32 = 2;
+// v2 appends the between-footprint arm, the matched-count controls, the hot-set layout, the
+// escape-gradient pair, the cost column and the IC-distinctness count. Records are
+// self-describing by `FIELDS`, so a v1 reader that indexes by name still works; one that
+// indexes by position does not, which is why the version moved.
 
 /// One record per quad. Same self-describing shape as the pixel dump: a reader never guesses.
 pub const FIELDS: &[&str] = &[
@@ -25,9 +29,17 @@ pub const FIELDS: &[&str] = &[
     "alpha", "alpha_mean", "alpha_p90", "alpha_sibling_spread",
     "error_ratio_max", "worst_energy_drift", "n_nonfinite", "n_footprints",
     "decision",
+    // --- v2: the between-footprint arm and the candidate signals ---
+    "between_shape", "between_event", "between_spread",
+    "between_matched", "within_pooled",
+    "n_hot_within", "n_components_within", "largest_component_within", "perimeter_ratio_within",
+    "n_hot_between", "n_components_between", "largest_component_between", "perimeter_ratio_between",
+    "frac_above_tau_within", "frac_above_tau_between",
+    "escaped_fraction", "t_end_gradient",
+    "total_substeps", "n_distinct_ic",
 ];
 
-pub fn record(t: &QuadTree, i: usize) -> [f64; 24] {
+pub fn record(t: &QuadTree, i: usize) -> [f64; 43] {
     let q = &t.nodes[i];
     let nan = f64::NAN;
     [
@@ -55,6 +67,25 @@ pub fn record(t: &QuadTree, i: usize) -> [f64; 24] {
         q.red.n_nonfinite as f64,
         q.red.n_footprints as f64,
         q.decision.code() as f64,
+        q.red.between_shape,
+        q.red.between_event,
+        q.red.between_spread,
+        q.red.between_matched,
+        q.red.within_pooled,
+        q.red.layout_within.n_hot as f64,
+        q.red.layout_within.n_components as f64,
+        q.red.layout_within.largest_component as f64,
+        q.red.layout_within.perimeter_ratio,
+        q.red.layout_between.n_hot as f64,
+        q.red.layout_between.n_components as f64,
+        q.red.layout_between.largest_component as f64,
+        q.red.layout_between.perimeter_ratio,
+        q.red.frac_above_tau_within,
+        q.red.frac_above_tau_between,
+        q.red.escaped_fraction,
+        q.red.t_end_gradient,
+        q.red.total_substeps as f64,
+        q.red.n_distinct_ic as f64,
     ]
 }
 
@@ -73,7 +104,7 @@ pub fn write<W: Write>(
 
     let header = format!(
         "region={} body={} n_samples_per_axis={} n_copies={} budget={} bootstrap_levels={}\n\
-         tau_display={} alpha_hi={} alpha_lo={} sib_tau={} policy={} order={} agg={} max_level={:?}\n\
+         tau_display={} alpha_hi={} alpha_lo={} sib_tau={} policy={} order={} agg={} criterion={} max_level={:?}\n\
          t_max={} eta={} n_sync={} r_coll_frac={} lc_stable={} jitter_scheme={:?} precision={}\n\
          chart={} decode_path={} camera={:?}\n\
          quads_computed={} footprints={} iterations={} budget_exhausted={} wall_seconds={:.3}\n\
@@ -81,7 +112,7 @@ pub fn write<W: Write>(
          fields={}\n",
         region, tree.body, tree.n, ens.n_extra + 1, cfg.budget, cfg.bootstrap_levels,
         cfg.tau_display, cfg.alpha_hi, cfg.alpha_lo, cfg.sib_tau,
-        cfg.policy.name(), cfg.order.name(), cfg.agg.name(), cfg.max_level,
+        cfg.policy.name(), cfg.order.name(), cfg.agg.name(), cfg.criterion.name(), cfg.max_level,
         ens.t_max, ens.eta, ens.n_sync, ens.r_coll_frac, ens.lc_stable, ens.jitter_scheme,
         precision,
         // The chart is the one thing that now makes two otherwise identical dumps different

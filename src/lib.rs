@@ -18,6 +18,8 @@ pub mod quad;
 pub mod render;
 pub mod rng;
 pub mod scheduler;
+pub mod spatial;
+pub mod stats;
 
 pub use real::Real;
 pub use vec2::Vec2;

@@ -50,6 +50,77 @@ pub struct QuadReduction {
     pub worst_energy_drift: f64,
     pub n_nonfinite: u32,
     pub n_footprints: u32,
+
+    // ---------------------------------------------------------------------------------
+    // The between-footprint arm.
+    //
+    // `spread_*` above are statistics over the `E+1` copies of one footprint, aggregated over
+    // the quad. The brief's §1 reads that as a category error — that refinement can only
+    // reduce *between*-footprint variation, so a *within*-footprint statistic is the wrong
+    // quantity. **The premise does not describe this implementation**, and the reason is
+    // measurable: `jitter_frac` is 0.5 and `halton_offset` returns `[-1, 1)^2` scaled by cell
+    // width, so the copies span the **whole cell, edge to edge**. They are a quasi-random
+    // sample of exactly the area the footprint stands for, not a cloud around a point. The
+    // corroboration is already on record: the Halton control's true `alpha` is exactly 1.0,
+    // and an irreducible within-point statistic would have `alpha == 0` by construction,
+    // because splitting would not shrink it.
+    //
+    // What genuinely differs is **scale** (cell against quad), **sample count** (`E+1` against
+    // `N^2`), and the aggregation. All four numbers below are carried so those can be
+    // separated rather than argued about.
+    // ---------------------------------------------------------------------------------
+    /// `spread_shape` over the `N^2` **nominal** (copy 0, un-jittered) shape vectors. §1.4 as
+    /// briefed. Copy 0 only, so between-footprint variation is not contaminated by the
+    /// within-footprint jitter.
+    pub between_shape: f64,
+    /// `spread_event` over the `N^2` nominals' **event class** — not their terminal outcome.
+    /// See `PixelOut::event_class` for why that distinction is load-bearing here.
+    pub between_event: f64,
+    /// `max` of the two, the between-arm analogue of `ensemble_spread`.
+    pub between_spread: f64,
+    /// [`Self::between_shape`] over only the first `E+1` nominals, **holding the sample count
+    /// fixed** so the comparison against `spread_*` isolates scale rather than count.
+    ///
+    /// Required, not decorative: a spread estimator's expectation depends on its sample size,
+    /// and `E+1 = 2` reports 0.539 of `E+1 = 32`'s value in near-field and 0.131 in `far`.
+    /// Differencing an 8-sample statistic against a 64-sample one would read that bias as a
+    /// scale effect.
+    pub between_matched: f64,
+    /// `spread_shape` over **all** `N^2 * (E+1)` copies pooled — the within arm at the
+    /// between arm's sample count, holding the count fixed while the extent moves. `NaN`
+    /// unless `EnsembleCfg::keep_copy_shapes` is set.
+    pub within_pooled: f64,
+
+    /// Where the hot footprints sit, on the within-footprint field (`ensemble_spread > tau`).
+    pub layout_within: crate::spatial::Layout,
+    /// The same, on the per-footprint contribution to [`Self::between_shape`] — each nominal's
+    /// distance from the quad's nominal centroid, halved. That is the one between-arm quantity
+    /// that is defined *per footprint* and so can carry a mask at all.
+    pub layout_between: crate::spatial::Layout,
+    /// Fraction of footprints above `tau`, both arms. §3.1: the direct form of "does this quad
+    /// contain a boundary?" is a **count in the tail**, not a quantile of the distribution. A
+    /// quad with 5% hot footprints has a filament; one with a high median is uniformly
+    /// blurred, and every quantile conflates them.
+    pub frac_above_tau_within: f64,
+    pub frac_above_tau_between: f64,
+
+    /// Footprints whose nominal has **escaped** — `t_end` before the horizon and not censored.
+    /// Reported beside [`Self::t_end_gradient`], which is meaningless without it.
+    pub escaped_fraction: f64,
+    /// Mean absolute spatial gradient of nominal `t_end` across the quad, over the escaped
+    /// subset only. **`NaN` when nothing escaped**, never 0 — see §3.5: at `t_max = 13` zero
+    /// of 1024 near-field pixels escape and 109 do at `t_max = 20`, so a gradient returned
+    /// over an empty set would be the saturated-label case in new clothing.
+    pub t_end_gradient: f64,
+    /// Total integrator substeps over the quad — the cost side of §8's cost-aware priority.
+    pub total_substeps: u64,
+    /// Distinct **initial conditions** among the `N^2` footprints, by exact bitwise comparison
+    /// of the full state. Equal to `n_footprints` on any healthy quad.
+    ///
+    /// Read before any spread is read. `decode::distinct` is the existing guard, and the rule
+    /// it enforces is that a difference can be small because both sides are right or because
+    /// both are dead — count distinct ICs first, read divergence second.
+    pub n_distinct_ic: u32,
 }
 
 impl QuadReduction {
@@ -61,6 +132,107 @@ impl QuadReduction {
             Agg::P90 => self.spread_p90,
         }
     }
+
+    /// The scalar a decision reads, by criterion and aggregation.
+    ///
+    /// `agg` is ignored by every criterion but [`Criterion::Within`]: the between-footprint and
+    /// layout signals are already one number per quad, with no `N^2` distribution left to
+    /// aggregate. That asymmetry is the point — half the current parameter surface exists only
+    /// because the within arm keeps a distribution it then throws away.
+    pub fn signal(&self, criterion: Criterion, agg: Agg) -> f64 {
+        match criterion {
+            Criterion::Within => self.spread(agg),
+            Criterion::Between => self.between_spread,
+            Criterion::MaxOfBoth => self.spread(agg).max(self.between_spread),
+            Criterion::FracHotWithin => self.frac_above_tau_within,
+            Criterion::FracHotBetween => self.frac_above_tau_between,
+            Criterion::Layout => {
+                // Thin and connected reads as a boundary and must outrank scatter of the same
+                // count; scattered hot footprints are chaos, which no refinement resolves.
+                let l = self.layout_within;
+                if l.n_hot == 0 {
+                    0.0
+                } else {
+                    l.frac_hot(self.n_side()) * (l.largest_component as f64 / l.n_hot as f64)
+                }
+            }
+        }
+    }
+
+    /// `N`, recovered from the footprint count. The reduction does not carry the grid width
+    /// separately, and every quad is square by construction (`Quad::slice` builds `n x n`).
+    pub fn n_side(&self) -> usize {
+        (self.n_footprints as f64).sqrt().round() as usize
+    }
+
+    /// Is this quad's between-footprint arm **collapsed** — every nominal bitwise identical?
+    ///
+    /// A collapsed decode gives a spread of exactly zero, which reads as "perfectly resolved"
+    /// and stops the descent with a small tidy tree built from nothing. Treated as
+    /// **undetermined**, the same way a non-finite copy is a measurement outcome rather than
+    /// missing data.
+    pub fn between_collapsed(&self) -> bool {
+        self.n_distinct_ic < self.n_footprints
+    }
+}
+
+/// Which signal a split decision reads.
+///
+/// All are computed and dumped on every run whatever this is set to — the point is to compare
+/// criteria offline without re-integrating, and the marginal cost of every one of them is
+/// `O(N^2)` against 512 trajectories per quad.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Criterion {
+    /// `ensemble_spread` aggregated over footprints — the criterion as it stands. The default
+    /// until the §2 metric says otherwise; a change of default is a measured decision, not a
+    /// tidy-up.
+    #[default]
+    Within,
+    /// The between-footprint arm alone.
+    Between,
+    /// `max` of the two. Both quantities are wanted and they answer different questions —
+    /// within is the trust / display-honesty signal, between is the refinement signal — so
+    /// this is the conservative join rather than a replacement.
+    MaxOfBoth,
+    /// Fraction of footprints above `tau`, within arm (§3.1).
+    FracHotWithin,
+    /// The same on the between arm.
+    FracHotBetween,
+    /// Hot-set layout (§3.2): connectedness weighted by count.
+    Layout,
+}
+
+impl Criterion {
+    pub fn name(self) -> &'static str {
+        match self {
+            Criterion::Within => "within",
+            Criterion::Between => "between",
+            Criterion::MaxOfBoth => "max_of_both",
+            Criterion::FracHotWithin => "frac_hot_within",
+            Criterion::FracHotBetween => "frac_hot_between",
+            Criterion::Layout => "layout",
+        }
+    }
+    pub fn parse(s: &str) -> Option<Criterion> {
+        Some(match s {
+            "within" => Criterion::Within,
+            "between" => Criterion::Between,
+            "max_of_both" => Criterion::MaxOfBoth,
+            "frac_hot_within" => Criterion::FracHotWithin,
+            "frac_hot_between" => Criterion::FracHotBetween,
+            "layout" => Criterion::Layout,
+            _ => return None,
+        })
+    }
+    /// Every variant, for sweeps that must not silently omit one.
+    pub const ALL: [Criterion; 6] = [
+        Criterion::Within,
+        Criterion::Between,
+        Criterion::MaxOfBoth,
+        Criterion::FracHotWithin,
+        Criterion::FracHotBetween,
+        Criterion::Layout,
+    ];
 }
 
 /// Which aggregation of the `N²` footprint spreads a decision uses.
@@ -117,6 +289,21 @@ pub enum Decision {
     /// `level >= camera_depth + MAX_REL_DEPTH`. Replaces absolute `MaxLevel`, which caps
     /// infinite zoom at ~14. Scheduler state, never on the sim key.
     MaxRelDepth,
+    /// **The decode has collapsed**: fewer distinct initial conditions than footprints, so the
+    /// quad's `N^2` samples are repeats and every spread computed over them is spread over
+    /// nothing.
+    ///
+    /// A separate decision rather than a `Floor`, because the failure it names is invisible
+    /// otherwise: identical footprints give a spread of exactly **zero**, which reads as
+    /// "perfectly resolved" and terminates the descent with a small tidy tree built from no
+    /// information. Treated as *undetermined* — the same standing that a non-finite copy has as
+    /// a measurement outcome rather than missing data — and it must be countable in the dump,
+    /// which a `Floor` would not be.
+    ///
+    /// Tested on **initial conditions**, never on the spread being zero: a genuinely uniform
+    /// region has a zero spread over perfectly distinct ICs, and conflating the two would flag
+    /// the physics as a numerical failure.
+    Collapsed,
 }
 
 impl Decision {
@@ -131,6 +318,7 @@ impl Decision {
             Decision::BudgetExhausted => "budget_exhausted",
             Decision::ScreenFloor => "screen_floor",
             Decision::MaxRelDepth => "max_rel_depth",
+            Decision::Collapsed => "collapsed",
         }
     }
     pub fn code(self) -> u8 {
@@ -144,6 +332,7 @@ impl Decision {
             Decision::BudgetExhausted => 6,
             Decision::ScreenFloor => 7,
             Decision::MaxRelDepth => 8,
+            Decision::Collapsed => 9,
         }
     }
 }

@@ -90,7 +90,8 @@ pub fn write<W: Write>(w: &mut W, c: &Cache, ens: &crate::ensemble::pixel::Ensem
     w.write_all(&VERSION.to_le_bytes())?;
 
     let header = format!(
-        "region={} body={} cx={:?} cy={:?} half={:?} levels={} n={} res={}\n\
+        "region={} chart={} body={} cx={:?} cy={:?} half={:?} levels={} n={} res={}\n\
+         chart_params={}\n\
          colouring={} ramp_lo={:?} ramp_hi={:?} tau={:?}\n\
          t_max={} n_sync={} eta={} n_copies={} jitter_frac={} r_coll_frac={} \
          jitter_scheme={:?} precision=f64\n\
@@ -102,7 +103,7 @@ exact. error(tree) = sum(err_sum over leaves) / res^2.\n\
 fully-refined tree at one sample per pixel, and at the screen floor sub-pixel structure is \
 sampled arbitrarily.\n\
          fields={}\n",
-        c.region, c.body, c.cx, c.cy, c.half, c.levels, c.n, c.res,
+        c.region, c.chart.name(), c.body, c.cx, c.cy, c.half, c.levels, c.n, c.res, c.chart.params(),
         c.colouring.name(), c.ramp.0, c.ramp.1, tau,
         ens.t_max, ens.n_sync, ens.eta, ens.n_extra + 1, ens.jitter_frac, ens.r_coll_frac,
         ens.jitter_scheme,

@@ -1,6 +1,7 @@
 //! Newtonian three-body physics in the plane. `G = 1` throughout.
 
 pub mod burrau;
+pub mod decoder;
 pub mod energy;
 pub mod ftle;
 pub mod newton;

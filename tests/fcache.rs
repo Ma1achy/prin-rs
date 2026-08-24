@@ -39,7 +39,7 @@ fn a_recolour_is_bitwise_identical_to_a_fresh_build() {
     let outcome = &caches[0];
     let fresh_bivariate = &caches[1];
 
-    let fp = outcome.footprints_from(&px_of, "body_plane", 2.0);
+    let fp = outcome.footprints_from(&px_of, 2.0);
     let replayed = outcome.recolour(&fp, Colouring::Bivariate(Scalar::Spread)).unwrap();
 
     // The control first: the two colourings must actually DIFFER, or "identical" below is
@@ -73,7 +73,7 @@ fn the_reductions_carry_over_untouched_by_a_recolour() {
     // drawn. If a recolour moved one, the criterion would be scoring a different tree.
     let (caches, px_of) = small();
     let c = &caches[0];
-    let fp = c.footprints_from(&px_of, "body_plane", 2.0);
+    let fp = c.footprints_from(&px_of, 2.0);
     let r = c.recolour(&fp, Colouring::Bivariate(Scalar::Ftle)).unwrap();
     for (k, q) in &c.quads {
         let a = &r.quads[k].red;
@@ -87,7 +87,7 @@ fn the_reductions_carry_over_untouched_by_a_recolour() {
 #[test]
 fn a_footprint_file_round_trips_through_disk() {
     let (caches, px_of) = small();
-    let fp = caches[0].footprints_from(&px_of, "body_plane", 2.0);
+    let fp = caches[0].footprints_from(&px_of, 2.0);
 
     let mut buf: Vec<u8> = Vec::new();
     fcache::write(&mut buf, &fp).unwrap();
@@ -170,7 +170,7 @@ fn a_mismatched_footprint_file_is_refused_rather_than_recoloured() {
     // curve for a tree that was never integrated. A self-describing header only prevents that
     // if something reads it.
     let (caches, px_of) = small();
-    let mut fp = caches[0].footprints_from(&px_of, "body_plane", 2.0);
+    let mut fp = caches[0].footprints_from(&px_of, 2.0);
 
     fp.region = "far".into();
     assert!(caches[0].recolour(&fp, Colouring::Outcome).is_err(), "a wrong region was accepted");

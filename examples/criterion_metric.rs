@@ -119,13 +119,13 @@ fn main() {
         let stem0 = region.replace(' ', "_");
         if let Ok(f) = std::fs::File::create(format!("results/criterion/{stem0}_t{t_max}.fcache")) {
             let mut w = std::io::BufWriter::new(f);
-            let fp = cache.footprints_from(&px_of, "body_plane", t_max);
+            let fp = cache.footprints_from(&px_of, t_max);
             let _ = prin_rs::output::fcache::write(&mut w, &fp);
         }
         // A cheap assertion that the replay path is live on real data, not only in the unit
         // test: recolouring to the control must reproduce the control bitwise.
         {
-            let fp = cache.footprints_from(&px_of, "body_plane", t_max);
+            let fp = cache.footprints_from(&px_of, t_max);
             match cache.recolour(&fp, metric::Colouring::Outcome) {
                 Ok(r) => println!(
                     "  replay check: recolour to `outcome` reproduces the control reference {}",

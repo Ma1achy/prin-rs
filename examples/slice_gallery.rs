@@ -73,7 +73,7 @@ fn shape_here(phase: f64) -> Chart {
     let r = centre().r;
     let n0 = shape::shape_vec(&r, &m);
     let (e1, e2) = shape::tangent_frame(n0);
-    Chart::Shape { n0, e1, e2, inertia: shape::inertia(&r, &m), phase }
+    Chart::Shape { n0, e1, e2, inertia: shape::inertia(&r, &m), phase, m }
 }
 
 fn main() {

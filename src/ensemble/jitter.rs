@@ -149,7 +149,34 @@ pub fn copies_with_path<T: Real>(
     // the whole `Ic` comes from one decode; under a linearised path the configuration comes from
     // the linearisation and the masses from a direct decode at the same point, which is exact
     // (see `decode::linearise`).
+    // On a `Domain::Unit` chart the copies must stay inside the square. `jitter_frac = 0.5`
+    // spans the whole cell edge to edge, so an edge cell's copies leave it -- and outside the
+    // square the feasibility warp's guarantee does not hold.
+    //
+    // **Reflect, never clamp.** Clamping collapses several copies onto the boundary, and a
+    // collapsed decode gives `ensemble_spread` exactly zero, which reads as *perfectly
+    // resolved* and stops the descent with a small tidy tree built from nothing. Reflection
+    // keeps the copies distinct and keeps them sampling an area of the same measure.
+    let unit = slice.chart.domain() == crate::grid::Domain::Unit;
+    let fold = move |x: f64| -> f64 {
+        if !unit {
+            return x;
+        }
+        let mut y = x;
+        for _ in 0..8 {
+            if y < 0.0 {
+                y = -y;
+            } else if y > 1.0 {
+                y = 2.0 - y;
+            } else {
+                return y;
+            }
+        }
+        y.clamp(0.0, 1.0)
+    };
+
     let make = |u: f64, v: f64| -> Ic<f64> {
+        let (u, v) = (fold(u), fold(v));
         match &lin {
             None => slice.decode_state(u, v),
             Some(l) => Ic {

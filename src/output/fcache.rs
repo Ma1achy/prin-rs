@@ -201,7 +201,8 @@ pub fn write<W: Write>(w: &mut W, f: &Footprints) -> io::Result<()> {
     w.write_all(&VERSION.to_le_bytes())?;
 
     let header = format!(
-        "region={} chart={} body={} cx={:?} cy={:?} half={:?} levels={} n={} res={} t_max={}\n\
+        "region={} body={} cx={:?} cy={:?} half={:?} levels={} n={} res={} t_max={}\n\
+         chart={}\n\
          quads={} footprints_per_quad={}\n\
          note=this is the COLOUR-RELEVANT PROJECTION of each footprint, not the footprint. Every \
 field not listed below comes back at its default, so a reconstituted PixelOut must never be \
@@ -211,7 +212,6 @@ colouring. This file is what makes error(B) under a new colouring a replay rathe
 re-integration.\n\
          fields={}\n",
         f.region,
-        f.chart,
         f.body,
         f.cx,
         f.cy,
@@ -220,6 +220,7 @@ re-integration.\n\
         f.n,
         f.res,
         f.t_max,
+        f.chart,
         f.quads.len(),
         f.n * f.n,
         FIELDS.join(","),
@@ -270,7 +271,18 @@ pub fn read<R: Read>(r: &mut R) -> io::Result<Footprints> {
     let header = String::from_utf8_lossy(&hb).into_owned();
 
     let field = |name: &str| -> Option<String> {
-        header.split_whitespace().find_map(|t| t.strip_prefix(&format!("{name}=")).map(str::to_string))
+        header
+            .split_whitespace()
+            .find_map(|t| t.strip_prefix(&format!("{name}=")).map(str::to_string))
+    };
+    // `chart` carries the chart's full parameters and contains spaces, so it gets its own line
+    // and is read line-wise. A space-containing value on a shared line silently truncates at the
+    // first space and the header stops being self-describing -- caught by the round-trip test,
+    // which is why the round trip compares the chart string rather than only the geometry.
+    let line_field = |name: &str| -> Option<String> {
+        header
+            .lines()
+            .find_map(|l| l.trim().strip_prefix(&format!("{name}=")).map(str::to_string))
     };
     let num = |name: &str| -> f64 {
         field(name).and_then(|s| s.parse().ok()).unwrap_or(f64::NAN)
@@ -309,7 +321,7 @@ pub fn read<R: Read>(r: &mut R) -> io::Result<Footprints> {
 
     Ok(Footprints {
         region: field("region").unwrap_or_default(),
-        chart: field("chart").unwrap_or_default(),
+        chart: line_field("chart").unwrap_or_default(),
         cx: num("cx"),
         cy: num("cy"),
         half: num("half"),

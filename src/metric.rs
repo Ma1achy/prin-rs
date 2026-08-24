@@ -106,6 +106,10 @@ pub struct Cache {
     pub cy: f64,
     pub half: f64,
     pub body: usize,
+    /// The chart this tree was integrated on. Held so a dump can record its **parameters**, not
+    /// only its name: a `Plane`'s basis and a `Latent`'s `(z0, q1, q2)` are free, so two dumps
+    /// with the same chart name can be different configurations.
+    pub chart: Chart,
     /// Deepest level present. `2^levels * n == res`, so the leaves are exactly one sample per
     /// pixel — asserted at construction, not assumed.
     pub levels: u32,
@@ -348,6 +352,7 @@ pub fn build_multi_with_footprints(
         cy,
         half,
         body,
+        chart,
         levels,
         n,
         res,
@@ -527,12 +532,11 @@ impl Cache {
     pub fn footprints_from(
         &self,
         px_of: &HashMap<Key, Vec<PixelOut>>,
-        chart: &str,
         t_max: f64,
     ) -> crate::output::fcache::Footprints {
         crate::output::fcache::Footprints {
             region: self.region.clone(),
-            chart: chart.to_string(),
+            chart: format!("{} {}", self.chart.name(), self.chart.params()),
             cx: self.cx,
             cy: self.cy,
             half: self.half,

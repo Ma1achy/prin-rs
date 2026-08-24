@@ -315,6 +315,74 @@ straight into that slot. On an oblique or shape chart it perturbs a body instead
 sub-cell sample of the chart. Bitwise identical for `BodyPlane`; `tests/seeding_golden.rs` holds
 that.
 
+**A ranking is invariant to a monotone rescaling of the signal; a threshold is not.**
+The between-footprint arm runs **1.17x** the within arm in `near-field` and **9.56x** in `far`,
+so swapping criterion at a fixed `tau` changes the effective threshold by up to 8x, region by
+region. Compare criteria as **orderings**, and a rescaling costs nothing; compare them against
+`tau` and the measurement scores the rescaling instead of the signal.
+
+**Two different faults give the same flat error curve: a BAD ordering and NO ordering.**
+Count the signal's distinct values before reading any curve. `within/median` is flat to `B=767`
+in near-field with **5418 distinct values of 5461** (modal 0.3%) — a fine-grained ordering that
+is actively bad, beaten by random at every budget past 383. `frac_hot_within` and `layout` are
+flat with **58 and 78** distinct (modal 40.8%) — no ordering at all, and their curve is the
+tie-break's scan order. Different faults, different fixes, and `error(B)` alone cannot tell them
+apart.
+
+**But signal resolution is not what makes a ranking good.** `frac_hot_between` is the **best**
+criterion in `deep interior` on **65** distinct values, beating a 4994-valued one. And
+`term_grad` is **NaN on 97.1%** of near-field yet reaches the oracle's zero by `B = 383`: the
+2.9% it scores are the right quads. A high `nan%` is a property to read, not a defect to hide.
+
+**Greedy is a strong reference, never a ceiling.**
+Greedy on immediate `Δerror` is optimal only when gains are independent and immediately
+available. On a tree they are neither — a quad whose own split gains little may unlock children
+with large gains two levels down, and greedy declines it. **A criterion beating `greedy_oracle`
+indicates lookahead value, not a bug**, and there must be no test asserting it dominates.
+
+**`error = 0` against a finite reference means "matches this sampling", not "correct".**
+The reference is the fully-refined tree at one sample per pixel. At the screen floor sub-pixel
+structure is sampled arbitrarily — which side of a filament a pixel lands on is an accident of
+where its sample fell. The exactly-locatable zero is a virtue for *comparing* criteria; it is
+not a statement about image quality, and every table quoting the curve says so.
+
+**The within/between distinction is one of SCALE and AGGREGATION, not of kind.**
+Matched for extent and sample count, the two arms agree to **1.01** in every region: they are
+the same estimator. The brief's premise — "the ICs there are identical up to perturbation" —
+does not describe this implementation: `jitter_frac` is 0.5 and `halton_offset` returns
+`[-1,1)^2` scaled by cell width, so the copies span the **whole cell, edge to edge**, and the
+Halton control's true `alpha` is exactly **1.0**, which an irreducible within-point statistic
+cannot be. But `rho` on quads containing a transition is only **0.58-0.64**, so at their actual
+settings they rank quads differently and the practical conclusion survives its mechanism.
+
+**A control with no randomness in it cannot measure sampling noise.**
+`sigma_E(0)` looks like the perfect control for `alpha_sibling_spread` — true `alpha` exactly
+1.0, true sibling range exactly 0, no integration. It reads **0.003 and does not move with `N`
+or `E+1` at all**, which is the tell: under the fixed Halton prefix the offsets and footprints
+are both fixed, so the whole quantity is deterministic and the residual is geometry. Keep it as
+a floor, label it, and vary a `Pcg` seed for a real draw. Measured that way, sampling noise p90
+is **0.21-0.36** against `sib_tau = 0.5`, and the sibling median is 0.45 (near-field) and
+0.79-1.05 (`deep interior`) — the threshold sits inside the noise-broadened bulk in both.
+
+**`t_end` termination is not escape, and conflating them contradicts a standing result while
+appearing to agree with it.** `t_end` is set by whichever terminating event came first.
+`deep interior` reads **terminated = 0.99 with the escape arm silent** — those are collisions.
+Carry `terminated_fraction` and `escape_fraction` separately.
+
+**The camera has no position term, so panning changes no scheduling decision.**
+`Camera::veto` reads `tile_size_px`, which depends on the quad's width and the camera's
+`half_world` and `viewport` — and **not** on `cx`/`cy`. A pan study that reported "the tree
+persists perfectly" would be reporting an identity. `Camera::covers` exists to *measure* what
+would be evictable and is deliberately **not** consulted by `veto`: adding a position term to the
+floor would make a quad's decision depend on where the camera points, which is what
+"never cached as a quad fact" exists to keep out.
+
+**The temporal accumulators' event arm already existed.** `spread_event_max` is a running max
+over boundaries, `t_spread_event` a first-divergence time that is NaN rather than `t_max`, and
+`spread_event_latched` the persistence-guarded latch. Only the **continuous** arm was missing,
+and it is not a null at `t = 13`: `running_max` reaches 0.00158 in `deep interior` where
+`within/median` sits at 0.01509.
+
 ---
 
 ## SMOKE TEST

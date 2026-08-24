@@ -1036,7 +1036,194 @@ are the last row of `slice_variety.txt` and they cost nothing to keep.
 
 
 
-## 9. Reproducing any of this
+## 10. Improving the refinement criterion
+
+Read §10.2 before anything else in this section. It is the only measurement here that says
+whether a criterion is *good*, and every other result is judged against it.
+
+### 10.1 The criterion does read a different quantity — but not for the reason proposed
+
+`ensemble_spread` is a statistic over the `E+1` copies of one footprint; `reduce` aggregates
+those `N²` numbers. The brief reads that as a category error, on the grounds that refinement
+buys more footprints so only *between*-footprint variation is reducible.
+
+**The premise does not describe this implementation.** `jitter_frac` is 0.5 and `halton_offset`
+returns `[-1, 1)²` scaled by cell width, so the copies span the **whole cell, edge to edge** —
+a quasi-random sample of exactly the area the footprint stands for. And the Halton control's
+true `alpha` is exactly **1.0**, which an irreducible within-point statistic cannot be, since
+splitting would not shrink it.
+
+Measured, with sample counts matched so scale and count are separated:
+
+```
+        region  quads  coll  dead   rho all   rho mix   rho bnd     d90    dmax  med hot  n mix  n bnd
+    near-field    549     0     0    0.7240    0.5818       NaN  0.3175  0.9872    1.000    192      2
+           far     21     0     0    1.0000       NaN       NaN  0.0000  0.0000    0.000      0      0
+ deep interior     29     0     0    0.6828    0.6361   -0.4000  0.4643  0.5714    0.438     27      4
+
+        region   med within  med between        scale        count
+                 (cell,E+1)   (quad,N^2)    matched/w     pooled/b
+    near-field    1.0079e-3    2.0881e-3       1.1716       1.0127
+           far    4.2680e-8    4.4921e-7       9.5550       1.0033
+ deep interior    9.4462e-5    2.7824e-4       2.0617       1.0118
+```
+
+**`count` is 1.01 everywhere.** At equal extent and equal sample count the two arms are the
+*same estimator* — not different quantities. **`scale` runs 1.17 to 9.56.** Widening the window
+from a cell to a quad buys a factor of ~7 in a smooth region (the quad is `N-1` cells wide) and
+almost nothing in a saturated one.
+
+**But `rho mix` is 0.58–0.64** on the quads that contain a transition, so at their actual
+settings the arms rank quads materially differently. §1's conclusion stands; its mechanism does
+not, and the fix moves with it — the fault is the **aggregation**, which is what §10.4's
+candidates address.
+
+Read `rho mix`, never `rho all`: an all-quads correlation is dominated by tame quads where both
+arms read near zero and agree trivially. `rho bnd` has a population of 2, 0 and 4 and is not
+data — `med hot = 1.000` says why: in a chaotic region most quads are *uniformly* hot, so there
+is no internal hot/cold edge and they are correctly not boundaries.
+
+### 10.2 A metric to judge criteria by
+
+```
+reference = the fully-refined tree at the screen floor, one sample per pixel
+IMAGE(B)  = the tree a ranking builds under budget B, rendered at true per-quad texel sizes
+error(B)  = mean per-pixel OKLab distance between them
+```
+
+One integration pass per region (5461 quads, 2,796,032 trajectories, ~4 min) builds the complete
+tree; every criterion, both controls and the whole curve are then replays over the cache with no
+re-integration. Two facts make that exact: quads are disjoint, so each quad's error contribution
+is a **constant** and the greedy replay is a static priority queue; and the reference colouring
+is the nominal copy's outcome, which is **`E`-independent** because copy 0 is never jittered.
+
+**`error = 0` means "matches this sampling", not "correct".** The reference is one finite
+sampling; at the screen floor sub-pixel structure is sampled arbitrarily, and which side of a
+filament a pixel lands on is an accident of where its sample fell. The exactly-locatable zero is
+what makes the curve comparable between criteria; it is not image quality.
+
+**`greedy_oracle` is a strong reference, not a ceiling.** Greedy is optimal only when gains are
+independent and immediately available, and on a tree they are neither — a quad whose own split
+gains little may unlock children two levels down, and greedy declines it. **A criterion beating
+it indicates lookahead value, not an error**, and no test asserts it dominates.
+
+**Criteria enter as orderings, never against `tau`.** §10.1's `scale` factor means a threshold
+comparison would have scored the 1.17-vs-9.56 rescaling instead of the signal.
+
+### 10.3 The shipped criterion is the worst one tested
+
+`deep interior`, `t = 13`, N=8, E+1=8, budget in quads computed:
+
+```
+                   B =         5        11        23        47        95       191       383       767      1535      3071
+         greedy_oracle   0.02715   0.02368   0.02038   0.01788   0.01626   0.01386   0.00874   0.00240   0.00004   0.00004
+frac_hot_between/median   0.02715   0.02632   0.02155   0.01843   0.01696   0.01446   0.01199   0.00366   0.00002   0.00000
+    running_max/median   0.02715   0.02368   0.02302   0.02274   0.02221   0.01786   0.01226   0.00425   0.00158   0.00080
+        between/median   0.02715   0.02368   0.02282   0.02120   0.02037   0.01882   0.01478   0.00560   0.00003   0.00000
+    max_of_both/median   0.02715   0.02368   0.02282   0.02120   0.02037   0.01885   0.01509   0.00560   0.00003   0.00000
+contrast:between/median   0.02715   0.02715   0.02282   0.01973   0.01907   0.01812   0.01510   0.00975   0.00312   0.00000
+           within/mean   0.02715   0.02632   0.02607   0.02532   0.02388   0.02118   0.01593   0.00509   0.00001   0.00000
+            within/p90   0.02715   0.02632   0.02613   0.02536   0.02422   0.02143   0.01592   0.00489   0.00029   0.00006
+         layout/median   0.02715   0.02368   0.02308   0.02281   0.02233   0.01966   0.01681   0.01505   0.00308   0.00000
+      first_div/median   0.02715   0.02632   0.02610   0.02536   0.02384   0.02125   0.01593   0.00631   0.00467   0.00304
+frac_hot_within/median   0.02715   0.02368   0.02308   0.02281   0.02233   0.01971   0.01681   0.01502   0.01076   0.00000
+      term_grad/median   0.02715   0.02632   0.02603   0.02548   0.02401   0.02128   0.01596   0.00824   0.00521   0.00200
+         within/median   0.02715   0.02368   0.02293   0.02242   0.01984   0.01861   0.01723   0.01509   0.01386   0.00032
+             random lo   0.02715   0.02368   0.02114   0.02026   0.01881   0.01814   0.01580   0.01288   0.00932   0.00392
+             random hi   0.02715   0.02715   0.02632   0.02632   0.02613   0.02452   0.02327   0.02132   0.02012   0.01579
+```
+
+**`within/median` — the shipped default — is beaten by random at every budget past 383**, in
+both regions. In `near-field` it is flat at 0.00394 to `B = 767` while `within/mean`,
+`between/median` and `max_of_both` all reach the oracle's zero at `B = 191`.
+
+**`far` cannot be measured**: `error(root) = 0.00000`. The outcome image is featureless at 512²,
+so every criterion reads zero and none of it is data. Reported as undefined rather than as
+agreement — and it reframes every earlier leaf-count comparison on `far`, where there was never
+an image to get right.
+
+### 10.4 A flat curve has two causes, and `error(B)` cannot tell them apart
+
+I expected `within/median`'s flatness to be a degenerate ranking. It is not.
+
+```
+                signal distinct   modal%    nan%    spread      (near-field, of 5461 quads)
+         within/median     5418     0.3%    0.0%  4.285e-1
+           within/mean     5461     0.0%    0.0%  3.638e-1
+        between/median     5130     1.3%    0.0%  5.079e-1
+frac_hot_within/median       58    40.8%    0.0%   1.000e0
+frac_hot_between/median      31    83.1%    0.0%  9.844e-1
+         layout/median       78    40.8%    0.0%   1.000e0
+      term_grad/median      159    97.1%   97.1%  1.113e-1
+    running_max/median     5427     0.1%    0.0%  4.294e-1
+```
+
+`within/median` has **5418 distinct values of 5461**: a fine-grained ordering that is actively
+bad. `frac_hot_within` and `layout` have 58 and 78: **no ordering at all**, and their flat curve
+is the tie-break's scan order. Two different faults with different fixes, which is why the
+distinct-value count is printed *above* the curves.
+
+Two rows resist a tidy story. **`frac_hot_between` is the best criterion in `deep interior` on
+65 distinct values**, beating a 4994-valued one — resolution is not what makes a ranking good.
+And **`term_grad` is NaN on 97.1% of near-field** yet reaches the oracle's zero by `B = 383`,
+because the 2.9% it scores are exactly the structured quads. A high `nan%` is a property to
+read, not a defect to hide.
+
+### 10.5 `alpha_sibling_spread`: usable as a signal, not at its shipped threshold
+
+The obvious control could not fail. `sigma_E(0)` has true `alpha` exactly 1.0 and true sibling
+range exactly 0 — and reads **0.003, flat in both `N` and `E+1`**. The flatness is the tell:
+under the fixed Halton prefix the offsets *and* the footprints are fixed, so the whole quantity
+is deterministic and there is no sampling noise in it. Kept as a geometric floor and labelled;
+part 2 varies a `Pcg` seed for a real draw.
+
+```
+        region  seed parents     a p50    a idec   sib p50   sib p90  seed move
+    near-field     0      21    0.2698    0.6605    0.4501    0.9466        NaN
+    near-field     1      21    0.2602    0.8794    0.4193    0.9691     0.2641
+    near-field     2      21    0.2991    0.7555    0.4826    0.9151     0.2091
+ deep interior     0      21    0.1305    3.8809    0.7869   13.8295        NaN
+ deep interior     1      21    0.0731    1.6555    0.9612   13.8885     0.2868
+ deep interior     2      21    0.1462    2.7090    1.0514   13.8957     0.3636
+```
+
+Sampling noise alone (`seed move`, p90 of `|alpha(seed k) - alpha(seed 0)|`) is **0.21–0.36**
+against `sib_tau = 0.5`. The sibling **median** is 0.45 in near-field and 0.79–1.05 in
+`deep interior`: the shipped threshold sits inside the noise-broadened bulk in both, so a
+typical quad's `Sibling` decision is close to a coin flip. It carries signal — `sib p90` reaches
+13.9 in `deep interior`, far above the noise — but not at 0.5.
+
+### 10.6 The FTLE port
+
+`reference/tb_ftle.py` ported: Benettin shadow at `d0`, renormalised every 200 steps, `S`
+accumulating `log(d/d0)`, `ftle = S/T`, plus the O(1) diffusion regression on `log(inertia)`.
+
+Cross-checked against the live reference:
+
+```
+column               max abs       max rel  argmax row
+ftle               8.882e-16     3.872e-16           0
+diffusion          0.000e+00     0.000e+00          -1
+dmin               0.000e+00     0.000e+00          -1
+nre                0.000e+00     0.000e+00          -1
+S                  1.776e-15     3.872e-16           0
+rx0                0.000e+00     0.000e+00          -1
+ry0                0.000e+00     0.000e+00          -1
+PASS
+```
+
+Two limitations stated because they bound what follows. It sits on `tb.py`'s **unregularised**
+fixed-step leapfrog, because that is the pair `tb_ftle.py` has a reference for — so an FTLE near
+a close approach is not trustworthy, and `d_min` from the AZ march is the column that says
+where. And the perturbation direction is pinned analytically on both sides: numpy's Ziggurat is
+not ported, reproducing it is not required since the direction only seeds the shadow, and
+**nothing about an RNG enters the validated path**.
+
+`n_renorm` is asserted nonzero, not assumed. Renormalisation is what stops the estimator
+saturating; without it `log(d/d0)/T` decays and reports `lambda ≈ 0` for the *most* chaotic
+trajectories — the inversion this project has now met four times.
+
+## 11. Reproducing any of this
 
 Every table above comes from a committed example. Raw output for all of them is in
 [`results/output/`](results/output/), the acceptance-gate and cross-check output is in
@@ -1082,3 +1269,13 @@ Every table above comes from a committed example. Raw output for all of them is 
 | the acceptance gates | `cargo test --release -- --nocapture` |
 | the NumPy cross-check | `cargo test --release --test xcheck -- --ignored --nocapture` |
 | the horizon table | `python3 tools/xcheck/horizon.py [--lc-unstable]` |
+| §10.1 between vs within | `cargo run --release --example between_vs_within -- 2000 1e-4 0.2 512` |
+| §10.2-10.4 the metric | `cargo run --release --example criterion_metric -- 6 8 1e-4 13` |
+| §10.3 at a longer horizon | `cargo run --release --example criterion_metric -- 6 8 1e-4 20` |
+| §10.5 sibling noise | `cargo run --release --example sibling_noise -- 5 3` |
+| §10.6 the FTLE cross-check | `cargo test --release --test xcheck -- --ignored ftle --nocapture` |
+| §10.7 the bivariate colouring | `cargo run --release --example bivariate_colour -- 5 8 13 1e-4` |
+| §10.8 panning | `cargo run --release --example pan_sequence -- 9 2000 512 near-field` |
+| §10.9 the two costings | `cargo run --release --example cost_and_anisotropy -- 5 8` |
+| the criterion gates | `cargo test --release --test criterion -- --nocapture` |
+

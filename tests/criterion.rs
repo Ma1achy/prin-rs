@@ -226,7 +226,7 @@ fn the_escape_gradient_refuses_to_answer_when_nothing_escaped() {
     // returned over an empty set would be a null that could not have failed.
     let px: Vec<PixelOut> = (0..16).map(|_| fp([1.0, 0.0, 0.0], 1, 4)).collect();
     let r = reduce(&px, 4, 1e-3, 13.0);
-    assert_eq!(r.escaped_fraction, 0.0);
+    assert_eq!(r.terminated_fraction, 0.0);
     assert!(r.t_end_gradient.is_nan(), "must decline, got {}", r.t_end_gradient);
 
     // With escapes present it answers, and the value is the mean adjacent difference.
@@ -239,7 +239,7 @@ fn the_escape_gradient_refuses_to_answer_when_nothing_escaped() {
         })
         .collect();
     let r = reduce(&px, 4, 1e-3, 13.0);
-    assert_eq!(r.escaped_fraction, 1.0);
+    assert_eq!(r.terminated_fraction, 1.0);
     // 12 x-pairs differ by 1, 12 y-pairs differ by 0.
     assert!((r.t_end_gradient - 0.5).abs() < 1e-12, "got {}", r.t_end_gradient);
 }
@@ -367,7 +367,7 @@ fn the_metric_is_exact_at_the_full_tree_and_the_greedy_replay_is_monotone() {
     let res = (1usize << levels) * n;
     let ens = EnsembleCfg { n_extra: 1, t_max: 2.0, n_sync: 4, refine_flagged: false, ..Default::default() };
     let cache = metric::build(
-        "deep interior", 0.0, 0.0, 0.05, 0, Chart::BodyPlane, levels, n, res, 1e-4, &ens,
+        "deep interior", 0.0, 0.0, 0.05, 0, Chart::BodyPlane, levels, n, res, 1e-4, &ens, metric::Colouring::Outcome,
     );
 
     // Exactly zero at the deepest level: the reference IS that tree, so this is a consistency
@@ -415,7 +415,7 @@ fn a_criterion_enters_the_replay_as_an_ordering_and_not_against_tau() {
     let res = (1usize << levels) * n;
     let ens = EnsembleCfg { n_extra: 1, t_max: 2.0, n_sync: 4, refine_flagged: false, ..Default::default() };
     let cache = metric::build(
-        "near-field", 1.0, 3.0, 0.05, 0, Chart::BodyPlane, levels, n, res, 1e-4, &ens,
+        "near-field", 1.0, 3.0, 0.05, 0, Chart::BodyPlane, levels, n, res, 1e-4, &ens, metric::Colouring::Outcome,
     );
     let full = ((1usize << (2 * (levels + 1))) - 1) / 3;
 
@@ -581,4 +581,88 @@ fn a_deterministic_perturbation_is_a_unit_direction_and_varies_with_the_seed() {
         assert!((n2 - 1.0).abs() < 1e-12);
     }
     assert!((a[0].x - b[0].x).abs() > 1e-9, "seeds must give different directions");
+}
+
+// ---------------------------------------------------------------------------------------
+// §5 — the temporal accumulators
+// ---------------------------------------------------------------------------------------
+
+#[test]
+fn the_event_arm_already_had_all_three_accumulators() {
+    // A correction to the brief, held as a test so it cannot quietly become untrue.
+    // `spread_event_max` is a running max over boundaries, `t_spread_event` is a
+    // first-divergence time, and `spread_event_latched` is the persistence-guarded latch. What
+    // §5 is actually asking for is the CONTINUOUS arm.
+    use prin_rs::ensemble::pixel::{evaluate, EnsembleCfg};
+    use prin_rs::grid::Slice;
+
+    let s = Slice::body_plane(2, 2, 1.0, 3.0, 0.05, 0);
+    let ens = EnsembleCfg { refine_flagged: false, ..Default::default() };
+    let p = evaluate::<f64>(&s, 0, &ens);
+
+    assert!(p.spread_event_max >= p.spread_event, "the running max must dominate the playhead");
+    assert!(
+        p.t_spread_event.is_nan() || p.t_spread_event <= ens.t_max,
+        "a first-divergence time is a time or NaN, never a sentinel"
+    );
+    // And the shape arm is absent unless asked for — NaN, never 0, which would read as
+    // "no divergence" on a quantity that was not measured.
+    assert!(p.running_max_divergence.is_nan());
+    assert!(p.divergence_trend.is_nan());
+    assert!(p.first_divergence_t.is_nan());
+}
+
+#[test]
+fn the_shape_accumulators_survive_ragged_per_copy_records() {
+    use prin_rs::ensemble::pixel::{evaluate, EnsembleCfg};
+    use prin_rs::grid::Slice;
+
+    // `stop_on_event` makes copies terminate at different boundaries, so their per-boundary
+    // records have different lengths. A reader that truncates to the shortest would discard
+    // exactly the boundaries where the surviving copies are diverging.
+    let s = Slice::body_plane(2, 2, 0.0, 0.0, 0.05, 0); // deep interior: copies really do stop
+    let ens = EnsembleCfg {
+        keep_boundary_shapes: true,
+        stop_on_event: true,
+        refine_flagged: false,
+        ..Default::default()
+    };
+    let p = evaluate::<f64>(&s, 0, &ens);
+
+    assert!(p.running_max_divergence.is_finite(), "must be measured: {}", p.running_max_divergence);
+    assert!(
+        p.running_max_divergence >= p.spread_shape - 1e-12,
+        "a running max cannot fall below the playhead value: {} vs {}",
+        p.running_max_divergence,
+        p.spread_shape
+    );
+    assert!(p.divergence_trend.is_finite());
+    // NaN when it never crosses, never `t_max` — a sentinel equal to the horizon is
+    // indistinguishable from crossing at the last boundary.
+    assert!(
+        p.first_divergence_t.is_nan() || (p.first_divergence_t > 0.0 && p.first_divergence_t <= ens.t_max),
+        "got {}",
+        p.first_divergence_t
+    );
+}
+
+#[test]
+fn boundary_shapes_are_only_recorded_when_asked_for() {
+    use prin_rs::integrate::az::{self, AzOpts};
+    use prin_rs::physics::burrau;
+
+    let m = burrau::masses::<f64>();
+    let s0 = burrau::state::<f64>();
+    let off = az::integrate_az_opts(s0, &m, 2.0, 8, 0.01, 30_000, &AzOpts::default());
+    assert!(off.boundary_shapes.is_empty(), "off by default: it is ~70x a PixelOut");
+
+    let on = az::integrate_az_opts(
+        s0, &m, 2.0, 8, 0.01, 30_000,
+        &AzOpts { keep_boundary_shapes: true, ..Default::default() },
+    );
+    assert_eq!(on.boundary_shapes.len(), on.tight.len(), "one per completed boundary");
+    for n in &on.boundary_shapes {
+        let norm = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
+        assert!((norm - 1.0).abs() < 1e-10, "each must be a unit shape vector, got {norm}");
+    }
 }

@@ -56,6 +56,31 @@ use crate::quad::{Agg, Criterion, QuadReduction};
 use crate::rng::SplitMix64;
 use crate::scheduler::reduce;
 
+/// How footprints become pixels.
+///
+/// **This is a criterion parameter, not a presentation one.** `error(B)` measures image change,
+/// so changing what is displayed changes which quads matter. §6's coupling question is exactly
+/// whether the curve moves when lightness switches from spread to diffusion: if it does, the
+/// criterion needs a term for the lightness field and has none.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Colouring {
+    /// The nominal copy's outcome class. **`E`-independent**, because copy 0 is never
+    /// jittered — which is what removes the brief's reference-resolution caveat for the base
+    /// metric. The caveat returns for any colouring that reads the ensemble.
+    Outcome,
+    /// Hue from the shape sphere, lightness from a scalar. The production scheme.
+    Bivariate(crate::output::bivariate::Lightness),
+}
+
+impl Colouring {
+    pub fn name(self) -> String {
+        match self {
+            Colouring::Outcome => "outcome".into(),
+            Colouring::Bivariate(l) => format!("bivariate/{}", l.name()),
+        }
+    }
+}
+
 /// A quad's address in the complete tree: level and integer position within it.
 pub type Key = (u32, u32, u32);
 
@@ -73,6 +98,7 @@ pub struct CachedQuad {
     pub err_sum: f64,
 }
 
+#[derive(Clone)]
 pub struct Cache {
     pub region: String,
     pub cx: f64,
@@ -88,6 +114,9 @@ pub struct Cache {
     /// The reference image, RGB8.
     pub reference: Vec<u8>,
     pub trajectories: u64,
+    pub colouring: Colouring,
+    /// The `[p1, p99]` the lightness ramp was normalised against, region-wide.
+    pub ramp: (f64, f64),
 }
 
 impl Cache {
@@ -114,6 +143,42 @@ impl Cache {
         }
         let kids: f64 = Self::children(k).iter().map(|c| self.get(*c).err_sum).sum();
         self.get(k).err_sum - kids
+    }
+
+    /// Same-level edge neighbour, or `None` outside the root box.
+    pub fn neighbour(&self, k: Key, dir: crate::quad::Dir) -> Option<Key> {
+        let (l, ix, iy) = k;
+        let w = 1u32 << l;
+        let (nx, ny) = match dir {
+            crate::quad::Dir::NegX => (ix.checked_sub(1)?, iy),
+            crate::quad::Dir::PosX => (ix + 1, iy),
+            crate::quad::Dir::NegY => (ix, iy.checked_sub(1)?),
+            crate::quad::Dir::PosY => (ix, iy + 1),
+        };
+        (nx < w && ny < w).then_some((l, nx, ny))
+    }
+
+    /// §3.3's contrast, at matched level. `NaN` on a quad with no in-box neighbour.
+    pub fn contrast(&self, k: Key, criterion: Criterion, agg: Agg) -> f64 {
+        let me = self.get(k).red.signal(criterion, agg);
+        if !me.is_finite() {
+            return f64::NAN;
+        }
+        let (mut best, mut seen) = (0.0f64, 0u8);
+        for d in crate::quad::Dir::ALL {
+            if let Some(nk) = self.neighbour(k, d) {
+                let v = self.get(nk).red.signal(criterion, agg);
+                if v.is_finite() {
+                    best = best.max((me - v).abs());
+                    seen += 1;
+                }
+            }
+        }
+        if seen == 0 {
+            f64::NAN
+        } else {
+            best
+        }
     }
 
     /// Mean per-pixel error of a tree given by its leaf set.
@@ -184,7 +249,35 @@ pub fn build(
     res: usize,
     tau: f64,
     ens: &EnsembleCfg,
+    colouring: Colouring,
 ) -> Cache {
+    build_multi(region, cx, cy, half, body, chart, levels, n, res, tau, ens, &[colouring])
+        .pop()
+        .unwrap()
+}
+
+/// As [`build`], for several colourings over **one** integration pass.
+///
+/// The footprints are integrated once and coloured several ways. That matters for §6: the
+/// lightness field costs a second, fixed-step, unregularised march per footprint, and paying it
+/// three times to answer whether the *colouring* changes `error(B)` would be paying for the
+/// thing being held fixed.
+#[allow(clippy::too_many_arguments)]
+pub fn build_multi(
+    region: &str,
+    cx: f64,
+    cy: f64,
+    half: f64,
+    body: usize,
+    chart: Chart,
+    levels: u32,
+    n: usize,
+    res: usize,
+    tau: f64,
+    ens: &EnsembleCfg,
+    colourings: &[Colouring],
+) -> Vec<Cache> {
+    assert!(!colourings.is_empty());
     assert_eq!(
         (1usize << levels) * n,
         res,
@@ -203,6 +296,8 @@ pub fn build(
         quads: HashMap::new(),
         reference: vec![0u8; res * res * 3],
         trajectories: 0,
+        colouring: colourings[0],
+        ramp: (0.0, 1.0),
     };
 
     // ---- integrate every quad at every level ----
@@ -216,7 +311,7 @@ pub fn build(
         }
     }
 
-    let computed: Vec<(Key, QuadReduction, Vec<[u8; 3]>)> = all
+    let computed: Vec<(Key, QuadReduction, Vec<PixelOut>)> = all
         .par_iter()
         .map(|&k| {
             let (qx, qy, qh) = box_of(&c, k);
@@ -227,16 +322,43 @@ pub fn build(
             let ics: Vec<crate::physics::Cart<f64>> =
                 (0..slice.npix()).map(|i| slice.nominal::<f64>(i)).collect();
             red.n_distinct_ic = crate::decode::distinct(&ics) as u32;
-            let rgb: Vec<[u8; 3]> = px.iter().map(outcome_rgb).collect();
-            (k, red, rgb)
+            (k, red, px)
         })
         .collect();
 
     c.trajectories = computed.len() as u64 * (n * n) as u64 * (ens.n_extra + 1) as u64;
-    for (k, red, rgb) in computed {
-        c.quads.insert(k, CachedQuad { key: k, red, rgb, err_sum: 0.0 });
+
+    let base_trajectories = computed.len() as u64 * (n * n) as u64 * (ens.n_extra + 1) as u64;
+
+    // **The ramp is normalised over the whole region, once.** Per-quad normalisation would make
+    // a quad's colour depend on which quads happen to be leaves, so refining one quad would
+    // change the colour of another and `err_sum` would stop being a constant of the quad --
+    // which is the property the greedy replay rests on.
+    let mut out: Vec<Cache> = Vec::with_capacity(colourings.len());
+    for &colouring in colourings {
+        let mut c = Cache { colouring, trajectories: base_trajectories, ..c.clone() };
+        let ramp = match colouring {
+            Colouring::Outcome => (0.0, 1.0),
+            Colouring::Bivariate(l) => {
+                let all_px: Vec<PixelOut> =
+                    computed.iter().flat_map(|(_, _, px)| px.iter().cloned()).collect();
+                crate::output::bivariate::range(&all_px, l)
+            }
+        };
+        c.ramp = ramp;
+        for (k, red, px) in &computed {
+            let rgb: Vec<[u8; 3]> = match colouring {
+                Colouring::Outcome => px.iter().map(outcome_rgb).collect(),
+                Colouring::Bivariate(l) => {
+                    px.iter().map(|p| crate::output::bivariate::rgb(p, l, ramp.0, ramp.1)).collect()
+                }
+            };
+            c.quads.insert(*k, CachedQuad { key: *k, red: *red, rgb, err_sum: 0.0 });
+        }
+        out.push(c);
     }
 
+    for c in out.iter_mut() {
     // ---- the reference image, from the deepest level ----
     let w = 1u32 << levels;
     for iy in 0..w {
@@ -280,8 +402,9 @@ pub fn build(
     for (k, s) in sums {
         c.quads.get_mut(&k).unwrap().err_sum = s;
     }
+    }
 
-    c
+    out
 }
 
 /// How a replay chooses which leaf to refine next.
@@ -302,6 +425,17 @@ pub enum Rank {
     GreedyOracle,
     /// Greedy on `Δerror / cost`, where cost is the quad's measured substeps. §8.
     GreedyOraclePerCost,
+    /// §3.3 — `max` over the four edge-neighbours of `|signal_self - signal_neighbour|`.
+    ///
+    /// Interesting regions are where the signal **changes**, not where it is high: a uniformly
+    /// chaotic quad and a uniformly smooth one are both featureless, and the boundary between
+    /// them is the structure. It also **sidesteps `tau` entirely**, which matters because the
+    /// vertical slice promoted `tau` to the dominant knob under the screen floor (64x on `far`).
+    ///
+    /// Over the cache this is better defined than over a live tree: every quad exists at every
+    /// level, so the neighbour is read **at the same level** always, rather than falling back
+    /// up-tree when it happens not to have been refined yet.
+    Contrast(Criterion, Agg),
 }
 
 impl Rank {
@@ -311,6 +445,7 @@ impl Rank {
             Rank::Random(s) => format!("random[{s}]"),
             Rank::GreedyOracle => "greedy_oracle".into(),
             Rank::GreedyOraclePerCost => "greedy_oracle/cost".into(),
+            Rank::Contrast(c, a) => format!("contrast:{}/{}", c.name(), a.name()),
         }
     }
 }
@@ -365,6 +500,7 @@ pub fn replay_with_leaves(cache: &Cache, rank: Rank, budget: usize) -> (Vec<Poin
                             let c = cache.get(k).red.total_substeps.max(1) as f64;
                             cache.gain(k) / c
                         }
+                        Rank::Contrast(cr, ag) => cache.contrast(k, cr, ag),
                         Rank::Random(_) => unreachable!(),
                     }
                 };

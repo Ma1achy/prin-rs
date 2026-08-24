@@ -205,7 +205,7 @@ pub fn reduce(px: &[PixelOut], n: usize, tau: f64, t_max: f64) -> QuadReduction 
     let mean = sp.iter().sum::<f64>() / nfin;
     let Between { shape: b_shape, event: b_event, matched: b_matched, pooled, lay_within, lay_between } =
         between(px, n, tau);
-    let (escaped_frac, grad) = escape_gradient(px, n, t_max);
+    let (term_frac, esc_frac, grad) = termination_gradient(px, n, t_max);
     QuadReduction {
         spread_mean: mean,
         spread_median: quantile(&mut sp.clone(), 0.5),
@@ -236,12 +236,35 @@ pub fn reduce(px: &[PixelOut], n: usize, tau: f64, t_max: f64) -> QuadReduction 
         frac_above_tau_within: lay_within.frac_hot(n),
         frac_above_tau_between: lay_between.frac_hot(n),
 
-        escaped_fraction: escaped_frac,
+        terminated_fraction: term_frac,
+        escape_fraction: esc_frac,
         t_end_gradient: grad,
         total_substeps: px.iter().map(|p| p.total_substeps as u64).sum(),
         // Overwritten by `compute_quad`, which has the slice. Defaulting to the footprint count
         // keeps a hand-built reduction from reading as collapsed.
         n_distinct_ic: px.len() as u32,
+
+        running_max_divergence_median: quantile(
+            &mut px.iter().map(|p| p.running_max_divergence).filter(finite).collect(),
+            0.5,
+        ),
+        divergence_trend_median: quantile(
+            &mut px.iter().map(|p| p.divergence_trend).filter(finite).collect(),
+            0.5,
+        ),
+        // A footprint that never crossed is a measurement outcome, not missing data: it counts
+        // in the denominator. Only footprints whose accumulators were never computed at all
+        // are excluded, and then the fraction is NaN rather than 0.
+        frac_diverged: if px.iter().all(|p| p.running_max_divergence.is_nan()) {
+            f64::NAN
+        } else {
+            px.iter().filter(|p| p.first_divergence_t.is_finite()).count() as f64
+                / px.len().max(1) as f64
+        },
+        first_divergence_median: quantile(
+            &mut px.iter().map(|p| p.first_divergence_t).filter(finite).collect(),
+            0.5,
+        ),
     }
 }
 
@@ -332,21 +355,31 @@ fn between(px: &[PixelOut], n: usize, tau: f64) -> Between {
     }
 }
 
-/// Mean absolute spatial gradient of nominal `t_end`, over the **escaped** footprints only.
+/// Mean absolute spatial gradient of nominal `t_end`, over the **terminated** footprints only.
 ///
-/// Returns `(escaped_fraction, gradient)`, and the gradient is `NaN` when fewer than two
-/// adjacent escaped footprints exist. **Not 0** — at `t_max = 13` nothing escapes in
-/// near-field (zero of 1024; 109 at `t_max = 20`), so a zero here would be a null that could
+/// Returns `(terminated_fraction, escape_fraction, gradient)`; the gradient is `NaN` when fewer
+/// than two adjacent terminated footprints exist. **Not 0** — a zero would be a null that could
 /// not have failed, reported as though it were a measurement about the field.
-fn escape_gradient(px: &[PixelOut], n: usize, t_max: f64) -> (f64, f64) {
-    // Escaped: terminated before the horizon and not censored. `t_end` pinned at the horizon
-    // is the censoring case and carries no gradient information.
+///
+/// Terminated means collision **or** escape, because `t_end` is set by whichever came first.
+/// The two are counted separately because they are not interchangeable: `deep interior` reads
+/// `terminated = 0.99` with the escape arm silent, and calling that an escape fraction would
+/// contradict a standing result while appearing to agree with it.
+fn termination_gradient(px: &[PixelOut], n: usize, t_max: f64) -> (f64, f64, f64) {
+    use crate::outcome::State;
+    // `t_end` pinned at the horizon is the censoring case and carries no gradient information.
     let esc: Vec<bool> = px
         .iter()
         .map(|p| !p.censored && p.t_end.is_finite() && p.t_end < t_max * (1.0 - 1e-12))
         .collect();
-    let n_esc = esc.iter().filter(|&&e| e).count();
-    let frac = n_esc as f64 / px.len().max(1) as f64;
+    let n_term = esc.iter().filter(|&&e| e).count();
+    let frac = n_term as f64 / px.len().max(1) as f64;
+    let esc_only = px
+        .iter()
+        .zip(&esc)
+        .filter(|(p, &e)| e && State::from_bits(p.state) == Some(State::Escape))
+        .count() as f64
+        / px.len().max(1) as f64;
 
     let idx = |jx: usize, jy: usize| jy * n + jx;
     let mut acc = 0.0;
@@ -367,7 +400,7 @@ fn escape_gradient(px: &[PixelOut], n: usize, t_max: f64) -> (f64, f64) {
             }
         }
     }
-    (frac, if pairs == 0 { f64::NAN } else { acc / pairs as f64 })
+    (frac, esc_only, if pairs == 0 { f64::NAN } else { acc / pairs as f64 })
 }
 
 /// Run the descent. Returns the tree and what it did.

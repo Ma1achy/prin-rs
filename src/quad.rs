@@ -104,13 +104,25 @@ pub struct QuadReduction {
     pub frac_above_tau_within: f64,
     pub frac_above_tau_between: f64,
 
-    /// Footprints whose nominal has **escaped** — `t_end` before the horizon and not censored.
-    /// Reported beside [`Self::t_end_gradient`], which is meaningless without it.
-    pub escaped_fraction: f64,
-    /// Mean absolute spatial gradient of nominal `t_end` across the quad, over the escaped
-    /// subset only. **`NaN` when nothing escaped**, never 0 — see §3.5: at `t_max = 13` zero
-    /// of 1024 near-field pixels escape and 109 do at `t_max = 20`, so a gradient returned
-    /// over an empty set would be the saturated-label case in new clothing.
+    /// Footprints whose nominal **terminated** before the horizon — collision *or* escape.
+    ///
+    /// **Not "escaped", which is what an earlier draft of this called it and got wrong.** §3.5
+    /// asks for a `t_end` gradient, and `t_end` is set by whichever terminating event came
+    /// first. In `deep interior` this reads **0.99** while the escape arm is silent: those are
+    /// collisions. Quoting it as an escape fraction would have contradicted a standing result
+    /// ("zero of 1024 near-field pixels escape at `t_max = 13`") while agreeing with it, which
+    /// is worse than either.
+    ///
+    /// [`Self::escape_fraction`] is carried separately so the two cannot be confused again.
+    pub terminated_fraction: f64,
+    /// Footprints whose nominal terminated **by escape** specifically.
+    pub escape_fraction: f64,
+    /// Mean absolute spatial gradient of nominal `t_end`, over the **terminated** subset only.
+    ///
+    /// **`NaN` when nothing terminated**, never 0. Censoring is the failure mode: `t_end` pinned
+    /// at the horizon carries no gradient information, so a gradient computed over censored
+    /// footprints would be a gradient of the horizon constant — exactly zero, everywhere, and
+    /// indistinguishable from a smooth field.
     pub t_end_gradient: f64,
     /// Total integrator substeps over the quad — the cost side of §8's cost-aware priority.
     pub total_substeps: u64,
@@ -121,6 +133,20 @@ pub struct QuadReduction {
     /// it enforces is that a difference can be small because both sides are right or because
     /// both are dead — count distinct ICs first, read divergence second.
     pub n_distinct_ic: u32,
+
+    /// §5, shape arm, aggregated over footprints. `NaN` unless
+    /// `EnsembleCfg::keep_boundary_shapes` is set — never 0.
+    pub running_max_divergence_median: f64,
+    pub divergence_trend_median: f64,
+    /// Fraction of footprints whose copies ever crossed the divergence trigger.
+    ///
+    /// The *time* is the quantity that cannot saturate; a fraction can, at 1.0. Both are
+    /// carried: the fraction is what a ranking can read without a NaN convention, and
+    /// [`Self::first_divergence_median`] is the one to read when asking whether the signal is
+    /// still informative in a saturated region.
+    pub frac_diverged: f64,
+    /// Median first-divergence time over the footprints that crossed. `NaN` if none did.
+    pub first_divergence_median: f64,
 }
 
 impl QuadReduction {
@@ -146,6 +172,14 @@ impl QuadReduction {
             Criterion::MaxOfBoth => self.spread(agg).max(self.between_spread),
             Criterion::FracHotWithin => self.frac_above_tau_within,
             Criterion::FracHotBetween => self.frac_above_tau_between,
+            Criterion::RunningMax => self.running_max_divergence_median,
+            Criterion::FirstDivergence => self.frac_diverged,
+            Criterion::TerminationGradient => {
+                // NaN where nothing escaped. Deliberately NOT mapped to 0 here: a caller
+                // ranking on this must decide what an undetermined quad means, and silently
+                // calling it "no structure" is the failure this signal is most prone to.
+                self.t_end_gradient
+            }
             Criterion::Layout => {
                 // Thin and connected reads as a boundary and must outrank scatter of the same
                 // count; scattered hot footprints are chaos, which no refinement resolves.
@@ -200,6 +234,24 @@ pub enum Criterion {
     FracHotBetween,
     /// Hot-set layout (§3.2): connectedness weighted by count.
     Layout,
+    /// Running max of the shape spread over boundaries (§5) — catches divergence that has
+    /// already happened and then subsided. The shape spread was measured falling **6x**
+    /// between `t = 6` and `t = 8`, so an instantaneous read genuinely misses it.
+    RunningMax,
+    /// Fraction of footprints whose copies ever crossed the divergence trigger (§5).
+    ///
+    /// **The sign of its usefulness is not obvious and is left to the measurement.** A quad
+    /// that diverges early is uncertain, but chaotic uncertainty is exactly what refinement
+    /// cannot reduce. Ranking it high and ranking it low are both defensible before the fact,
+    /// so the §2 curve decides rather than an argument.
+    FirstDivergence,
+    /// Spatial gradient of nominal `t_end` (§3.5) — a boundary detector needing no ensemble.
+    ///
+    /// Admissible only where `terminated_fraction` is nonzero, and that column is reported
+    /// beside it. In `near-field` at `t = 13` it is `NaN` on **97.1%** of quads, which is a
+    /// property to read, not a defect to hide: NaN never wins a comparison, so the ranking is
+    /// decided entirely by the 2.9% it does score.
+    TerminationGradient,
 }
 
 impl Criterion {
@@ -211,6 +263,9 @@ impl Criterion {
             Criterion::FracHotWithin => "frac_hot_within",
             Criterion::FracHotBetween => "frac_hot_between",
             Criterion::Layout => "layout",
+            Criterion::RunningMax => "running_max",
+            Criterion::FirstDivergence => "first_div",
+            Criterion::TerminationGradient => "term_grad",
         }
     }
     pub fn parse(s: &str) -> Option<Criterion> {
@@ -221,17 +276,23 @@ impl Criterion {
             "frac_hot_within" => Criterion::FracHotWithin,
             "frac_hot_between" => Criterion::FracHotBetween,
             "layout" => Criterion::Layout,
+            "running_max" => Criterion::RunningMax,
+            "first_div" => Criterion::FirstDivergence,
+            "term_grad" => Criterion::TerminationGradient,
             _ => return None,
         })
     }
     /// Every variant, for sweeps that must not silently omit one.
-    pub const ALL: [Criterion; 6] = [
+    pub const ALL: [Criterion; 9] = [
         Criterion::Within,
         Criterion::Between,
         Criterion::MaxOfBoth,
         Criterion::FracHotWithin,
         Criterion::FracHotBetween,
         Criterion::Layout,
+        Criterion::RunningMax,
+        Criterion::FirstDivergence,
+        Criterion::TerminationGradient,
     ];
 }
 

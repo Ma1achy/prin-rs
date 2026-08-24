@@ -343,3 +343,36 @@ Confounds to dump, not hide:
   The fix is BRIEF §2.5's flag-and-re-integrate, run over that region at finer `eta`, not a
   scheduler change. Not attempted here.
 - **Interaction, eviction, async, promotion, GUI.** Still out of scope. If one appears, it is a bug.
+
+---
+
+## After the criterion build
+
+**Settled here.**
+
+- Which aggregation a scheduler should use — superseded. The question was mean/median/p90 within
+  the *within* arm; the §2 metric says `within/median` is beaten by **random** at every budget
+  past 383 in both regions, so the choice is not between its aggregations. `frac_hot_between`
+  and `between/median` are the candidates.
+- `alpha_sibling_spread`'s own noise — characterised (§10.5). Sampling noise p90 0.21-0.36
+  against `sib_tau = 0.5`; the sibling median is 0.45 and 0.79-1.05. Usable as a signal, not at
+  that threshold.
+
+**Open.**
+
+- **Change the default criterion.** The measurement supports it and this build did not do it:
+  `Criterion::Within` is still the default, because a default change is a decision to take with
+  the numbers in front of you rather than a tidy-up folded into the PR that produced them.
+- **`deep interior`'s floor is partly integration error.** Still not attempted. The fix is
+  BRIEF §2.5's flag-and-re-integrate over that region at finer `eta`, not a scheduler change.
+- **Why `within/median` is worse than random.** It has 5418 distinct values of 5461, so it is a
+  real ordering that is anti-correlated with image change. *Why* is unexplained, and it is the
+  most interesting open question here — an actively wrong signal is more informative than a
+  noisy one.
+- **`far` has no measurable image at 512².** Every leaf-count comparison ever made on it was
+  about a featureless region. Either find a colouring with structure there, or stop using it as
+  anything but a control that the machinery does not invent signal.
+- **Anisotropic splitting**, if §10.9's costing supports it. Costed only; nothing implemented.
+- **Caching.** `pan_sequence` measures what would be evictable and asserts a recomputed quad
+  comes back bitwise. Neither a cache nor an eviction policy exists, and adding one is a scope
+  change.

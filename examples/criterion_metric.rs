@@ -43,13 +43,29 @@ fn main() {
     let levels: u32 = arg(1, 6);
     let n: usize = arg(2, 8);
     let tau: f64 = arg(3, 1e-4);
+    let t_max: f64 = arg(4, 13.0);
     let res = (1usize << levels) * n;
 
-    let ens = EnsembleCfg { refine_flagged: false, ..Default::default() };
+    // **`n_sync` scales with `t_max`.** `dtau = eta*dt_left/(A0*B0)`, so holding `n_sync` fixed
+    // while `t_max` moves changes the step size, and the two runs are different discretisations
+    // rather than one trajectory at two playheads.
+    let base = EnsembleCfg::default();
+    let n_sync = ((base.n_sync as f64) * t_max / base.t_max).round().max(2.0) as usize;
+    // The temporal accumulators need each copy's per-boundary shape vector. Enabled here
+    // because §5's question -- do they add anything at t = 13? -- is a §2 question, and the
+    // only honest way to answer it is to put them through the same curve as everything else.
+    let ens = EnsembleCfg {
+        refine_flagged: false,
+        t_max,
+        n_sync,
+        keep_boundary_shapes: true,
+        ..Default::default()
+    };
     let full = ((1usize << (2 * (levels + 1))) - 1) / 3;
 
     println!(
-        "complete tree to level {levels}, N={n}, E+1={}, res {res}^2, tau={tau:e}, t=13, f64\n\
+        "complete tree to level {levels}, N={n}, E+1={}, res {res}^2, tau={tau:e}, \
+         t={t_max} n_sync={n_sync}, f64\n\
          {full} quads per region, {} trajectories\n",
         ens.n_extra + 1,
         full * n * n * (ens.n_extra + 1)
@@ -70,7 +86,7 @@ fn main() {
     {
         let t0 = std::time::Instant::now();
         let cache = metric::build(
-            region, cx, cy, 0.05, body, Chart::BodyPlane, levels, n, res, tau, &ens,
+            region, cx, cy, 0.05, body, Chart::BodyPlane, levels, n, res, tau, &ens, metric::Colouring::Outcome,
         );
         let build_s = t0.elapsed().as_secs_f64();
 
@@ -98,7 +114,27 @@ fn main() {
         // is whatever the tie-break happens to be -- a fixed scan order wearing a criterion's
         // name. That is a different failure from ranking badly and the curves cannot tell them
         // apart, so it is measured directly.
-        println!("{:>22} {:>8} {:>8} {:>9}", "signal", "distinct", "modal%", "spread");
+        // Termination and escape fractions, printed before the term_grad row is readable at
+        // all. **These are different quantities and the difference matters**: `t_end` is set by
+        // whichever terminating event came first, so in `deep interior` `term` reads ~0.99
+        // while `escape` is ~0 -- those are collisions. Quoting the first as an escape fraction
+        // would contradict the standing result that zero of 1024 near-field pixels escape at
+        // t = 13, while appearing to agree with it.
+        let tm: Vec<f64> = cache.quads.values().map(|q| q.red.terminated_fraction).collect();
+        let ec: Vec<f64> = cache.quads.values().map(|q| q.red.escape_fraction).collect();
+        println!(
+            "  terminated: mean {:.4}, {} of {} quads with any  |  escaped: mean {:.4}, {} quads",
+            tm.iter().sum::<f64>() / tm.len() as f64,
+            tm.iter().filter(|&&x| x > 0.0).count(),
+            tm.len(),
+            ec.iter().sum::<f64>() / ec.len() as f64,
+            ec.iter().filter(|&&x| x > 0.0).count(),
+        );
+
+        println!(
+            "{:>22} {:>8} {:>8} {:>7} {:>9}",
+            "signal", "distinct", "modal%", "nan%", "spread"
+        );
         for (c, a) in [
             (Criterion::Within, Agg::Median),
             (Criterion::Within, Agg::Mean),
@@ -108,8 +144,12 @@ fn main() {
             (Criterion::FracHotWithin, Agg::Median),
             (Criterion::FracHotBetween, Agg::Median),
             (Criterion::Layout, Agg::Median),
+            (Criterion::TerminationGradient, Agg::Median),
+            (Criterion::RunningMax, Agg::Median),
+            (Criterion::FirstDivergence, Agg::Median),
         ] {
             let vals: Vec<f64> = cache.quads.values().map(|q| q.red.signal(c, a)).collect();
+            let nanf = vals.iter().filter(|x| !x.is_finite()).count() as f64 / vals.len() as f64;
             let mut bits: Vec<u64> = vals.iter().map(|v| v.to_bits()).collect();
             bits.sort_unstable();
             let distinct = { let mut b = bits.clone(); b.dedup(); b.len() };
@@ -124,9 +164,10 @@ fn main() {
             let lo = vals.iter().cloned().fold(f64::INFINITY, f64::min);
             let hi = vals.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
             println!(
-                "{:>22} {distinct:>8} {:>7.1}% {:>9.3e}",
+                "{:>22} {distinct:>8} {:>7.1}% {:>6.1}% {:>9.3e}",
                 format!("{}/{}", c.name(), a.name()),
                 100.0 * modal,
+                100.0 * nanf,
                 hi - lo
             );
         }
@@ -143,6 +184,12 @@ fn main() {
             Rank::Signal(Criterion::FracHotWithin, Agg::Median),
             Rank::Signal(Criterion::FracHotBetween, Agg::Median),
             Rank::Signal(Criterion::Layout, Agg::Median),
+            Rank::Signal(Criterion::TerminationGradient, Agg::Median),
+            Rank::Signal(Criterion::RunningMax, Agg::Median),
+            Rank::Signal(Criterion::FirstDivergence, Agg::Median),
+            Rank::Contrast(Criterion::Within, Agg::Median),
+            Rank::Contrast(Criterion::Between, Agg::Median),
+            Rank::GreedyOraclePerCost,
             Rank::Random(1),
             Rank::Random(2),
             Rank::Random(3),
@@ -226,6 +273,10 @@ fn main() {
          `greedy_oracle` is a reference, not a bound: greedy declines a low-gain split that\n\
          unlocks large gains two levels down, so a criterion beating it at some budget indicates\n\
          LOOKAHEAD VALUE and is not a bug. There is no assertion anywhere that it dominates.\n\
+         \n\
+         `nan%` is how much of the region a signal declines to score. A signal that is NaN\n\
+         nearly everywhere is not ranking; NaN never wins a comparison, so its curve is the\n\
+         tie-break's scan order. Read `escaped:` above for why escape_grad is that at t=13.\n\
          \n\
          Read `distinct`/`modal%` before the curves. A criterion whose signal takes ONE value\n\
          across the region is not ranking at all -- its curve is the tie-break's scan order, and\n\

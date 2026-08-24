@@ -1696,3 +1696,146 @@ single answer; it is a per-region property and has to be reported as one.
 **So: a scheduler's depth cap is two numbers, and a tree quoted with only one of them is
 underspecified.** `MAX_REL_DEPTH` is a policy default; the screen floor is arithmetic. State both
 wherever a tree is quoted, the same way §11 requires the aggregation to be stated.
+
+---
+
+## 13. Improving the criterion — what the brief got right, and where it got there differently
+
+### 13.1 §1's conclusion is right and its mechanism is not
+
+The brief reads `ensemble_spread` as a category error: a *within*-footprint statistic where only
+*between*-footprint variation is reducible. Two things in the repo say the premise does not
+describe this implementation.
+
+`jitter_frac` defaults to **0.5** and `halton_offset` returns `[-1, 1)^2` scaled by cell width
+per axis. So the copies span **±0.5 cell widths — the whole cell, edge to edge**. They are a
+quasi-random sample of exactly the area the footprint stands for, not a cloud around a point.
+The design-record quote §1.2 leans on — *"the ICs there are identical up to perturbation"* — is
+about a different construction.
+
+And the corroboration was already measured before this build: the Halton control's true `alpha`
+is **exactly 1.0**. `alpha = log2(spread_parent/spread_child)` can only be 1 because splitting
+halves the jitter ball along with the cell; an irreducible within-point statistic would have
+`alpha == 0` by construction.
+
+Measured directly, with counts matched:
+
+| region | rho all | rho mix | scale (matched count) | count (matched extent) | n mix |
+|---|---|---|---|---|---|
+| near-field | 0.7240 | 0.5818 | 1.172 | 1.013 | 192 |
+| far | 1.0000 | — | 9.555 | 1.003 | 0 |
+| deep interior | 0.6828 | 0.6361 | 2.062 | 1.012 | 27 |
+
+`count` is `within_pooled / between_shape` at **equal extent**: 1.01 everywhere. Matched for
+extent and sample count the two arms are the **same estimator**. `scale` is
+`between_matched / within` at **equal sample count**: 1.17 in the chaotic region and **9.56** in
+the tame one, which is what a smooth field gives when the window widens by `N-1 = 7`, and what a
+saturated field gives when widening buys nothing.
+
+But `rho mix` — quads whose hot set is a proper subset, i.e. containing a transition — is only
+**0.58–0.64**. At their actual settings the arms rank quads materially differently. So §1's
+practical conclusion survives; what changes is the mechanism, and with it the fix: the fault is
+the **aggregation**, and §3.1/§3.2 address it, not a new arm alone.
+
+Two guards were needed to get a readable number. An unstratified `rho` is dominated by tame
+quads where both arms read near zero and agree trivially — it would read high whatever happened
+at the boundaries. And the first stratification chosen (`looks_like_boundary`) had a population
+of **2, 0 and 4**: in a chaotic region most quads are *uniformly* hot, so there is no internal
+hot/cold edge and they are correctly not boundaries. `med hot` is 1.000 in near-field. The
+`mixed` stratum is the weaker, better-populated one.
+
+### 13.2 The metric, and the shipped criterion coming last
+
+`error(B)`: reference = the fully-refined tree at one sample per pixel, error = mean per-pixel
+OKLab distance, criteria entered as **orderings** with no threshold consulted.
+
+That last choice is not cosmetic. §13.1's `scale` factor means a threshold comparison would
+score the 1.17-vs-9.56 rescaling instead of the signal. A ranking is invariant to any monotone
+rescaling, so the confound simply does not arise.
+
+`deep interior`, the region that matters, oracle-to-random gap wide enough to discriminate:
+
+```
+               B=      191       767      1535
+  greedy_oracle     0.01386   0.00240   0.00004
+  frac_hot_between  0.01446   0.00366   0.00002
+  running_max       0.01786   0.00425   0.00158
+  between/median    0.01882   0.00560   0.00003
+  within/median     0.01861   0.01509   0.01386   <- shipped default
+  random lo         0.01814   0.01288   0.00932
+```
+
+`within/median` is beaten by **random** at every budget past 383, in both regions. In near-field
+it is flat at 0.00394 to `B=767` while `within/mean`, `between/median` and `max_of_both` all
+reach the oracle's zero at `B=191`.
+
+`far` **cannot be measured at all**: `error(root) = 0.00000`. The outcome image is featureless
+at 512², so every criterion reads zero and none of it is data. That is the metric's own guard
+firing, and it is reported as undefined rather than as agreement. It also reframes every earlier
+leaf-count comparison on `far`: there was never an image there to get right.
+
+### 13.3 A flat curve has two causes and they need different fixes
+
+I predicted `within/median`'s flatness was a degenerate ranking. **It is not.**
+
+| signal | distinct of 5461 | modal% | reading |
+|---|---|---|---|
+| within/median | 5418 | 0.3% | fine-grained, and actively bad |
+| within/mean | 5461 | 0.0% | fine-grained, and good |
+| frac_hot_within | 58 | 40.8% | degenerate — no ordering |
+| layout | 78 | 40.8% | degenerate — no ordering |
+| frac_hot_between | 65 | 33.9% | degenerate, **and the best criterion in `deep interior`** |
+
+A bad ordering and no ordering produce the same flat `error(B)`, and the curve cannot separate
+them. Counting distinct values can, which is why it is printed **above** the curves.
+
+The last row is the one that resists a tidy story: a 65-valued signal beats a 4994-valued one.
+Resolution is not what makes a ranking good. Nor is coverage — `term_grad` is **NaN on 97.1%**
+of near-field and still reaches the oracle's zero by `B = 383`, because the 2.9% it does score
+are exactly the structured quads.
+
+### 13.4 Four measurements that could not have failed, caught in one build
+
+- **The `sigma_E(0)` control for `alpha_sibling_spread`.** True `alpha` exactly 1.0, true sibling
+  range exactly 0, no integration — and it reads **0.003, flat in both `N` and `E+1`**. The
+  flatness is the tell: under the fixed Halton prefix the offsets *and* the footprint positions
+  are fixed, so the quantity is deterministic and there is no sampling noise in it to measure.
+  Kept as a geometric floor, labelled as one; part 2 varies a `Pcg` seed for a real draw.
+- **`between_shape == 0.0` as a collapse test.** A genuinely uniform region has zero spread over
+  perfectly distinct ICs. Tested on `decode::distinct` instead, which cannot confuse the two.
+- **An unstratified `rho` between the two arms** (§13.1).
+- **The `escaped` fraction.** `t_end` is set by whichever terminating event came first, so
+  `deep interior` reads **0.99 terminated with the escape arm silent** — collisions. Reporting
+  that as an escape fraction would have contradicted the standing "zero of 1024 near-field
+  pixels escape at `t = 13`" while appearing to agree with it. `terminated_fraction` and
+  `escape_fraction` are now separate columns.
+
+### 13.5 §5's accumulators: the event arm already existed, and the shape arm is not a null
+
+The brief says the temporal accumulators are specced and missing. Half of that is wrong:
+`spread_event_max` is a running max over boundaries, `t_spread_event` is a first-divergence time
+that is NaN rather than `t_max` when it never fires, and `spread_event_latched` is the
+persistence-guarded latch with `LATCH_RUN = 3`. What was absent is the **continuous** arm.
+
+Built, it is **not** the clean null the short horizon made plausible. `running_max` reaches
+0.00158 at `B=1535` in `deep interior` where `within/median` sits at 0.01509 — third best of
+everything tested there. `first_divergence` is degenerate (63 distinct, 82.3% modal) and
+middling.
+
+The driver had no extension point: `cart` is overwritten in place every boundary and
+`AzOut::state` is final-only. `boundary_shapes` is pushed beside `tight`, behind a flag, and
+reduced inside one footprint's evaluation so peak cost is one footprint's worth. It is **ragged**
+— copies terminate at different boundaries under `stop_on_event` — and the reducer carries each
+copy's last recorded shape forward rather than truncating to the shortest, which would discard
+exactly the boundaries where the survivors are diverging.
+
+### 13.6 §7's questions are mostly identities in the current design
+
+`Camera::veto` reads `tile_size_px`, which depends on the quad's width and the camera's
+`half_world` and `viewport` — **and not on `cx`/`cy` at all**. There is no view culling and no
+cache. So "does the tree persist across a pan" is an identity, and reporting it as a finding
+would be reporting one.
+
+What is left open, and is measured: what *would* be evictable (`Camera::covers`, a predicate the
+scheduler never consults), and whether a quad recomputed after leaving view comes back
+**bitwise** what it was — the property a future cache would need to be sound.

@@ -203,3 +203,42 @@ The same self-describing `PRNQ` format as `results/sched-*.tree`: a magic, a ver
 header naming every parameter including `chart`, then one record of 24 `f64` fields per quad.
 One dump per rendered tree and one per zoom frame, so every picture above can be checked against
 the numbers that produced it.
+
+---
+
+## `results/criterion/` — improving the criterion
+
+### Reference and criterion renders — `<region>_reference.png`, `<region>_B682_<rank>.png`
+
+`<region>_reference.png` is the **fully-refined tree at 512², one sample per pixel**. It is what
+`error(B)` is measured against, and it is a *specific finite sampling* rather than the true
+image: at the screen floor, which side of a filament a pixel lands on is an accident of where
+its sample fell. `error = 0` means "matches this sampling".
+
+The `_B682_` panels are each ranking's tree at one eighth of the full budget, drawn at **true
+per-quad texel sizes** so a coarse leaf is visibly coarse. Compare `within_median` — the shipped
+default — against `greedy_oracle` and `frac_hot_between`: the shipped one spends its budget in
+visibly the wrong places, which is the picture behind §10.3's table.
+
+`far_*.png` are included and are the control: they are featureless, which is exactly the point.
+`error(root) = 0.00000` there, so the metric is **undefined** on `far` and every criterion reads
+zero. It is not that they agree.
+
+### Colour-coupling renders — `colour_<region>_<colouring>_*.png`
+
+The production bivariate scheme — hue from the shape sphere, lightness from a selectable scalar —
+against the diagnostic outcome colouring. §6's coupling question is whether `error(B)` reorders
+the criteria when lightness switches from `spread` to `diffusion`; if it does, the criterion
+needs a term for the lightness field and has none.
+
+The hue map is `atan2(n2, n1)` with chroma tied to `sqrt(n1² + n2²)`, in OKLCh. The azimuthal
+discontinuity is invisible **by construction**: hue is undefined at the poles and chroma goes to
+zero there, so the two colours either side of the cut converge on the same grey.
+
+### Quad dumps — `between_<region>.prnq`
+
+`PRNQ` **version 2**: the same self-describing format, now 48 `f64` fields per quad. v2 appends
+the between-footprint arm, the two matched-count controls, the hot-set layout, the
+termination-gradient pair, the cost column, the IC-distinctness count and the temporal
+accumulators. A reader that indexes by name still works on v1; one that indexes by position does
+not, which is why the version moved.

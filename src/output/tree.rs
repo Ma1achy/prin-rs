@@ -35,11 +35,13 @@ pub const FIELDS: &[&str] = &[
     "n_hot_within", "n_components_within", "largest_component_within", "perimeter_ratio_within",
     "n_hot_between", "n_components_between", "largest_component_between", "perimeter_ratio_between",
     "frac_above_tau_within", "frac_above_tau_between",
-    "escaped_fraction", "t_end_gradient",
+    "terminated_fraction", "escape_fraction", "t_end_gradient",
     "total_substeps", "n_distinct_ic",
+    // --- v2: the temporal accumulators, shape arm ---
+    "running_max_divergence", "divergence_trend", "frac_diverged", "first_divergence_median",
 ];
 
-pub fn record(t: &QuadTree, i: usize) -> [f64; 43] {
+pub fn record(t: &QuadTree, i: usize) -> [f64; 48] {
     let q = &t.nodes[i];
     let nan = f64::NAN;
     [
@@ -82,10 +84,15 @@ pub fn record(t: &QuadTree, i: usize) -> [f64; 43] {
         q.red.layout_between.perimeter_ratio,
         q.red.frac_above_tau_within,
         q.red.frac_above_tau_between,
-        q.red.escaped_fraction,
+        q.red.terminated_fraction,
+        q.red.escape_fraction,
         q.red.t_end_gradient,
         q.red.total_substeps as f64,
         q.red.n_distinct_ic as f64,
+        q.red.running_max_divergence_median,
+        q.red.divergence_trend_median,
+        q.red.frac_diverged,
+        q.red.first_divergence_median,
     ]
 }
 

@@ -1,0 +1,31 @@
+budget 4000, tau=1e-4, alpha_hi=0.2, N=8, E+1=8, t=13, f64, 512^2, screen floor ON.
+ONE shared centre configuration; only the 2-plane through it changes. Bases orthonormal
+in the 6D position metric, so a unit of chart coordinate moves the system equally far
+in every case -- otherwise a different slice would be a different SCALE.
+
+                case       chart   quads  leaves  depth  screen  spread med  alpha med alpha idec
+          body_plane  body_plane     549     412      6     252   9.7468e-4     0.1402     1.1203
+  [control] plane_00deg vs body_plane: max |dIC| = 0.000e0 -> the two charts are the SAME chart; the comparison holds
+  [control] and 11 of 262144 pixels differ (0.004%) -- rasteriser rounding at
+            two coordinate magnitudes (O(1) vs O(0)), NOT a physics difference.
+         plane_00deg       plane     549     412      6     252   9.7468e-4     0.1402     1.1203
+         plane_15deg       plane     537     403      6     252   8.6376e-4     0.1548     1.4050
+         plane_30deg       plane     701     526      6     376   6.8240e-4     0.1909     1.5735
+         plane_45deg       plane     585     439      6     300   6.2723e-4     0.1880     1.5029
+   plane_45deg_mix05       plane     301     226      6     128   1.2803e-3     0.0952     0.6647
+   plane_45deg_mix10       plane     473     355      6     220   1.0131e-3     0.1392     0.8627
+      shape_phase_00       shape    1293     970      6     768   1.6999e-3     0.1905     0.9709
+      shape_phase_04       shape    1293     970      6     768   1.6999e-3     0.1905     0.9709
+      shape_phase_13       shape    1293     970      6     768   1.6999e-3     0.1905     0.9709
+
+Every case has a plain render and a `_wire` twin. The plain image says WHAT IS
+DISPLAYED -- texels at true per-quad sizes, so a coarse leaf is visibly coarse. The wire
+says WHERE THE TREE CUT, brightness graded by level. They answer different questions and
+neither substitutes for the other: PR #11 drew boundaries over a UNIFORM base, which
+conflated them and is how `deep interior`'s bad tree went unnoticed.
+
+Read the control line first. If plane_00deg is not bitwise body_plane, the bases are
+wrong and every other row is comparing different physics rather than different slices.
+
+Leaf counts are slice-conditional to 4.3x and must be compared WITHIN a slice, never
+across. `alpha med`/`alpha idec` are the stable quantities and are the ones to compare.

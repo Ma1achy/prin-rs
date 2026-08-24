@@ -1134,7 +1134,15 @@ frac_hot_within/median   0.02715   0.02368   0.02308   0.02281   0.02233   0.019
 ```
 
 **`within/median` — the shipped default — is beaten by random at every budget past 383**, in
-both regions. In `near-field` it is flat at 0.00394 to `B = 767` while `within/mean`,
+both regions.
+
+**And at `t = 20` a criterion beats the oracle, exactly as anticipated when it was named.** In
+near-field `greedy_oracle` plateaus at **0.00048** from `B = 383` through `B = 3071`, while
+`first_div` reaches **0.00000 at `B = 1535`**. Greedy declined a low-gain split that unlocked
+children two levels down — the classic failure of greedy on a sequential tree problem. This is
+why the control is called `greedy_oracle`, documented as a strong reference rather than a
+ceiling, and why **no test asserts that it dominates**: such a test would have fired here, on
+entirely correct behaviour. In `near-field` it is flat at 0.00394 to `B = 767` while `within/mean`,
 `between/median` and `max_of_both` all reach the oracle's zero at `B = 191`.
 
 **`far` cannot be measured**: `error(root) = 0.00000`. The outcome image is featureless at 512²,
@@ -1223,6 +1231,41 @@ not ported, reproducing it is not required since the direction only seeds the sh
 saturating; without it `log(d/d0)/T` decays and reports `lambda ≈ 0` for the *most* chaotic
 trajectories — the inversion this project has now met four times.
 
+### 10.6b The coupling question: the criterion is largely blind to the lightness field
+
+The production scheme is bivariate — hue from the shape sphere, lightness from a scalar.
+`spread_shape` maps to hue, so that half is aligned by construction. §6 asks whether the
+criterion is blind to the other half. Four colourings over **one** integration pass, so the only
+thing that changes is the map from footprint to pixel.
+
+near-field, `B = 341` of 1365, the gap between the **best criterion** and the **random** control:
+
+```
+colouring              random    best criterion            gap
+outcome               0.00214   0.00000  between          -> total
+bivariate/spread      0.01568   0.00238  between          -> 6.6x
+bivariate/diffusion   0.02238   0.01449  frac_hot_between -> 1.5x
+bivariate/ftle        0.03656   0.03044  frac_hot_between -> 1.2x
+```
+
+**The gap collapses as lightness moves away from what the criterion measures.** Under `outcome`
+and under `spread` — the field the criterion actually reads — the best criterion beats random
+outright. Under `diffusion` it is 1.5x better; under `ftle`, **1.2x**, which is barely better
+than spending the budget at random.
+
+The ordering changes too: `between/median` and `contrast:between` lead under `outcome` and
+`spread`, and `frac_hot_between` takes over under `diffusion` and `ftle`. A criterion chosen on
+the diagnostic colouring is not automatically the right one for the production colouring.
+
+**§6's concern is real and this is the number for it.** If lightness ships carrying FTLE or
+diffusion, the criterion needs a term for that field and has none — a quad can be uniform in
+shape and structured in diffusion, and nothing would refine it.
+
+One caveat bounding the `ftle` row specifically: that march is the **unregularised** fixed-step
+leapfrog, because `tb_ftle.py` is built on `tb.py` and that is the pair with a reference. Near a
+close approach it is not trustworthy, so the `ftle` row in `deep interior` carries that caveat
+and the `spread` row does not.
+
 ### 10.7 Panning: three of §7's four questions are identities
 
 `Camera::veto` reads `tile_size_px`, which depends on the quad's width and the camera's
@@ -1310,8 +1353,21 @@ leaf is coarse, and only the wire tells you whether the structure around it was 
 conflated the two, and that is how `deep interior`'s bad tree went unnoticed for a whole build.
 
 The most useful artefact is `budget_<region>_animated.png`: `greedy_oracle` on the left and
-`within/median` on the right, at the same budget, frame by frame. §10.3 says the shipped default
-is beaten by random past `B = 383`; the animation is what that looks like.
+`within/median` on the right, at the same budget, frame by frame.
+
+**And the wire pair answers the question §10.3 could not.** At `B = 682` in near-field:
+
+- `near-field_B682_within_median_wire.png` — the shipped default has spent almost its entire
+  budget shredding the **top-left corner** into a fine mesh, while the collision region in the
+  bottom-right sits untouched in **two enormous level-1 leaves**.
+- `near-field_B682_greedy_oracle_wire.png` — the oracle refines along the collision region's
+  boundary and the left edge, and leaves the uniform interior alone.
+
+So `within/median` is not noisy, and it is not failing to order. **It is systematically
+refining the wrong corner**, which is why it loses to random: random at least spreads its budget
+evenly and hits the boundary by accident. That is the mechanism behind §10.4's finding that the
+signal has 5418 distinct values and is still worse than a coin flip, and it is not visible in
+any table — only in the wire.
 
 ## 11. Reproducing any of this
 

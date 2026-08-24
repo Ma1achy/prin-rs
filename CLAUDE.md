@@ -334,11 +334,31 @@ criterion in `deep interior` on **65** distinct values, beating a 4994-valued on
 `term_grad` is **NaN on 97.1%** of near-field yet reaches the oracle's zero by `B = 383`: the
 2.9% it scores are the right quads. A high `nan%` is a property to read, not a defect to hide.
 
-**Greedy is a strong reference, never a ceiling.**
+**Draw the tree, not only the image — and never over a uniform base.**
+The adaptive render says *what is displayed*; the wireframe says *where the tree cut*. A coarse
+texel tells you a leaf is coarse; only the wire tells you whether the structure around it was
+subdivided *around* it or straight *through* it. PR #11 drew boundaries over a **uniform** base,
+conflating the two, and `deep interior`'s bad tree survived a whole build unnoticed. Measured:
+the wire pair at `B = 682` shows `within/median` shredding near-field's **top-left corner** into
+a fine mesh while the collision region sits in **two level-1 leaves** — so it is not noisy and
+not failing to order, it is systematically refining the wrong corner. No table showed that.
+
+**Greedy is a strong reference, never a ceiling — and this has now happened.**
 Greedy on immediate `Δerror` is optimal only when gains are independent and immediately
 available. On a tree they are neither — a quad whose own split gains little may unlock children
 with large gains two levels down, and greedy declines it. **A criterion beating `greedy_oracle`
 indicates lookahead value, not a bug**, and there must be no test asserting it dominates.
+Measured at `t = 20`, near-field: `greedy_oracle` **plateaus at 0.00048** from `B = 383` through
+`B = 3071` while `first_div` reaches **0.00000 at `B = 1535`**. A dominance test would have
+fired on correct behaviour.
+
+**What is displayed decides what the criterion should measure, and it is measurably blind to
+half of it.** The production colouring is bivariate: hue from the shape sphere (aligned with
+`spread_shape` by construction), lightness from a scalar. Measured on near-field at `B = 341`,
+the gap between the best criterion and random runs **total** under `outcome`, **6.6x** under
+lightness=spread, **1.5x** under diffusion and **1.2x** under FTLE. Under a lightness field the
+criterion does not read, it is barely better than spending the budget at random — and the best
+criterion changes identity too. Choose a criterion under the colouring that will ship.
 
 **`error = 0` against a finite reference means "matches this sampling", not "correct".**
 The reference is the fully-refined tree at one sample per pixel. At the screen floor sub-pixel

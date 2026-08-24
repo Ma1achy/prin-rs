@@ -1,0 +1,36 @@
+<svg width="1400" height="800" viewBox="0 0 1400 800" xmlns="http://www.w3.org/2000/svg">
+<rect x="0" y="0" width="1400" height="800" opacity="1" fill="#121216" stroke="none"/>
+<text x="14" y="4" dy="0.76em" text-anchor="start" font-family="sans-serif" font-size="16.129032258064516" opacity="1" fill="#D7D7E1">
+far — error(B) against the fully-refined tree
+</text>
+<text x="14" y="26" dy="0.76em" text-anchor="start" font-family="sans-serif" font-size="10.483870967741936" opacity="1" fill="#787884">
+t_max = 13, n_sync = 32, N = 8, E+1 = 8, eta = 0.01, levels = 4, 128x128, f64, criterion = display colouring
+</text>
+<text x="14" y="44" dy="0.76em" text-anchor="start" font-family="sans-serif" font-size="10.483870967741936" opacity="1" fill="#787884">
+error = 0 means MATCHES THIS SAMPLING, not correct: the reference is the fully-refined tree at one sample per pixel, and at the screen floor sub-pixel structure is sampled arbitrarily.
+</text>
+<text x="14" y="62" dy="0.76em" text-anchor="start" font-family="sans-serif" font-size="10.483870967741936" opacity="1" fill="#787884">
+greedy_oracle is a strong reference, NOT a ceiling. A criterion beating it indicates lookahead value, not a bug: on a tree, gains are neither independent nor immediately available.
+</text>
+<text x="14" y="80" dy="0.76em" text-anchor="start" font-family="sans-serif" font-size="10.483870967741936" opacity="1" fill="#787884">
+A label reading (k/n) means n-k points were non-finite and were DROPPED. A high NaN fraction is a property to read, not a defect: term_grad is NaN on 97.1% of near-field and still reaches zero by B = 383.
+</text>
+<text x="60" y="218" dy="0.76em" text-anchor="start" font-family="sans-serif" font-size="24.193548387096776" opacity="1" fill="#D7D7E1">
+every series is exactly 0 at every budget
+</text>
+<text x="60" y="268" dy="0.76em" text-anchor="start" font-family="sans-serif" font-size="12.096774193548388" opacity="0.75" fill="#D7D7E1">
+There is no measurable image here at this resolution: error(root) = 0.
+</text>
+<text x="60" y="290" dy="0.76em" text-anchor="start" font-family="sans-serif" font-size="12.096774193548388" opacity="0.75" fill="#D7D7E1">
+The reference tree and every budgeted tree render the same pixels, so the
+</text>
+<text x="60" y="312" dy="0.76em" text-anchor="start" font-family="sans-serif" font-size="12.096774193548388" opacity="0.75" fill="#D7D7E1">
+criteria are not distinguishable and no ordering read from this region means
+</text>
+<text x="60" y="334" dy="0.76em" text-anchor="start" font-family="sans-serif" font-size="12.096774193548388" opacity="0.75" fill="#D7D7E1">
+anything. This panel is drawn instead of a curve because a flat line at the
+</text>
+<text x="60" y="356" dy="0.76em" text-anchor="start" font-family="sans-serif" font-size="12.096774193548388" opacity="0.75" fill="#D7D7E1">
+floor looks like a result and is not one.
+</text>
+</svg>

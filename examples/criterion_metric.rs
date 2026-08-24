@@ -250,41 +250,61 @@ fn main() {
         // ---- the error(B) curves as a figure ----
         //
         // Log y, because the curves span four decades and the interesting part is the bottom
-        // one. An exact zero cannot sit on a log axis, so it is drawn at the floor and ticked
-        // rather than dropped -- on several of these curves reaching zero IS the result.
+        // one. Exact zeros are NOT snapped to the floor: they get their own band below the log
+        // panel, one row per series, because reaching zero IS the result on several of these
+        // curves and the previous figure drew 15 of 17 `far` series on top of each other.
         {
-            use prin_rs::output::plot::{Plot, Series};
-            let palette: [[u8; 3]; 8] = [
-                [255, 210, 90], [120, 200, 255], [255, 120, 120], [140, 235, 150],
-                [220, 140, 255], [255, 170, 80], [150, 150, 255], [120, 235, 220],
-            ];
+            use prin_rs::output::plot::{palette, Figure, Series};
+            let live: Vec<&(String, Vec<f64>)> = rows
+                .iter()
+                .filter(|(name, _)| !name.starts_with("random") || name == "random[1]")
+                .collect();
+            let pal = palette(live.len());
             let mut ser: Vec<Series> = Vec::new();
-            let mut ci = 0usize;
-            for (name, curve) in &rows {
-                if name.starts_with("random") && name != "random[1]" {
-                    continue;
-                }
+            for (i, (name, curve)) in live.iter().enumerate() {
                 let control = name.starts_with("random") || name.starts_with("greedy");
                 let rgb = if name.starts_with("greedy_oracle") && !name.contains("cost") {
-                    [255, 255, 255]
+                    (255, 255, 255)
                 } else if name.starts_with("random") {
-                    [130, 130, 140]
+                    (150, 150, 160)
                 } else {
-                    let c = palette[ci % palette.len()];
-                    ci += 1;
-                    c
+                    pal[i]
                 };
-                ser.push(Series {
-                    label: name,
-                    points: budgets.iter().zip(curve).map(|(&b, &e)| (b as f64, e)).collect(),
-                    rgb,
-                    dashed: control,
-                });
+                let pts = budgets.iter().zip(curve.iter()).map(|(&b, &e)| (b as f64, e)).collect();
+                let sr = Series::new(name.clone(), pts, rgb);
+                ser.push(if control { sr.dashed() } else { sr });
             }
-            let mut pl = Plot::new(1100, 620);
-            let title = format!("{region}  error(b)  t={t_max}  n={n}  e+1={}", ens.n_extra + 1);
-            pl.draw(&title, &ser, full as f64, 1e-5, 0.1);
-            let _ = pl.save(&format!("results/criterion/curve_{stem0}_t{t_max}.png"));
+            let fig = Figure {
+                title: format!("{region} — error(B) against the fully-refined tree"),
+                x_label: "budget B (quads computed)".into(),
+                y_label: "mean per-pixel OKLab distance".into(),
+                series: ser,
+                y_lo: 1e-6,
+                y_hi: 0.2,
+                notes: vec![
+                    format!(
+                        "t_max = {t_max}, n_sync = {n_sync}, N = {n}, E+1 = {}, eta = {}, \
+                         levels = {levels}, {res}x{res}, f64, criterion = display colouring",
+                        ens.n_extra + 1,
+                        ens.eta
+                    ),
+                    "error = 0 means MATCHES THIS SAMPLING, not correct: the reference is the \
+                     fully-refined tree at one sample per pixel, and at the screen floor \
+                     sub-pixel structure is sampled arbitrarily."
+                        .into(),
+                    "greedy_oracle is a strong reference, NOT a ceiling. A criterion beating it \
+                     indicates lookahead value, not a bug: on a tree, gains are neither \
+                     independent nor immediately available."
+                        .into(),
+                    "A label reading (k/n) means n-k points were non-finite and were DROPPED. \
+                     A high NaN fraction is a property to read, not a defect: term_grad is NaN \
+                     on 97.1% of near-field and still reaches zero by B = 383."
+                        .into(),
+                ],
+            };
+            if let Err(e) = fig.save(&format!("results/criterion/curve_{stem0}_t{t_max}")) {
+                eprintln!("figure failed: {e}");
+            }
         }
 
         // ---- images: the reference, and the best and worst criteria at one budget ----

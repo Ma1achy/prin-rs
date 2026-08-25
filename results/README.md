@@ -486,6 +486,33 @@ Four things to know before reading any of them, all in RESULTS §12:
   its symmetry point. The presets are at the origin for the opposite reason. Compare within a
   chart, never across.
 
+## `glsl/` — the four reference slices, refining
+
+**Four animations, one per GLSL preset**, from `examples/glsl_refinement.rs`. The reference's own
+default slices (`Ma1achy/principia-ii`, `src/state.ts:71-76`) at `z0 = 0` — the equilateral
+Lagrange configuration — over the reference UI's `Slice +/- 3.0e+0` window.
+
+| file | quads | leaves | frames |
+|---|---|---|---|
+| `shape.png` | 241 | 181 | 49 |
+| `prho.png` | 3593 | 2695 | 50 |
+| `plambda.png` | 3361 | 2521 | 49 |
+| `shape_pl.png` | 1801 | 1351 | 49 |
+
+**A frame is a batch of quads, not a level.** `animated/<case>_levels.png` steps one level per
+frame, so a depth-6 tree is a six-frame animation — too few to read as motion, and it was the
+reason a first attempt at these was unreadable. Here a frame is emitted every few quads **in the
+order the scheduler computed them**, so the picture sharpens continuously and the frame count is a
+parameter rather than an accident of the tree's depth. The final frame is held, so the loop reads
+as an ending rather than a snap back to coarse.
+
+One descent per chart at `k_frac = 1.0` — the whole eligible frontier each round, so the tree
+fills out. These are a picture of *refinement*, not of the demotion mechanism; that one is
+`refinement/<case>_kfrac.png`.
+
+512², and the wireframe twins are deliberately absent: they doubled the folder to 104 MB for a
+diagnostic that `refinement/` already carries.
+
 ## `refinement/` — the new mechanism, animated
 
 **104 APNGs, three views per chart, from `examples/refinement_animation.rs`.** These are the only

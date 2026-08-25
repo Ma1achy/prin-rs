@@ -2467,3 +2467,4 @@ Every table above comes from a committed example. Raw output for all of them is 
 | §16 structure modes by error(B) | `cargo run --release --example structure_metric -- 6 8 1e-4 13` |
 | §17 the slippy-map gates | `cargo test --release --test slippy -- --nocapture` |
 | the refinement animations | `cargo run --release --example refinement_animation -- 40000 1e-4 0.2 512` |
+| the four GLSL slices refining | `cargo run --release --example glsl_refinement -- 40000 1e-4 0.2 512 40` |

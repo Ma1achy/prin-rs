@@ -89,6 +89,10 @@ rows = [struct.unpack_from(f"<{nf}d", d, off + i*nf*8) for i in range(n)]
 | `output/chart_gallery.txt` | the 26-case gallery run: per-case row, event-class histogram, and the depth~`terminated_fraction` lines |
 | `output/gallery_table.txt` | **what actually stopped each descent**, re-derived from the `.prnq` dumps — and whether the mechanism test can be read at all |
 | `output/preset_control.txt` | the negative control on the preset fix: correct basis against crossed and against its transposition, and `half = 3.0` against `1.0` |
+| `output/threshold_diagnosis.txt` | **where `tau` sits in the distribution it is meant to cut**, re-derived from all 69 committed `.prnq` dumps: the percentile ladder, the mask saturation, the two-sided failure, and which gate stopped each criterion-bound tree |
+| `output/sched_sweep.txt` | `tau` x `alpha_hi`, no camera. Ladder `1e-8 … 1e-1`: **both** low rungs are labelled degenerate controls, for *different* regions — `1e-8` is the only rung below `far`'s bulk |
+| `output/sweep_screen.txt` | the same sweep under the screen floor, with the `tau` span taken over the whole ladder rather than between two named rungs |
+| `output/hot_rule_sweep.txt` | the hot rule swept per region — mask saturation and component counts under `abs` against `q[0.50/0.75/0.90]`, with a constant leaf count asserted as the control |
 
 ## The scheduler
 
@@ -145,6 +149,21 @@ together — the pair is the evidence, either alone is not.
 `tests/xcheck.txt` needs Python and NumPy; regenerate it with
 `cargo test --release --test xcheck -- --ignored --nocapture`, and the horizon tables with
 `python3 tools/xcheck/horizon.py [--lc-unstable]`.
+
+## A note on the tree dumps and their version
+
+`.prnq` is **PRNQ v3** from this PR: the v2 record's 48 columns plus ten appended — the two
+**relative** hot-set layouts (`*_rel_within`, `*_rel_between`) and `grad_rms_within` /
+`grad_rms_between`. The header gained a `hot_rule=` token. New columns go at the end, so a
+positional reader that stops at 48 still reads every v2 field correctly; both readers in this
+project parse the `fields=` line by name.
+
+**Do not read `frac_hot` off the relative layouts.** Under any quantile rule `n_hot` is fixed by
+the rule and not by the field — 31 of 64 at `N = 8, q = 0.5`. The signal there is
+`n_components`, `largest_component` and `perimeter_ratio`. The absolute mask is still computed and
+still carries `frac_above_tau_*`, which is what the best-measured criterion reads.
+
+`.qcache` is **PRQC v2**, with the matching `sig_layout_rel`, `sig_grad_rms` and their contrasts.
 
 ## A note on refinement
 

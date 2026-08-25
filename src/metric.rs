@@ -55,6 +55,7 @@ use crate::output::png::outcome_rgb;
 use crate::quad::{Agg, Criterion, QuadReduction};
 use crate::rng::SplitMix64;
 use crate::scheduler::reduce;
+use crate::spatial::HotRule;
 
 /// How footprints become pixels.
 ///
@@ -393,7 +394,7 @@ pub fn build_multi_with_footprints(
             let slice = Slice::body_plane(n, n, qx, qy, qh, body).with_chart(chart);
             let px: Vec<PixelOut> =
                 (0..slice.npix()).map(|i| evaluate::<f64>(&slice, i, ens)).collect();
-            let mut red = reduce(&px, n, tau, ens.t_max);
+            let mut red = reduce(&px, n, tau, HotRule::default(), ens.t_max);
             let ics: Vec<crate::physics::Cart<f64>> =
                 (0..slice.npix()).map(|i| slice.nominal::<f64>(i)).collect();
             red.n_distinct_ic = crate::decode::distinct(&ics) as u32;

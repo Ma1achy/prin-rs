@@ -1,0 +1,29 @@
+=== far ===  budget 600, N=8, E+1=8, t=13, tau=1e-4, criterion=within
+    hot rule  leaves      sat%    1comp%  med comp  perim p10  perim p90  d(layout)  d(l_rel)
+abs[1.000e-4]      16       0.0     100.0       0.0        NaN        NaN          1         1
+     q[0.50]      16       0.0     100.0       1.0      0.419      0.419          1         1
+     q[0.75]      16       0.0     100.0       1.0      0.625      0.625          1         1
+     q[0.90]      16       0.0     100.0       1.0      1.000      1.000          1         1
+
+=== near-field ===  budget 600, N=8, E+1=8, t=13, tau=1e-4, criterion=within
+    hot rule  leaves      sat%    1comp%  med comp  perim p10  perim p90  d(layout)  d(l_rel)
+abs[1.000e-4]     448      48.0      82.1       1.0      0.000      0.822         58        78
+     q[0.50]     448       0.0       1.8       5.0      1.065      1.742         58        26
+     q[0.75]     448       0.0       0.7       6.0      1.625      2.562         58        17
+     q[0.90]     448       0.0       2.7       4.0      2.167      3.333         58         9
+
+=== deep interior ===  budget 600, N=8, E+1=8, t=13, tau=1e-4, criterion=within
+    hot rule  leaves      sat%    1comp%  med comp  perim p10  perim p90  d(layout)  d(l_rel)
+abs[1.000e-4]      22       0.0      50.0       2.0      0.148      2.357         17        12
+     q[0.50]      22       0.0       0.0       7.0      1.290      2.294         17        16
+     q[0.75]      22       0.0      13.6       7.0      1.429      2.875         17        15
+     q[0.90]      22       0.0      13.6       4.0      1.833      3.667         17         8
+
+sat%     : leaves whose mask covers every footprint. The saturation being corrected.
+1comp%   : leaves the mask reads as a single blob.
+d(layout): distinct values of Criterion::Layout over the leaves -- the ordering's
+           resolution. A criterion with few distinct values has no ordering to offer,
+           whatever its error(B) curve does; that is a property to read, not to hide.
+
+The leaf count is CONSTANT down each block, asserted. criterion=within, so the hot
+rule cannot reach the split decision; a moving tree here would mean the wiring leaked.

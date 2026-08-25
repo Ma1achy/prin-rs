@@ -595,6 +595,86 @@ with a different initial velocity. Keying `decode::distinct` on a body position 
 there. Nothing has collapsed — the chart simply does not move that quantity. Two different faults
 give the same count, and the guard has to measure what the chart actually varies.
 
+**A fixed threshold fails on BOTH sides, and that is the argument for rank.** `tau_display = 1e-4`
+sits at the **0.4th percentile** of the pooled leaf-spread distribution (89,088 leaves, median
+`6.61e-4`), so 99.6% of quads clear it and the tree is uniform at **max depth**. The other side is
+in the same corpus: where the bulk sits *below* `tau` everything keeps and the tree is uniform at
+**depth 2** — 16 leaves against a complete 4096. **16 of the 18 trees the camera veto does not bind
+are stopped that way** (`far`, `deep interior`, every deep zoom step; medians `9.45e-5` down to
+`4.26e-8`). Selectivity requires the threshold to *cut through the bulk*, and dynamic range decides
+whether any fixed value can — `spearman(p99/p1, depth variance) = +0.727`. **A ranking cannot land
+above or below a distribution.**
+
+**The camera veto is doing the stopping, not the criterion.** `ScreenFloor` or `MaxRelDepth` stops
+≥95% of leaves on **21 of 69 dumps**. So "13 of 17 charts at 99%+ max depth" is not the criterion
+saying *split* and being obeyed — it is the criterion never saying *stop*. **The observed
+uniformity is what a permissive criterion looks like when a veto terminates the descent.** Never
+quote a leaf count without its stop-reason breakdown.
+
+**`preset_shape` is ALPHA-bound, not `tau`-bound, and the shape of its tree does not tell you
+which.** 16 leaves, depth variance 0, widest dynamic range among the charts — it reads exactly like
+the upper-side `tau` failure. Its leaf-spread median is `2.86e-1`, **3400x above `tau`**: it clears
+the spread gate on every leaf and is stopped by `alpha` (8 `floor` + 8 `keep`, zero spread-gate
+failures). It is the only tree in the corpus exercising the alpha gate. Read the decision column;
+a mechanism read off a tree shape is a guess.
+
+**A quantile hot rule makes `n_hot` a non-signal, so BOTH masks are kept.** Under any quantile rule
+the count above the cut is set by the rule, not the field (31 of 64 at `N = 8, q = 0.5`), so
+`frac_hot` carries essentially nothing. `frac_hot_between/median` is the **best criterion measured
+on this project**, so replacing the absolute mask would have deleted the best-performing signal and
+read as an improvement. `spatial::HotRule` selects which mask the *shape* criteria read;
+`frac_above_tau_*` is untouched. The exception: on a **tied** field the tie structure sets the
+count — a two-valued field reads the same at `q = 0.5, 0.75, 0.9`, which is the case when the
+five-valued event arm dominates.
+
+**And the obvious desaturation test cannot fail.** *"Assert `n_hot < N^2` for a stated majority"*
+passes trivially and unconditionally under a quantile rule. The form with teeth runs both masks
+over **one descent** and asserts they disagree — measured 100% saturated / 100% single-blob under
+the absolute rule against 0% / 59.7% under `q = 0.5`, with 40.3% resolving more than one component.
+The absolute arm is the control.
+
+**The mask saturation is REGIONAL, and in `far` the mask is EMPTY rather than full.** `far`'s median
+is `4.26e-8` against `tau = 1e-4`, so nothing clears the cut: `n_hot == 0`, `perimeter_ratio` is
+`NaN`, and every mask-derived criterion takes **one** distinct value over all 16 leaves. `deep
+interior` already resolves a median of 2 components unmasked. It is near-field and the latent
+charts where it is full. A full mask and an empty mask are the same threshold landing on either
+side of the distribution.
+
+**Desaturating the mask COARSENS the ordering.** Near-field's median component count runs 1 -> 5
+from absolute to `q[0.50]`, while `Criterion::LayoutRel`'s distinct-value count falls
+**78 -> 26 -> 17 -> 9** across `abs, q[0.50], q[0.75], q[0.90]` against `Criterion::Layout`'s
+steady 58. With `n_hot` pinned, `largest/n_hot` has only as many values as there are component
+sizes. Not disqualifying — signal resolution is not what makes a ranking good — but a criterion
+whose ordering coarsens as its input improves is worth watching, and `error(B)` decides.
+
+**The criterion is rarely what decides anything, and there are FOUR stop reasons.** Measured across
+the corpus and the re-run sweep: the **camera veto** stops >=95% of leaves on 21 of 69 dumps; the
+**budget** stops up to 91% at low `tau` with no veto (near-field 869 of 1498, `deep interior` 1357
+of 1498); the **spread gate** stops everything at high `tau` (16 leaves, all `keep`); and the
+**alpha gate** stops `preset_shape`, the only tree in the corpus that exercises it. "The criterion
+refines too much" is the weaker statement. Print the stop-reason breakdown with every leaf count.
+
+**`alpha_hi` collapses near-field 79x without the veto and `tau` is inert above it.** 1498 -> 19
+leaves between `alpha_hi` 0.20 and 0.50; at `alpha_hi >= 0.5`, `tau` changes nothing at any rung.
+`tau` is live in **one row of thirty-six**. Under the veto the ratio falls to 21.68x, which is the
+screen floor demoting `alpha_hi` and promoting `tau`, as recorded. And within the live row `1e-8`,
+`1e-6`, `1e-4` and `3e-4` give a **bitwise identical** tree -- the whole live range of `tau` is
+`3e-4 .. 3e-3`, one decade, the 11.6th to 96.9th percentile.
+
+**WHICH RUNG OF A SWEEP IS DEGENERATE IS A FACT ABOUT THE REGION.** `1e-8` and `1e-6` were dropped
+from the `tau` ladder as "measuring the always-split regime twice" -- true in near-field, where
+`1e-8`, `1e-6` and `1e-4` are bitwise identical, and **false in `far`**, whose median is `4.26e-8`
+so `1e-8` is the only rung below its bulk. Without it `far` read 16 leaves in all 32 cells and the
+sweep said "`tau` is inert here", silently contradicting the standing 64x result. The regional
+spread medians span **six orders** -- `4.26e-8`, `9.45e-5`, `9.75e-4` -- which `sched_sweep`'s own
+module header has said since it was written. Restoring the rung recovered the 64x exactly.
+
+**A span quoted between two NAMED rungs is an argument hardcoded past.** `sweep_screen` printed the
+`tau` span as `at(1e-8)/at(1e-6)`, which read `x0.00` once `1e-8` was removed and would have been
+reporting whichever pair happened to straddle the bulk in one region even when present. Take
+max/min over the whole ladder at the `alpha_hi` where the knob is live. Same defect as
+`pan_sequence`'s hardcoded viewport, at a different site.
+
 ---
 
 ## SMOKE TEST

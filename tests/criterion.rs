@@ -6,7 +6,7 @@
 use prin_rs::ensemble::pixel::PixelOut;
 use prin_rs::quad::{Criterion, QuadReduction};
 use prin_rs::scheduler::reduce;
-use prin_rs::spatial::{self, Layout};
+use prin_rs::spatial::{self, HotRule, Layout};
 use prin_rs::stats;
 
 // ---------------------------------------------------------------------------------------
@@ -145,12 +145,12 @@ fn between_event_reads_the_event_class_and_never_the_terminal_outcome() {
     // Sixteen footprints whose terminal outcomes are maximally split but whose event classes
     // all agree. If the arm read `outcome`, this would be ~1.0.
     let px: Vec<PixelOut> = (0..16).map(|k| fp([1.0, 0.0, 0.0], 2, k as u8)).collect();
-    let r = reduce(&px, 4, 1e-3, 13.0);
+    let r = reduce(&px, 4, 1e-3, HotRule::default(), 13.0);
     assert_eq!(r.between_event, 0.0, "agreeing event classes must give zero disagreement");
 
     // And the converse: identical terminal outcomes, maximally split event classes.
     let px: Vec<PixelOut> = (0..16).map(|k| fp([1.0, 0.0, 0.0], k as u8, 7)).collect();
-    let r = reduce(&px, 4, 1e-3, 13.0);
+    let r = reduce(&px, 4, 1e-3, HotRule::default(), 13.0);
     assert!(r.between_event > 0.99, "split event classes must fire, got {}", r.between_event);
 }
 
@@ -163,7 +163,7 @@ fn between_shape_is_the_same_estimator_over_the_nominals() {
     let px: Vec<PixelOut> = (0..16)
         .map(|k| fp(if k < 8 { a } else { b }, 1, 4))
         .collect();
-    let r = reduce(&px, 4, 1e-3, 13.0);
+    let r = reduce(&px, 4, 1e-3, HotRule::default(), 13.0);
 
     // Every footprint is exactly 1 from the centroid at the origin, halved by the chord
     // convention.
@@ -188,7 +188,7 @@ fn between_matched_equals_between_full_when_the_counts_already_agree() {
             p
         })
         .collect();
-    let r = reduce(&px, n, 1e-3, 13.0);
+    let r = reduce(&px, n, 1e-3, HotRule::default(), 13.0);
     assert_eq!(
         r.between_matched, r.between_shape,
         "matched at full count must be bitwise the full value"
@@ -200,7 +200,7 @@ fn within_pooled_is_nan_when_the_copies_were_not_kept() {
     // Reported as "not measured", never as zero. A zero here would read as perfect agreement
     // among copies that were never looked at.
     let px: Vec<PixelOut> = (0..16).map(|_| fp([1.0, 0.0, 0.0], 1, 4)).collect();
-    let r = reduce(&px, 4, 1e-3, 13.0);
+    let r = reduce(&px, 4, 1e-3, HotRule::default(), 13.0);
     assert!(r.within_pooled.is_nan(), "got {}", r.within_pooled);
 }
 
@@ -225,7 +225,7 @@ fn the_escape_gradient_refuses_to_answer_when_nothing_escaped() {
     // At t_max = 13 zero of 1024 near-field pixels escape; 109 do at t_max = 20. A gradient
     // returned over an empty set would be a null that could not have failed.
     let px: Vec<PixelOut> = (0..16).map(|_| fp([1.0, 0.0, 0.0], 1, 4)).collect();
-    let r = reduce(&px, 4, 1e-3, 13.0);
+    let r = reduce(&px, 4, 1e-3, HotRule::default(), 13.0);
     assert_eq!(r.terminated_fraction, 0.0);
     assert!(r.t_end_gradient.is_nan(), "must decline, got {}", r.t_end_gradient);
 
@@ -238,7 +238,7 @@ fn the_escape_gradient_refuses_to_answer_when_nothing_escaped() {
             p
         })
         .collect();
-    let r = reduce(&px, 4, 1e-3, 13.0);
+    let r = reduce(&px, 4, 1e-3, HotRule::default(), 13.0);
     assert_eq!(r.terminated_fraction, 1.0);
     // 12 x-pairs differ by 1, 12 y-pairs differ by 0.
     assert!((r.t_end_gradient - 0.5).abs() < 1e-12, "got {}", r.t_end_gradient);
@@ -251,7 +251,7 @@ fn a_non_finite_footprint_is_hot_and_not_calm() {
     // find structure.
     let mut px: Vec<PixelOut> = (0..16).map(|_| fp([1.0, 0.0, 0.0], 1, 4)).collect();
     px[5].ensemble_spread = f64::NAN;
-    let r = reduce(&px, 4, 1e-3, 13.0);
+    let r = reduce(&px, 4, 1e-3, HotRule::default(), 13.0);
     assert_eq!(r.layout_within.n_hot, 1, "the non-finite footprint must count as hot");
 }
 
@@ -705,4 +705,178 @@ fn a_signal_that_declines_to_score_does_not_block_the_ones_that_do() {
         "an all-NaN signal must still spend its budget and reach the reference"
     );
     assert_eq!(pts.len(), 1 + (full - 1) / 4, "and must spend all of it");
+}
+
+// ---------------------------------------------------------------------------------------
+// The hot rule — the relative mask, and the two things it does NOT buy
+// ---------------------------------------------------------------------------------------
+
+/// **What a quantile hot rule actually buys, and what it does not.**
+///
+/// The instruction on record was to make the hot threshold relative — the quad's own median.
+/// Two consequences, both asserted here because both were missed when the instruction was
+/// written:
+///
+/// 1. **`n_hot` stops being a signal.** On a field with distinct values the count above the cut
+///    is fixed by the rule, so `frac_hot` carries zero information at every quad of every chart.
+///    That matters because `frac_hot_between/median` is the best criterion measured on this
+///    project, and a relative rule that *replaced* the absolute mask would have deleted the
+///    best-performing signal in the system while reading as an improvement. Both masks are
+///    computed; this names the constant so nobody reads `frac_hot` off the relative one.
+///
+/// 2. **The mask is invariant under a monotone rescaling of the field**, which is the property
+///    the relative rule exists for: spread rises globally with `t`, and an absolute cut must
+///    eventually fire everywhere. Measured cause, on the committed corpus: `tau = 1e-4` sits at
+///    the 0.4th percentile and `n_hot == N^2` in 98.8% of 75,359 leaves.
+///
+/// **And the exception, measured by this test rather than assumed away:** on a *tied* field the
+/// count is set by the tie structure, not by the rule — a step field reads 5 at q = 0.5, 0.75
+/// and 0.9 alike. That is not a defect; it is what "the quantile is nearest-rank and the
+/// comparison is strict" means, and it is the case that occurs when the event arm dominates a
+/// footprint field with five distinct values.
+#[test]
+fn a_quantile_hot_rule_is_rescaling_invariant_and_n_hot_stops_being_a_signal() {
+    let n = 8;
+    let ramp: Vec<f64> = (0..n * n).map(|k| k as f64).collect();
+    let noisy: Vec<f64> = (0..n * n).map(|k| ((k as u64 * 2654435761) % 997) as f64).collect();
+    let step: Vec<f64> = (0..n * n).map(|k| if k < 5 { 1e6 } else { 1e-9 }).collect();
+
+    let count = |f: &Vec<f64>, r| spatial::hot_mask(f, r).iter().filter(|&&h| h).count();
+
+    for (name, f) in [("ramp", &ramp), ("noise", &noisy), ("step", &step)] {
+        let c: Vec<usize> =
+            [0.5, 0.75, 0.9].iter().map(|&q| count(f, HotRule::Quantile(q))).collect();
+        println!("{name:>6}: n_hot at q = 0.5 / 0.75 / 0.9 -> {c:?}");
+    }
+
+    // (1) Same rule, two unrelated distinct-valued fields, identical counts.
+    assert_eq!(
+        count(&ramp, HotRule::Quantile(0.5)),
+        count(&noisy, HotRule::Quantile(0.5)),
+        "n_hot must not depend on a distinct-valued field"
+    );
+    // The tied field is the named exception, asserted so it cannot drift into a surprise.
+    assert_eq!(count(&step, HotRule::Quantile(0.5)), count(&step, HotRule::Quantile(0.9)),
+               "on a two-valued field the tie structure sets the count, not q");
+
+    // (2) The property that matters: rescale the whole field — the global rise with `t` — and
+    // the mask does not move. This is the arm the absolute rule fails.
+    let risen: Vec<f64> = ramp.iter().map(|x| x * 1000.0 + 70.0).collect();
+    let a = spatial::hot_mask(&ramp, HotRule::Quantile(0.5));
+    let b = spatial::hot_mask(&risen, HotRule::Quantile(0.5));
+    assert_eq!(a, b, "a quantile mask must be invariant under a monotone rescaling");
+
+    // The control that proves the arm above is about the RULE and not about this field: the
+    // absolute rule saturates under exactly the same rescaling, which is the observed failure.
+    let abs_before = count(&ramp, HotRule::AbsTau(10.0));
+    let abs_after = count(&risen, HotRule::AbsTau(10.0));
+    println!("abs[1e1]: {abs_before} hot before the rise, {abs_after} after (of {})", n * n);
+    assert!(abs_before < n * n, "the control is empty unless the absolute rule starts unsaturated");
+    assert_eq!(abs_after, n * n, "the absolute rule must saturate when the signal rises");
+}
+
+/// A quad with fewer than two finite values is **undetermined, not calm**.
+#[test]
+fn a_degenerate_field_reads_all_hot_rather_than_none() {
+    let f = vec![f64::NAN; 16];
+    let m = spatial::hot_mask(&f, HotRule::Quantile(0.5));
+    assert!(m.iter().all(|&h| h), "an all-NaN quad must not read as cold");
+    let l = spatial::layout(&m, 4);
+    assert_eq!(l.n_hot, 16);
+    // One finite value is still no distribution.
+    let mut g = vec![f64::NAN; 16];
+    g[3] = 1.0;
+    assert!(spatial::hot_mask(&g, HotRule::Quantile(0.5)).iter().all(|&h| h));
+}
+
+/// `grad_rms` is the one structure measure with **no threshold in it**, which makes it the
+/// control on the whole hot-mask family. Its degenerate convention is `NaN`, never 0.
+#[test]
+fn grad_rms_is_nan_with_no_finite_pair_and_ranks_a_filament_above_a_flat_field() {
+    let n = 8;
+    assert!(spatial::grad_rms(&vec![f64::NAN; n * n], n).is_nan(), "no finite pair must be NaN");
+
+    let flat = vec![1.0f64; n * n];
+    assert_eq!(spatial::grad_rms(&flat, n), 0.0, "a genuinely flat field IS zero");
+
+    // A one-cell-wide ridge: the same total "energy" as the flat field carries, arranged so it
+    // varies. The inequality is asserted, not eyeballed.
+    let mut ridge = vec![0.0f64; n * n];
+    for jx in 0..n {
+        ridge[4 * n + jx] = 1.0;
+    }
+    let g_ridge = spatial::grad_rms(&ridge, n);
+    // A smooth ramp of the same peak-to-peak: same range, far less gradient.
+    let ramp: Vec<f64> = (0..n * n).map(|k| (k / n) as f64 / (n - 1) as f64).collect();
+    let g_ramp = spatial::grad_rms(&ramp, n);
+    println!("grad_rms: flat 0, ramp {g_ramp:.4}, ridge {g_ridge:.4}");
+    assert!(g_ridge > g_ramp, "a ridge {g_ridge} must outrank a ramp {g_ramp} of the same range");
+    assert!(g_ramp > 0.0);
+
+    // Non-finite cells are skipped, not counted as zero difference — a NaN neighbour must not
+    // make a quad look smooth.
+    let mut holed = ridge.clone();
+    holed[0] = f64::NAN;
+    assert!(spatial::grad_rms(&holed, n).is_finite());
+}
+
+/// **The desaturation, as a pair — because the obvious form of this test cannot fail.**
+///
+/// The instruction on record was *"assert `n_hot_within < N^2` for a stated majority of quads"*.
+/// Under a quantile rule that passes trivially and unconditionally, on any field, forever. It is
+/// decoration.
+///
+/// The form with teeth runs both masks over **one descent** and asserts they disagree: the
+/// absolute mask saturated, the relative one not. The absolute arm is the control that proves
+/// the test can tell them apart — without it, a relative mask that happened to saturate too
+/// would read the same as a working one.
+#[test]
+fn the_relative_mask_desaturates_where_the_absolute_one_does_not() {
+    use prin_rs::ensemble::pixel::EnsembleCfg;
+    use prin_rs::render::Precision;
+    use prin_rs::scheduler::{self, SchedCfg};
+
+    const N: usize = 4;
+    let ens = EnsembleCfg { t_max: 2.0, n_sync: 8, refine_flagged: false, ..Default::default() };
+    // `tau_display = 1e-4` is the value every committed run used, and the one measured to sit at
+    // the 0.4th percentile of the spread distribution. Reproducing it is the point.
+    let cfg = SchedCfg {
+        n: N,
+        budget: 80,
+        tau_display: 1e-4,
+        hot_rule: HotRule::Quantile(0.5),
+        ..Default::default()
+    };
+    let (t, st) = scheduler::descend(1.0, 3.0, 0.05, 0, &cfg, &ens, Precision::F64);
+
+    let computed: Vec<&prin_rs::quad::Quad> =
+        t.nodes.iter().filter(|q| q.red.n_footprints > 0).collect();
+    let m = computed.len() as f64;
+    assert!(m >= 20.0, "only {m} quads computed; too few to say anything");
+
+    let full = (N * N) as u32;
+    let frac = |f: &dyn Fn(&prin_rs::quad::Quad) -> bool| {
+        computed.iter().filter(|q| f(q)).count() as f64 / m
+    };
+
+    let abs_sat = frac(&|q| q.red.layout_within.n_hot == full);
+    let rel_sat = frac(&|q| q.red.layout_rel_within.n_hot == full);
+    let abs_one = frac(&|q| q.red.layout_within.n_components <= 1);
+    let rel_one = frac(&|q| q.red.layout_rel_within.n_components <= 1);
+    let rel_multi = frac(&|q| q.red.layout_rel_within.n_components > 1);
+
+    println!("{} quads computed, {} leaves, N = {N}", st.quads_computed, t.leaves().count());
+    println!("  absolute mask: n_hot == {full} on {:.1}%, n_components <= 1 on {:.1}%",
+             100.0 * abs_sat, 100.0 * abs_one);
+    println!("  relative mask: n_hot == {full} on {:.1}%, n_components <= 1 on {:.1}%, > 1 on {:.1}%",
+             100.0 * rel_sat, 100.0 * rel_one, 100.0 * rel_multi);
+
+    // The control arm. If this fails the absolute mask is not saturated in this configuration
+    // and the comparison below is scoring nothing.
+    assert!(abs_sat > 0.8, "absolute mask only {:.1}% saturated -- the control is empty", 100.0 * abs_sat);
+
+    // The arm under test.
+    assert!(rel_sat < 0.05, "relative mask still {:.1}% saturated", 100.0 * rel_sat);
+    assert!(rel_multi > 0.2,
+            "relative mask resolves > 1 component on only {:.1}% of quads", 100.0 * rel_multi);
 }

@@ -18,6 +18,7 @@ use prin_rs::output::{png, tree as treeout};
 use prin_rs::quad::Agg;
 use prin_rs::render::{self, Precision};
 use prin_rs::scheduler::{self, Order, Policy, SchedCfg};
+use prin_rs::spatial::HotRule;
 
 const USAGE: &str = "\
 prinq — minimal refinement scheduler for prin-rs
@@ -30,6 +31,11 @@ prinq — minimal refinement scheduler for prin-rs
   --bootstrap <n>       levels split unconditionally before any decision (default 2)
   --max-level <n>       optional depth cap; omit to run to the budget (§4 q1 needs it omitted)
   --tau <x>             tau_display, the spread below which a quad is kept (default 1e-2)
+  --hot-rule <r>        abs | q:<fraction> (default q:0.5). Which mask the shape criteria
+                        read: `abs` cuts at --tau, `q:0.5` at the quad's own median. Both
+                        masks are always computed and dumped; this picks the one that feeds
+                        `layout_rel` and `grad_rms`. Note n_hot is fixed by the rule under
+                        any quantile, so frac_hot is not a signal there
   --alpha-hi <x>        split at or above this exponent (default 0.5)
   --alpha-lo <x>        floor below this exponent (default 0.2)
   --alpha-band <f>      set alpha_lo = f * alpha_hi; give it AFTER --alpha-hi. Without it,
@@ -75,6 +81,17 @@ fn main() {
             "--bootstrap" => { cfg.bootstrap_levels = get(i).parse().unwrap(); i += 1; }
             "--max-level" => { cfg.max_level = Some(get(i).parse().unwrap()); i += 1; }
             "--tau" => { cfg.tau_display = get(i).parse().unwrap(); i += 1; }
+            "--hot-rule" => {
+                // `abs` uses --tau; `q:<f>` uses the quad's own quantile. Both masks are always
+                // computed and dumped -- this picks which one the mask-derived CRITERIA read.
+                let v = get(i);
+                cfg.hot_rule = match v.split_once(':') {
+                    Some(("q", f)) => HotRule::Quantile(f.parse().expect("quantile")),
+                    _ if v == "abs" => HotRule::AbsTau(cfg.tau_display),
+                    _ => panic!("--hot-rule takes `abs` or `q:<fraction>`, got {v}"),
+                };
+                i += 1;
+            }
             "--alpha-hi" => { cfg.alpha_hi = get(i).parse().unwrap(); i += 1; }
             "--alpha-band" => {
                 // Set alpha_lo as a fraction of alpha_hi, so the keep band is not silently

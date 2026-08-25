@@ -104,6 +104,21 @@ pub struct QuadReduction {
     pub frac_above_tau_within: f64,
     pub frac_above_tau_between: f64,
 
+    /// The same two layouts under the **relative** hot rule — above the quad's own quantile
+    /// rather than above `tau`. See [`crate::spatial::HotRule`] for why both are carried.
+    ///
+    /// **`n_hot` here is a constant**, `N^2/2` at the median, on every quad by construction. Do
+    /// not read `frac_hot` off these: the signal is entirely `n_components`,
+    /// `largest_component` and `perimeter_ratio`, which is what desaturating the mask buys.
+    pub layout_rel_within: crate::spatial::Layout,
+    pub layout_rel_between: crate::spatial::Layout,
+    /// RMS forward-difference gradient of the two per-footprint fields. The magnitude companion
+    /// to the layouts, and the only structure measure here that needs **no threshold at all** —
+    /// which is why it is worth having beside two that do. `NaN`, never 0, when no adjacent
+    /// pair is finite.
+    pub grad_rms_within: f64,
+    pub grad_rms_between: f64,
+
     /// Footprints whose nominal **terminated** before the horizon — collision *or* escape.
     ///
     /// **Not "escaped", which is what an earlier draft of this called it and got wrong.** §3.5
@@ -190,6 +205,19 @@ impl QuadReduction {
                     l.frac_hot(self.n_side()) * (l.largest_component as f64 / l.n_hot as f64)
                 }
             }
+            Criterion::LayoutRel => {
+                // The same reading on the relative mask -- but `frac_hot` is a constant there,
+                // so it is dropped rather than carried as a scale factor that varies with
+                // nothing. What is left is connectedness alone, which is the whole point: a
+                // relative mask turns a magnitude statistic into a shape one.
+                let l = self.layout_rel_within;
+                if l.n_hot == 0 {
+                    0.0
+                } else {
+                    l.largest_component as f64 / l.n_hot as f64
+                }
+            }
+            Criterion::GradRms => self.grad_rms_within,
         }
     }
 
@@ -252,6 +280,15 @@ pub enum Criterion {
     /// property to read, not a defect to hide: NaN never wins a comparison, so the ranking is
     /// decided entirely by the 2.9% it does score.
     TerminationGradient,
+    /// Hot-set layout on the **relative** mask. The desaturated twin of [`Criterion::Layout`];
+    /// connectedness alone, since `frac_hot` is constant under a quantile rule.
+    LayoutRel,
+    /// RMS spatial gradient of `ensemble_spread` across the footprint grid.
+    ///
+    /// **The only candidate here with no threshold in it.** That makes it the control on the
+    /// whole hot-mask family: if a masked signal cannot beat it, the mask is not earning its
+    /// parameter.
+    GradRms,
 }
 
 impl Criterion {
@@ -266,6 +303,8 @@ impl Criterion {
             Criterion::RunningMax => "running_max",
             Criterion::FirstDivergence => "first_div",
             Criterion::TerminationGradient => "term_grad",
+            Criterion::LayoutRel => "layout_rel",
+            Criterion::GradRms => "grad_rms",
         }
     }
     pub fn parse(s: &str) -> Option<Criterion> {
@@ -279,11 +318,13 @@ impl Criterion {
             "running_max" => Criterion::RunningMax,
             "first_div" => Criterion::FirstDivergence,
             "term_grad" => Criterion::TerminationGradient,
+            "layout_rel" => Criterion::LayoutRel,
+            "grad_rms" => Criterion::GradRms,
             _ => return None,
         })
     }
     /// Every variant, for sweeps that must not silently omit one.
-    pub const ALL: [Criterion; 9] = [
+    pub const ALL: [Criterion; 11] = [
         Criterion::Within,
         Criterion::Between,
         Criterion::MaxOfBoth,
@@ -293,6 +334,8 @@ impl Criterion {
         Criterion::RunningMax,
         Criterion::FirstDivergence,
         Criterion::TerminationGradient,
+        Criterion::LayoutRel,
+        Criterion::GradRms,
     ];
 }
 

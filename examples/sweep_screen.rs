@@ -32,7 +32,20 @@ fn main() {
                  "tau", "alpha_hi", "quads", "leaves", "split*", "floor", "keep", "screen",
                  "depth", "wall s");
         let mut leaf_counts: Vec<(f64, f64, usize)> = Vec::new();
-        for tau in [1e-8f64, 1e-6, 1e-4, 1e-3, 1e-2] {
+        // **The ladder was measured, and the first cut of it was wrong.** Pooled over the 89,088
+        // committed leaves the spread median is 6.6e-4 and `tau = 1e-4` sits at the 0.4th
+        // percentile, so the top of the old ladder measured nothing: 1e-6, 1e-4 and 3e-4 give a
+        // BITWISE IDENTICAL tree in near-field. It now runs up to 1e-1, past the point where the
+        // predicate goes false everywhere.
+        //
+        // **The bottom rungs are NOT redundant, and dropping 1e-8 broke `far`.** The regional
+        // spread medians span six orders -- 4.26e-8 in `far`, 9.45e-5 in `deep interior`,
+        // 9.75e-4 in near-field -- so which rung is degenerate is a fact about the REGION, not
+        // about the ladder. `1e-8` is the only rung below `far`'s bulk; without it `far` reads 16
+        // leaves at every cell and the sweep says "tau is inert here", which is a statement about
+        // the ladder. Both low rungs stay, as labelled degenerate controls for different regions.
+        // See `examples/threshold_diagnosis.rs` for the percentiles.
+        for tau in [1e-8f64, 1e-6, 1e-4, 3e-4, 1e-3, 3e-3, 1e-2, 3e-2, 1e-1] {
             for alpha_hi in [0.2f64, 0.5, 0.8, 1.0] {
                 let cfg = SchedCfg {
                     budget,
@@ -59,9 +72,18 @@ fn main() {
             leaf_counts.iter().find(|x| x.0 == t && x.1 == a).map(|x| x.2).unwrap_or(0) as f64
         };
         let alpha_span = at(1e-4, 0.2) / at(1e-4, 0.5).max(1.0);
-        let tau_span = at(1e-8, 0.2) / at(1e-6, 0.2).max(1.0);
+        // The tau span is taken over the WHOLE ladder at the one alpha_hi where tau is live,
+        // not between two adjacent rungs. Two adjacent rungs can both sit below the region's bulk
+        // and read "identical", which is a fact about the rungs; the max/min over the ladder is
+        // the honest span. Regions differ by six orders in spread, so a fixed pair cannot serve
+        // all three -- that is the mistake this line used to make.
+        let live: Vec<f64> =
+            leaf_counts.iter().filter(|x| x.1 == 0.2).map(|x| x.2 as f64).collect();
+        let lo = live.iter().cloned().fold(f64::INFINITY, f64::min).max(1.0);
+        let hi = live.iter().cloned().fold(0.0f64, f64::max);
         println!("  alpha_hi 0.20 -> 0.50 at tau=1e-4: leaf count x{alpha_span:.2}  (PR #11: x80)");
-        println!("  tau 1e-8 -> 1e-6 at alpha_hi=0.20: leaf count x{tau_span:.2}  (PR #11: identical)");
+        println!("  tau over the whole ladder at alpha_hi=0.20: leaf count x{:.2}  ({lo} .. {hi})",
+                 hi / lo);
         println!();
     }
 

@@ -20,7 +20,7 @@ use crate::grid::Chart;
 use crate::ensemble::stats;
 use crate::physics::shape;
 use crate::quad::{quantile, Agg, Criterion, Decision, QuadReduction, QuadTree};
-use crate::spatial::{self, Layout};
+use crate::spatial::{self, HotRule, Layout};
 use crate::render::Precision;
 use crate::rng::SplitMix64;
 
@@ -105,6 +105,13 @@ pub struct SchedCfg {
     /// `Decision::Split`. Complexity stays the sole trigger.
     pub camera: Option<Camera>,
     pub tau_display: f64,
+    /// How a footprint is called hot for the **shape** statistics.
+    ///
+    /// Separate from `tau_display`, which still drives the split gate and the absolute mask.
+    /// The absolute mask is not replaced: `frac_hot` is identically constant under any quantile
+    /// rule, and `frac_hot_between` is the best criterion measured here. See
+    /// [`crate::spatial::HotRule`].
+    pub hot_rule: HotRule,
     /// Split above this exponent, floor below `alpha_lo`. Between them: keep.
     pub alpha_hi: f64,
     pub alpha_lo: f64,
@@ -133,6 +140,7 @@ impl Default for SchedCfg {
             max_level: None,
             camera: None,
             tau_display: 1e-2,
+            hot_rule: HotRule::Quantile(0.5),
             alpha_hi: 0.5,
             alpha_lo: 0.2,
             sib_tau: 0.5,
@@ -175,6 +183,7 @@ fn compute_quad<T: crate::Real>(
     ens: &EnsembleCfg,
     n: usize,
     tau: f64,
+    hot_rule: HotRule,
 ) -> (QuadReduction, Vec<PixelOut>) {
     let slice = tree.nodes[i].slice(n, tree.body, tree.chart);
     let px: Vec<PixelOut> = (0..slice.npix())
@@ -184,7 +193,7 @@ fn compute_quad<T: crate::Real>(
     // Distinctness before divergence: N^2 decodes, no integration, and it is the only test
     // that separates a collapsed decode from a genuinely uniform region.
     let ics: Vec<crate::physics::Cart<f64>> = (0..slice.npix()).map(|k| slice.nominal::<f64>(k)).collect();
-    let mut red = reduce(&px, n, tau, ens.t_max);
+    let mut red = reduce(&px, n, tau, hot_rule, ens.t_max);
     red.n_distinct_ic = crate::decode::distinct(&ics) as u32;
     (red, px)
 }
@@ -196,15 +205,25 @@ fn compute_quad<T: crate::Real>(
 /// `tau` an input to the *measurement*, not only to the *decision* — a real widening of what
 /// `tau` does, and worth saying out loud given the vertical slice promoted it to the dominant
 /// knob under the screen floor.
-pub fn reduce(px: &[PixelOut], n: usize, tau: f64, t_max: f64) -> QuadReduction {
+pub fn reduce(px: &[PixelOut], n: usize, tau: f64, hot_rule: HotRule, t_max: f64) -> QuadReduction {
     let finite = |x: &f64| x.is_finite();
     let mut sp: Vec<f64> = px.iter().map(|p| p.ensemble_spread).filter(finite).collect();
     let mut sh: Vec<f64> = px.iter().map(|p| p.spread_shape).filter(finite).collect();
     let mut ev: Vec<f64> = px.iter().map(|p| p.spread_event).filter(finite).collect();
     let nfin = sp.len().max(1) as f64;
     let mean = sp.iter().sum::<f64>() / nfin;
-    let Between { shape: b_shape, event: b_event, matched: b_matched, pooled, lay_within, lay_between } =
-        between(px, n, tau);
+    let Between {
+        shape: b_shape,
+        event: b_event,
+        matched: b_matched,
+        pooled,
+        lay_within,
+        lay_between,
+        lay_rel_within,
+        lay_rel_between,
+        grad_within,
+        grad_between,
+    } = between(px, n, tau, hot_rule);
     let (term_frac, esc_frac, grad) = termination_gradient(px, n, t_max);
     QuadReduction {
         spread_mean: mean,
@@ -235,6 +254,11 @@ pub fn reduce(px: &[PixelOut], n: usize, tau: f64, t_max: f64) -> QuadReduction 
         layout_between: lay_between,
         frac_above_tau_within: lay_within.frac_hot(n),
         frac_above_tau_between: lay_between.frac_hot(n),
+
+        layout_rel_within: lay_rel_within,
+        layout_rel_between: lay_rel_between,
+        grad_rms_within: grad_within,
+        grad_rms_between: grad_between,
 
         terminated_fraction: term_frac,
         escape_fraction: esc_frac,
@@ -280,9 +304,13 @@ struct Between {
     pooled: f64,
     lay_within: Layout,
     lay_between: Layout,
+    lay_rel_within: Layout,
+    lay_rel_between: Layout,
+    grad_within: f64,
+    grad_between: f64,
 }
 
-fn between(px: &[PixelOut], n: usize, tau: f64) -> Between {
+fn between(px: &[PixelOut], n: usize, tau: f64, hot_rule: HotRule) -> Between {
     // Copy 0 only. The nominal is un-jittered, so between-footprint variation is not
     // contaminated by the within-footprint jitter — which would otherwise put the same
     // perturbation into both arms and make their correlation partly an artefact of sharing an
@@ -336,14 +364,19 @@ fn between(px: &[PixelOut], n: usize, tau: f64) -> Between {
         })
         .collect();
 
-    // Non-finite is hot. A footprint that could not be determined is not evidence of calm, and
-    // treating it as cold would make the pathological case invisible to exactly the statistic
-    // built to find structure.
-    let hot_w: Vec<bool> = px
-        .iter()
-        .map(|p| !p.ensemble_spread.is_finite() || p.ensemble_spread > tau)
-        .collect();
-    let hot_b: Vec<bool> = dev.iter().map(|&d| !d.is_finite() || d > tau).collect();
+    // **Both hot rules, on both arms.** Non-finite is hot under either -- a footprint that could
+    // not be determined is not evidence of calm, and treating it as cold would make the
+    // pathological case invisible to exactly the statistic built to find structure.
+    //
+    // The absolute pair keeps `frac_above_tau_*` and the `frac_hot_*` criteria untouched; the
+    // relative pair is what desaturates the shape statistics. Measured on the committed corpus,
+    // the absolute mask reads `n_hot == N^2` in 98.8% of leaves and `n_components == 1` in
+    // 99.5%: one blob covering the whole quad, everywhere, which is no measurement at all.
+    let field_w: Vec<f64> = px.iter().map(|p| p.ensemble_spread).collect();
+    let hot_w = spatial::hot_mask(&field_w, HotRule::AbsTau(tau));
+    let hot_b = spatial::hot_mask(&dev, HotRule::AbsTau(tau));
+    let rel_w = spatial::hot_mask(&field_w, hot_rule);
+    let rel_b = spatial::hot_mask(&dev, hot_rule);
 
     Between {
         shape,
@@ -352,6 +385,10 @@ fn between(px: &[PixelOut], n: usize, tau: f64) -> Between {
         pooled,
         lay_within: spatial::layout(&hot_w, n),
         lay_between: spatial::layout(&hot_b, n),
+        lay_rel_within: spatial::layout(&rel_w, n),
+        lay_rel_between: spatial::layout(&rel_b, n),
+        grad_within: spatial::grad_rms(&field_w, n),
+        grad_between: spatial::grad_rms(&dev, n),
     }
 }
 
@@ -436,8 +473,12 @@ pub fn descend(
         let reds: Vec<(QuadReduction, Vec<PixelOut>)> = pending
             .iter()
             .map(|&i| match precision {
-                Precision::F32 => compute_quad::<f32>(&tree, i, ens, cfg.n, cfg.tau_display),
-                Precision::F64 => compute_quad::<f64>(&tree, i, ens, cfg.n, cfg.tau_display),
+                Precision::F32 => {
+                    compute_quad::<f32>(&tree, i, ens, cfg.n, cfg.tau_display, cfg.hot_rule)
+                }
+                Precision::F64 => {
+                    compute_quad::<f64>(&tree, i, ens, cfg.n, cfg.tau_display, cfg.hot_rule)
+                }
             })
             .collect();
         for (&i, (r, px)) in pending.iter().zip(reds) {

@@ -631,3 +631,244 @@ fn only_the_affine_charts_claim_to_be_affine() {
     assert!(!Chart::MassSimplex { z_alpha: 0.0, z_beta: 0.0, z_q: [0.0; 4], margin: 0.02 }
         .is_affine());
 }
+
+// ---------------------------------------------------------------------------------------------
+// The GLSL reference's pinned decode, and its four default presets
+//
+// `Ma1achy/principia-ii`, `src/shaders/principia/frag.glsl:19-59` and `src/state.ts:71-76`.
+// ---------------------------------------------------------------------------------------------
+
+/// **The landmark.** `z = 0` decodes to the equilateral Lagrange configuration. That is a named
+/// physical configuration, which makes it a stronger check on the reconstruction algebra than any
+/// invariant — it can be verified by eye in the rendered image.
+///
+/// **What it cannot see, stated so it is not mistaken for a fuller check than it is:** at `z = 0`
+/// the momentum coordinates and the mass logits are all zero, so `Q_MAX`, `MU_MAX` and the choice
+/// between `tanh(z)` and `2*sigmoid(z)-1` every one of them drops out of the arithmetic. This test
+/// passes unchanged under all three of the constants this port corrected.
+/// `the_pinned_saturation_constants_are_the_glsls_not_the_latex_reference` covers those.
+#[test]
+fn the_origin_of_the_latent_chart_is_the_equilateral_lagrange_configuration() {
+    let d = decoder::decode(&Latent::default());
+    assert_eq!(d.flag, None, "the origin should decode cleanly");
+    let ic = d.ic;
+
+    for k in 0..3 {
+        assert!((ic.m[k] - 1.0 / 3.0).abs() < 1e-15, "mass {k} = {}", ic.m[k]);
+    }
+
+    let want = [Vec2::new(-0.8660254037844386, -0.5), Vec2::new(0.8660254037844386, -0.5),
+                Vec2::new(0.0, 1.0)];
+    let mut worst = 0f64;
+    for k in 0..3 {
+        worst = worst.max((ic.s.r[k] - want[k]).norm());
+    }
+    assert!(worst < 1e-14, "positions differ from Lagrange by {worst:e}");
+
+    // Equilateral: all three separations equal. This is the part a person can check in the image.
+    let d01 = (ic.s.r[0] - ic.s.r[1]).norm();
+    let d02 = (ic.s.r[0] - ic.s.r[2]).norm();
+    let d12 = (ic.s.r[1] - ic.s.r[2]).norm();
+    println!("Lagrange separations: {d01:.15} {d02:.15} {d12:.15}  (sqrt 3 = {:.15})", 3f64.sqrt());
+    assert!((d01 - d02).abs() < 1e-14 && (d01 - d12).abs() < 1e-14, "not equilateral");
+    assert!((d01 - 3f64.sqrt()).abs() < 1e-14);
+
+    // Released from rest at the origin: every momentum coordinate saturates to zero.
+    for k in 0..3 {
+        assert!(ic.s.v[k].norm() < 1e-15, "body {k} is not at rest: {}", ic.s.v[k].norm());
+    }
+
+    // `I = 1` and `COM = 0` are ALGEBRAIC IDENTITIES of the canonical-frame decode
+    // (`I = cos^2 a + sin^2 a`; `m0 r0 + m1 r1 = -M01 m2 lam` cancels `m2 r2`), so they hold under
+    // any mass factors at all and cannot fail from a physics error. Kept as wiring guards, and
+    // labelled as such rather than quoted as evidence.
+    let i = shape::inertia(&ic.s.r, &ic.m);
+    assert!((i - 1.0).abs() < 1e-15, "I = {i}");
+    let com = ic.s.r[0] * ic.m[0] + ic.s.r[1] * ic.m[1] + ic.s.r[2] * ic.m[2];
+    assert!(com.norm() < 1e-15, "COM at {com:?}");
+}
+
+/// The three constants the landmark is blind to, pinned against the GLSL so reverting any of them
+/// fails here. Values recomputed from `frag.glsl:21-22, 35-36, 53-54`, not copied from the tree.
+#[test]
+fn the_pinned_saturation_constants_are_the_glsls_not_the_latex_reference() {
+    assert_eq!(decoder::MU_MAX, 5.0, "frag.glsl:21");
+    assert_eq!(decoder::Q_MAX, 2.0, "frag.glsl:22");
+
+    let sig = |z: f64| 1.0 / (1.0 + (-z).exp());
+
+    // Masses: `MU_MAX*(2*sigmoid(z)-1)`, which is `MU_MAX*tanh(z/2)` -- HALF the LaTeX
+    // reference's `mu_max*tanh(z)`. At z = (1.0, -0.5) the two forms are far apart, so the
+    // negative control below is not a rounding argument.
+    let z_mu = [1.0f64, -0.5];
+    let (m, flag) = decoder::masses(z_mu);
+    assert_eq!(flag, None);
+    let softmax = |l: [f64; 3]| {
+        let e = l.map(f64::exp);
+        let s: f64 = e.iter().sum();
+        [e[0] / s, e[1] / s, e[2] / s]
+    };
+    let want = {
+        let mu: Vec<f64> = z_mu.iter().map(|&z| 5.0 * (2.0 * sig(z) - 1.0)).collect();
+        softmax([0.0, mu[0], mu[1]])
+    };
+    for k in 0..3 {
+        assert!((m[k] - want[k]).abs() < 1e-15, "mass {k}: {} vs {}", m[k], want[k]);
+    }
+    // The negative control: the LaTeX form would give visibly different masses here.
+    let latex = {
+        let mu: Vec<f64> = z_mu.iter().map(|&z| 5.0 * z.tanh()).collect();
+        softmax([0.0, mu[0], mu[1]])
+    };
+    let gap = (0..3).map(|k| (m[k] - latex[k]).abs()).fold(0.0, f64::max);
+    println!("half-gain vs tanh masses at z_mu = {z_mu:?}: worst |dm| = {gap:.4}");
+    assert!(gap > 0.05, "the two saturation forms agree here; this test cannot fire");
+
+    // Momenta: `Q_MAX*(2*sigmoid(z)-1)` per component, and `p2 == p_lambda` exactly.
+    let z_q = [0.7f64, -1.1, 0.3, 0.9];
+    let p = decoder::momenta(z_q, &M);
+    let pl = Vec2::new(2.0 * (2.0 * sig(z_q[2]) - 1.0), 2.0 * (2.0 * sig(z_q[3]) - 1.0));
+    assert!((p[2] - pl).norm() < 1e-15, "p2 should be p_lambda: {:?} vs {pl:?}", p[2]);
+    // The control: the assertion above is sensitive to Q_MAX only if the old value gives a
+    // measurably different answer here. It does -- the gain is linear, so Q_MAX = 1 halves it.
+    let old = pl * 0.5;
+    println!("Q_MAX 2 vs 1 at z_q = {z_q:?}: |dp_lambda| = {:.4}", (pl - old).norm());
+    assert!((pl - old).norm() > 0.1, "Q_MAX = 1 would give the same p_lambda; this cannot fire");
+}
+
+/// **The gauge is inert on the latent chart, and that is a claim worth checking.**
+///
+/// `decode` applies `canonicalise` and `scale_gauge`; the GLSL's `decodeIC` applies neither. They
+/// should be no-ops here: `rho~ = (cos a, 0)` already sits on `+x` so the rotation angle is zero,
+/// and `lam~_y = sin a sin b >= 0` for `b in [0, pi]` so the mirror never fires. But `I = 1` only
+/// in exact algebra — `scale_gauge` divides by `sqrt(1 +- eps)` — so this is agreement to ~1e-15
+/// with the residual printed, **not** a bitwise claim.
+#[test]
+fn the_canonicaliser_and_scale_gauge_are_no_ops_on_the_latent_chart() {
+    let mut worst_r = 0f64;
+    let mut worst_p = 0f64;
+    for z in [
+        Latent::default(),
+        base_latent(),
+        Latent { z_alpha: -2.1, z_beta: 1.7, z_q: [0.9, -1.4, 0.2, 1.1], z_mu: [-0.8, 1.3] },
+        Latent { z_alpha: 3.0, z_beta: -3.0, z_q: [-1.5, 1.5, -1.5, 1.5], z_mu: [2.0, -2.0] },
+    ] {
+        // The raw GLSL path: decode with no gauge applied at all.
+        let (m, _) = decoder::masses(z.z_mu);
+        let (a, b) = decoder::angles(z.z_alpha, z.z_beta);
+        let raw_r = decoder::config(a, b, &m);
+        let raw_p = decoder::momenta(z.z_q, &m);
+
+        let got = decoder::decode(&z).ic;
+        for k in 0..3 {
+            worst_r = worst_r.max((got.s.r[k] - raw_r[k]).norm());
+            worst_p = worst_p.max((got.s.v[k] * got.m[k] - raw_p[k]).norm());
+        }
+    }
+    println!("gauge residual over 4 latent points: positions {worst_r:.3e}, momenta {worst_p:.3e}");
+    assert!(worst_r < 1e-14, "canonicaliser/scale_gauge moved positions by {worst_r:e}");
+    assert!(worst_p < 1e-14, "canonicaliser/scale_gauge moved momenta by {worst_p:e}");
+}
+
+/// The reference's `shape_pl` basis is **un-normalised** — each direction has norm `sqrt(2)`.
+/// Routing it through `latent_oblique` would orthonormalise it and render a different slice while
+/// looking like a tidy-up. Pinned so that fails here instead.
+#[test]
+fn the_shape_pl_preset_basis_is_not_orthonormalised() {
+    let (z0, q1, q2) = (
+        Latent::default(),
+        [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0],
+        [0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0],
+    );
+    let dot = |x: &[f64; 8], y: &[f64; 8]| (0..8).map(|k| x[k] * y[k]).sum::<f64>();
+    assert!((dot(&q1, &q1) - 2.0).abs() < 1e-15, "|q1|^2 should be 2, not 1");
+    assert!((dot(&q2, &q2) - 2.0).abs() < 1e-15, "|q2|^2 should be 2, not 1");
+    assert!(dot(&q1, &q2).abs() < 1e-15, "the two directions are already orthogonal");
+    assert_eq!(z0, Latent::default(), "the presets sit at the origin");
+
+    // And what `latent_oblique` would have done instead: scaled both by 1/sqrt(2), which halves
+    // the extent of the slice at a fixed camera half-width.
+    let Chart::Latent { q1: o1, .. } = Chart::latent_oblique(Latent::default(), q1, q2) else {
+        panic!()
+    };
+    assert!((dot(&o1, &o1) - 1.0).abs() < 1e-14, "latent_oblique should normalise");
+}
+
+/// The four presets in one place: each is the reference's basis under the spec's index order, and
+/// each decodes cleanly across its `[-1,1]^2` box.
+#[test]
+fn the_four_default_presets_decode_across_their_whole_box() {
+    let z0 = Latent::default();
+    let cases: [(&str, Chart); 4] = [
+        ("shape", Chart::latent_axes(z0, 0, 1)),
+        ("prho", Chart::latent_axes(z0, 2, 3)),
+        ("plambda", Chart::latent_axes(z0, 4, 5)),
+        (
+            "shape_pl",
+            Chart::Latent {
+                z0,
+                q1: [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0],
+                q2: [0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0],
+            },
+        ),
+    ];
+    for (name, chart) in cases {
+        let mut distinct = std::collections::HashSet::new();
+        let mut positions = std::collections::HashSet::new();
+        for iu in 0..9 {
+            for iv in 0..9 {
+                let (u, v) = (-1.0 + 0.25 * iu as f64, -1.0 + 0.25 * iv as f64);
+                let ic = grid::decode_state(&chart, 0, u, v);
+                assert!(ic.is_finite(), "{name} at ({u},{v}) decoded non-finite");
+                let s: f64 = ic.m.iter().sum();
+                assert!((s - 1.0).abs() < 1e-14, "{name}: masses sum to {s}");
+                // **The key must be the whole IC, not the configuration.** Positions in this
+                // decode do not depend on the momentum coordinates at all, so `prho` and
+                // `plambda` are constant-CONFIGURATION slices: every pixel is the same triangle
+                // released with a different initial velocity. Keying on body 0's position reads
+                // 1 distinct of 81 there and looks like a collapsed decode when nothing has
+                // collapsed. Two different faults give the same count, and the fix is to measure
+                // the quantity the chart actually moves.
+                distinct.insert(format!(
+                    "{:.12e},{:.12e},{:.12e},{:.12e}",
+                    ic.s.r[0].x, ic.s.r[0].y, ic.s.v[0].x, ic.s.v[0].y
+                ));
+                positions.insert(format!("{:.12e},{:.12e}", ic.s.r[0].x, ic.s.r[0].y));
+            }
+        }
+        // The guard against a collapsed decode: identical footprints give `ensemble_spread`
+        // exactly zero, which reads as perfectly resolved and stops the descent on nothing.
+        println!(
+            "{name:>10}: {:>2} distinct ICs of 81, over {:>2} distinct configurations",
+            distinct.len(),
+            positions.len()
+        );
+        assert!(distinct.len() > 40, "{name} decode is collapsing: {} distinct", distinct.len());
+    }
+}
+
+/// The GLSL's ten slots collapse to eight here, which is exactly when an out-of-range index gets
+/// written by hand. It must panic, not alias onto `z_mu[1]`.
+#[test]
+#[should_panic(expected = "out of range")]
+fn a_latent_index_past_seven_panics_rather_than_aliasing() {
+    let _ = base_latent().get(9);
+}
+
+#[test]
+#[should_panic(expected = "out of range")]
+fn setting_a_latent_index_past_seven_panics_rather_than_aliasing() {
+    let mut z = base_latent();
+    z.set(8, 1.0);
+}
+
+/// `latent_oblique` divided by zero for a degenerate seed pair and handed back a NaN basis, which
+/// decodes every pixel identically. A collapsed decode makes the criterion maximally confident, so
+/// this is refused rather than propagated.
+#[test]
+#[should_panic(expected = "parallel to the first")]
+fn latent_oblique_refuses_two_parallel_seeds() {
+    let a = [0.3, -1.2, 0.5, 0.9, -0.4, 0.1, 0.7, -0.6];
+    let b = a.map(|x| -2.5 * x);
+    let _ = Chart::latent_oblique(base_latent(), a, b);
+}

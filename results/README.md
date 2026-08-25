@@ -311,8 +311,9 @@ not, which is why the version moved.
 
 ## `charts/` — every chart family, from `examples/chart_gallery.rs`
 
-Thirteen chart instances across the reference's five families, all at **1024²**, budget 40000 so
-every descent stops on the criterion rather than the cap. Per chart:
+Seventeen chart instances, all at **1024²**, budget 40000 so every descent stops on the
+criterion rather than the cap. Thirteen across the reference's five families, plus the four
+`preset_*` slices ported from the GLSL reference. Per chart:
 
 | file | what it answers |
 |---|---|
@@ -332,6 +333,25 @@ failure gets mistaken for a rendering artefact, or a rendering choice for a find
 
 The level ladder is **one** descent truncated at each depth, not a fresh descent per frame — so
 it is one refinement seen at several playheads rather than several unrelated trees.
+
+### The four `preset_*` slices
+
+`preset_shape`, `preset_prho`, `preset_plambda`, `preset_shape_pl` — the default slices of
+`Ma1achy/principia-ii` (`src/state.ts:71-76`), at `z0 = 0` framed at `(0,0)` with `half = 1.0`.
+They exist to give the instrument something **recognisable** to be judged against: `z0 = 0` decodes
+to the equilateral Lagrange configuration, so the centre of every one of these four images is a
+named physical state rather than a point on a ramp.
+
+Three things to know before reading them, all in RESULTS §12:
+
+- The images are **transposed relative to the GLSL**. It puts `beta` at index 0; the spec names the
+  chart `(z_alpha, z_beta)` and this port follows the spec.
+- `preset_prho` and `preset_plambda` are constant-**configuration** slices. Positions do not depend
+  on the momentum coordinates, so every pixel is the same triangle at a different initial velocity.
+  The picture is entirely about what that one configuration *does*, not about a family of shapes.
+- The `latent_*` rows are a different base point on purpose — off-origin so no sigmoid rests at
+  its symmetry point. The presets are at the origin for the opposite reason. Compare within a
+  chart, never across.
 
 ## `colour/` — from `examples/colour_check.rs`
 

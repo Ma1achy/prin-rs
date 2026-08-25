@@ -289,8 +289,14 @@ impl Chart {
     /// anyone can repeat.
     pub fn latent_oblique(z0: decoder::Latent, a: [f64; 8], b: [f64; 8]) -> Chart {
         let dot = |x: &[f64; 8], y: &[f64; 8]| (0..8).map(|k| x[k] * y[k]).sum::<f64>();
+        // A zero seed, or a `b` parallel to `a`, divides by zero and hands back a NaN basis. A
+        // NaN basis decodes every pixel identically, `ensemble_spread` reads exactly zero, and
+        // the criterion reports the quad perfectly resolved — a collapsed decode wearing the
+        // face of a tidy answer. Refuse it here instead.
+        const SEED_EPS: f64 = 1e-12;
         let mut q1 = a;
         let n1 = dot(&q1, &q1).sqrt();
+        assert!(n1 > SEED_EPS, "latent_oblique: first seed has norm {n1:e}, cannot be normalised");
         for x in q1.iter_mut() {
             *x /= n1;
         }
@@ -300,6 +306,11 @@ impl Chart {
             q2[k] -= p * q1[k];
         }
         let n2 = dot(&q2, &q2).sqrt();
+        assert!(
+            n2 > SEED_EPS,
+            "latent_oblique: second seed is parallel to the first (residual norm {n2:e}); \
+             the two seeds span a line, not a plane"
+        );
         for x in q2.iter_mut() {
             *x /= n2;
         }

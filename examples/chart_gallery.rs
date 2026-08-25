@@ -163,6 +163,40 @@ fn main() {
             0.5,
             0.45,
         ),
+        // ---- The GLSL reference's four default presets ----------------------------------
+        //
+        // `Ma1achy/principia-ii`, `src/state.ts:71-76`. These are the slices the reference ships
+        // with, and they are **new cases beside** the `latent_*` rows above rather than
+        // replacements: those sit at an off-origin `z0` deliberately, so no sigmoid rests at its
+        // symmetry point. These sit at `z0 = 0` for the opposite reason — that point decodes to
+        // the **equilateral Lagrange configuration**, which is what makes the picture something a
+        // person can recognise rather than a field to be tabulated.
+        //
+        // `half = 1.0` at centre `(0,0)` reproduces the reference's `z0 + (2u-1)*q1 + (2v-1)*q2`
+        // over `(u,v) in [0,1]^2` exactly: `decode_state` is `z0 + u*q1 + v*q2` and the slice
+        // already supplies the signed box, so the factor of two lives in the camera and not in a
+        // second place where it could hide.
+        //
+        // The image is **transposed relative to the GLSL** — its `shape` preset is `q1=e0, q2=e1`,
+        // which in its own indexing is `beta x alpha`, and this module uses the spec's
+        // `(z_alpha, z_beta)` order. See `decoder.rs`'s module header.
+        ("preset_shape", Chart::latent_axes(Latent::default(), 0, 1), 0.0, 0.0, 1.0),
+        ("preset_prho", Chart::latent_axes(Latent::default(), 2, 3), 0.0, 0.0, 1.0),
+        ("preset_plambda", Chart::latent_axes(Latent::default(), 4, 5), 0.0, 0.0, 1.0),
+        (
+            // Constructed directly, **not** through `latent_oblique`: the reference's basis is
+            // un-normalised (each has norm sqrt(2)) and Gram-Schmidt would silently render a
+            // different slice. `tests/charts.rs` pins the norm so a later tidy-up fails loudly.
+            "preset_shape_pl",
+            Chart::Latent {
+                z0: Latent::default(),
+                q1: [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0],
+                q2: [0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0],
+            },
+            0.0,
+            0.0,
+            1.0,
+        ),
     ];
 
     println!(

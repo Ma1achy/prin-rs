@@ -475,8 +475,17 @@ artefacts with 128x64 ones, and a small raster reads as a rendering fault rather
 file.
 
 **An argument hardcoded past is worse than an argument missing.** `pan_sequence` took a
-`viewport` argument that set the camera while `frame_res` stayed hardcoded at 384, so asking for
-a larger pan rendered the same small raster and looked like a rendering limit.
+`viewport` argument that set the camera while `frame_res` stayed hardcoded at 384, and
+`between_vs_within` took one while its render was a literal `512` — so asking for a larger raster
+produced the same small one and looked like a rendering limit. Both are fixed; the remaining
+`Camera::framing(..., 512)` sites use the camera for **scheduling** only and write no images,
+which is why they stay.
+
+**`prin --size` drives the image AND the per-pixel dump, and they want opposite sizes.** The
+images want 1024²; the raw dumps are documented as 64×64 and at 1024² they are **320 MB per
+region**. Run it twice — once large for the images, once small for the dump — and never let the
+large run's `.raw` land in `results/`. One knob for two artefacts with opposite requirements is
+the shape of the problem; the workaround is in `results/README.md`.
 
 ---
 

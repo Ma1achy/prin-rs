@@ -407,3 +407,53 @@ Confounds to dump, not hide:
 - **Caching.** `pan_sequence` measures what would be evictable and asserts a recomputed quad
   comes back bitwise. Neither a cache nor an eviction policy exists, and adding one is a scope
   change.
+
+## The GLSL latent chart and its four default presets
+
+Ported from `Ma1achy/principia-ii` — `src/shaders/principia/frag.glsl:19-59` (the decode) and
+`src/state.ts:71-76` (the presets). Nothing else from that repo was needed.
+
+The point was that everything built so far had been evaluated against nothing: with no
+recognisable slice there is no way to judge whether the physics or the colouring is right.
+
+**Done.**
+
+- [x] constants pinned to the GLSL: `MU_MAX 4 -> 5`, `Q_MAX 1 -> 2`, and the mass saturation
+      `MU_MAX*tanh(z)` -> `MU_MAX*(2*sigmoid(z)-1)`, i.e. **half** the LaTeX spec's gain
+- [x] the reconstruction algebra needed **no change** — crossing included, verified line by line
+- [x] the four presets as gallery cases at `z0 = 0`, `half = 1.0`, beside the existing `latent_*`
+      rows rather than replacing them
+- [x] the whole gallery regenerated: the constants changed the decode for 9 of 13 existing cases
+- [x] `Latent::get`/`set` bounds-checked; `latent_oblique` refuses a degenerate seed pair
+
+**Findings.**
+
+- [!] `Sigma p = 0` is named in the brief as "the test that catches a swap". It **cannot** —
+      already on record here from measurement. The gates are the Jacobi round-trip and the
+      kinetic-energy identity, and both are empty at `m0 == m1`
+- [!] the `z = 0` **Lagrange landmark is blind to all three constants** this port corrected: at
+      the origin the momentum coordinates and mass logits are zero, so every one of them drops
+      out of the arithmetic. `I = 1` and `COM = 0` are worse — algebraic identities that hold
+      under any mass factors at all
+- [!] `prho` and `plambda` are constant-**configuration** slices — positions do not depend on the
+      momentum coordinates, so every pixel is the same triangle at a different initial velocity.
+      A distinctness check keyed on a body position reads **1 of 81** and looks like a collapsed
+      decode when nothing has collapsed
+- [!] the preset images are **transposed relative to the GLSL**: it puts beta at index 0, the spec
+      names the chart `(z_alpha, z_beta)`, and this port follows the spec
+- [!] **`preset_shape` is the first chart-family instance that is not tame**, which partly answers
+      the standing "the chart families do not exercise the criterion" item. 577 leaves against a
+      complete 4096, `alpha` interdecile 3.07 against 0.04, ramp span 10009 against 5.5, and
+      **1.237%** undetermined pixels against 0.007%. The cause is **which coordinates the slice
+      varies, not the base point**: `preset_shape` and `preset_prho` share `z0 = 0` exactly and
+      differ 5.7x in leaf count, because only the first sweeps the configuration coordinates
+
+**Open.**
+
+- **`error(B)` on `preset_shape`.** There is now a slice the criterion has something to
+  discriminate on. Whether it discriminates *well* there is unmeasured, and it is the obvious next
+  measurement — the criterion comparison in §11 was made entirely on regions of `body_plane`.
+- **The `(2u-1)` scaling lives in the camera, not the decoder.** `decode_state` is
+  `z0 + u*q1 + v*q2` and the preset is reproduced by framing at `(0,0)` with `half = 1.0`. That
+  is one fewer place for a factor of two to hide, but it does mean a preset is only the
+  reference's preset **at that framing** — nothing in the type system says so.

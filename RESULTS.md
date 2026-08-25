@@ -1584,7 +1584,179 @@ six, with no redundancy to remove at one sample per pixel. They make a colouring
 **within a session**; committing a gigabyte so that survives a clone is the wrong trade. The
 regeneration command is in `.gitignore` beside them.
 
-## 12. Reproducing any of this
+## 12. The GLSL latent chart, and four slices you can recognise
+
+Everything in §1–§11 was evaluated against nothing. The criterion was compared to random, the
+colouring to its own percentiles, the tree to its own wireframe — but no render was of a
+configuration anybody could name, so there was no independent handle on whether the physics or the
+colouring was right. `Ma1achy/principia-ii` has one: a validated GLSL implementation with a pinned
+decode and four named default slices.
+
+`src/shaders/principia/frag.glsl:19-59` and `src/state.ts:71-76`. Nothing else from that repo was
+needed.
+
+### 12.1 The port was three constants
+
+The reconstruction algebra in `src/physics/decoder.rs` already transcribed the GLSL correctly,
+crossed mass factors included, and `Latent` was already 8 coordinates in the spec's order. Checked
+line by line:
+
+| GLSL | in tree | |
+|---|---|---|
+| `r01 = -m.z*lambda; r2 = M01*lambda` | `r01 = lam*(-m2/Mtot); r2 = r01 + lam` | same: `Mtot = 1`, and `r01+lam = (1-m2)lam` |
+| `muLambda = m.z*M01` | `mu_lam = m2*M01/Mtot` | same |
+| `r0 -= (m.y/M01)*rho; r1 += (m.x/M01)*rho` | identical | the crossing, verbatim |
+| `p0 = -pRho - (m.x/M01)*pLambda` | identical | |
+| `beta = PI*sigmoid(z)` | identical | half range — no wrap in this chart |
+
+What was wrong was the saturation, in three places the LaTeX chart reference had guessed at:
+
+| | was | GLSL |
+|---|---|---|
+| `MU_MAX` | `4.0` | `5.0` |
+| `Q_MAX` | `1.0` | `2.0` |
+| mass saturation | `MU_MAX*tanh(z)` | `MU_MAX*(2*sigmoid(z) - 1)` = `MU_MAX*tanh(z/2)` — **half the gain** |
+
+Measured separation between the two saturation forms at `z_mu = (1.0, -0.5)`: worst `|dm| = 0.0899`
+on a mass of ~0.2. Between `Q_MAX = 2` and `Q_MAX = 1` at `z_q = (0.7,-1.1,0.3,0.9)`:
+`|dp_lambda| = 0.4474`. Both are far outside rounding, which is what makes the pinning test able
+to fire.
+
+The GLSL's `decodeIC` takes `z0..z9` and **never reads `z2` or `z3`** — dead slots from before the
+chart was known to be 8D. Dropped. It also puts `beta` at index 0 where the spec names the chart
+`(z_alpha, z_beta)`; this port follows the spec, so **the preset images are transposed relative to
+the GLSL**. That is faithfulness, not a bug, and it is written into `decoder.rs`'s module header
+next to the index table so the next reader is not caught by the same thing twice.
+
+### 12.2 The landmark, and what it cannot see
+
+At `z = 0` the decode gives the **equilateral Lagrange configuration** — masses `(1/3,1/3,1/3)`,
+positions `[(-0.866025,-0.5), (0.866025,-0.5), (0,1)]`, `I = 1`, released from rest. Measured
+separations:
+
+```
+1.732050807568878  1.732050807568877  1.732050807568877     (sqrt 3 = 1.732050807568877)
+```
+
+This is the strongest check in the build, because it is a named physical configuration and it can
+be verified **by eye in the render** rather than only in a test. It is also, and this is the part
+worth writing down, **blind to every constant §12.1 corrected**: at the origin the momentum
+coordinates and the mass logits are all zero, so `MU_MAX`, `Q_MAX` and the choice of saturation
+form each drop out of the arithmetic entirely.
+
+`I = 1` and `COM = 0` are weaker still — algebraic identities of the canonical-frame decode
+(`I = cos^2 a + sin^2 a`; `m0r0 + m1r1 = -M01 m2 lam` cancels `m2 r2`) that hold under **any** mass
+factors whatever. All three are kept as wiring guards and labelled as such; the constants have
+their own test.
+
+Two further things the port does not get for free. The brief names `sum p = 0` as the test that
+catches a crossed-mass swap; it cannot, for reasons already measured and recorded here
+(`7.9e-17` crossed against `5.6e-17` uncrossed) — the position-side factors never enter the sum.
+And the gauge: `decode` applies `canonicalise` and `scale_gauge` where `decodeIC` applies neither,
+which should be inert on this chart since `rho~` already sits on `+x` and `lam~_y >= 0` for
+`beta in [0,pi]`. It is, but not bitwise — `I = 1` only in exact algebra, so `scale_gauge` divides
+by `sqrt(1 +- eps)`. Measured over four latent points: positions `7.161e-15`, momenta `3.140e-16`.
+
+### 12.3 The four presets
+
+`z0 = 0`, framed at `(0,0)` with `half = 1.0`. The reference's `z0 + (2u-1)q1 + (2v-1)q2` over
+`[0,1]^2` is reproduced exactly by that framing, because `decode_state` is `z0 + u*q1 + v*q2` and
+the slice already supplies a signed box — one fewer place for a factor of two to hide.
+
+| case | GLSL id | `q1` | `q2` |
+|---|---|---|---|
+| `preset_shape` | `shape` | `e_alpha` | `e_beta` |
+| `preset_prho` | `prho` | `e2` | `e3` |
+| `preset_plambda` | `plambda` | `e4` | `e5` |
+| `preset_shape_pl` | `shape_pl` | `e_alpha + e4` | `e_beta + e5` |
+
+`preset_shape_pl` is constructed directly and **not** through `latent_oblique`: the reference's
+basis is un-normalised (each direction has norm `sqrt 2`) and Gram–Schmidt would quietly render a
+different slice while looking like a tidy-up. `tests/charts.rs` pins the norm so that fails loudly.
+
+These sit **beside** the existing `latent_*` rows, not in place of them. Those are deliberately at
+an off-origin `z0` so no sigmoid rests at its symmetry point; the presets are at the origin for the
+opposite reason — that point is the Lagrange configuration.
+
+**`prho` and `plambda` are constant-configuration slices**, and this is the finding that cost a
+test. Positions in this decode do not depend on the momentum coordinates at all, so every pixel of
+those two slices is the **same triangle** released with a different initial velocity. A
+distinctness check keyed on a body position reads `1 of 81` there:
+
+```
+     shape: 81 distinct ICs of 81, over 81 distinct configurations
+      prho: 81 distinct ICs of 81, over  1 distinct configurations
+   plambda: 81 distinct ICs of 81, over  1 distinct configurations
+  shape_pl: 81 distinct ICs of 81, over 81 distinct configurations
+```
+
+Nothing has collapsed — the chart simply does not vary the quantity being counted. But a collapsed
+decode gives `ensemble_spread` exactly zero, which reads as *perfectly resolved* and stops the
+descent, so the two are worth being able to tell apart: the guard has to measure what the chart
+actually moves.
+
+### 12.4 The gallery, regenerated
+
+All 17 cases at 1024², budget 40000, `tau = 1e-4`, `alpha_hi = 0.2`, `N = 8`, `E+1 = 8`, `t = 13`,
+f64, screen floor on. The constants of §12.1 changed the decode for **9 of the 13** pre-existing
+cases; `burrau_nu_k` is the exception, since it builds masses from `nu` directly and never touches
+`z`. Everything regenerated rather than marked stale.
+
+| case | chart | quads | leaves | screen | alpha med | alpha idec | ramp span |
+|---|---|---|---|---|---|---|---|
+| `body_plane` | body_plane | 549 | 412 | 0 | 0.1402 | 1.1203 | 196.2 |
+| `plane_00deg` | plane | 549 | 412 | 0 | 0.1402 | 1.1203 | 196.2 |
+| `shape_sphere` | shape | 1293 | 970 | 0 | 0.1905 | 0.9709 | 2107.6 |
+| `latent_shape` | latent | 5461 | 4096 | 0 | 1.0013 | 0.0383 | 5.5 |
+| `latent_inner_p` | latent | 5397 | 4048 | 0 | 1.0091 | 0.1170 | 18.5 |
+| `latent_outer_p` | latent | 5041 | 3781 | 0 | 1.0046 | 0.3119 | 28.9 |
+| `latent_mass` | latent | 5461 | 4096 | 0 | 0.9979 | 0.0413 | 3.8 |
+| `latent_mixed` | latent | 5117 | 3838 | 0 | 1.0001 | 0.0696 | 21.1 |
+| `latent_oblique_a` | latent | 5421 | 4066 | 0 | 1.0026 | 0.0745 | 5.8 |
+| `latent_oblique_b` | latent | 4697 | 3523 | 0 | 1.0024 | 0.2446 | 4.0 |
+| `burrau_nu_k` | burrau | 4753 | 3565 | 0 | 1.0038 | 0.0788 | 6.0 |
+| `invariant_lz_k` | invariant | 5429 | 4072 | 0 | 1.0001 | 0.0835 | 9.2 |
+| `mass_simplex` | mass_simplex | 5461 | 4096 | 0 | 1.0010 | 0.1319 | 5.2 |
+| **`preset_shape`** | latent | **769** | **577** | 0 | **0.6285** | **3.0724** | **10008.9** |
+| `preset_prho` | latent | 4357 | 3268 | 0 | 1.0153 | 0.1198 | 19.7 |
+| `preset_plambda` | latent | 4493 | 3370 | 0 | 0.9983 | 0.2893 | 14.7 |
+| `preset_shape_pl` | latent | 3965 | 2974 | 0 | 0.9965 | 0.2344 | 18.5 |
+
+The control holds: `plane_00deg` against `body_plane`, `max |dIC| = 0e0`, asserted.
+
+**`preset_shape` is the only chart family instance that is not tame.** The standing result was that
+the chart families sit at `alpha` 0.99–1.01 where they are centred and so do not exercise the
+criterion where it is hard. Twelve of the thirteen rows above restate it. `preset_shape` does not:
+577 leaves against a **complete** 4096, an `alpha` interdecile of 3.07 against 0.04, and a
+lightness window spanning four decades against half of one.
+
+**The cause is which coordinates the slice varies, not the base point.** `preset_shape` and
+`preset_prho` share `z0 = 0` exactly and differ by a factor of 5.7 in leaf count. `preset_shape`
+sweeps `(alpha, beta)` — the configuration coordinates — and passes through collision-adjacent
+shapes; `preset_prho` holds the configuration fixed and varies only the initial momenta (§12.3).
+`preset_shape_pl` mixes the two and lands with the momentum slices, so the configuration sweep does
+not dominate a mixed basis.
+
+Corroborated independently by the undetermined fraction, counted on the uniform renders:
+
+| | `DEBUG_NAN` pixels of 1048576 | | distinct colours |
+|---|---|---|---|
+| `preset_shape` | 12966 | **1.237%** | 249637 |
+| `preset_prho` | 76 | 0.007% | 127320 |
+| `preset_plambda` | 73 | 0.007% | 130182 |
+| `preset_shape_pl` | 69 | 0.007% | 139524 |
+
+`preset_shape` carries **177x** the undetermined pixels of the other three. Those are visible as
+magenta rather than passing as physics, which is what the reserved null exists for.
+
+**This does not settle anything about the criterion, and should not be read as doing so.** It says
+there is now a slice on which the criterion has something to discriminate — which twelve of the
+other thirteen do not provide. Whether it discriminates *well* there is an `error(B)` measurement
+that has not been run, and the standing rule against reading a gallery as a beauty contest applies
+with more force now that the renders have structure in them.
+
+
+## 13. Reproducing any of this
 
 Every table above comes from a committed example. Raw output for all of them is in
 [`results/output/`](results/output/), the acceptance-gate and cross-check output is in
@@ -1640,3 +1812,5 @@ Every table above comes from a committed example. Raw output for all of them is 
 | §10.9 the two costings | `cargo run --release --example cost_and_anisotropy -- 5 8` |
 | the criterion gates | `cargo test --release --test criterion -- --nocapture` |
 | §10.9 the slice gallery | `cargo run --release --example slice_gallery -- 4000 1e-4 0.2 512` |
+| §12 the chart gallery, all 17 cases | `cargo run --release --example chart_gallery -- 40000 1e-4 0.2 1024` |
+| §12 the decoder and preset gates | `cargo test --release --test charts -- --nocapture` |

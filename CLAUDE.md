@@ -487,6 +487,42 @@ region**. Run it twice — once large for the images, once small for the dump �
 large run's `.raw` land in `results/`. One knob for two artefacts with opposite requirements is
 the shape of the problem; the workaround is in `results/README.md`.
 
+**The GLSL is the pin for the latent chart; the LaTeX reference guessed and was wrong.**
+`Ma1achy/principia-ii`, `src/shaders/principia/frag.glsl:19-59`. `MU_MAX = 5.0` (the chart
+reference said 4.0), `Q_MAX = 2.0` (said 1.0), and the mass saturation is
+`MU_MAX*(2*sigmoid(z) - 1)` — algebraically `MU_MAX*tanh(z/2)`, **half** the gain of the spec's
+`mu_max*tanh(z)`. The reconstruction algebra was already right, crossing included. Its `decodeIC`
+carries `z0..z9` but never reads `z2`/`z3`, and puts beta at index 0 where the spec names the chart
+`(z_alpha, z_beta)` — so the preset images are **transposed relative to the GLSL**, which is
+faithfulness to the spec and not a bug. `decoder.rs`'s module header holds the index table.
+
+**The `z = 0` Lagrange landmark is blind to every constant this project has got wrong there.**
+It is a named physical configuration — masses `(1/3,1/3,1/3)`, separations all `sqrt 3`,
+`I = 1` — checkable by eye in the render, and a strong gate on the reconstruction algebra. But at
+`z = 0` the momentum coordinates and mass logits are all zero, so `MU_MAX`, `Q_MAX` and the choice
+between `tanh(z)` and `2*sigmoid(z)-1` every one of them drops out. `I = 1` and `COM = 0` are
+worse: they are algebraic identities (`I = cos^2 a + sin^2 a`; `m0r0 + m1r1 = -M01 m2 lam` cancels
+`m2 r2`) that hold under **any** mass factors. Keep all three as wiring guards, label them as such,
+and put the constants under a test that fires when they move.
+
+**A chart's tameness is set by WHICH COORDINATES it varies, not by where it is centred.**
+The standing result — chart families sit at `alpha` 0.99-1.01 and do not exercise the criterion —
+held for twelve of thirteen instances and was read as a property of the base point. It is not.
+`preset_shape` and `preset_prho` share `z0 = 0` **exactly** and differ **5.7x** in leaf count (577
+against 3268), with `alpha` interdecile 3.07 against 0.12 and 1.237% undetermined pixels against
+0.007%. Only the first sweeps `(alpha, beta)`, the configuration coordinates, and so passes through
+collision-adjacent shapes; the momentum slices hold one configuration and vary its initial velocity.
+A mixed basis (`preset_shape_pl`) lands with the momentum slices, so the configuration sweep does
+not dominate one. Moving a base point to find chaos is tuning; changing which coordinates the plane
+spans is not.
+
+**A distinctness check keyed on the wrong quantity reads as a collapsed decode.**
+Positions in the latent decode do not depend on the momentum coordinates at all, so the `prho` and
+`plambda` presets are constant-**configuration** slices: every pixel is the same triangle released
+with a different initial velocity. Keying `decode::distinct` on a body position reads **1 of 81**
+there. Nothing has collapsed — the chart simply does not move that quantity. Two different faults
+give the same count, and the guard has to measure what the chart actually varies.
+
 ---
 
 ## SMOKE TEST

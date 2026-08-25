@@ -38,15 +38,39 @@
 //!
 //! `sum p_i = 0` is still asserted, because it catches a different family of errors (a dropped
 //! term, a sign flip on `p_lam`). It is just not the one the reference says it is.
+//!
+//! # The GLSL reference is the pin, and it carries ten slots for eight coordinates
+//!
+//! `Ma1achy/principia-ii`, `src/shaders/principia/frag.glsl:19-59`, is the validated
+//! implementation and settles the constants the LaTeX chart reference could only guess at. Its
+//! `decodeIC` takes `z0..z9` but **never reads `z2` or `z3`** — dead slots from before the chart
+//! was known to be 8D. They are dropped here, and the two angle coordinates are stored in the
+//! *spec's* order rather than the GLSL's:
+//!
+//! ```text
+//!   GLSL      this module        meaning
+//!   z0     -> index 1  z_beta    beta  = PI * sigmoid(z)
+//!   z1     -> index 0  z_alpha   alpha = ALPHA_MIN + (PI/2 - 2*ALPHA_MIN)*sigmoid(z)
+//!   z2, z3 -> --                 DROPPED, never read by decodeIC
+//!   z4, z5 -> index 2, 3         p_rho    = Q_MAX*(2*sigmoid(z) - 1), per component
+//!   z6, z7 -> index 4, 5         p_lambda = same
+//!   z8, z9 -> index 6, 7         mu1, mu2 = MU_MAX*(2*sigmoid(z) - 1)
+//! ```
+//!
+//! **The alpha/beta order flips.** The GLSL puts beta at index 0; the spec names the chart
+//! `(z_alpha, z_beta)` and that is the order used here. A consequence is that the GLSL's `shape`
+//! preset — `q1 = e0, q2 = e1`, which in *its* indexing is `beta x alpha` — becomes `alpha x
+//! beta` here, so the rendered image is **transposed relative to the GLSL**. That is the port
+//! being faithful to the spec, not a bug.
 
 use crate::physics::{shape, Cart, Ic};
 use crate::Vec2;
 
-/// Logit saturation for the mass coordinates. The reference's recorded default, flagged there
-/// as an open verification item — check before relying on it.
-pub const MU_MAX: f64 = 4.0;
-/// Saturation for the free Jacobi momentum coordinates.
-pub const Q_MAX: f64 = 1.0;
+/// Logit saturation for the mass coordinates. Pinned from `frag.glsl:21`; the LaTeX chart
+/// reference's guessed `4.0` was wrong.
+pub const MU_MAX: f64 = 5.0;
+/// Saturation for the free Jacobi momentum coordinates. Pinned from `frag.glsl:22`.
+pub const Q_MAX: f64 = 2.0;
 /// Buffer keeping `‖rho‖` away from zero. Note the orientation: `‖rho~‖ = cos(alpha)`, so
 /// **small alpha is a LARGE inner-pair separation** and `alpha -> pi/2` is a tight inner pair
 /// with a distant third body. That is the reference's own "easy to get backwards" note, and
@@ -111,13 +135,18 @@ pub struct Latent {
 impl Latent {
     /// Index into the 8 coordinates, in the reference's order:
     /// `(z_alpha, z_beta | z_q0..z_q3 | z_mu1, z_mu2)`.
+    ///
+    /// **Out of range panics rather than aliasing.** These previously used an irrefutable `_`
+    /// arm, so index 8 or 9 silently read `z_mu[1]` — and the GLSL's ten slots collapsing to
+    /// eight is exactly the situation in which an out-of-range index gets written by hand.
     pub fn get(&self, i: usize) -> f64 {
         match i {
             0 => self.z_alpha,
             1 => self.z_beta,
             2..=5 => self.z_q[i - 2],
             6 => self.z_mu[0],
-            _ => self.z_mu[1],
+            7 => self.z_mu[1],
+            _ => panic!("latent coordinate {i} out of range (8 coordinates, 0..=7)"),
         }
     }
     pub fn set(&mut self, i: usize, v: f64) {
@@ -126,7 +155,8 @@ impl Latent {
             1 => self.z_beta = v,
             2..=5 => self.z_q[i - 2] = v,
             6 => self.z_mu[0] = v,
-            _ => self.z_mu[1] = v,
+            7 => self.z_mu[1] = v,
+            _ => panic!("latent coordinate {i} out of range (8 coordinates, 0..=7)"),
         }
     }
     pub const AXIS_NAMES: [&'static str; 8] =
@@ -137,10 +167,14 @@ impl Latent {
 // 0.1 Masses
 // ---------------------------------------------------------------------------------------------
 
-/// `mu_k = MU_MAX*tanh(z_k)`, then `softmax(0, mu1, mu2)`. Normalised so `M = 1`.
+/// `mu_k = MU_MAX*(2*sigmoid(z_k) - 1)`, then `softmax(0, mu1, mu2)`. Normalised so `M = 1`.
+///
+/// **This is `MU_MAX*tanh(z/2)` — HALF the gain of the LaTeX reference's `mu_max*tanh(z)`.**
+/// `frag.glsl:35-36` is the pin. The half-gain form is shared with the momentum coordinates,
+/// which is why both read `2*sigmoid(z) - 1` and neither reads `tanh`.
 pub fn masses(z_mu: [f64; 2]) -> ([f64; 3], Option<Degenerate>) {
-    let mu1 = MU_MAX * z_mu[0].tanh();
-    let mu2 = MU_MAX * z_mu[1].tanh();
+    let mu1 = MU_MAX * (2.0 * sigmoid(z_mu[0]) - 1.0);
+    let mu2 = MU_MAX * (2.0 * sigmoid(z_mu[1]) - 1.0);
     // Softmax with the maximum subtracted, the same conditioning the vMF weights use.
     let mx = 0f64.max(mu1).max(mu2);
     let e = [(-mx).exp(), (mu1 - mx).exp(), (mu2 - mx).exp()];

@@ -97,7 +97,12 @@ fn main() -> std::io::Result<()> {
     // frame is also on disk as a still, so nothing depends on APNG support to be readable.
     // Named .png, not .apng: an APNG *is* a PNG, and viewers that do not animate show
     // the first frame rather than refusing the file. The .apng extension mostly stops them trying.
-    let file = File::create(format!("{stem}_animated.png"))?;
+    // The animation goes to `results/animated/`; the per-frame stills stay beside their `.prnq`.
+    let anim = format!("results/animated/{}_animated.png", stem.rsplit('/').next().unwrap());
+    if let Some(d) = std::path::Path::new(&anim).parent() {
+        std::fs::create_dir_all(d)?;
+    }
+    let file = File::create(&anim)?;
     let mut enc = png::Encoder::new(BufWriter::new(file), RES as u32, RES as u32);
     enc.set_color(png::ColorType::Rgb);
     enc.set_depth(png::BitDepth::Eight);
@@ -109,7 +114,7 @@ fn main() -> std::io::Result<()> {
     }
     writer.finish()?;
 
-    println!("\nwrote {frames} frames, {stem}_animated.png (APNG), and one .prnq per frame.");
+    println!("\nwrote {frames} frames, {anim} (APNG), and one .prnq per frame.");
     println!("The `screen` column is the point: at every zoom level a fresh population of leaves");
     println!("is stopped by the view, and the previous frame's floored quads have refined again.");
     Ok(())

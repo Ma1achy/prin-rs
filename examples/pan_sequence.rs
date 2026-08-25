@@ -180,7 +180,7 @@ fn main() {
     }
 
     let _ = prin_rs::output::apng::write(
-        &format!("results/criterion/pan_{}_animated.png", region.replace(' ', "_")),
+        &format!("results/animated/pan_{}_animated.png", region.replace(' ', "_")),
         frame_res,
         frame_res,
         &frames,
@@ -188,7 +188,7 @@ fn main() {
         3,
     );
     let _ = prin_rs::output::apng::write(
-        &format!("results/criterion/pan_{}_wire_animated.png", region.replace(' ', "_")),
+        &format!("results/animated/pan_{}_wire_animated.png", region.replace(' ', "_")),
         frame_res,
         frame_res,
         &wire_frames,

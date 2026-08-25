@@ -474,7 +474,7 @@ fn main() {
                 }
             }
             let _ = prin_rs::output::apng::write(
-                &format!("results/criterion/budget_{stem0}_t{t_max}_animated.png"),
+                &format!("results/animated/budget_{stem0}_t{t_max}_animated.png"),
                 res * 2,
                 res,
                 &frames,
@@ -482,7 +482,7 @@ fn main() {
                 2,
             );
             let _ = prin_rs::output::apng::write(
-                &format!("results/criterion/budget_{stem0}_t{t_max}_wire_animated.png"),
+                &format!("results/animated/budget_{stem0}_t{t_max}_wire_animated.png"),
                 res * 2,
                 res,
                 &wire_frames,

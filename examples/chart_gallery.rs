@@ -512,8 +512,12 @@ fn main() {
             ladder.push(f);
             wladder.push(wf);
         }
-        let _ = apng::write(&format!("{stem}_levels.png"), ares, ares, &ladder, 1, 2);
-        let _ = apng::write(&format!("{stem}_levels_wire.png"), ares, ares, &wladder, 1, 2);
+        // **Animations live in `results/animated/`, not beside the stills.** They are the only
+        // artefacts here that show *how the tree got there* rather than what it settled on, and
+        // 72 of them scattered through three directories were effectively unfindable.
+        let anim = format!("results/animated/{name}");
+        let _ = apng::write(&format!("{anim}_levels.png"), ares, ares, &ladder, 1, 2);
+        let _ = apng::write(&format!("{anim}_levels_wire.png"), ares, ares, &wladder, 1, 2);
 
         // The control: `plane_00deg` is `body_plane` written a second way. Compared on INITIAL
         // CONDITIONS, which is exact -- comparing images conflates "same chart" with "the
@@ -546,8 +550,8 @@ fn main() {
         wire_frames.push(wimg);
     }
 
-    let _ = apng::write("results/charts/gallery.png", res, res, &frames, 1, 1);
-    let _ = apng::write("results/charts/gallery_wire.png", res, res, &wire_frames, 1, 1);
+    let _ = apng::write("results/animated/gallery.png", res, res, &frames, 1, 1);
+    let _ = apng::write("results/animated/gallery_wire.png", res, res, &wire_frames, 1, 1);
     println!(
         "\n{} charts: still + wire twin + outcome control + level ladder (both) + .prnq each,\n\
          plus the two gallery APNGs. Everything at {res}^2.",

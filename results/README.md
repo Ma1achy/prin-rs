@@ -220,7 +220,7 @@ render cannot show that, which is why it went unnoticed.
 images are **identical by construction** — the resolve of one copy is that copy. A difference
 there would be a bug in the resolve rather than a finding.
 
-### Zoom ladders — `zoom_<region>_NN.png`, `zoom_<region>_animated.png`
+### Zoom ladders — `zoom_<region>_NN.png` (the animation is in [`animated/`](animated/))
 
 Nine frames at 384×384, each re-descending from a root box of `half = 0.05 / 2^k` with the camera
 framing it. **This is the only artefact that shows the screen floor is view-relative**, and a
@@ -283,7 +283,7 @@ you whether the structure around it was subdivided *around* it or straight *thro
 drew boundaries over a **uniform** base, which conflated the two, and that is how `deep
 interior`'s bad tree went unnoticed for a whole build.
 
-### The budget animation — `budget_<region>_t<T>_animated.png`, `..._wire_animated.png`
+### The budget animation — in [`animated/`](animated/): `budget_<region>_t<T>_animated.png`, `..._wire_animated.png`
 
 The single most useful artefact here. Each frame is **`greedy_oracle` on the left,
 `within/median` — the shipped default — on the right**, at the same budget, drawn at true texel
@@ -295,7 +295,7 @@ Watch where the right-hand side spends its budget. §10.3's table says it is bea
 
 Every frame is also on disk as `budget_<region>_t<T>_NN.png`, so nothing depends on APNG support.
 
-### Slice gallery — `slice_<case>.png`, `slice_gallery_animated.png`
+### Slice gallery — `slice_<case>.png` (the animation is in [`animated/`](animated/))
 
 Ten charts through **one shared centre configuration**, so only the 2-plane changes: the
 axis-aligned body plane, oblique planes at 15/30/45°, cross-body mixes, and the shape chart at
@@ -348,7 +348,7 @@ proves nothing.
 Churn is over quads present at **both** playheads; the captured output prints the shared count and
 flags it when small.
 
-### Pan frames — `pan_<region>_NN.png`, `pan_<region>_animated.png`
+### Pan frames — `pan_<region>_NN.png` (the animation is in [`animated/`](animated/))
 
 Nine camera positions across the region. **The animation showing nothing change is the result**:
 `Camera::veto` reads `tile_size_px`, which does not depend on `cx`/`cy`, so panning changes no
@@ -379,7 +379,7 @@ extent controls. Per chart:
 | `<case>_uniform.png` | bivariate/spread_shape | **what the chart looks like** — one sample per pixel, no tree at all |
 | `<case>_outcome.png`, `<case>_uniform_outcome.png` | outcome | the categorical control — `(state, detail)`, saturated at `t = 13` |
 | `<case>_event.png`, `<case>_uniform_event.png` | event_class/viridis | **the matched-reference mode** — see below |
-| `<case>_levels.png`, `<case>_levels_wire.png` | bivariate/spread_shape | **how the tree got there** — one descent truncated at each depth |
+| `animated/<case>_levels.png`, `animated/<case>_levels_wire.png` | bivariate/spread_shape | **how the tree got there** — one descent truncated at each depth. In [`animated/`](animated/), not beside the stills |
 | `<case>_termdepth.png` | — | leaf depth against `terminated_fraction`, the mechanism test |
 | `<case>.prnq` | — | the quad dump, with `chart_params` carrying the full basis |
 
@@ -485,6 +485,49 @@ Four things to know before reading any of them, all in RESULTS §12:
 - The `latent_*` rows are a different base point on purpose — off-origin so no sigmoid rests at
   its symmetry point. The presets are at the origin for the opposite reason. Compare within a
   chart, never across.
+
+## `animated/` — everything that moves
+
+**72 APNGs, and they are the only artefacts here that show a process rather than a result.** They
+were scattered across `charts/`, `criterion/` and `vertical/` among a thousand stills, where being
+findable depended on knowing the filename already. One folder, names unchanged.
+
+They are **APNG, not GIF**. An APNG *is* a PNG, so a viewer that does not animate shows the first
+frame instead of refusing the file — which is why the extension stays `.png`. Browsers, macOS
+Preview and Finder all animate them; some image libraries will show frame one only.
+
+### The refinement, per chart — `<case>_levels.png`, `<case>_levels_wire.png`
+
+**These are the refinement animations**: one descent truncated at each depth, so the frames are
+levels 0, 1, 2 … of the *same* tree rather than separate runs. 26 charts, each with a colour twin
+and a wireframe twin — 52 files.
+
+**Read the pair together.** The colour frame says what is displayed; the wire frame says where the
+tree cut. A coarse texel tells you a leaf is coarse; only the wire says whether the structure
+around it was subdivided *around* it or straight *through* it. Drawing boundaries over a uniform
+base conflated those two once already and let a bad tree survive a whole build unnoticed.
+
+**And read them against the stop-reason column**, not as a picture of the criterion working. On 23
+of 26 charts a **camera veto** stops 95%+ of leaves, so most of what these animations show is a cap
+being reached, not a criterion deciding. `preset_shape` is the one chart whose tree is entirely its
+own decisions — and it is 16 leaves, which is what a criterion failing outright looks like.
+
+### Across all charts — `gallery.png`, `gallery_wire.png`
+
+One frame per chart at full depth, the whole 26-case set swept in order. The set is the point
+rather than any one frame: chart families that look alike here differ by 5.7x in leaf count.
+
+### Budget, pan, zoom, slices
+
+| file | what moves between frames |
+|---|---|
+| `budget_<region>_t<T>_animated.png` | the refinement budget `B`, one frame per budget step — the visual form of the `error(B)` curve |
+| `slice_gallery_animated.png` | the slice, through the `plane`/`shape` families |
+| `pan_<region>_animated.png` | the camera centre. **Before this PR the tree was byte-identical in all nine frames** — `Camera::veto` reads no position term, so the animation showed a still. It is a real pan only with `camera_bias` on |
+| `zoom_<region>_animated.png` | `half_world`, nine steps. Zoom **does** move the tree, and step 4 is the most selective tree in the whole corpus at 7.5% of leaves at max depth |
+
+Each has a `_wire_` twin where one exists, and every frame is also on disk as a still beside its
+`.prnq`, so nothing here depends on APNG support to be readable.
 
 ## `colour/` — from `examples/colour_check.rs`
 

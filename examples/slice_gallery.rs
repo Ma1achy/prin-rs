@@ -226,9 +226,9 @@ fn main() {
         );
     }
 
-    let _ = apng::write("results/criterion/slice_gallery_animated.png", res, res, &frames, 1, 1);
+    let _ = apng::write("results/animated/slice_gallery_animated.png", res, res, &frames, 1, 1);
     let _ = apng::write(
-        "results/criterion/slice_gallery_wire_animated.png",
+        "results/animated/slice_gallery_wire_animated.png",
         res,
         res,
         &wire_frames,

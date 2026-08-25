@@ -73,3 +73,103 @@ pixels by max. It is a boolean flag: its magnitude is unstable.
 It also inflates with resolution for a trivial reason - sigma_E(0) is
 proportional to the jitter and so to cell width, while integration error is
 not. Use sigma_e_0 and sigma_e_t from the dump before comparing across sizes.
+    Finished `release` profile [optimized] target(s) in 0.12s
+     Running `target/release/prin --region 'body2 core' --size 64 --out /tmp/prin_small/body2-core`
+region body2 core 64x64 half=0.05 body=2  precision=f64  t_max=13 eta=0.01 copies=8
+  2.93 s wall, 0.71 ms/pixel
+
+  error_ratio   max 8.5690e0  p99 1.0092e0  median 1.000000  argmax pixel 3952
+  sigma_E(0)    median 1.446443e-3   <- proportional to cell width; see below
+  |dE/E|        median 2.640e-9  max 1.101e-3
+  d_min_gap     median 0.000e0  max 0.000e0
+  ref_disagree  total 3495
+  t_end         median 13.0000
+  outcomes      bounded 0.820 collision 0.180
+  refined       61 of 4096 pixels re-integrated at finer eta (0 still flagged)
+  |dE/E| max    1.224e2 before refinement, 1.101e-3 after
+  pixels with a non-finite copy: 0 of 4096
+
+wrote /tmp/prin_small/body2-core.raw, /tmp/prin_small/body2-core_outcome.png, /tmp/prin_small/body2-core_spread.png
+spread image is LOG scaled over [3.708e-5, 4.286e-1] (this grid's
+p1 to p99); non-finite is painted at full scale. The dump is the product.
+
+error_ratio uses the maximum deviation within a footprint and aggregates across
+pixels by max. It is a boolean flag: its magnitude is unstable.
+It also inflates with resolution for a trivial reason - sigma_E(0) is
+proportional to the jitter and so to cell width, while integration error is
+not. Use sigma_e_0 and sigma_e_t from the dump before comparing across sizes.
+    Finished `release` profile [optimized] target(s) in 0.13s
+     Running `target/release/prin --region 'body1 slice' --size 64 --out /tmp/prin_small/body1-slice`
+region body1 slice 64x64 half=0.05 body=1  precision=f64  t_max=13 eta=0.01 copies=8
+  2.77 s wall, 0.68 ms/pixel
+
+  error_ratio   max 1.0005e0  p99 1.0001e0  median 1.000000  argmax pixel 63
+  sigma_E(0)    median 1.578976e-3   <- proportional to cell width; see below
+  |dE/E|        median 1.816e-9  max 9.554e-8
+  d_min_gap     median 0.000e0  max 0.000e0
+  ref_disagree  total 1473
+  t_end         median 13.0000
+  outcomes      bounded 0.893 collision 0.107
+  refined       0 of 4096 pixels re-integrated at finer eta (0 still flagged)
+  |dE/E| max    9.554e-8 before refinement, 9.554e-8 after
+  pixels with a non-finite copy: 0 of 4096
+
+wrote /tmp/prin_small/body1-slice.raw, /tmp/prin_small/body1-slice_outcome.png, /tmp/prin_small/body1-slice_spread.png
+spread image is LOG scaled over [4.134e-5, 4.286e-1] (this grid's
+p1 to p99); non-finite is painted at full scale. The dump is the product.
+
+error_ratio uses the maximum deviation within a footprint and aggregates across
+pixels by max. It is a boolean flag: its magnitude is unstable.
+It also inflates with resolution for a trivial reason - sigma_E(0) is
+proportional to the jitter and so to cell width, while integration error is
+not. Use sigma_e_0 and sigma_e_t from the dump before comparing across sizes.
+    Finished `release` profile [optimized] target(s) in 0.13s
+     Running `target/release/prin --region 'deep interior' --size 64 --out /tmp/prin_small/deep-interior`
+region deep interior 64x64 half=0.05 body=0  precision=f64  t_max=13 eta=0.01 copies=8
+  1.49 s wall, 0.36 ms/pixel
+
+  error_ratio   max 9.9101e0  p99 7.0471e0  median 0.999982  argmax pixel 1770
+  sigma_E(0)    median 4.529300e-3   <- proportional to cell width; see below
+  |dE/E|        median 5.779e-7  max 9.244e-2
+  d_min_gap     median 0.000e0  max 0.000e0
+  ref_disagree  total 22
+  t_end         median 3.0128
+  outcomes      escape 0.071 collision 0.929
+  refined       492 of 4096 pixels re-integrated at finer eta (0 still flagged)
+  |dE/E| max    1.384e9 before refinement, 9.244e-2 after
+  pixels with a non-finite copy: 0 of 4096
+
+wrote /tmp/prin_small/deep-interior.raw, /tmp/prin_small/deep-interior_outcome.png, /tmp/prin_small/deep-interior_spread.png
+spread image is LOG scaled over [1.280e-5, 4.286e-1] (this grid's
+p1 to p99); non-finite is painted at full scale. The dump is the product.
+
+error_ratio uses the maximum deviation within a footprint and aggregates across
+pixels by max. It is a boolean flag: its magnitude is unstable.
+It also inflates with resolution for a trivial reason - sigma_E(0) is
+proportional to the jitter and so to cell width, while integration error is
+not. Use sigma_e_0 and sigma_e_t from the dump before comparing across sizes.
+    Finished `release` profile [optimized] target(s) in 0.12s
+     Running `target/release/prin --region near-field --size 64 --precision f32 --out results/near-field-f32`
+region near-field 64x64 half=0.05 body=0  precision=f32  t_max=13 eta=0.01 copies=8
+  8.34 s wall, 2.04 ms/pixel
+
+  error_ratio   max 2.3002e2  p99 1.4120e2  median 0.997512  argmax pixel 3831
+  sigma_E(0)    median 7.839203e-4   <- proportional to cell width; see below
+  |dE/E|        median 9.362e-6  max 1.175e-2
+  d_min_gap     median 0.000e0  max 0.000e0
+  ref_disagree  total 2921
+  t_end         median 13.0000
+  outcomes      bounded 0.974 collision 0.026
+  refined       182 of 4096 pixels re-integrated at finer eta (114 still flagged)
+  |dE/E| max    2.285e8 before refinement, 1.175e-2 after
+  pixels with a non-finite copy: 0 of 4096
+
+wrote results/near-field-f32.raw, results/near-field-f32_outcome.png, results/near-field-f32_spread.png
+spread image is LOG scaled over [2.055e-5, 1.029e-2] (this grid's
+p1 to p99); non-finite is painted at full scale. The dump is the product.
+
+error_ratio uses the maximum deviation within a footprint and aggregates across
+pixels by max. It is a boolean flag: its magnitude is unstable.
+It also inflates with resolution for a trivial reason - sigma_E(0) is
+proportional to the jitter and so to cell width, while integration error is
+not. Use sigma_e_0 and sigma_e_t from the dump before comparing across sizes.

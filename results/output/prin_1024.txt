@@ -152,3 +152,103 @@ proportional to the jitter and so to cell width, while integration error is
 not. Use sigma_e_0 and sigma_e_t from the dump before comparing across sizes.
     Finished `release` profile [optimized] target(s) in 0.02s
      Running `target/release/prin --region 'body2 core' --size 1024 --out /tmp/prin_big/body2-core`
+region body2 core 1024x1024 half=0.05 body=2  precision=f64  t_max=13 eta=0.01 copies=8
+  698.49 s wall, 0.67 ms/pixel
+
+  error_ratio   max 9.9993e0  p99 1.0077e0  median 1.000000  argmax pixel 1048211
+  sigma_E(0)    median 8.907989e-5   <- proportional to cell width; see below
+  |dE/E|        median 2.305e-9  max 4.901e-4
+  d_min_gap     median 0.000e0  max 0.000e0
+  ref_disagree  total 272268
+  t_end         median 13.0000
+  outcomes      bounded 0.824 collision 0.176
+  refined       8338 of 1048576 pixels re-integrated at finer eta (0 still flagged)
+  |dE/E| max    2.024e10 before refinement, 4.901e-4 after
+  pixels with a non-finite copy: 0 of 1048576
+
+wrote /tmp/prin_big/body2-core.raw, /tmp/prin_big/body2-core_outcome.png, /tmp/prin_big/body2-core_spread.png
+spread image is LOG scaled over [1.249e-5, 4.286e-1] (this grid's
+p1 to p99); non-finite is painted at full scale. The dump is the product.
+
+error_ratio uses the maximum deviation within a footprint and aggregates across
+pixels by max. It is a boolean flag: its magnitude is unstable.
+It also inflates with resolution for a trivial reason - sigma_E(0) is
+proportional to the jitter and so to cell width, while integration error is
+not. Use sigma_e_0 and sigma_e_t from the dump before comparing across sizes.
+    Finished `release` profile [optimized] target(s) in 0.02s
+     Running `target/release/prin --region 'body1 slice' --size 1024 --out /tmp/prin_big/body1-slice`
+region body1 slice 1024x1024 half=0.05 body=1  precision=f64  t_max=13 eta=0.01 copies=8
+  701.03 s wall, 0.67 ms/pixel
+
+  error_ratio   max 1.0055e0  p99 1.0004e0  median 1.000000  argmax pixel 105925
+  sigma_E(0)    median 9.722096e-5   <- proportional to cell width; see below
+  |dE/E|        median 1.631e-9  max 8.021e-8
+  d_min_gap     median 0.000e0  max 0.000e0
+  ref_disagree  total 104051
+  t_end         median 13.0000
+  outcomes      bounded 0.898 collision 0.102
+  refined       0 of 1048576 pixels re-integrated at finer eta (0 still flagged)
+  |dE/E| max    8.021e-8 before refinement, 8.021e-8 after
+  pixels with a non-finite copy: 0 of 1048576
+
+wrote /tmp/prin_big/body1-slice.raw, /tmp/prin_big/body1-slice_outcome.png, /tmp/prin_big/body1-slice_spread.png
+spread image is LOG scaled over [1.199e-5, 2.857e-1] (this grid's
+p1 to p99); non-finite is painted at full scale. The dump is the product.
+
+error_ratio uses the maximum deviation within a footprint and aggregates across
+pixels by max. It is a boolean flag: its magnitude is unstable.
+It also inflates with resolution for a trivial reason - sigma_E(0) is
+proportional to the jitter and so to cell width, while integration error is
+not. Use sigma_e_0 and sigma_e_t from the dump before comparing across sizes.
+    Finished `release` profile [optimized] target(s) in 0.08s
+     Running `target/release/prin --region 'deep interior' --size 1024 --out /tmp/prin_big/deep-interior`
+region deep interior 1024x1024 half=0.05 body=0  precision=f64  t_max=13 eta=0.01 copies=8
+  377.04 s wall, 0.36 ms/pixel
+
+  error_ratio   max 1.0000e1  p99 7.6587e0  median 0.999878  argmax pixel 398289
+  sigma_E(0)    median 2.787866e-4   <- proportional to cell width; see below
+  |dE/E|        median 4.633e-7  max 2.534e-1
+  d_min_gap     median 0.000e0  max 0.000e0
+  ref_disagree  total 587
+  t_end         median 3.0143
+  outcomes      escape 0.068 bounded 0.000 collision 0.932
+  refined       134683 of 1048576 pixels re-integrated at finer eta (0 still flagged)
+  |dE/E| max    1.790e13 before refinement, 2.534e-1 after
+  pixels with a non-finite copy: 0 of 1048576
+
+wrote /tmp/prin_big/deep-interior.raw, /tmp/prin_big/deep-interior_outcome.png, /tmp/prin_big/deep-interior_spread.png
+spread image is LOG scaled over [1.650e-6, 4.398e-3] (this grid's
+p1 to p99); non-finite is painted at full scale. The dump is the product.
+
+error_ratio uses the maximum deviation within a footprint and aggregates across
+pixels by max. It is a boolean flag: its magnitude is unstable.
+It also inflates with resolution for a trivial reason - sigma_E(0) is
+proportional to the jitter and so to cell width, while integration error is
+not. Use sigma_e_0 and sigma_e_t from the dump before comparing across sizes.
+    Finished `release` profile [optimized] target(s) in 0.03s
+     Running `target/release/prin --region near-field --size 1024 --precision f32 --out /tmp/prin_big/near-field-f32`
+region near-field 1024x1024 half=0.05 body=0  precision=f32  t_max=13 eta=0.01 copies=8
+  1925.77 s wall, 1.84 ms/pixel
+
+  error_ratio   max 4.8891e3  p99 2.3197e3  median 2.352941  argmax pixel 963562
+  sigma_E(0)    median 4.863739e-5   <- proportional to cell width; see below
+  |dE/E|        median 9.123e-6  max 1.556e-2
+  d_min_gap     median 0.000e0  max 0.000e0
+  ref_disagree  total 219554
+  t_end         median 13.0000
+  outcomes      bounded 0.977 collision 0.023
+  refined       39478 of 1048576 pixels re-integrated at finer eta (23933 still flagged)
+  |dE/E| max    1.007e8 before refinement, 1.556e-2 after
+  pixels with a non-finite copy: 0 of 1048576
+
+wrote /tmp/prin_big/near-field-f32.raw, /tmp/prin_big/near-field-f32_outcome.png, /tmp/prin_big/near-field-f32_spread.png
+spread image is LOG scaled over [3.734e-6, 4.527e-3] (this grid's
+p1 to p99); non-finite is painted at full scale. The dump is the product.
+
+error_ratio uses the maximum deviation within a footprint and aggregates across
+pixels by max. It is a boolean flag: its magnitude is unstable.
+It also inflates with resolution for a trivial reason - sigma_E(0) is
+proportional to the jitter and so to cell width, while integration error is
+not. Use sigma_e_0 and sigma_e_t from the dump before comparing across sizes.
+    Finished `release` profile [optimized] target(s) in 0.12s
+     Running `target/release/prin --region near-field --size 1024 --precision f32 --out /tmp/prin_f32/nf`

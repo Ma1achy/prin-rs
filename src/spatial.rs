@@ -126,3 +126,116 @@ pub fn layout(mask: &[bool], n: usize) -> Layout {
         perimeter_ratio: perimeter as f64 / n_hot as f64,
     }
 }
+
+/// How a footprint is called **hot**.
+///
+/// # Both rules are computed on every quad, and that is not redundancy
+///
+/// The obvious reading of "make the threshold relative" is to replace the absolute one. It is
+/// wrong twice.
+///
+/// **`n_hot` stops being a signal under any quantile rule.** On a field with distinct values the
+/// count above the cut is set by the rule, not the field — 31 of 64 at `N = 8, q = 0.5`, given
+/// nearest-rank and a strict comparison. So `frac_hot` carries essentially no information once
+/// the mask is relative. Under [`HotRule::Quantile`] the whole signal is the *shape* of the mask:
+/// `n_components`, `largest_component`, `perimeter_ratio`.
+///
+/// The one exception, measured rather than assumed: on a **tied** field the count is set by the
+/// tie structure. A two-valued field reads the same count at `q = 0.5, 0.75, 0.9` alike — which
+/// is the case that occurs when the event arm, with five distinct values, dominates a footprint
+/// field.
+///
+/// **And `frac_hot_between/median` is the best criterion measured on this project** — the only one
+/// beating the random band in both measurable regions. Replacing the absolute mask would have
+/// deleted the best-performing signal in the system and read as an improvement.
+///
+/// So the absolute rule keeps `frac_above_tau_*` exactly as it was, and the relative rule is added
+/// beside it to desaturate the shape statistics. Measured cause of the saturation: with
+/// `tau_display = 1e-4` sitting at the **0.4th percentile** of the observed spread distribution,
+/// `n_hot_within == N^2` in **98.8%** of the 75,359 committed `charts/` leaves (**87.1%** over
+/// the whole 92,880-leaf corpus) and `n_components == 1` in **99.6%** (**92.6%**). Two scopes,
+/// both stated: the chart dumps are the saturated end and the zoom ladders the unsaturated one,
+/// and quoting one under the other's name is how this got written up wrong the first time.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum HotRule {
+    /// Above a fixed level. The shipped rule, and the cause of the saturation above.
+    AbsTau(f64),
+    /// Above the quad's **own** `q`-quantile. A shape statistic rather than a magnitude one, so
+    /// it does not drift as the signal rises globally with `t`.
+    Quantile(f64),
+}
+
+impl Default for HotRule {
+    fn default() -> Self {
+        HotRule::Quantile(0.5)
+    }
+}
+
+impl HotRule {
+    pub fn name(self) -> String {
+        match self {
+            HotRule::AbsTau(t) => format!("abs[{t:.3e}]"),
+            HotRule::Quantile(q) => format!("q[{q:.2}]"),
+        }
+    }
+}
+
+/// The hot mask for `vals` under `rule`.
+///
+/// **Non-finite is hot**, under both rules and for the same reason the absolute form already had
+/// it: a footprint that could not be determined is not evidence of calm, and treating it as cold
+/// hides the pathological case from exactly the statistic built to find structure.
+///
+/// A quad with fewer than two finite values has no distribution to take a quantile of. It yields
+/// an **all-hot** mask — undetermined, not resolved — rather than an empty one, which would read
+/// as a calm quad. `Layout::n_hot == vals.len()` is how that case is countable downstream.
+pub fn hot_mask(vals: &[f64], rule: HotRule) -> Vec<bool> {
+    let cut = match rule {
+        HotRule::AbsTau(t) => t,
+        HotRule::Quantile(q) => {
+            let mut finite: Vec<f64> = vals.iter().cloned().filter(|x| x.is_finite()).collect();
+            if finite.len() < 2 {
+                return vec![true; vals.len()];
+            }
+            crate::quad::quantile(&mut finite, q)
+        }
+    };
+    vals.iter().map(|&v| !v.is_finite() || v > cut).collect()
+}
+
+/// RMS of the forward-difference gradient across the `n x n` footprint grid.
+///
+/// The magnitude companion to [`layout`]: `layout` says where the hot set sits, this says how
+/// fast the field moves, and neither needs a threshold to say it.
+///
+/// **`NaN` when no adjacent pair is finite**, never 0 — the same convention as
+/// `scheduler::termination_gradient`, and for the same reason. A zero here would be a null
+/// presented as a measurement about the field, and indistinguishable from a genuinely flat quad.
+pub fn grad_rms(vals: &[f64], n: usize) -> f64 {
+    assert_eq!(vals.len(), n * n, "field must be n*n");
+    let idx = |jx: usize, jy: usize| jy * n + jx;
+    let (mut acc, mut pairs) = (0.0f64, 0usize);
+    let take = |a: f64, b: f64, acc: &mut f64, pairs: &mut usize| {
+        if a.is_finite() && b.is_finite() {
+            let d = a - b;
+            *acc += d * d;
+            *pairs += 1;
+        }
+    };
+    for jy in 0..n {
+        for jx in 0..n {
+            let a = vals[idx(jx, jy)];
+            if jx + 1 < n {
+                take(a, vals[idx(jx + 1, jy)], &mut acc, &mut pairs);
+            }
+            if jy + 1 < n {
+                take(a, vals[idx(jx, jy + 1)], &mut acc, &mut pairs);
+            }
+        }
+    }
+    if pairs == 0 {
+        f64::NAN
+    } else {
+        (acc / pairs as f64).sqrt()
+    }
+}

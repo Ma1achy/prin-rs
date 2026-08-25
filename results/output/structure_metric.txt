@@ -1,0 +1,97 @@
+structure modes by error(B). levels 6, N=8, E+1=8, res 512^2, tau=1e-4, t=13, n_sync=32
+colouring: bivariate/spread_shape -- the one that ships. 5461 quads per target.
+hot rule for the structure term: the quad's own median (the relative mask).
+
+=== near-field ===  chart body_plane, half 0.05, built in 263.8 s
+                   ranking  distinct   modal%    nan%
+         offxwithin/median      5418     0.3%    0.0%
+    multiplyxwithin/median      5461     0.0%    0.0%
+     replacexwithin/median       506     1.3%    0.0%
+        offxbetween/median      5130     1.3%    0.0%
+   multiplyxbetween/median      5425     0.0%    0.0%
+offxfrac_hot_between/median        31    83.1%    0.0%
+multiplyxfrac_hot_between/median      1105     1.0%    0.0%
+           grad_rms/median      5461     0.0%    0.0%
+         layout_rel/median        46     6.7%    0.0%
+            structure_only       506     1.3%    0.0%
+
+                       B =         5        11        23        47        95       191       383       767      1535      3071      5461
+             greedy_oracle   0.12886   0.12059   0.10720   0.09970   0.09418   0.08877   0.08271   0.07362   0.05805   0.03114   0.00000
+         offxwithin/median   0.12886   0.12420   0.11892   0.11857   0.11785   0.11622   0.11347   0.10375   0.08126   0.04935   0.00000
+    multiplyxwithin/median   0.12886   0.12383   0.12348   0.12315   0.12185   0.11543   0.11169   0.09999   0.07764   0.04917   0.00000
+     replacexwithin/median   0.12886   0.12517   0.12452   0.12413   0.11745   0.11550   0.11121   0.09871   0.07742   0.04470   0.00000
+        offxbetween/median   0.12886   0.12059   0.11709   0.11578   0.11470   0.10110   0.09231   0.08083   0.06706   0.04381   0.00000
+   multiplyxbetween/median   0.12886   0.12059   0.11724   0.11585   0.11470   0.10585   0.09332   0.08125   0.06781   0.04344   0.00000
+offxfrac_hot_between/median   0.12886   0.12420   0.10720   0.10457   0.09649   0.09313   0.08518   0.08046   0.06914   0.04335   0.00000
+multiplyxfrac_hot_between/median   0.12886   0.12517   0.12452   0.12413   0.11735   0.11554   0.11120   0.09859   0.07739   0.04475   0.00000
+           grad_rms/median   0.12886   0.12059   0.11639   0.11580   0.11455   0.10634   0.10324   0.09143   0.07534   0.05357   0.00000
+         layout_rel/median   0.12886   0.12517   0.12343   0.12276   0.12178   0.11504   0.11118   0.09934   0.07519   0.04383   0.00000
+            structure_only   0.12886   0.12517   0.12452   0.12413   0.11745   0.11550   0.11121   0.09871   0.07742   0.04470   0.00000
+                 random lo   0.12886   0.12059   0.11376   0.10334   0.09773   0.09474   0.09109   0.08273   0.06707   0.04019   0.00000
+                 random hi   0.12886   0.12517   0.12275   0.11827   0.11701   0.10993   0.10426   0.09175   0.07798   0.04631   0.00000
+
+  at B = 191: greedy_oracle 0.08877, best random 0.09474, separation 0.00597
+
+=== deep interior ===  chart body_plane, half 0.05, built in 101.8 s
+                   ranking  distinct   modal%    nan%
+         offxwithin/median      4994     4.5%    0.0%
+    multiplyxwithin/median      5327     0.1%    0.0%
+     replacexwithin/median       728     1.6%    0.0%
+        offxbetween/median      4459     0.9%    0.0%
+   multiplyxbetween/median      5378     0.1%    0.0%
+offxfrac_hot_between/median        65    33.9%    0.0%
+multiplyxfrac_hot_between/median      2350    33.9%    0.0%
+           grad_rms/median      5460     0.0%    0.0%
+         layout_rel/median       174     6.1%    0.0%
+            structure_only       728     1.6%    0.0%
+
+                       B =         5        11        23        47        95       191       383       767      1535      3071      5461
+             greedy_oracle   0.09921   0.09065   0.07355   0.06480   0.05990   0.05583   0.04967   0.04163   0.03223   0.02237   0.00000
+         offxwithin/median   0.09921   0.09065   0.08710   0.08607   0.08238   0.07910   0.07425   0.06477   0.05202   0.01716   0.00000
+    multiplyxwithin/median   0.09921   0.09065   0.08710   0.08455   0.08296   0.07898   0.07421   0.06488   0.04313   0.01633   0.00000
+     replacexwithin/median   0.09921   0.09065   0.08162   0.08158   0.08062   0.07477   0.07017   0.06653   0.05055   0.03164   0.00000
+        offxbetween/median   0.09921   0.09065   0.08671   0.08413   0.08313   0.07958   0.07044   0.05944   0.02782   0.01308   0.00000
+   multiplyxbetween/median   0.09921   0.09065   0.08710   0.08614   0.08312   0.08048   0.07095   0.05949   0.02998   0.01375   0.00000
+offxfrac_hot_between/median   0.09921   0.09393   0.07751   0.06879   0.06541   0.06220   0.05678   0.04750   0.02772   0.01310   0.00000
+multiplyxfrac_hot_between/median   0.09921   0.09065   0.08087   0.07938   0.07466   0.07003   0.06511   0.05097   0.03593   0.01470   0.00000
+           grad_rms/median   0.09921   0.09065   0.08824   0.08398   0.08201   0.07431   0.06878   0.05835   0.02683   0.01263   0.00000
+         layout_rel/median   0.09921   0.09661   0.08926   0.08025   0.07855   0.06744   0.06620   0.06176   0.04958   0.02761   0.00000
+            structure_only   0.09921   0.09065   0.08162   0.08158   0.08062   0.07477   0.07017   0.06653   0.05055   0.03164   0.00000
+                 random lo   0.09921   0.09065   0.07969   0.07140   0.06492   0.06258   0.05929   0.05173   0.03983   0.01992   0.00000
+                 random hi   0.09921   0.09661   0.09111   0.09016   0.08922   0.08014   0.07654   0.07085   0.06454   0.05053   0.00000
+
+  at B = 191: greedy_oracle 0.05583, best random 0.06258, separation 0.00675
+
+=== preset_shape ===  chart latent, half 3, built in 132.8 s
+                   ranking  distinct   modal%    nan%
+         offxwithin/median      4782     4.1%    0.0%
+    multiplyxwithin/median      5401     0.1%    0.0%
+     replacexwithin/median       961     1.0%    0.0%
+        offxbetween/median      3892     1.4%    0.0%
+   multiplyxbetween/median      5246     0.1%    0.0%
+offxfrac_hot_between/median        64    40.4%    0.0%
+multiplyxfrac_hot_between/median      2297    24.5%    0.0%
+           grad_rms/median      5461     0.0%    0.0%
+         layout_rel/median       214    11.7%    0.0%
+            structure_only       961     1.0%    0.0%
+
+                       B =         5        11        23        47        95       191       383       767      1535      3071      5461
+             greedy_oracle   0.14878   0.13563   0.10668   0.09270   0.08160   0.06881   0.05739   0.04420   0.02660   0.00993   0.00000
+         offxwithin/median   0.14878   0.13749   0.13329   0.12984   0.12797   0.12471   0.10234   0.07591   0.03947   0.01218   0.00000
+    multiplyxwithin/median   0.14878   0.13749   0.13335   0.12883   0.12760   0.12471   0.11792   0.08651   0.03981   0.01621   0.00000
+     replacexwithin/median   0.14878   0.13989   0.13796   0.13771   0.13656   0.13348   0.12957   0.12341   0.09066   0.04988   0.00000
+        offxbetween/median   0.14878   0.13749   0.13292   0.13210   0.13086   0.12477   0.11870   0.08709   0.04050   0.00942   0.00000
+   multiplyxbetween/median   0.14878   0.13989   0.13781   0.13691   0.13515   0.13218   0.12549   0.09514   0.03865   0.00981   0.00000
+offxfrac_hot_between/median   0.14878   0.13563   0.10668   0.09565   0.08455   0.07038   0.06114   0.04654   0.03203   0.00946   0.00000
+multiplyxfrac_hot_between/median   0.14878   0.13989   0.13796   0.13691   0.13534   0.13133   0.12563   0.09334   0.05695   0.01203   0.00000
+           grad_rms/median   0.14878   0.14001   0.13774   0.13683   0.13449   0.13156   0.11521   0.08274   0.04074   0.00851   0.00000
+         layout_rel/median   0.14878   0.14001   0.12373   0.10036   0.09830   0.08970   0.08073   0.07270   0.06377   0.04651   0.00000
+            structure_only   0.14878   0.13989   0.13796   0.13771   0.13656   0.13348   0.12957   0.12341   0.09066   0.04988   0.00000
+                 random lo   0.14878   0.13563   0.12029   0.09970   0.09393   0.08649   0.07912   0.06676   0.05044   0.02737   0.00000
+                 random hi   0.14878   0.14001   0.13957   0.13103   0.11425   0.10814   0.09632   0.08200   0.06639   0.04383   0.00000
+
+  at B = 191: greedy_oracle 0.06881, best random 0.08649, separation 0.01768
+
+Read `off` against `multiply` against `structure_only`. If multiply beats off but
+structure_only is no better than random, the term is re-weighting the spread rather
+than finding structure -- which is a real outcome and not a failed measurement.

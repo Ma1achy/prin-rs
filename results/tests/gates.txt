@@ -1,0 +1,699 @@
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 3 tests
+dGamma/du2 — correct sign: 2.171e-9, flipped sign: 2.231e0
+FD vs analytic, h = 1e-5 * max(|s_k|,1), 192 states:
+  median = 1.167e-10   p99 = 6.092e-8   worst = 6.111e-8
+  worst at a=0 A=4.10e-1 B=4.42e-1 |R3|=3.48e-2
+  worst cases sit at small |R3|, where the unregularised 1/|R3| term has a
+  large third derivative and central differencing truncates harder. That is a
+  property of the geometry, not of the derivative — the h^2 test below is the
+  correctness statement; this one bounds the conditioning.
+FD error ratio (h/2 : h) over 192 states: median = 0.2500
+  second-order central differencing predicts 0.25
+test the_fd_test_detects_the_r3_sign_error ... ok
+test deriv_matches_finite_differenced_gamma ... ok
+test finite_difference_error_falls_as_h_squared ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 4 tests
+sign-flipped Gamma: worst relative deviation = 1.548e0 (must be large)
+Gamma == A*B*(H - E): worst relative deviation = 6.500e-14   at a=2 A=2.802e0 B=3.897e0 E=-12.826
+energy_phys vs Cartesian energy: worst relative deviation = 8.168e-16
+test the_gamma_identity_detects_a_sign_error ... ok
+to_cartesian(to_reg(.)) round trip: worst relative deviation = 1.845e-15
+  u0/|u| at the worst case = 9.046e-1  (small means near the LC branch cut)
+  see tests/lc_conditioning.rs — this is the LC branch, not the AZ algebra
+test gamma_equals_ab_times_energy_defect ... ok
+test energy_phys_matches_cartesian_energy ... ok
+test to_reg_to_cartesian_round_trips ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 3 tests
+M  = 12
+R  = 2.23606797749979
+E  = -12.816666666666666
+tc = 0.9652434877402243
+alpha = 0.25: R/alpha = 2.23606797749979, rel err = 0e0
+alpha = 1: R/alpha = 2.23606797749979, rel err = 0e0
+alpha = 4: R/alpha = 2.23606797749979, rel err = 0e0
+test burrau_is_at_rest_with_com_at_origin ... ok
+test burrau_reference_constants ... ok
+test hyperradius_is_scale_covariant ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 37 tests
+
+thread 'a_latent_index_past_seven_panics_rather_than_aliasing' (182289529) panicked at src/physics/decoder.rs:149:18:
+latent coordinate 9 out of range (8 coordinates, 0..=7)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test a_degenerate_primary_seed_falls_back_rather_than_giving_up ... ok
+test a_target_below_k_min_is_refused_rather_than_approximated ... ok
+
+thread 'latent_oblique_refuses_two_parallel_seeds' (182289539) panicked at src/grid.rs:330:9:
+latent_oblique: second seed is parallel to the first (residual norm 0e0); the two seeds span a line, not a plane
+test a_unit_domain_chart_refuses_a_slice_box_that_leaves_the_square ... ok
+test an_oblique_latent_basis_is_orthonormal ... ok
+test burrau_at_nu_one_half_is_the_three_four_five_triangle ... ok
+test energy_normalisation_is_refused_on_a_chart_whose_axis_is_energy ... ok
+
+thread 'setting_a_latent_index_past_seven_panics_rather_than_aliasing' (182289543) panicked at src/physics/decoder.rs:159:18:
+latent coordinate 8 out of range (8 coordinates, 0..=7)
+test body_plane_still_decodes_to_burrau_masses_and_every_old_chart_does_too ... ok
+test an_axis_aligned_latent_slice_equals_a_direct_sweep_of_those_two_coordinates ... ok
+test every_chart_records_enough_to_be_reproduced ... ok
+test jitter_reflects_into_the_unit_square_and_does_not_collapse_the_copies ... ok
+test a_latent_index_past_seven_panics_rather_than_aliasing - should panic ... ok
+test latent_oblique_refuses_two_parallel_seeds - should panic ... ok
+test lz_e_and_lz_k_are_the_same_map_which_the_reference_lists_as_two_charts ... ok
+gauge residual over 4 latent points: positions 7.161e-15, momenta 3.140e-16
+test neither_catch_fires_at_equal_masses_and_that_is_stated ... ok
+test only_the_affine_charts_claim_to_be_affine ... ok
+test small_alpha_is_a_wide_inner_pair_not_a_tight_one ... ok
+test setting_a_latent_index_past_seven_panics_rather_than_aliasing - should panic ... ok
+test sum_p_is_zero_for_both_the_correct_form_and_the_swap ... ok
+test the_burrau_chart_puts_the_primitive_triples_on_a_continuous_curve ... ok
+test the_burrau_family_is_smooth_in_nu_and_the_triples_sit_on_it ... ok
+     shape: 81 distinct ICs of 81, over 81 distinct configurations
+test the_burrau_family_reproduces_the_repos_configuration_up_to_the_gauge ... ok
+      prho: 81 distinct ICs of 81, over  1 distinct configurations
+test the_canonical_frame_decode_gives_unit_inertia ... ok
+test the_canonicaliser_and_scale_gauge_are_no_ops_on_the_latent_chart ... ok
+Lagrange separations: 1.732050807568878 1.732050807568877 1.732050807568877  (sqrt 3 = 1.732050807568877)
+test the_canonicaliser_is_idempotent_and_a_no_op_on_an_already_canonical_state ... ok
+half-gain vs tanh masses at z_mu = [1.0, -0.5]: worst |dm| = 0.0899
+Q_MAX 2 vs 1 at z_q = [0.7, -1.1, 0.3, 0.9]: |dp_lambda| = 0.4474
+test the_decoder_conserves_total_momentum_and_puts_the_com_at_the_origin ... ok
+   plambda: 81 distinct ICs of 81, over  1 distinct configurations
+test the_jacobi_round_trip_catches_the_crossed_mass_swap ... ok
+test the_kinetic_energy_identity_catches_the_crossed_mass_swap ... ok
+shape_pl vs             crossed at (0.7,-1.3): max |dIC| = 5.4483e0
+shape_pl vs crossed, transposed at (0.7,-1.3): max |dIC| = 1.2042e0
+test the_invariant_chart_is_feasible_at_every_pixel_of_the_unit_square ... ok
+test the_masses_are_a_normalised_simplex_point ... ok
+test the_mass_simplex_varies_the_masses_and_keeps_them_positive ... ok
+test the_momentum_construction_hits_lz_and_k_exactly ... ok
+test the_origin_of_the_latent_chart_is_the_equilateral_lagrange_configuration ... ok
+  shape_pl: 81 distinct ICs of 81, over 81 distinct configurations
+test the_pinned_saturation_constants_are_the_glsls_not_the_latex_reference ... ok
+test the_scale_gauge_uses_the_asymmetric_powers ... ok
+test the_shape_pl_preset_basis_is_not_orthonormalised ... ok
+test the_shape_pl_preset_pairs_alpha_with_p_lambda_y ... ok
+test the_four_default_presets_decode_across_their_whole_box ... ok
+
+test result: ok. 37 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 22 tests
+test a_log_curve_spreads_a_decade_spanning_field_and_linear_does_not ... ok
+test an_undetermined_pixel_never_takes_a_class_colour ... ok
+test every_undetermined_case_is_debug_nan_and_never_the_background ... ok
+test oklab_round_trips_and_matches_ottosson ... ok
+test landmark_sites_are_unit_vectors_and_mutually_distinct ... ok
+test lightness_never_reaches_pure_black_or_pure_white ... ok
+test kappa_interpolates_between_a_smooth_blend_and_a_hard_voronoi ... ok
+test chroma_shrinks_between_two_sites ... ok
+test polarity_is_monotone_in_the_declared_direction_for_every_field ... ok
+test range_norm_declines_rather_than_clamping_a_non_finite_value ... ok
+test the_collision_sites_lie_on_the_collinear_circle_and_lagrange_does_not ... ok
+test the_event_class_alphabet_is_fixed_disjoint_and_gap_free ... ok
+test the_hue_map_separates_shapes_the_old_projection_merged ... ok
+test quantisation_counts_exact_distinct_values ... ok
+test the_landmarks_move_with_the_masses ... ok
+test the_outcome_palette_flags_a_failed_decode ... ok
+test viridis_never_produces_the_reserved_undetermined_colour ... ok
+test vmf_weights_decline_a_non_finite_input_rather_than_returning_a_number ... ok
+test vmf_weights_sum_to_one_and_are_invariant_to_a_constant_shift ... ok
+test the_site_set_leaves_no_large_hole_on_the_sphere ... ok
+test the_hue_map_is_continuous_on_the_sphere ... ok
+test euler_points_are_central_configurations ... ok
+
+test result: ok. 22 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 40 tests
+  ramp: n_hot at q = 0.5 / 0.75 / 0.9 -> [31, 16, 6]
+test a_collapsed_decode_is_undetermined_and_a_uniform_region_is_not ... ok
+ noise: n_hot at q = 0.5 / 0.75 / 0.9 -> [31, 16, 6]
+test a_deterministic_perturbation_is_a_unit_direction_and_varies_with_the_seed ... ok
+  step: n_hot at q = 0.5 / 0.75 / 0.9 -> [5, 5, 5]
+abs[1e1]: 53 hot before the rise, 64 after (of 64)
+test a_degenerate_field_reads_all_hot_rather_than_none ... ok
+test a_fully_hot_quad_has_no_perimeter_and_one_component ... ok
+test a_non_finite_footprint_is_hot_and_not_calm ... ok
+test a_quad_at_the_root_border_has_no_neighbour_outside_it ... ok
+test an_empty_hot_set_reports_nan_and_not_zero ... ok
+test a_strictly_diagonal_mask_reads_as_scatter_and_that_is_a_known_limit ... ok
+test an_isolated_cell_reads_four_and_a_filament_reads_about_two ... ok
+test a_quantile_hot_rule_is_rescaling_invariant_and_n_hot_stops_being_a_signal ... ok
+test between_event_reads_the_event_class_and_never_the_terminal_outcome ... ok
+test between_matched_equals_between_full_when_the_counts_already_agree ... ok
+test between_shape_is_the_same_estimator_over_the_nominals ... ok
+test contrast_reports_how_many_edges_it_saw ... ok
+test ftle_declines_rather_than_returning_zero_when_it_never_renormalised ... ok
+test boundary_shapes_are_only_recorded_when_asked_for ... ok
+grad_rms: flat 0, ramp 0.1010, ridge 0.3780
+test looks_like_a_boundary_separates_the_filament_from_the_checkerboard ... ok
+test neighbour_agrees_with_an_independent_geometric_predicate ... ok
+test oklab_matches_the_published_reference_triples ... ok
+test oklab_distance_is_zero_only_on_equality_and_orders_sensibly ... ok
+test image_error_reports_the_fraction_moved_beside_the_mean ... ok
+structure: full 0.0000  filament 1.0000  checkerboard 0.0039  isolated cell 0.1250  empty NaN
+test grad_rms_is_nan_with_no_finite_pair_and_ranks_a_filament_above_a_flat_field ... ok
+test rank_displacement_shows_movement_a_high_rho_conceals ... ok
+test spearman_declines_rather_than_returning_zero_on_a_dead_input ... ok
+test oklab_round_trips_through_srgb ... ok
+test structure_separates_a_filament_from_a_full_quad_and_from_scatter ... ok
+test the_escape_gradient_refuses_to_answer_when_nothing_escaped ... ok
+test the_ftle_perturbation_is_normalised_over_all_six_components_not_per_body ... ok
+test the_queue_fix_is_identical_under_the_criterion_every_committed_run_used ... ok
+test two_blobs_are_two_components_and_a_checkerboard_is_scatter ... ok
+test within_pooled_is_nan_when_the_copies_were_not_kept ... ok
+test ftle_renormalises_and_the_count_is_the_thing_to_assert ... ok
+test the_shape_accumulators_survive_ragged_per_copy_records ... ok
+test the_event_arm_already_had_all_three_accumulators ... ok
+test the_metric_is_exact_at_the_full_tree_and_the_greedy_replay_is_monotone ... ok
+test a_signal_that_declines_to_score_does_not_block_the_ones_that_do ... ok
+test a_criterion_enters_the_replay_as_an_ordering_and_not_against_tau ... ok
+k_frac 0.25:   13 leaves,   17 quads,   0 budget-exhausted
+k_frac 0.50:   46 leaves,   61 quads,   0 budget-exhausted
+77 quads computed, 58 leaves, N = 4
+  absolute mask: n_hot == 16 on 100.0%, n_components <= 1 on 100.0%
+  relative mask: n_hot == 16 on 0.0%, n_components <= 1 on 59.7%, > 1 on 40.3%
+test the_relative_mask_desaturates_where_the_absolute_one_does_not ... ok
+k_frac 0.75:  121 leaves,  161 quads,   0 budget-exhausted
+k_frac 1.00:  223 leaves,  297 quads,  11 budget-exhausted
+test k_frac_defers_as_keep_and_one_reproduces_the_unranked_descent ... ok
+uniform : 256 leaves, depth variance 0.0000, budget exhausted false
+balanced: 187 leaves, depth variance 0.1079
+test uniform_mode_degenerates_to_one_depth_and_balanced_does_not ... ok
+
+test result: ok. 40 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 11.03s
+
+
+running 5 tests
+with one NaN of 8 copies: std = NaN, MAD = 2.9652
+with five NaN of 8 copies: MAD = inf
+test median_uses_the_even_count_convention ... ok
+test mad_survives_a_non_finite_copy_where_a_std_would_not ... ok
+test mad_is_the_scaled_median_absolute_deviation ... ok
+test spread_event_matches_the_reference_statistic_up_to_its_normalisation ... ok
+test spread_event_is_normalised_to_one_when_maximally_split ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 4 tests
+shift 12.8: |d ratio| = 0.000e0, conditioning predicts <= 2.8e-8
+     eta   max |ratio-1|    median |r-1|     med ratio
+shift 1000: |d ratio| = 3.552e-10, conditioning predicts <= 2.2e-6
+t=0: sigma_E(0) = 2.2500000000000853e-2, sigma_E(t) = 2.2500000000000853e-2, ratio = 1
+scale 1000000: |d ratio| = 6.321e-11, conditioning predicts <= 2.8e-8
+scale 3.7: |d ratio| = 4.109e-12, conditioning predicts <= 2.8e-8
+test error_ratio_is_exactly_one_at_t_zero ... ok
+test error_ratio_is_invariant_under_shift_and_scale ... ok
+near-two-body control: sigma_E(0) = 3.498750e-4, sigma_E(t) = 3.498750e-4, ratio = 1.000000000005
+test error_ratio_sits_at_one_on_a_near_two_body_control ... ok
+    4e-2     4.906601e-4     3.360007e-5             -
+    2e-2     1.079716e-3     4.217027e-6         0.126
+    1e-2     5.132328e-5     2.606372e-7         0.062
+    5e-3     3.084131e-6     1.632836e-8         0.063
+
+error_ratio - 1 must fall with eta. If it plateaus or rises, it is measuring a
+wrong equation, not integration error. Read the median column: the max over 9
+pixels of a max over 8 copies is a 1-in-72 order statistic and its realisation
+scatter is wider than the trend it is being asked to show.
+test error_ratio_minus_one_falls_with_step_size ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+
+
+running 4 tests
+    near-field: max d_min_gap = 0.000e0
+     mid-field: max d_min_gap = 0.000e0
+    body2 core: max d_min_gap = 0.000e0
+   body1 slice: max d_min_gap = 0.000e0
+           far: max d_min_gap = 0.000e0
+
+d_min_ref tracks only the two regularised pairs; d_min_true includes the
+unregularised side. The gap is identically zero, so the discrepancy flagged in
+NOTES §2.1 exists in principle and does not materialise in practice.
+test d_min_gap_is_zero_in_every_region ... ok
+near-field 32x32, t=13, E+1=8 copies, eta=0.01, f64
+  error_ratio, all pixels    max 9.7645e2  p99 2.8177e1  median 1.000000  argmax 28
+  error_ratio, healthy only  max 7.2697e0  p99 1.2071e0  median 1.000000   (1003 px)
+  error_ratio_mad, all       max 1.586751  p99 1.173917  median 1.000000
+
+BRIEF §5 asks for 1.0000. The median is 1.000000 on both populations. The max
+over all pixels is not 1 and must not be: on a chaos instrument, a region with
+no damaged pixels would mean the region was not interesting.
+test error_ratio_acceptance_near_field_t13 ... ok
+21 damaged pixels (drift_max > 1e-3), 1003 healthy
+       statistic    damaged med    healthy p99    separation
+             MAD       1.1212e0       1.1405e0          0.98
+   max deviation       2.8177e1       1.2071e0         23.34
+
+Separation is the damaged median over the healthy p99 — how far apart a
+threshold could be placed. Near 1 means the flag cannot separate them.
+test mad_based_error_ratio_cannot_separate_damaged_pixels ... ok
+near-field 32x32, t=13, f64
+  drift max      1.2386e-1 unrefined -> 1.2396e-3 refined
+  pixels re-integrated: 18 of 1024
+  pixels above 1e-3 drift: 21 -> 3
+test refined_pixels_are_repaired ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 10.15s
+
+
+running 4 tests
+        constant             f64          as f32      f32 in use
+            TINY      1.000e-300         0.000e0       1.000e-37
+        SYNC_EPS       1.000e-15       1.000e-15        1.000e-6
+     DRIFT_FLOOR       1.000e-30       1.000e-30       1.000e-30
+      DIST_FLOOR       1.000e-12       1.000e-12       1.000e-12
+
+1e-300 casts to exactly 0 at f32 — a floor of zero floors nothing.
+f32 uses 1.000e-37, which is normal and leaves headroom above the 1.175e-38 minimum.
+TINY*TINY at f32 = 0.000e0. A*B is a product of two floored quantities, so a
+doubly-degenerate state gives dtau = eta*dt_left/(A*B) = inf rather than a large
+finite step. That is caught by the explicit is_finite test in the RK4 loop, not
+by the floor — worth knowing which guard is actually doing the work.
+
+ulp(13) at f32 = 9.537e-7; the reference's 1e-15 slack is 953674316x below it, so
+`t < t_target - 1e-15` degenerates to `t < t_target`. f32 uses 1.000e-6.
+BRIEF §5's gate (b), with the tolerance set by the type rather than by the spec:
+test the_reference_floors_do_not_survive_the_cast_to_f32 ... ok
+  f64: d_min 1.2881e-11 (tol 1e-10)   |dE/E| 2.9473e-14 (tol 1e-12)   steps 24839  finite true
+  f32: d_min 1.2218e-11 (tol 1e-9)   |dE/E| 2.8553e-6 (tol 1e-4)   steps 24839  finite true
+
+The d_min half survives the cast outright: f32 measures 1.2218e-11 against f64's
+1.2881e-11, so it meets BRIEF §5's 1e-10 bound as written. It is gated here at
+1e-9 only to keep a decade of headroom on a sampling-limited quantity. The
+energy half cannot: 1e-12 is five orders below f32 eps, and f32 delivers
+2.8553e-6 - a statement about the type, not about the port.
+test the_two_body_collision_gate_is_parameterised_by_precision ... ok
+3 of 64 pixels have a nominal copy that terminates before the horizon,
+so its refs record is shorter than n_sync. The shared policy falls back to the
+per-copy choice past that point rather than indexing off the end.
+test the_shared_reference_policy_survives_an_early_terminating_nominal ... ok
+16x16 near-field, t=13, conditioned LC branch:
+  median |dE/E|      f64 3.387e-9   f32 9.341e-6
+  median spread_shape f64 2.4508e-3  f32 2.4006e-3
+  outcome label flips f32 vs f64: 0 of 256
+  non-finite pixels   f64 0  f32 0
+  spread_shape median differs from f64 by 2.05%
+test f32_renders_the_grid_and_agrees_with_f64_on_the_labels ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.67s
+
+
+running 5 tests
+test a_nan_survives_the_round_trip_as_a_nan ... ok
+test a_footprint_file_round_trips_through_disk ... ok
+test a_mismatched_footprint_file_is_refused_rather_than_recoloured ... ok
+test the_reductions_carry_over_untouched_by_a_recolour ... ok
+test a_recolour_is_bitwise_identical_to_a_fresh_build ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+
+
+running 2 tests
+   alpha          spread_shape                  svarmax |d| vs a=1
+       1 9.4610343395385016e-3 2.6302246187637213e-4             -
+  0.2500 9.4610343395385016e-3 2.6302246187637213e-4       0.000e0
+  4.0000 9.4610343395385016e-3 2.6302246187637213e-4       0.000e0
+  3.7000 9.4610343395314447e-3 2.6302246187581702e-4     7.057e-15
+  0.3333 9.4610343395351657e-3 2.6302246187648315e-4     3.336e-15
+
+BRIEF §5 asks for agreement to ~10 decimals. Powers of two come out bitwise
+identical; inexact factors land at 7.057e-15, which is roundoff.
+test shape_spread_is_invariant_under_the_scale_symmetry ... ok
+worst spread_shape deviation over the grid: 0.000e0 at pixel 0
+test shape_spread_is_invariant_across_the_grid ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+
+running 4 tests
+fixed Halton (2,3) prefix, offsets in units of jitter_frac*cell:
+  copy  1: ( 0.000000, -0.333333)
+  copy  2: (-0.500000,  0.333333)
+  copy  3: ( 0.500000, -0.777778)
+  copy  4: (-0.750000, -0.111111)
+  copy  5: ( 0.250000,  0.555556)
+  copy  6: (-0.250000, -0.555556)
+  copy  7: ( 0.750000,  0.111111)
+test copy_zero_is_never_jittered ... ok
+
+Identical to 1e-12 across three resolutions and four footprints each, the residual
+being the division used to recover them. The generator itself is exact:
+halton_offset(k) is a pure function of k — no pixel, no seed, no ordering. A
+parent ensemble and its children share the perturbation pattern exactly.
+test the_radical_inverse_is_the_reflected_digit_expansion ... ok
+PCG offsets differ between footprints, as expected — no shared pattern.
+   E+1      Halton L2*  PCG L2* (mean)       ratio
+test halton_offsets_are_fixed_across_pixels_and_resolutions ... ok
+     4        0.152567        0.203906       0.748
+     8        0.084901        0.136148       0.624
+    16        0.046180        0.094388       0.489
+    32        0.025582        0.064744       0.395
+
+L2 star discrepancy, lower is better; PCG averaged over 256 footprints.
+The gap is what a fixed low-discrepancy prefix buys before any physics runs.
+test the_halton_prefix_covers_the_footprint_better_than_pcg_draws ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 2 tests
+ angle (deg)       f64 ref    f64 stable       f32 ref    f32 stable
+           0       0.000e0       0.000e0       0.000e0       0.000e0
+          45     1.110e-16     1.110e-16       0.000e0       0.000e0
+          90     1.608e-16     1.608e-16      5.960e-8      5.960e-8
+         135     2.220e-16       0.000e0      1.788e-7       0.000e0
+         170     3.886e-15     1.110e-16      2.325e-6      5.960e-8
+         179     1.912e-13       0.000e0      9.835e-5      5.960e-8
+       179.9     3.975e-12       0.000e0      2.213e-2      5.960e-8
+      179.99      3.471e-9       0.000e0      1.745e-4       0.000e0
+         180     1.225e-16       0.000e0     1.225e-16       0.000e0
+
+f32 worst: reference = 2.213e-2, stable = 5.960e-8
+
+reference worst = 3.471e-9, stable worst = 1.608e-16
+The reference always computes u0 first; that sum cancels when rho points along
+-x. The stable branch computes whichever component is larger and derives the
+other, which removes the loss entirely rather than merely bounding it.
+worst round-trip over 3600 orientations:
+  reference branch = 6.206e-11
+  stable branch    = 4.108e-16
+test lc_inverse_conditioning_versus_angle ... ok
+test the_stable_branch_is_rotationally_uniform ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 5 tests
+region           worst stepsmedian steps   worst drift     d_min
+test cell_widths_are_per_axis ... ok
+region           t_max  pixelsincomplete  median drift     max drift
+test grid_row_order_is_x_fastest ... ok
+near-field              5575        5187      1.900e-3   1.36e-3
+near-field          13      25         0      4.967e-4      1.900e-3
+near-field 5x5, t = 13, unregularised leapfrog
+pixels: 25, did not reach t_max at one or both eta: 0
+  median |dE/E| at eta=0.01  : 4.966747e-4
+  median |dE/E| at eta=0.005 : 6.346054e-5
+  max    |dE/E| at eta=0.01  : 1.899634e-3
+  max    |dE/E| at eta=0.005 : 2.450698e-4
+  median drift ratio (eta/2 : eta) = 0.1280
+  (2nd-order convergence would give ~0.25; adaptive stepping perturbs this)
+test drift_falls_with_step_size_on_tractable_pixels ... ok
+deep interior          34980       16492       2.759e2   3.42e-9
+
+Budget is 2000000 steps; nothing came close to exhausting it.
+The unregularised integrator does not hang here — it returns a wrong number.
+test characterise_the_failure_mode ... ok
+near-field          40      25         0      1.312e-2      2.916e-1
+deep interior       13      25         0      3.302e-2       2.759e2
+body2 core          13      25         0      4.967e-4      5.287e-2
+
+AZ reference at near-field t=13 reaches |dE/E| ~ 3.9e-09 for comparison.
+test locate_where_the_unregularised_integrator_gives_up ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.10s
+
+
+running 8 tests
+   alpha    outcomes         t_end/alpha^1.5    max |dt| rel
+reference body 0: mask 011 matches the direct pair_dists mask
+reference body 1: mask 011 matches the direct pair_dists mask
+reference body 2: mask 011 matches the direct pair_dists mask
+|AB| = 6.0000e-3  |AC| = 6.0000e-3  |BC| = 1.2000e-2   r_coll = 1.0000e-2
+
+Two pairs below r_coll encodes as detail = 3 (triple), not as pair 0 — which
+is what an 'all three' rule would have produced.
+test the_encoding_packs_into_one_byte_without_loss ... ok
+test the_collision_mask_labels_the_right_pair_for_every_reference_body ... ok
+test two_pairs_below_r_coll_is_never_an_ordinary_binary_collision ... ok
+deep interior: collision detail 1 at t_end 3.007912, 0.000 s wall, 1271 steps
+  fired on pair(s) (0, 2) at t = 3.007912
+
+BRIEF §2.6 predicts a triple collision here. It is a binary encounter between
+bodies 0 and 2; the other two pairs never register even at r_coll = R.
+test deep_interior_terminates_in_bounded_wall_clock ... ok
+R(0) = 2.213806, R(t_max) = 2.012551, ratio 0.9091
+r_coll = 2.213806e-3 throughout, never 2.012551e-3
+d_min_true = 1.033341e-2
+test r_coll_is_fixed_at_t_zero_and_not_co_moving ... ok
+2 of 25 pixels terminate before the horizon; showing pixel 23
+  0.2500  25/25 same      8.92798202374311e0         0.000e0
+  4.0000  25/25 same      8.92798202374311e0         0.000e0
+50 states: the ported escape test and tb.classify agree everywhere
+the arm fired at a sync boundary on 2 of them
+test escape_matches_the_legacy_classifier ... ok
+  3.7000  25/25 same      8.92798202374311e0       9.948e-16
+  0.3333  25/25 same      8.92798202374310e0       1.990e-16
+
+No outcome label moved. t_end agrees bitwise for the binary-exact factors and to
+9.948e-16 relative for the inexact ones, which is roundoff in the rescaling.
+test outcomes_and_t_end_are_invariant_under_the_scale_symmetry ... ok
+       bounded:   61 of 64
+     collision:    3 of 64
+pixels whose copies disagree on the outcome: 3 of 64
+test outcome_fields_populate_across_a_grid ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.30s
+
+
+running 6 tests
+test a_non_finite_point_is_counted_as_dropped_and_never_as_live ... ok
+test a_set_of_series_that_are_all_zero_is_detected ... ok
+test an_exact_zero_is_located_and_is_not_confused_with_a_small_value ... ok
+test the_palette_gives_distinct_colours_for_as_many_series_as_asked ... ok
+test a_figure_writes_both_a_png_and_an_svg_and_the_svg_carries_its_labels_as_text ... ok
+test a_degenerate_figure_says_so_instead_of_drawing_a_line ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 9 tests
+ level            half      cell width     ratio
+     0     5.000000e-2     1.428571e-2         -
+
+thread 'a_single_sample_quad_is_rejected' (182295423) panicked at src/quad.rs:590:9:
+samples per quad axis must be >= 2; Slice::axis corner-anchors at n <= 1 and cell_widths clamps to 2*half
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+N=8: samples span [0.95, 1.05] with cell width 1.428571e-2
+     1     2.500000e-2     7.142857e-3    2.0000
+     2     1.250000e-2     3.571429e-3    2.0000
+     3     6.250000e-3     1.785714e-3    2.0000
+13 leaves tile the root: areas sum exactly, no pair overlaps
+test a_quads_slice_spans_its_own_box ... ok
+     4     3.125000e-3     8.928571e-4    2.0000
+     5     1.562500e-3     4.464286e-4    2.0000
+     6     7.812500e-4     2.232143e-4    2.0000
+     7     3.906250e-4     1.116071e-4    2.0000
+     8     1.953125e-4     5.580357e-5    2.0000
+     9     9.765625e-5     2.790179e-5    2.0000
+    10     4.882813e-5     1.395089e-5    2.0000
+
+Exact in binary at every level, so alpha's factor of two holds by construction.
+test leaves_tile_the_root_exactly ... ok
+test a_single_sample_quad_is_rejected - should panic ... ok
+test a_childs_cell_width_is_exactly_half_its_parents ... ok
+guard fires at level 35: cell width 4.1577e-13, 634.7x eps*scale
+machine epsilon would be reached at level ~45.9
+test the_precision_floor_fires_above_machine_epsilon ... ok
+budget   5: computed   5, exhausted true, 4 quads flagged
+   alpha /       spread:  21 quads,  16 leaves, depth 2
+every computed quad reduced exactly 64 footprints of its own
+test a_parent_is_never_synthesised_from_its_children ... ok
+budget  21: computed  21, exhausted true, 16 quads flagged
+   alpha /  spread_area:  21 quads,  16 leaves, depth 2
+   alpha /     shuffled:  21 quads,  16 leaves, depth 2
+21 parents carry the range of their four children's exponents
+test the_sibling_range_is_set_on_the_parent_from_four_children ... ok
+budget  60: computed  57, exhausted true, 43 quads flagged
+test the_budget_is_respected_and_exhaustion_is_reported ... ok
+ sibling /       spread:  21 quads,  16 leaves, depth 2
+ sibling /  spread_area:  21 quads,  16 leaves, depth 2
+ sibling /     shuffled:  21 quads,  16 leaves, depth 2
+test both_policies_descend ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.32s
+
+
+running 4 tests
+copy 1: dx = -6.04696524908354682e-3, dy = 9.09101887490315619e-3
+copy 2: dx = 6.33724372630850574e-3, dy = 1.17315358118474933e-2
+copy 3: dx = 3.73278530955589716e-4, dy = 2.70285819262516824e-3
+test copy_zero_is_always_the_un_jittered_nominal ... ok
+test jitter_is_bounded_by_the_per_axis_cell_width ... ok
+test golden_jitter_values ... ok
+test pixels_are_independent_and_order_free ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 3 tests
+n = [0.4285714285714285, 0.127775312999988, -0.894427190999916], |n| = 1
+translation: max dev = 1.3877787807814457e-16
+rotation 0.3: max dev = 1.1102230246251565e-16
+rotation 1.9: max dev = 8.326672684688674e-17
+rotation -2.4: max dev = 1.6653345369377348e-16
+scale 0.25: max dev = 0e0
+scale 4: max dev = 0e0
+scale 16: max dev = 0e0
+antipodal: spread_shape = 0.5, svar = 1
+test shape_vec_is_a_unit_vector ... ok
+test shape_vec_quotients_translation_rotation_scale ... ok
+test spread_statistics_are_zero_on_identical_copies_and_bounded ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 8 tests
+relevance: camera on the quad 1.0000, camera 10 units away 0.0000
+relevance: quad straddling the viewport edge 0.5000
+cold side: grad_rms 0.000e0, structure NaN, layout n_components 0, perimeter NaN
+hot side: grad_rms 0.000e0, structure NaN, layout n_components 0, perimeter NaN
+neighbour contrast across the shared edge: 1.000e-1
+test bands_are_monotone_and_undetermined_sits_at_the_bottom ... ok
+test camera_position_moves_the_ranking_and_never_the_veto ... ok
+test neighbour_contrast_catches_an_edge_filament_that_every_within_quad_measure_misses ... ok
+171 entries, incremental order matches the rebuild through three mutations
+test the_derived_term_is_never_stored_so_a_pan_touches_no_stored_priority ... ok
+test the_incremental_frontier_matches_a_from_scratch_rebuild ... ok
+unbalanced: 46 leaves, worst adjacent level gap 2
+balanced  : 64 leaves, worst adjacent level gap 1, 3 balance-forced (14.1% of 85 quads computed)
+test the_two_to_one_constraint_holds_and_the_control_violates_it ... ok
+no bias : 52 vs 52 leaves, identical true
+with bias: 52 vs 55 leaves, identical false
+test a_pan_is_an_identity_until_camera_bias_is_switched_on ... ok
+zoomed in  (half_world 0.0125): 597 quads computed
+zoomed out (half_world 0.0500): 537 quads computed, 0 of them NOT present in the zoomed-in descent
+test zooming_out_computes_a_subset_of_what_zooming_in_computed ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 20.89s
+
+
+running 2 tests
+        region     f64 truth  f32 unstable    f32 stable   NaN pix
+    near-field  unstable 1.605684e-2  stable 1.605684e-2  rel 1.14e-9
+    near-field     1.6057e-2     1.2747e-1     2.0958e-2         0
+    body2 core  unstable 6.620190e-2  stable 6.620192e-2  rel 3.35e-7
+                median per-pixel rel err, conditioned f32 vs f64: 0.0156
+   body1 slice  unstable 4.268229e-2  stable 4.268229e-2  rel 2.70e-8
+     mid-field  unstable 1.481659e-6  stable 1.481666e-6  rel 5.02e-6
+test at_f64_the_branch_cut_barely_leaks_into_spread_shape ... ok
+    body2 core     6.6202e-2     1.5287e-1     6.4658e-2         0
+                median per-pixel rel err, conditioned f32 vs f64: 0.0073
+   body1 slice     4.2682e-2     1.6837e-1     4.2519e-2         0
+                median per-pixel rel err, conditioned f32 vs f64: 0.0107
+     mid-field     1.4817e-6     6.5234e-3     1.4829e-6         0
+                median per-pixel rel err, conditioned f32 vs f64: 0.0119
+
+The conditioned branch holds at f32. The unstable one does not: it returns NaN
+pixels or inflates the spread by an order of magnitude, while single-trajectory
+energy drift stays superficially reasonable. That is the reported f32 symptom.
+test at_f32_the_unstable_branch_destroys_spread_shape ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.06s
+
+
+running 5 tests
+d_min over 64 perturbed collision times (initial separation 1 + k*1e-3)
+     eta           p10        median           p90    median ratio
+     eta           d_mintau_c/dtau = pi/2eta   offset*dtau
+reference body = 1, regularised pairs = (1,0) and (1,2)
+at production eta = 1e-2: d_min = 6.343e-7 (the §5 threshold is 1e-10)
+the gate above passes only at eta = 1e-4, 100x finer than production
+test the_close_pair_is_the_regularised_one ... ok
+test d_min_threshold_is_unreachable_at_production_eta ... ok
+    1e-2      1.600e-7      5.721e-6      1.913e-5               -
+two-body radial collision, t_max = 1, n_sync = 1, eta = 0.0001
+  NOTE: eta = 1e-4 is 100x finer than the production eta = 1e-2. This gate is
+  not a production guarantee — see d_min_threshold_is_unreachable_at_production_eta.
+  d_min (regularised pairs) = 1.288146e-11
+  d_min (all three pairs)   = 1.288146e-11
+  |dE/E|                    = 2.947299e-14
+  max |Gamma| / |largest term| = 2.137313e-14
+  steps = 24839, reference switches = 0
+test radial_collision_passes_through_at_machine_precision ... ok
+    1e-4   1.2881463e-11        15707.9633      3.673e-6
+    1e-3      2.018e-9      5.258e-8      1.706e-7        9.191e-3
+    1e-5   1.2881462e-11       157079.6327      3.673e-6
+    1e-4     1.260e-11     4.280e-10      2.010e-9        8.140e-3
+    1e-6   1.6885863e-13      1570796.3268      3.268e-7
+
+The last column is the distance from the nearest sample to the crossing, in
+units of dt_left/(A0*B0). It is identical for 1e-4 and 1e-5 - which is why
+d_min is identical - and changes at 1e-6, which is why d_min drops there.
+test d_min_is_a_step_function_because_the_sample_grids_nest ... ok
+    1e-5     3.961e-13     4.242e-12     1.776e-11        9.911e-3
+
+eta^2 predicts a median ratio of 1e-2 per decade. The p10-p90 spread within a
+single eta is wider than the shift between decades, which is exactly why a
+single trajectory cannot establish the scaling.
+test d_min_at_collision_is_phase_limited ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.31s
+
+
+running 13 tests
+test a_floored_quad_refines_again_when_zoomed_into ... ok
+test body_plane_decode_is_bitwise_unchanged ... ok
+test lin_split_f32_keeps_samples_distinct_where_direct_f32_has_collapsed ... ok
+test lin_naive_f32_collapses_on_the_same_curve_as_plain_f32 ... ok
+test shape_chart_is_nonlinear_and_body_plane_is_not ... ok
+test lin_split_f32_reaches_the_f64_floor_and_no_further ... ok
+test plane_chart_reproduces_body_plane_exactly ... ok
+test screen_floor_lands_at_level_six_at_n8_on_512 ... ok
+test shape_chart_round_trips_and_the_sign_matters ... ok
+test ssaa_copy_footprint_scales_with_the_texel ... ok
+test texel_size_varies_as_two_to_the_minus_level_and_uniform_is_rejected ... ok
+test the_camera_can_only_ever_stop_a_descent ... ok
+test lowering_max_rel_depth_changes_no_payload ... ok
+
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+
+
+running 4 tests
+test algebra_matches_the_reference ... ignored
+test ftle_matches_the_reference ... ignored
+test long_horizon_t13 ... ignored
+test short_horizons_match_to_1e13 ... ignored
+
+test result: ok. 0 passed; 0 failed; 4 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests prin_rs
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

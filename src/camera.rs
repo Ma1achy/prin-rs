@@ -107,6 +107,44 @@ impl Camera {
             && (cy - self.cy).abs() <= self.half_world + half
     }
 
+    /// **How much of this quad the viewer can actually see**, in `[0, 1]`: the fraction of its
+    /// area inside the viewport box, widened by `margin` quad-widths.
+    ///
+    /// # This is a PRIORITY term and never a veto term, and the distinction is load-bearing
+    ///
+    /// [`Self::veto`] reads `tile_size_px`, `half_world` and `viewport` — and **not `cx`/`cy`**.
+    /// That is deliberate: a quad's *decision* must not depend on where the camera points, or a
+    /// pan would silently invalidate the tree, which is what "never cached as a quad fact"
+    /// exists to prevent. Ranking may depend on it precisely because nothing about it is stored:
+    /// it is recomputed at query time on every frame, and no `Quad` gains a camera field.
+    ///
+    /// It also names the reason the committed pan sequence measured nothing. Nine steps moving
+    /// `cx` 0.95 -> 1.05 produced a byte-identical tree, which was read as "the tree persists
+    /// perfectly" — an identity, since no scheduling term read `cx` at all. Setting
+    /// `max_rel_depth` would not have changed that; **this** is the term that makes a pan mean
+    /// something.
+    ///
+    /// # The destination model
+    ///
+    /// `margin` is the honest baseline of §4.3's three options: widen the viewport and drop
+    /// prediction entirely. Velocity extrapolation fails on flick-and-stop — it prefetches past
+    /// where the user lands — and the swept-path variant must beat this before its complexity is
+    /// justified. Shipping the baseline first is what makes that comparison possible.
+    pub fn relevance(&self, cx: f64, cy: f64, half: f64, margin: f64) -> f64 {
+        let w = self.half_world + margin * 2.0 * half;
+        let overlap = |c: f64, cc: f64| {
+            let (lo, hi) = ((c - half).max(cc - w), (c + half).min(cc + w));
+            (hi - lo).max(0.0)
+        };
+        let (ox, oy) = (overlap(cx, self.cx), overlap(cy, self.cy));
+        let area = (2.0 * half) * (2.0 * half);
+        if area <= 0.0 {
+            0.0
+        } else {
+            (ox * oy / area).clamp(0.0, 1.0)
+        }
+    }
+
     pub fn veto(&self, q: &Quad, n: usize, root_half: f64) -> Option<Decision> {
         if self.screen_floor(q, n) {
             return Some(Decision::ScreenFloor);

@@ -21,7 +21,7 @@ use crate::metric::Cache;
 use crate::quad::{Agg, Criterion};
 
 pub const MAGIC: &[u8; 4] = b"PRQC";
-pub const VERSION: u32 = 1;
+pub const VERSION: u32 = 2;
 
 pub const FIELDS: &[&str] = &[
     "level", "ix", "iy", "cx", "cy", "half",
@@ -39,7 +39,14 @@ pub const FIELDS: &[&str] = &[
     "sig_between", "sig_max_of_both",
     "sig_frac_hot_within", "sig_frac_hot_between", "sig_layout",
     "sig_running_max", "sig_first_div", "sig_term_grad",
-    "contrast_within", "contrast_between",
+    // --- v2: the relative mask, the threshold-free gradient, and their contrasts ---
+    "n_hot_rel_within", "n_components_rel_within", "largest_component_rel_within",
+    "perimeter_ratio_rel_within",
+    "n_hot_rel_between", "n_components_rel_between", "largest_component_rel_between",
+    "perimeter_ratio_rel_between",
+    "grad_rms_within", "grad_rms_between",
+    "sig_layout_rel", "sig_grad_rms",
+    "contrast_within", "contrast_between", "contrast_layout_rel", "contrast_grad_rms",
 ];
 
 fn record(c: &Cache, k: crate::metric::Key) -> Vec<f64> {
@@ -80,8 +87,21 @@ fn record(c: &Cache, k: crate::metric::Key) -> Vec<f64> {
         sig(Criterion::RunningMax, Agg::Median),
         sig(Criterion::FirstDivergence, Agg::Median),
         sig(Criterion::TerminationGradient, Agg::Median),
+        r.layout_rel_within.n_hot as f64,
+        r.layout_rel_within.n_components as f64,
+        r.layout_rel_within.largest_component as f64,
+        r.layout_rel_within.perimeter_ratio,
+        r.layout_rel_between.n_hot as f64,
+        r.layout_rel_between.n_components as f64,
+        r.layout_rel_between.largest_component as f64,
+        r.layout_rel_between.perimeter_ratio,
+        r.grad_rms_within, r.grad_rms_between,
+        sig(Criterion::LayoutRel, Agg::Median),
+        sig(Criterion::GradRms, Agg::Median),
         c.contrast(k, Criterion::Within, Agg::Median),
         c.contrast(k, Criterion::Between, Agg::Median),
+        c.contrast(k, Criterion::LayoutRel, Agg::Median),
+        c.contrast(k, Criterion::GradRms, Agg::Median),
     ]
 }
 

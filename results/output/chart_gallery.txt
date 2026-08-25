@@ -3,109 +3,109 @@ Colouring: hue = shape sphere by vMF site-blend, lightness = spread_shape on a l
 over each chart's own p1-p99. The window is printed because a false-colour image without
 its scale is decoration.
 
-              case          chart domain   quads  leaves  depth  screen  distinct  alpha med alpha idec ramp span  bound
-        body_plane     body_plane   free     549     412      6       0     23159     0.1402     1.1203   196.212   crit
+              case          chart domain   quads  leaves  depth  screen  distinct  alpha med alpha idec ramp span     bound
+        body_plane     body_plane   free     549     412      6       0     23159     0.1402     1.1203   196.212  VETO 61%
                     depth~terminated_fraction: spearman = -0.2114, mean escape_fraction = 0.0000
                     L2:n=3 med=0.000 [0.000,0.000]  L3:n=28 med=0.000 [0.000,0.000]  L4:n=64 med=0.000 [0.000,0.203]  L5:n=65 med=0.000 [0.000,0.000]  L6:n=252 med=0.000 [0.000,0.000]
                     event classes (8 of 27 fire, 0 undetermined): tightest (0,1)=9, tightest (0,2)=2401, tightest (1,2)=1024191, terminated: escape d0=23, terminated: escape d1=5, terminated: escape d2=5, terminated: escape d3=17, terminated: collision d2=21925
-       plane_00deg          plane   free     549     412      6       0     23159     0.1402     1.1203   196.212   crit
+       plane_00deg          plane   free     549     412      6       0     23159     0.1402     1.1203   196.212  VETO 61%
                     depth~terminated_fraction: spearman = -0.2114, mean escape_fraction = 0.0000
                     L2:n=3 med=0.000 [0.000,0.000]  L3:n=28 med=0.000 [0.000,0.000]  L4:n=64 med=0.000 [0.000,0.203]  L5:n=65 med=0.000 [0.000,0.000]  L6:n=252 med=0.000 [0.000,0.000]
                     event classes (8 of 27 fire, 0 undetermined): tightest (0,1)=9, tightest (0,2)=2401, tightest (1,2)=1024191, terminated: escape d0=23, terminated: escape d1=5, terminated: escape d2=5, terminated: escape d3=17, terminated: collision d2=21925
                     [control] plane_00deg vs body_plane: max |dIC| = 0e0 -- the same chart, asserted
-      shape_sphere          shape   free    1293     970      6       0     52038     0.1905     0.9709  2107.649   crit
+      shape_sphere          shape   free    1293     970      6       0     52038     0.1905     0.9709  2107.649  VETO 79%
                     depth~terminated_fraction: spearman = -0.2245, mean escape_fraction = 0.0993
                     L2:n=4 med=0.766 [0.234,0.828]  L3:n=17 med=0.484 [0.000,0.906]  L4:n=41 med=0.078 [0.000,0.984]  L5:n=140 med=0.000 [0.000,1.000]  L6:n=768 med=0.000 [0.000,1.000]
                     event classes (11 of 27 fire, 1477 undetermined): tightest (0,1)=1025, tightest (0,2)=83998, tightest (1,2)=550979, terminated: escape d0=70011, terminated: escape d1=22350, terminated: escape d2=14256, terminated: escape d3=20812, terminated: collision d0=4446, terminated: collision d1=60761, terminated: collision d2=218347, terminated: collision d3=114
-      latent_shape         latent   free    5461    4096      6       0    201601     1.0013     0.0383     5.528   crit
+      latent_shape         latent   free    5461    4096      6       0    201601     1.0013     0.0383     5.528 VETO 100%
                     depth~terminated_fraction: spearman = NaN, mean escape_fraction = 1.0000
                     L6:n=4096 med=1.000 [1.000,1.000]
                     event classes (3 of 27 fire, 0 undetermined): terminated: escape d0=57456, terminated: escape d2=224097, terminated: escape d3=767023
-    latent_inner_p         latent   free    5397    4048      6       0    199391     1.0091     0.1170    18.547   crit
+    latent_inner_p         latent   free    5397    4048      6       0    199391     1.0091     0.1170    18.547  VETO 99%
                     depth~terminated_fraction: spearman = NaN, mean escape_fraction = 1.0000
                     L4:n=3 med=1.000 [1.000,1.000]  L5:n=1 med=1.000 [1.000,1.000]  L6:n=4044 med=1.000 [1.000,1.000]
                     event classes (5 of 27 fire, 0 undetermined): terminated: escape d0=141385, terminated: escape d1=45165, terminated: escape d2=128820, terminated: escape d3=732324, terminated: collision d0=882
-    latent_outer_p         latent   free    5041    3781      6       0    186777     1.0046     0.3119    28.893   crit
+    latent_outer_p         latent   free    5041    3781      6       0    186777     1.0046     0.3119    28.893  VETO 99%
                     depth~terminated_fraction: spearman = NaN, mean escape_fraction = 0.9999
                     L2:n=1 med=1.000 [1.000,1.000]  L4:n=2 med=1.000 [1.000,1.000]  L5:n=10 med=1.000 [1.000,1.000]  L6:n=3768 med=1.000 [1.000,1.000]
                     event classes (8 of 27 fire, 13 undetermined): tightest (1,2)=2, terminated: escape d0=46487, terminated: escape d1=43257, terminated: escape d2=12055, terminated: escape d3=946318, terminated: collision d0=10, terminated: collision d1=13, terminated: collision d2=421
-       latent_mass         latent   free    5461    4096      6       0    201601     0.9979     0.0413     3.795   crit
+       latent_mass         latent   free    5461    4096      6       0    201601     0.9979     0.0413     3.795 VETO 100%
                     depth~terminated_fraction: spearman = NaN, mean escape_fraction = 1.0000
                     L6:n=4096 med=1.000 [1.000,1.000]
                     event classes (3 of 27 fire, 0 undetermined): terminated: escape d0=15268, terminated: escape d2=30785, terminated: escape d3=1002523
-      latent_mixed         latent   free    5117    3838      6       0    189388     1.0001     0.0696    21.089   crit
+      latent_mixed         latent   free    5117    3838      6       0    189388     1.0001     0.0696    21.089  VETO 99%
                     depth~terminated_fraction: spearman = +0.7050, mean escape_fraction = 0.9987
                     L4:n=16 med=1.000 [0.781,1.000]  L5:n=6 med=0.375 [0.375,0.422]  L6:n=3816 med=1.000 [1.000,1.000]
                     event classes (10 of 27 fire, 0 undetermined): tightest (0,1)=4777, tightest (0,2)=2498, tightest (1,2)=2033, terminated: escape d0=60293, terminated: escape d1=85836, terminated: escape d2=256252, terminated: escape d3=636709, terminated: collision d0=24, terminated: collision d1=121, terminated: collision d2=33
-  latent_oblique_a         latent   free    5421    4066      6       0    200181     1.0026     0.0745     5.774   crit
+  latent_oblique_a         latent   free    5421    4066      6       0    200181     1.0026     0.0745     5.774  VETO 99%
                     depth~terminated_fraction: spearman = NaN, mean escape_fraction = 0.9997
                     L4:n=2 med=1.000 [1.000,1.000]  L6:n=4064 med=1.000 [1.000,1.000]
                     event classes (3 of 27 fire, 0 undetermined): terminated: escape d2=107101, terminated: escape d3=940622, terminated: collision d0=853
-  latent_oblique_b         latent   free    4697    3523      6       0    173785     1.0024     0.2446     3.950   crit
+  latent_oblique_b         latent   free    4697    3523      6       0    173785     1.0024     0.2446     3.950  VETO 99%
                     depth~terminated_fraction: spearman = +0.5774, mean escape_fraction = 1.0000
                     L2:n=2 med=1.000 [0.969,1.000]  L3:n=1 med=1.000 [1.000,1.000]  L6:n=3520 med=1.000 [1.000,1.000]
                     event classes (10 of 27 fire, 1 undetermined): tightest (0,1)=1333, tightest (0,2)=29, tightest (1,2)=59, terminated: escape d0=699, terminated: escape d1=1122, terminated: escape d2=146000, terminated: escape d3=896131, terminated: collision d0=3018, terminated: collision d1=26, terminated: collision d2=158
-       burrau_nu_k         burrau   unit    4753    3565      6       0    193388     1.0038     0.0788     5.968   crit
+       burrau_nu_k         burrau   unit    4753    3565      6       0    193388     1.0038     0.0788     5.968  VETO 98%
                     depth~terminated_fraction: spearman = +0.3052, mean escape_fraction = 0.9894
                     L2:n=1 med=0.703 [0.703,0.703]  L3:n=1 med=0.531 [0.531,0.531]  L4:n=7 med=1.000 [0.406,1.000]  L5:n=36 med=1.000 [1.000,1.000]  L6:n=3520 med=1.000 [1.000,1.000]
                     event classes (11 of 27 fire, 29 undetermined): tightest (0,1)=12323, tightest (0,2)=21001, tightest (1,2)=1333, terminated: escape d0=998, terminated: escape d1=233316, terminated: escape d2=673462, terminated: escape d3=57611, terminated: collision d0=46383, terminated: collision d1=1956, terminated: collision d2=161, terminated: collision d3=3
-    invariant_lz_k invariant_lz_k   unit    5429    4072      6       0    220460     1.0001     0.0835     9.210   crit
+    invariant_lz_k invariant_lz_k   unit    5429    4072      6       0    220460     1.0001     0.0835     9.210  VETO 99%
                     depth~terminated_fraction: spearman = +0.3951, mean escape_fraction = 0.9934
                     L5:n=8 med=0.500 [0.391,0.547]  L6:n=4064 med=1.000 [1.000,1.000]
                     event classes (4 of 27 fire, 0 undetermined): tightest (0,1)=9831, terminated: escape d2=637005, terminated: escape d3=401280, terminated: collision d0=460
-      mass_simplex   mass_simplex   unit    5461    4096      6       0    221784     1.0010     0.1319     5.153   crit
+      mass_simplex   mass_simplex   unit    5461    4096      6       0    221784     1.0010     0.1319     5.153 VETO 100%
                     depth~terminated_fraction: spearman = NaN, mean escape_fraction = 1.0000
                     L6:n=4096 med=1.000 [1.000,1.000]
                     event classes (2 of 27 fire, 0 undetermined): terminated: escape d0=58472, terminated: escape d3=990104
-      preset_shape         latent   free      21      16      2       0       838     1.2685    13.4654 18966.573   crit
+      preset_shape         latent   free      21      16      2       0       838     1.2685    13.4654 18966.573 crit 100%
                     depth~terminated_fraction: spearman = NaN, mean escape_fraction = 0.0547
                     L2:n=16 med=0.984 [0.719,1.000]
                     event classes (11 of 27 fire, 1088 undetermined): tightest (0,1)=33807, tightest (0,2)=45683, tightest (1,2)=45690, terminated: escape d0=26822, terminated: escape d1=26804, terminated: escape d2=23855, terminated: escape d3=13285, terminated: collision d0=361886, terminated: collision d1=234807, terminated: collision d2=234812, terminated: collision d3=37
-       preset_prho         latent   free    3593    2695      6       0    134133     1.0001     0.7106    33.243   crit
+       preset_prho         latent   free    3593    2695      6       0    134133     1.0001     0.7106    33.243  VETO 98%
                     depth~terminated_fraction: spearman = +0.2822, mean escape_fraction = 0.9995
                     L2:n=4 med=1.000 [0.984,1.000]  L3:n=2 med=0.969 [0.969,0.969]  L4:n=10 med=1.000 [1.000,1.000]  L5:n=35 med=1.000 [1.000,1.000]  L6:n=2644 med=1.000 [1.000,1.000]
                     event classes (10 of 27 fire, 4 undetermined): tightest (0,1)=1073, tightest (0,2)=498, tightest (1,2)=498, terminated: escape d0=50014, terminated: escape d1=50014, terminated: escape d2=1039, terminated: escape d3=942569, terminated: collision d0=521, terminated: collision d1=1172, terminated: collision d2=1174
-    preset_plambda         latent   free    3361    2521      6       0    126144     0.9929     0.9491    44.686   crit
+    preset_plambda         latent   free    3361    2521      6       0    126144     0.9929     0.9491    44.686  VETO 95%
                     depth~terminated_fraction: spearman = NaN, mean escape_fraction = 0.9997
                     L2:n=4 med=1.000 [1.000,1.000]  L4:n=21 med=1.000 [1.000,1.000]  L5:n=80 med=1.000 [1.000,1.000]  L6:n=2416 med=1.000 [1.000,1.000]
                     event classes (10 of 27 fire, 1 undetermined): tightest (0,1)=868, tightest (0,2)=457, tightest (1,2)=457, terminated: escape d0=93289, terminated: escape d1=93290, terminated: escape d2=840882, terminated: escape d3=16664, terminated: collision d0=480, terminated: collision d1=1094, terminated: collision d2=1094
-   preset_shape_pl         latent   free    1729    1297      6       0     65131     1.0311     0.5315    88.995   crit
+   preset_shape_pl         latent   free    1729    1297      6       0     65131     1.0311     0.5315    88.995  VETO 96%
                     depth~terminated_fraction: spearman = NaN, mean escape_fraction = 0.9945
                     L2:n=8 med=1.000 [1.000,1.000]  L3:n=10 med=1.000 [1.000,1.000]  L4:n=5 med=1.000 [1.000,1.000]  L5:n=18 med=1.000 [1.000,1.000]  L6:n=1256 med=1.000 [1.000,1.000]
                     event classes (11 of 27 fire, 22 undetermined): tightest (0,1)=658, tightest (0,2)=448, tightest (1,2)=448, terminated: escape d0=150713, terminated: escape d1=150713, terminated: escape d2=615335, terminated: escape d3=7041, terminated: collision d0=122672, terminated: collision d1=261, terminated: collision d2=261, terminated: collision d3=4
-   preset_shape_h1         latent   free     769     577      6       0     29768     0.6285     3.0724 10008.876   crit
+   preset_shape_h1         latent   free     769     577      6       0     29768     0.6285     3.0724 10008.876  VETO 77%
                     depth~terminated_fraction: spearman = +0.3756, mean escape_fraction = 0.7053
                     L2:n=6 med=0.812 [0.609,0.828]  L3:n=20 med=0.875 [0.750,1.000]  L4:n=35 med=0.984 [0.781,1.000]  L5:n=68 med=1.000 [0.828,1.000]  L6:n=448 med=1.000 [0.984,1.000]
                     event classes (11 of 27 fire, 6697 undetermined): tightest (0,1)=53314, tightest (0,2)=46208, tightest (1,2)=46209, terminated: escape d0=104138, terminated: escape d1=104156, terminated: escape d2=111889, terminated: escape d3=63898, terminated: collision d0=160565, terminated: collision d1=175653, terminated: collision d2=175576, terminated: collision d3=273
-    preset_prho_h1         latent   free    4357    3268      6       0    161601     1.0153     0.1198    19.709   crit
+    preset_prho_h1         latent   free    4357    3268      6       0    161601     1.0153     0.1198    19.709  VETO 99%
                     depth~terminated_fraction: spearman = +0.8164, mean escape_fraction = 0.9995
                     L2:n=2 med=0.969 [0.969,0.969]  L3:n=4 med=1.000 [0.672,1.000]  L4:n=4 med=0.984 [0.984,0.984]  L5:n=2 med=1.000 [1.000,1.000]  L6:n=3256 med=1.000 [1.000,1.000]
                     event classes (10 of 27 fire, 41 undetermined): tightest (0,1)=9678, tightest (0,2)=4439, tightest (1,2)=4437, terminated: escape d0=285449, terminated: escape d1=285453, terminated: escape d2=5375, terminated: escape d3=446928, terminated: collision d0=4279, terminated: collision d1=1251, terminated: collision d2=1246
- preset_plambda_h1         latent   free    4493    3370      6       0    166840     0.9983     0.2893    14.680   crit
+ preset_plambda_h1         latent   free    4493    3370      6       0    166840     0.9983     0.2893    14.680  VETO 99%
                     depth~terminated_fraction: spearman = +0.4724, mean escape_fraction = 0.9994
                     L2:n=2 med=0.969 [0.969,0.969]  L3:n=2 med=0.719 [0.719,0.719]  L4:n=4 med=1.000 [1.000,1.000]  L5:n=10 med=1.000 [1.000,1.000]  L6:n=3352 med=1.000 [1.000,1.000]
                     event classes (11 of 27 fire, 42 undetermined): tightest (0,1)=7684, tightest (0,2)=4034, tightest (1,2)=4032, terminated: escape d0=237324, terminated: escape d1=237328, terminated: escape d2=539537, terminated: escape d3=8834, terminated: collision d0=4423, terminated: collision d1=2666, terminated: collision d2=2668, terminated: collision d3=4
-preset_shape_pl_h1         latent   free    4645    3484      6       0    172205     0.9882     0.3613    13.271   crit
+preset_shape_pl_h1         latent   free    4645    3484      6       0    172205     0.9882     0.3613    13.271  VETO 99%
                     depth~terminated_fraction: spearman = +0.4769, mean escape_fraction = 0.9970
                     L2:n=2 med=0.953 [0.953,0.953]  L4:n=4 med=0.719 [0.609,0.719]  L5:n=14 med=1.000 [0.781,1.000]  L6:n=3464 med=1.000 [1.000,1.000]
                     event classes (11 of 27 fire, 19 undetermined): tightest (0,1)=5907, tightest (0,2)=3974, tightest (1,2)=3974, terminated: escape d0=253693, terminated: escape d1=253696, terminated: escape d2=514932, terminated: escape d3=1218, terminated: collision d0=7009, terminated: collision d1=2077, terminated: collision d2=2075, terminated: collision d3=2
-   latent_shape_h3         latent   free    5269    3952      6       0    195150     0.9989     0.5933    38.528   crit
+   latent_shape_h3         latent   free    5269    3952      6       0    195150     0.9989     0.5933    38.528  VETO 99%
                     depth~terminated_fraction: spearman = NaN, mean escape_fraction = 1.0000
                     L3:n=1 med=1.000 [1.000,1.000]  L4:n=2 med=1.000 [1.000,1.000]  L5:n=17 med=1.000 [1.000,1.000]  L6:n=3932 med=1.000 [1.000,1.000]
                     event classes (4 of 27 fire, 0 undetermined): terminated: escape d0=166335, terminated: escape d1=23542, terminated: escape d2=356954, terminated: escape d3=501745
- latent_inner_p_h3         latent   free    3821    2866      6       0    142226     1.0067     0.1618    77.192   crit
+ latent_inner_p_h3         latent   free    3821    2866      6       0    142226     1.0067     0.1618    77.192  VETO 99%
                     depth~terminated_fraction: spearman = NaN, mean escape_fraction = 1.0000
                     L2:n=4 med=1.000 [1.000,1.000]  L3:n=2 med=1.000 [1.000,1.000]  L4:n=3 med=1.000 [1.000,1.000]  L5:n=13 med=1.000 [1.000,1.000]  L6:n=2844 med=1.000 [1.000,1.000]
                     event classes (5 of 27 fire, 0 undetermined): terminated: escape d0=226604, terminated: escape d1=143651, terminated: escape d2=52531, terminated: escape d3=624739, terminated: collision d0=1051
- latent_outer_p_h3         latent   free    3877    2908      6       0    144471     1.0023     0.6853    71.772   crit
+ latent_outer_p_h3         latent   free    3877    2908      6       0    144471     1.0023     0.6853    71.772  VETO 99%
                     depth~terminated_fraction: spearman = NaN, mean escape_fraction = 0.9999
                     L2:n=4 med=1.000 [1.000,1.000]  L3:n=1 med=1.000 [1.000,1.000]  L4:n=3 med=1.000 [1.000,1.000]  L5:n=20 med=1.000 [1.000,1.000]  L6:n=2880 med=1.000 [1.000,1.000]
                     event classes (7 of 27 fire, 10 undetermined): terminated: escape d0=11676, terminated: escape d1=10882, terminated: escape d2=9025, terminated: escape d3=1016619, terminated: collision d0=25, terminated: collision d1=15, terminated: collision d2=324
-    latent_mass_h3         latent   free    4953    3715      6       0    183304     0.9966     0.1216    18.694   crit
+    latent_mass_h3         latent   free    4953    3715      6       0    183304     0.9966     0.1216    18.694  VETO 99%
                     depth~terminated_fraction: spearman = NaN, mean escape_fraction = 1.0000
                     L2:n=1 med=1.000 [1.000,1.000]  L3:n=2 med=1.000 [1.000,1.000]  L6:n=3712 med=1.000 [1.000,1.000]
                     event classes (3 of 27 fire, 0 undetermined): terminated: escape d0=3812, terminated: escape d2=25877, terminated: escape d3=1018887
-   latent_mixed_h3         latent   free    4953    3715      6       0    183651     0.9994     0.2110    66.783   crit
+   latent_mixed_h3         latent   free    4953    3715      6       0    183651     0.9994     0.2110    66.783  VETO 98%
                     depth~terminated_fraction: spearman = +0.3203, mean escape_fraction = 0.9950
                     L3:n=3 med=1.000 [1.000,1.000]  L4:n=7 med=1.000 [1.000,1.000]  L5:n=29 med=1.000 [0.484,1.000]  L6:n=3676 med=1.000 [1.000,1.000]
                     event classes (10 of 27 fire, 11 undetermined): tightest (0,1)=6858, tightest (0,2)=920, tightest (1,2)=990, terminated: escape d0=30894, terminated: escape d1=42205, terminated: escape d2=367497, terminated: escape d3=598969, terminated: collision d0=62, terminated: collision d1=116, terminated: collision d2=54

@@ -88,8 +88,28 @@ pub fn render(
     let mut img = vec![18u8; res * res * 3];
 
     // Coarsest first, so a finer neighbour overwrites the half-cell overhang.
-    let mut leaves: Vec<usize> = tree.leaves().filter(|&i| pixels.get(i).is_some_and(|p| !p.is_empty())).collect();
-    leaves.sort_by_key(|&i| tree.nodes[i].level);
+    //
+    // **Every node with samples is drawn, not only the leaves — that IS the coarse-ancestor
+    // fill** (§4.5). A leaf that has not been computed yet has no samples and was previously
+    // skipped, leaving raw background: a hole, which is the one thing worse than a blocky texel
+    // because it reads as "nothing here" rather than "not yet resolved". Drawing the ancestors
+    // underneath means an uncomputed region shows its parent's texels and sharpens when the
+    // children land.
+    //
+    // **Wherever the tree is complete this is bitwise identical**: leaves tile the root, so a
+    // parent is wholly overwritten by its children. It differs only where a leaf is missing --
+    // a budget-exhausted quad truncated before compute, or a frontier the camera has just
+    // revealed. That is the honest option of §4.5's three: blocky during motion, never stale,
+    // never lying.
+    let mut draw: Vec<usize> = (0..tree.nodes.len())
+        .filter(|&i| pixels.get(i).is_some_and(|p| !p.is_empty()))
+        .collect();
+    draw.sort_by_key(|&i| tree.nodes[i].level);
+
+    // `info` describes the LEAVES, which is what the texel-scaling acceptance test reads. The
+    // ancestors are drawn under them and are not texels anyone is measuring.
+    let leaves: Vec<usize> =
+        draw.iter().cloned().filter(|&i| tree.nodes[i].children.is_none()).collect();
 
     let deepest = leaves.iter().map(|&i| tree.nodes[i].level).max().unwrap_or(0);
     let px_size = cam.pixel_size();
@@ -102,7 +122,7 @@ pub fn render(
     };
 
     let mut info = Vec::with_capacity(leaves.len());
-    for &i in &leaves {
+    for &i in &draw {
         let q = &tree.nodes[i];
         let cell = 2.0 * q.half / (n - 1) as f64;
         let draw_cell = match mode {
@@ -132,6 +152,12 @@ pub fn render(
                 }
             }
             drawn += 1;
+        }
+        // Leaves only: `info` is the texel-scaling instrument, and an ancestor drawn as fill is
+        // not a texel anyone is measuring. Including them would silently double the rows and
+        // halve the apparent texel size at every level.
+        if q.children.is_some() {
+            continue;
         }
         info.push(LeafTexel {
             node: i,

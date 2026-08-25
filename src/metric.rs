@@ -52,9 +52,10 @@ use crate::ensemble::pixel::{evaluate, EnsembleCfg, PixelOut};
 use crate::grid::{Chart, Slice};
 use crate::output::oklab;
 use crate::output::png::outcome_rgb;
-use crate::quad::{Agg, Criterion, QuadReduction};
+use crate::quad::{Agg, Criterion, StructureMode, QuadReduction};
 use crate::rng::SplitMix64;
 use crate::scheduler::reduce;
+use crate::spatial::HotRule;
 
 /// How footprints become pixels.
 ///
@@ -393,7 +394,7 @@ pub fn build_multi_with_footprints(
             let slice = Slice::body_plane(n, n, qx, qy, qh, body).with_chart(chart);
             let px: Vec<PixelOut> =
                 (0..slice.npix()).map(|i| evaluate::<f64>(&slice, i, ens)).collect();
-            let mut red = reduce(&px, n, tau, ens.t_max);
+            let mut red = reduce(&px, n, tau, HotRule::default(), ens.t_max);
             let ics: Vec<crate::physics::Cart<f64>> =
                 (0..slice.npix()).map(|i| slice.nominal::<f64>(i)).collect();
             red.n_distinct_ic = crate::decode::distinct(&ics) as u32;
@@ -593,6 +594,17 @@ pub enum Rank {
     /// level, so the neighbour is read **at the same level** always, rather than falling back
     /// up-tree when it happens not to have been refined yet.
     Contrast(Criterion, Agg),
+    /// §2.2 — the signal with the spatial-structure term applied, `Replace` or `Multiply`.
+    ///
+    /// **Enters as an ordering, like everything else here.** That matters more for this one than
+    /// for most: `structure` is bounded in `[0, 1]` while `ensemble_spread` is not, so
+    /// `Multiply` rescales the signal by up to its whole range. Compared against a threshold
+    /// that rescaling would be scored instead of the structure; compared as an ordering it
+    /// costs nothing, which is the standing rule about the between arm at 9.56x.
+    Structured(StructureMode, Criterion, Agg),
+    /// The structure term **alone**, with no signal in it at all — the control that says whether
+    /// `Structured` is buying structure or just re-weighting the spread.
+    StructureOnly,
 }
 
 impl Rank {
@@ -603,6 +615,8 @@ impl Rank {
             Rank::GreedyOracle => "greedy_oracle".into(),
             Rank::GreedyOraclePerCost => "greedy_oracle/cost".into(),
             Rank::Contrast(c, a) => format!("contrast:{}/{}", c.name(), a.name()),
+            Rank::Structured(m, c, a) => format!("{}x{}/{}", m.name(), c.name(), a.name()),
+            Rank::StructureOnly => "structure_only".into(),
         }
     }
 }
@@ -686,6 +700,15 @@ pub fn replay_with_leaves(cache: &Cache, rank: Rank, budget: usize) -> (Vec<Poin
 }
 
 /// A ranking's raw score for one quad, before the non-finite convention is applied.
+///
+/// Public because **the distinct-value count of a ranking has to be readable before its curve
+/// is**: a flat `error(B)` has two causes -- a bad ordering and no ordering -- and the curve
+/// alone cannot tell them apart. `Random` scores `NaN` by construction and is not meaningful
+/// here.
+pub fn score(cache: &Cache, k: Key, rank: Rank) -> f64 {
+    raw_score(cache, k, rank)
+}
+
 fn raw_score(cache: &Cache, k: Key, rank: Rank) -> f64 {
     match rank {
         Rank::Signal(c, a) => cache.get(k).red.signal(c, a),
@@ -694,6 +717,8 @@ fn raw_score(cache: &Cache, k: Key, rank: Rank) -> f64 {
             cache.gain(k) / cache.get(k).red.total_substeps.max(1) as f64
         }
         Rank::Contrast(c, a) => cache.contrast(k, c, a),
+        Rank::Structured(m, c, a) => cache.get(k).red.signal_with(c, a, m),
+        Rank::StructureOnly => cache.get(k).red.structure(true),
         Rank::Random(_) => f64::NAN,
     }
 }

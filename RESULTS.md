@@ -1925,7 +1925,485 @@ with `terminated_fraction` median 0.984, which is to say its terminations are **
 event histogram is dominated by `collision d0=361886, d1=234807, d2=234812`. Carrying
 `terminated_fraction` and `escape_fraction` separately is what makes that legible.
 
+## 14. The threshold, and the mask it saturated
+
+The refinement criterion was diagnosed as *"an always-split rule wearing a threshold's clothing"*.
+Re-derived here over **all 69 committed `.prnq` dumps, 92,880 leaves**, by
+`examples/threshold_diagnosis.rs` — no integration, the dumps carry every quad's spread and
+decision already.
+
+### 14.1 `tau` sits in the bottom few percent of the distribution it is meant to cut
+
+**Both scopes, because they differ and the first draft of this section mixed them.** It quoted the
+`charts/`-only figures under a heading that said "all 69 dumps" — the mislabelled-denominator
+fault this same section warns about, committed inside it.
+
+| | `charts/` only (26 dumps, 75,359 leaves) | whole corpus (69 dumps, 92,880 leaves) |
+|---|---|---|
+| p1 / median / p99 | `1.47e-4` / `6.61e-4` / `7.87e-3` | `2.69e-5` / `6.73e-4` / `9.82e-3` |
+| **`tau = 1e-4`** | **99.6% exceed, 0.4th pct** | **95.7% exceed, 4.3rd pct** |
+| `3e-4` | 88.4%, 11.6 | 84.8%, 15.2 |
+| `1e-3` | 29.1%, 70.9 | 30.2%, 69.8 |
+| `3e-3` | 3.1%, 96.9 | 3.3%, 96.7 |
+| `1e-2` | 0.9%, 99.1 | 1.0%, 99.0 |
+
+The two agree from `1e-3` up and part company below it: the whole corpus carries the `vertical/`
+zoom ladder and `far`, whose spreads reach `4.26e-8`, so its lower tail is three orders deeper.
+**The conclusion is the same on either scope** — the predicate is true for 96–99.6% of quads and
+`tau` sits in the bottom few percent of its own distribution. Which scope a figure comes from is
+stated wherever one is quoted now.
+
+The sweep ladder in `sched_sweep` and `sweep_screen` used to run `1e-8 … 1e-2`. It now runs
+`1e-8 … 1e-1`: the top extended past the point where the predicate goes false everywhere, and
+**both** low rungs kept as labelled degenerate controls — for *different regions*. Dropping one of
+them was an error; see §14.10.
+
+### 14.2 The failure has two sides, and that is the argument for rank
+
+Both are in the corpus.
+
+- **`tau` below the bulk** — everything splits, tree uniform at **max depth**. Most charts.
+- **`tau` above the bulk** — everything keeps, tree uniform at **depth 2**: 16 leaves against a
+  complete 4096. **16 of the 18 trees the camera veto does not bind** are stopped this way, with
+  leaf-spread medians running `9.45e-5` down to `4.26e-8` against `tau = 1e-4`, and leaf decisions
+  that are `keep` almost to the last one — `far`, `deep interior`, every deep zoom step.
+
+Selectivity requires the threshold to **cut through the bulk**, and the chart's own dynamic range
+decides whether any fixed value can. Measured across the 69 dumps, `spearman(p99/p1, depth
+variance) = +0.727` and `spearman(p99/p1, % at max depth) = −0.702`. So a fixed threshold has a
+narrow window of usefulness that varies per chart. **A ranking cannot land above or below a
+distribution; it always cuts through it.** That is a stronger argument for rank than the treadmill
+one, and it did not depend on predicting anything.
+
+### 14.3 `preset_shape` is a third mode, and not the one it looks like
+
+It was tempting to file `preset_shape` under the upper-side failure — 16 leaves, depth variance 0,
+the widest dynamic range among the charts. **The decision column says otherwise.** Its leaf-spread
+median is `2.86e-1`, **3400× above `tau`**: it clears the spread gate on every leaf and is stopped
+by `alpha` — 8 `floor` (below `alpha_lo`) and 8 `keep` (between the thresholds). Not one leaf
+failed the spread test.
+
+So `preset_shape` is the only tree in the corpus where the **alpha gate** is what is exercised,
+which makes it the cleanest instance of the standing result that `alpha_hi` does more work than
+the criterion. Quoting it as a `tau` failure would have been a mechanism read off a shape.
+
+### 14.4 The stop-reason column is the headline
+
+`Decision::ScreenFloor` or `MaxRelDepth` — a **camera veto** — stops ≥95% of leaves on **21 of the
+69 dumps**, and 100% on several. On those the criterion decides almost nothing.
+
+That reframes *"13 of 17 charts at 99.4–100% max depth"*: it is not the criterion saying **split**
+and being obeyed. It is the criterion never saying **stop**, with something else terminating the
+descent. **The observed uniformity is what a permissive criterion looks like when a veto is doing
+the stopping.** The eighteen trees where the veto binds on under 5% of leaves are the only ones
+that are entirely their own decisions, and `preset_shape` is the only chart among them.
+
+Never quote a leaf count without its stop-reason breakdown.
+
+### 14.5 The hot mask: relative, and both rules kept
+
+The instruction on record was to make the hot threshold relative — the quad's own median. Two
+things that instruction missed, both now measured.
+
+**`n_hot` stops being a signal under any quantile rule.** On a field with distinct values the count
+above the cut is set by the rule, not the field — 31 of 64 at `N = 8, q = 0.5`, given nearest-rank
+and a strict comparison. So `frac_hot` carries essentially no information once the mask is
+relative. That matters because **`frac_hot_between/median` is the best criterion measured on this
+project** (§11.7 — the only one beating the random band in both measurable regions). A relative
+rule that *replaced* the absolute mask would have deleted the best-performing signal in the system
+and read as an improvement.
+
+**So both masks are computed and both are dumped.** `frac_above_tau_*` and the `frac_hot_*`
+criteria are untouched; `spatial::HotRule` selects which mask the *shape* criteria read.
+
+The one exception, measured rather than assumed away: on a **tied** field the count is set by the
+tie structure. A two-valued field reads the same count at `q = 0.5, 0.75, 0.9` alike — the case
+that occurs when the event arm, with its five distinct values, dominates a footprint field.
+
+### 14.6 The desaturation, and what it costs
+
+Paired against the absolute mask on **one descent** (`tests/criterion.rs`), because the form the
+brief asked for — *"assert `n_hot < N²` for a stated majority"* — passes trivially and
+unconditionally under a quantile rule and is decoration:
+
+| | absolute, `tau = 1e-4` | relative, `q = 0.5` |
+|---|---|---|
+| `n_hot == N²` | **100.0%** | **0.0%** |
+| `n_components ≤ 1` | **100.0%** | 59.7% |
+| `n_components > 1` | 0.0% | **40.3%** |
+
+The absolute arm is the control. Without it, a relative mask that happened to saturate too would
+read the same as a working one.
+
+Across regions (`examples/hot_rule_sweep.rs`, budget 600, `criterion=within` so the tree is
+constant down each block and asserted so):
+
+| region | rule | sat% | 1-comp% | median components | `d(Layout)` | `d(LayoutRel)` |
+|---|---|---|---|---|---|---|
+| `far` | abs 1e-4 | 0.0 | 100.0 | **0** | 1 | 1 |
+| `far` | q 0.50 | 0.0 | 100.0 | 1 | 1 | 1 |
+| near-field | abs 1e-4 | 48.0 | 82.1 | 1 | 58 | 78 |
+| near-field | q 0.50 | 0.0 | **1.8** | **5** | 58 | 26 |
+| near-field | q 0.90 | 0.0 | 2.7 | 4 | 58 | 9 |
+| `deep interior` | abs 1e-4 | 0.0 | 50.0 | 2 | 17 | 12 |
+| `deep interior` | q 0.50 | 0.0 | **0.0** | **7** | 17 | 16 |
+
+**Two things here were not expected.**
+
+**The saturation is not uniform across regions, and in `far` the absolute mask is EMPTY, not
+full.** `far`'s leaf-spread median is `4.26e-8` against `tau = 1e-4`, so nothing clears the cut:
+`n_hot == 0`, `perimeter_ratio` is `NaN` by the empty-set convention, and every criterion built on
+it takes **one** distinct value over all 16 leaves. `deep interior` already resolves a median of 2
+components under the absolute rule. It is near-field and the latent charts where the mask is full.
+"Saturated everywhere" is the pooled number, not the regional one — and a full mask and an empty
+mask are the same threshold landing on either side of the distribution, which is §14.2 again one
+level down.
+
+**The relative rule desaturates the mask and coarsens the ordering.** Near-field's median component
+count runs 1 → 5 from absolute to `q[0.50]` — the mask finally describing something — while
+`Criterion::LayoutRel`'s distinct-value count falls **78 → 26 → 17 → 9** across `abs, q[0.50],
+q[0.75], q[0.90]`, against `Criterion::Layout` holding at 58. With `n_hot` pinned by the rule,
+`largest/n_hot` can only take as many values as there are component sizes.
+
+Reported, not hidden, and it settles nothing by itself: the standing result is that **signal
+resolution is not what makes a ranking good** (§10.4 — `frac_hot_between` is the best criterion
+measured here, on 65 distinct values, beating a 4994-valued one). `error(B)` decides. But a
+criterion whose ordering coarsens as its input improves is worth watching.
+
+### 14.7 `grad_rms` — the control on the whole mask family
+
+The one structure measure with **no threshold in it**: RMS of the forward-difference gradient
+across the `N×N` footprint grid, `NaN` (never 0) when no adjacent pair is finite. If a masked
+signal cannot beat it, the mask is not earning its parameter.
+
+### 14.9 The sweep, re-run — and a fourth stop reason
+
+`sched_sweep` (no camera) and `sweep_screen` (camera framing the root, 512²), ladder
+`1e-8 … 1e-1` × `alpha_hi ∈ {0.2, 0.5, 0.8, 1.0}`, budget 2000.
+
+**`alpha_hi` dominates `tau` outright without the veto.** Near-field goes **1498 → 19 leaves**
+between `alpha_hi` 0.20 and 0.50 — a **79× collapse** — and at `alpha_hi ≥ 0.5` **`tau` changes
+nothing at any rung of the ladder**. `tau` is live in exactly one row of thirty-six. Under the
+veto that ratio falls to **21.68×**, reproducing the standing result that the screen floor demotes
+`alpha_hi` and promotes `tau`.
+
+**Within the live row, three rungs give a bitwise identical tree.** `1e-8`, `1e-6`, `1e-4` and
+`3e-4` all read 1997/1498/499 in near-field. The whole live range of `tau` is `3e-4 … 3e-3` — one
+decade, spanning the 11.6th to the 96.9th percentile of §14.1's table. Everything outside it is a
+constant predicate.
+
+**The `tau` span over the whole ladder, at `alpha_hi = 0.20`, under the veto:**
+
+| region | span | range |
+|---|---|---|
+| `far` | **×64.00** | 16 … 1024 |
+| near-field | ×27.62 | 16 … 442 |
+| `deep interior` | ×9.62 | 16 … 154 |
+
+`far`'s **64×** is the number already on record, recovered exactly. That matters because of how it
+was nearly lost — see §14.10.
+
+**The fourth stop reason: budget.** The large low-`tau` trees are not criterion-bound either.
+Near-field at `alpha_hi = 0.20` carries **869** `BudgetExhausted` leaves of 1498; `deep interior`
+at `tau = 1e-8` carries **1357 of 1498**. The tree that looks selective there is a budget artefact.
+
+So the criterion proper decides a minority of leaves in **every regime measured**:
+
+| regime | what stops the descent |
+|---|---|
+| the chart gallery | `ScreenFloor` / `MaxRelDepth` — a camera veto, ≥95% of leaves on 21 of 69 dumps |
+| low `tau`, no veto | `BudgetExhausted` — up to 91% of leaves |
+| high `tau` | the spread gate — 16 leaves, all `keep` |
+| `preset_shape` | the `alpha` gate — the only tree in the corpus that exercises it |
+
+That is the shape of the problem, and it is a stronger statement than "the criterion refines too
+much". **The criterion is rarely what decides anything.**
+
+### 14.10 The ladder change was wrong once, and the region is why
+
+The first cut of this dropped `1e-8` and `1e-6` as *"measuring the same always-split regime
+twice"* — true in near-field, where `1e-8`, `1e-6` and `1e-4` are bitwise identical. It is **false
+in `far`**, whose leaf-spread median is `4.26e-8`: `1e-8` is the only rung on the ladder below its
+bulk. Without it `far` read 16 leaves in all 32 cells and the sweep said *"`tau` is inert here"* —
+a statement about the ladder, not about the region, and it would have silently contradicted the
+standing 64× result.
+
+**Which rung is degenerate is a fact about the REGION, not about the ladder.** The regional spread
+medians span six orders — `4.26e-8` in `far`, `9.45e-5` in `deep interior`, `9.75e-4` in near-field
+— which is exactly what `sched_sweep`'s own module header has said since it was written. Both low
+rungs stay, labelled as degenerate controls for different regions.
+
+The same run also caught a hardcoded summary line: `sweep_screen` printed the `tau` span as the
+ratio between two *named adjacent rungs*, `1e-8` and `1e-6`. With `1e-8` removed it read `×0.00`,
+and with it present it would still have been reporting whichever pair happened to straddle the
+bulk in one region. It now takes max/min over the whole ladder at the `alpha_hi` where `tau` is
+live. **An argument hardcoded past is worse than an argument missing** — the same defect recorded
+for `pan_sequence`'s viewport, at a different site.
+
+### 14.8 The dump moved to PRNQ v3
+
+Ten columns appended — the two relative layouts and the two `grad_rms` values — and the header now
+carries `hot_rule=`. The new columns go **after** the existing 48, so a positional reader that
+stops at 48 still reads every v2 field correctly. Both readers in this project parse the `fields=`
+line by name and are unaffected. `.qcache` moves to PRQC v2 with the matching `sig_layout_rel`,
+`sig_grad_rms` and their contrasts.
+
+## 15. Rank, the two modes, and a premise that is wrong in sign
+
+### 15.1 The queue never used the criterion it was configured with
+
+`order_queue` sorted on `red.spread(agg)` and never read `cfg.criterion`. So every
+`--order spread` run in the corpus ordered by the within arm whatever its header said, and the
+budget-truncation point was decided by a different quantity than the one named. Fixed.
+
+**It reproduces the corpus exactly**, and the reason is worth stating rather than asserting: every
+committed run has `criterion=within`, and `signal(Within, agg)` *is* `spread(agg)` by definition.
+The fix only changes runs that set a criterion the old code was ignoring. `tests/criterion.rs`
+asserts the equality over the aggregations and over degenerate inputs.
+
+### 15.2 The two modes are one mechanism
+
+`Mode::Uniform` turns the criterion **off** — not "sets a permissive threshold", off — and splits
+to the veto. `Mode::Balanced` ranks the frontier and gives the top `k_frac` its budget. A quad
+that falls down the ranking is simply not spent on: the demotion §3.1 asks for, with no merging
+and no eviction.
+
+`k_frac = 1.0` refines the whole eligible frontier and reproduces the unranked descent exactly.
+Deferred quads are marked **`Keep`, not `BudgetExhausted`** — they were outranked, not refused for
+want of budget, and conflating them would hide the ranking inside the stop-reason column that
+exists to expose it. Measured at `N = 4`, budget 300: `k_frac` 0.25 / 0.50 / 0.75 / 1.00 gives
+13 / 46 / 121 / 223 leaves, with zero budget-exhausted below 1.0.
+
+### 15.3 Balanced mode passes, and the control fails as it must
+
+`examples/balanced_march.rs`, playhead `t ∈ {4, 6, 8, 10, 13, 16, 20}`, `n_sync` scaled with
+`t_max`, viewport 64² so the uniform arm is stopped by the **veto** rather than the budget — a
+budget-bound control is no control.
+
+| | near-field | `deep interior` |
+|---|---|---|
+| balanced, depth variance | 0.004 – 0.574, no trend to zero | 0.402 – 0.740 |
+| **uniform, depth variance** | **0.0000 at every `t`** | **0.0000 at every `t`** |
+| balanced, churn | 0.000 – 0.429 | 0.000 – 0.194 |
+
+The control is pinned at exactly zero across the whole march, which is what makes the balanced
+row mean anything.
+
+**Churn is reported over the SHARED quads only**, and flagged when that set is small. A quad
+present at one playhead and not the other has not "changed decision", and counting it would fold
+the tree's size change into a statistic about its stability. Near-field at `t = 16` shares only
+14 quads, so its 0.4286 is 6 of 14 — printed as thin rather than quoted as a rate.
+
+### 15.4 The treadmill does not happen. The opposite does.
+
+§3's argument for rank is that *"spread grows with `t` everywhere"*, so any fixed threshold must
+eventually fire on every quad and balanced mode must degenerate to uniform depth.
+
+**Measured on the uniform arm** — a fixed tree, so this is the field and not the tree — the median
+leaf spread does not grow:
+
+| `t` | 4 | 6 | 8 | 10 | 13 | 16 | 20 |
+|---|---|---|---|---|---|---|---|
+| near-field | 1.62e-3 | 6.02e-4 | 1.98e-3 | **6.56e-3** | 1.87e-3 | 9.93e-5 | **8.09e-5** |
+| `deep interior` | 1.63e-3 | 1.68e-4 | 1.45e-4 | 1.45e-4 | 5.36e-5 | 5.36e-5 | **5.31e-5** |
+
+Near-field **peaks at `t = 10` and then falls 81×**, ending *below* `tau = 1e-4`. `deep interior`
+falls **31× monotonically** and is below `tau` from `t = 13` on.
+
+The mechanism is already on record one level down: **terminal states are absorbing.** As
+termination saturates, copies share an outcome, `spread_event` collapses and `spread_shape` over
+terminated trajectories stops growing. So at large `t` a fixed `tau` fires **nowhere**, the spread
+gate keeps everything, and the tree **shrinks** — near-field 256 → 40 leaves, with the `keep`
+count going 0 → 20 and `ScreenFloor` 164 → 12. That is the *upper-side* failure of §14.2 arriving
+on the time axis.
+
+**This strengthens the case for rank rather than weakening it.** The treadmill argument was that
+no fixed `tau` can survive a monotone rise; the measured behaviour is a rise *and then a
+collapse*, which is worse for a fixed threshold — there is no value that is correct at both ends,
+and no monotone schedule that would track it either. A ranking is invariant to the whole curve.
+
+### 15.5 The structure term needed a third factor, and a test found it
+
+`QuadReduction::structure` is connectedness × thinness × extent, on the relative mask. The first
+two were designed; the third was not.
+
+| mask | structure |
+|---|---|
+| fully hot | **0.0000** — maximally connected, zero perimeter; thinness kills it |
+| one-cell filament | **1.0000** — the target |
+| checkerboard | **0.0039** — maximally thin, maximally scattered; connectedness kills it |
+| single isolated cell | **0.1250** |
+
+The isolated cell scored **1.0** on the first two factors alone: it *is* the largest component, so
+connectedness is trivially 1, and `perimeter_ratio == 4` so thinness saturates. Maximum structure,
+for one cell. **Extent** — `largest_component / N` — is the graded form of what
+`Layout::looks_like_boundary` already encoded as `largest_component >= N/2`. Each of the three
+factors catches a case the other two score at maximum.
+
+`structure` is `NaN` on an empty mask, not 0. `far`'s absolute mask is empty on every leaf
+(§14.6), and a 0 there would read as "no structure found" rather than "not measured".
+
+## 16. §2.2 answered: structure neither replaces nor multiplies
+
+`examples/structure_metric.rs`, levels 6 (5461 quads, 512² reference), `N = 8`, `E+1 = 8`,
+`tau = 1e-4`, `t = 13`, under the **shipping** colouring. Three targets: `near-field`,
+`deep interior` — because a change that only improves near-field is tuning — and `preset_shape`,
+the **only tree in the corpus whose leaves are entirely its own decisions** (0% camera veto).
+`far` is deliberately absent: its reference window is `(1.3e-9, 1.1e-8)`, the integrator's
+arithmetic rather than physics.
+
+Oracle-to-random separation, read first: **0.00597 / 0.00675 / 0.01768**. The metric discriminates
+on all three, and by far the most on `preset_shape` — the one where the criterion is doing the
+deciding.
+
+### 16.1 The recommendation on record was multiply. The measurement says no.
+
+`error(B)` at `B = 191`, `off` against `multiply` on the same arm:
+
+| target | arm | `off` | `multiply` |
+|---|---|---|---|
+| near-field | within | 0.11622 | 0.11543 |
+| near-field | between | **0.10110** | 0.10585 |
+| near-field | frac_hot_between | **0.09313** | 0.11554 |
+| `deep interior` | within | 0.07910 | 0.07898 |
+| `deep interior` | between | **0.07958** | 0.08048 |
+| `deep interior` | frac_hot_between | **0.06220** | 0.07003 |
+| `preset_shape` | within | 0.12471 | 0.12471 |
+| `preset_shape` | between | **0.12477** | 0.13218 |
+| `preset_shape` | frac_hot_between | **0.07038** | 0.13133 |
+
+**Multiply never helps and it wrecks the best criterion** — `frac_hot_between` on `preset_shape`
+goes 0.07038 to 0.13133, from beating greedy's neighbourhood to worse than the random band's
+*upper* edge. On the `within` arm it is a wash to five digits, which is the only place it does no
+harm, and that is the arm that was already the worst criterion tested.
+
+**`replace` is worse still, and it is not a second data point.** `signal_with(_, _, Replace)`
+discards both arguments, so `replace × within`, `replace × between` and `structure_only` are the
+same expression; their curves match to five digits because they *are* one row. Documented at the
+enum. As `structure_only` it is the **worst row in the `preset_shape` table** — 0.13348 at
+`B = 191` against a random *high* of 0.10814. Ranking on structure alone is worse than ranking at
+random badly.
+
+So §2.2's answer is **neither**. The structure term does not replace the signal and does not
+usefully multiply it.
+
+### 16.2 The winner is the criterion the instruction would have deleted
+
+**`frac_hot_between/median`, with the structure term off**, beats the random band at nearly every
+budget in all three targets:
+
+| target | `B = 47` | `B = 191` | `B = 767` | `B = 1535` |
+|---|---|---|---|---|
+| near-field | **0.10457** / 0.10334 | **0.09313** / 0.09474 | **0.08046** / 0.08273 | 0.06914 / 0.06707 |
+| `deep interior` | **0.06879** / 0.07140 | **0.06220** / 0.06258 | **0.04750** / 0.05173 | **0.02772** / 0.03983 |
+| `preset_shape` | **0.09565** / 0.09970 | **0.07038** / 0.08649 | **0.04654** / 0.06676 | **0.03203** / 0.05044 |
+
+(criterion / best random.) On `preset_shape` it is close to `greedy_oracle` itself — 0.07038
+against 0.06881 at `B = 191` — which is the strongest showing any criterion has made on this
+project, on the one tree the criterion actually controls.
+
+**It does this on 31, 65 and 64 distinct values, with modal shares of 83.1%, 33.9% and 40.4%.**
+Near-field's ordering has thirty-one distinct values over 5461 quads and an 83% mode, and it still
+wins. That is the standing rule at full strength: *signal resolution is not what makes a ranking
+good*. Meanwhile `within/median` carries 5418 distinct values in near-field and is beaten by
+random at every budget — a fine-grained ordering that is actively bad.
+
+**And this is the criterion that reads the ABSOLUTE mask** — the one the instruction to "make the
+threshold relative" would have replaced. §14.5 caught that before it shipped. The relative mask
+desaturated the spatial fields exactly as intended, and every criterion built on it still loses to
+a saturated 31-valued count.
+
+### 16.3 The threshold-free control does not rescue the family
+
+`grad_rms` has **5461 distinct values — every quad distinct — and no threshold in it at all**. It
+sits mid-pack: better than `within`, worse than `frac_hot_between`, worse than random. `layout_rel`
+— the desaturated mask's own criterion — carries 46 / 174 / 214 distinct values and is the second
+best non-`frac_hot` row on `preset_shape` (0.08970) while still losing to random there.
+
+So the mask family's problem was never only the saturation. **Desaturating was necessary and is
+not sufficient**, and nothing built on the spatial layout has yet beaten a plain count in the tail.
+
+## 17. The slippy map
+
+### 17.1 2:1 balance, and the share of the budget it costs
+
+`Decision::BalanceForced` (code 10) is a separate decision so the geometry cost is **countable**;
+a `Split` would be indistinguishable from a criterion-driven one. Measured on `deep interior`
+under a camera: unbalanced 46 leaves with a worst adjacent gap of **2**, balanced 64 leaves with a
+gap of **1**, and **14.1% of the quads computed** were balance-forced.
+
+The unbalanced arm is the control, and it is not decorative: under the veto near-field reaches a
+complete tree at one depth, where 2:1 holds trivially and the test would pass having measured
+nothing.
+
+### 17.2 The camera enters the priority and never the veto
+
+`Camera::relevance(cx, cy, half, margin)` is the visible-area fraction, computed at query time.
+`Camera::veto` stays position-free, which is what keeps a quad's *decision* independent of where
+the camera points — the standing rule. Both halves are asserted: the veto returns the same
+decision for a camera sitting on the quad and one ten units away, while relevance goes 1.0 → 0.0
+and is strictly graded (0.5) for a quad straddling the edge.
+
+**A pan now means something.** Without the bias, panning `cx` 1.00 → 1.04 leaves the tree
+identical — the standing identity, now asserted as one rather than reported as a result. With it,
+52 → 55 leaves. `margin` is §4.3's honest baseline: widen the viewport, drop prediction. Velocity
+extrapolation fails on flick-and-stop, and the swept-path variant must beat this before its
+complexity is justified.
+
+### 17.3 The persistent frontier, and the reference kept beside it
+
+`src/frontier.rs`: priority split into a **stored** physics term and a **derived** camera term,
+bucketed into 24 log-spaced bands. Log-spaced because the signal spans six orders across regions;
+linear bands would put a whole region in one bucket, which is the saturation failure this project
+has already met twice.
+
+`Frontier::rebuild` — the from-scratch path — is **kept permanently** and
+`agrees_with_rebuild` compares them after inserts, cross-band reprioritisations and removals. The
+failure mode is staleness, and it is invisible: a quad sitting high on a priority it no longer has
+looks exactly like a bad criterion. Two paths that must agree is the only thing that catches it.
+
+`band_of` conflated `NaN` with `+inf` under one `is_finite` guard — undetermined and
+maximally-important sent to the same bucket. Nothing in the current signal produces `+inf`, which
+is exactly why it would have sat there. `NaN` goes to the bottom, `+inf` to the top.
+
+### 17.4 Zoom-out is free, but not in the form the brief states
+
+§4.5 asks for *"the count of newly-computed quads after a zoom-out is ≈ 0"*. That presupposes a
+tree persisting across frames, and this build deliberately has none — the scope discipline is *no
+eviction, no caching, no async, no promotion*. Asserting it as written would require building the
+thing the scope forbids; asserting it against a from-scratch descent would measure nothing.
+
+What is available is the arithmetic underneath: measured, a zoomed-out descent computes **537
+quads against 537 of the zoomed-in run's 597**, and **zero** of its boxes are absent from the
+zoomed-in descent. So a persistent tree would have to compute none of them. Stated that way rather
+than as the claim the build cannot support.
+
+### 17.5 The coarse-ancestor fill was a missing filter, not a missing feature
+
+`adaptive::render` drew only leaves, so a leaf without computed samples left raw background — a
+hole, which reads as *"nothing here"* rather than *"not yet resolved"*, and is the one outcome
+worse than a blocky texel. It now draws **every node with samples, coarsest first**, which is
+§4.5's option 1 exactly: draw the coarse ancestor and let it sharpen.
+
+**Wherever the tree is complete this is bitwise identical**, because leaves tile the root and a
+parent is wholly overwritten by its children. It differs only where a leaf is missing — a
+budget-exhausted quad truncated before compute, or a frontier the camera has just revealed. The
+returned `LeafTexel` list stays leaves-only; including the fill would have doubled its rows and
+halved the apparent texel size at every level.
+
 ## 13. Reproducing any of this
+
+**Two of these commands were wrong, and only running them found it.** The `pan_sequence` line said
+`9 2000 512` where the committed dumps were made at `9 20000 1024`, and the `slice_gallery` line
+said `4000 … 512` against a committed `40000 … 1024`. Regenerating from the documented commands
+produced nineteen dumps that did not reproduce: nine at a tenth of the budget, and ten with an
+**identical tree and a different `decision` column** — 252 leaves moved from `MaxRelDepth` to
+`ScreenFloor` purely by the viewport. Same leaf count, different stop reason, which is this
+project's own standing lesson arriving through its documentation.
+
+A sample of eleven dumps had already reported "reproduces bitwise". Checking all sixty-nine is what
+caught it. **Verify a regeneration over the whole corpus, not a sample**, and diff the `decision`
+column specifically — it is the one that moves when a parameter is wrong while the tree is not.
 
 Every table above comes from a committed example. Raw output for all of them is in
 [`results/output/`](results/output/), the acceptance-gate and cross-check output is in
@@ -1977,9 +2455,16 @@ Every table above comes from a committed example. Raw output for all of them is 
 | §10.5 sibling noise | `cargo run --release --example sibling_noise -- 5 3` |
 | §10.6 the FTLE cross-check | `cargo test --release --test xcheck -- --ignored ftle --nocapture` |
 | §10.7 the bivariate colouring | `cargo run --release --example bivariate_colour -- 5 8 13 1e-4` |
-| §10.8 panning | `cargo run --release --example pan_sequence -- 9 2000 512 near-field` |
+| §10.8 panning | `cargo run --release --example pan_sequence -- 9 20000 1024 near-field` |
 | §10.9 the two costings | `cargo run --release --example cost_and_anisotropy -- 5 8` |
 | the criterion gates | `cargo test --release --test criterion -- --nocapture` |
-| §10.9 the slice gallery | `cargo run --release --example slice_gallery -- 4000 1e-4 0.2 512` |
-| §12 the chart gallery, all 17 cases | `cargo run --release --example chart_gallery -- 40000 1e-4 0.2 1024` |
+| §10.9 the slice gallery | `cargo run --release --example slice_gallery -- 40000 1e-4 0.2 1024` |
+| §12 the chart gallery, all 26 cases | `cargo run --release --example chart_gallery -- 40000 1e-4 0.2 1024` |
 | §12 the decoder and preset gates | `cargo test --release --test charts -- --nocapture` |
+| §14 the threshold diagnosis | `cargo run --release --example threshold_diagnosis` |
+| §14.5-14.6 the hot rule swept | `cargo run --release --example hot_rule_sweep` |
+| §15.3-15.4 the balanced march | `cargo run --release --example balanced_march` |
+| §16 structure modes by error(B) | `cargo run --release --example structure_metric -- 6 8 1e-4 13` |
+| §17 the slippy-map gates | `cargo test --release --test slippy -- --nocapture` |
+| the refinement animations | `cargo run --release --example refinement_animation -- 40000 1e-4 0.2 512` |
+| the four GLSL slices refining | `cargo run --release --example glsl_refinement -- 40000 1e-4 0.2 512 40` |

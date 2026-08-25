@@ -28,7 +28,20 @@ fn main() {
                  "tau", "alpha_hi", "quads", "leaves", "split*", "floor", "keep", "budget",
                  "depth", "wall s");
 
-        for tau in [1e-8f64, 1e-6, 1e-4, 1e-3, 1e-2] {
+        // **The ladder was measured, and the first cut of it was wrong.** Pooled over the 89,088
+        // committed leaves the spread median is 6.6e-4 and `tau = 1e-4` sits at the 0.4th
+        // percentile, so the top of the old ladder measured nothing: 1e-6, 1e-4 and 3e-4 give a
+        // BITWISE IDENTICAL tree in near-field. It now runs up to 1e-1, past the point where the
+        // predicate goes false everywhere.
+        //
+        // **The bottom rungs are NOT redundant, and dropping 1e-8 broke `far`.** The regional
+        // spread medians span six orders -- 4.26e-8 in `far`, 9.45e-5 in `deep interior`,
+        // 9.75e-4 in near-field -- so which rung is degenerate is a fact about the REGION, not
+        // about the ladder. `1e-8` is the only rung below `far`'s bulk; without it `far` reads 16
+        // leaves at every cell and the sweep says "tau is inert here", which is a statement about
+        // the ladder. Both low rungs stay, as labelled degenerate controls for different regions.
+        // See `examples/threshold_diagnosis.rs` for the percentiles.
+        for tau in [1e-8f64, 1e-6, 1e-4, 3e-4, 1e-3, 3e-3, 1e-2, 3e-2, 1e-1] {
             for alpha_hi in [0.2f64, 0.5, 0.8, 1.0] {
                 let cfg = SchedCfg {
                     budget: BUDGET,

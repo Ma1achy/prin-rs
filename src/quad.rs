@@ -104,6 +104,21 @@ pub struct QuadReduction {
     pub frac_above_tau_within: f64,
     pub frac_above_tau_between: f64,
 
+    /// The same two layouts under the **relative** hot rule — above the quad's own quantile
+    /// rather than above `tau`. See [`crate::spatial::HotRule`] for why both are carried.
+    ///
+    /// **`n_hot` here is a constant**, `N^2/2` at the median, on every quad by construction. Do
+    /// not read `frac_hot` off these: the signal is entirely `n_components`,
+    /// `largest_component` and `perimeter_ratio`, which is what desaturating the mask buys.
+    pub layout_rel_within: crate::spatial::Layout,
+    pub layout_rel_between: crate::spatial::Layout,
+    /// RMS forward-difference gradient of the two per-footprint fields. The magnitude companion
+    /// to the layouts, and the only structure measure here that needs **no threshold at all** —
+    /// which is why it is worth having beside two that do. `NaN`, never 0, when no adjacent
+    /// pair is finite.
+    pub grad_rms_within: f64,
+    pub grad_rms_between: f64,
+
     /// Footprints whose nominal **terminated** before the horizon — collision *or* escape.
     ///
     /// **Not "escaped", which is what an earlier draft of this called it and got wrong.** §3.5
@@ -190,6 +205,75 @@ impl QuadReduction {
                     l.frac_hot(self.n_side()) * (l.largest_component as f64 / l.n_hot as f64)
                 }
             }
+            Criterion::LayoutRel => {
+                // The same reading on the relative mask -- but `frac_hot` is a constant there,
+                // so it is dropped rather than carried as a scale factor that varies with
+                // nothing. What is left is connectedness alone, which is the whole point: a
+                // relative mask turns a magnitude statistic into a shape one.
+                let l = self.layout_rel_within;
+                if l.n_hot == 0 {
+                    0.0
+                } else {
+                    l.largest_component as f64 / l.n_hot as f64
+                }
+            }
+            Criterion::GradRms => self.grad_rms_within,
+        }
+    }
+
+    /// **How much this quad looks like a BOUNDARY rather than a uniform sea**, in `[0, 1]`.
+    ///
+    /// The §1 diagnosis: `ensemble_spread` measures *uncertainty*, and a uniformly chaotic quad
+    /// and a filament are both uncertain. Only one of them repays refining. This is the term
+    /// that separates them, and it is two factors because either alone is fooled:
+    ///
+    /// - **connectedness**, `largest_component / n_hot`. Scattered hot footprints are chaos;
+    ///   one run of them is a structure. Without this a checkerboard scores maximum thinness.
+    /// - **thinness**, `perimeter_ratio / 2`, clamped at 1. A one-cell-wide filament reads
+    ///   exactly `2.0` under the internal-edges convention, a compact blob `~4/sqrt(A)`, and a
+    ///   featureless fully-hot quad exactly **0**. Without this a fully-hot quad scores maximum
+    ///   connectedness.
+    /// - **extent**, `largest_component / N`. **This third factor was not anticipated; the test
+    ///   found it.** A single isolated hot cell is trivially connected (it *is* the largest
+    ///   component) and maximally thin (`perimeter_ratio == 4`), so the first two factors scored
+    ///   it **1.0** — maximum structure, for one cell. A boundary crossing a quad spans it;
+    ///   `Layout::looks_like_boundary` already encodes that as `largest_component >= N/2`, and
+    ///   this is the graded form. An isolated cell now reads `1/N`.
+    ///
+    /// Read it on the **relative** mask: on the absolute one `n_hot == N^2` in 98.8% of committed
+    /// leaves, so `perimeter_ratio` is 0 and this is identically zero — a term that cannot fire.
+    ///
+    /// `NaN` when nothing is hot, following `perimeter_ratio`'s own convention. **Not 0**: an
+    /// empty mask is "not determined", and `far` is the case that makes the difference — its
+    /// absolute mask is empty on every leaf, and a 0 there would read as "no structure found"
+    /// rather than "not measured".
+    pub fn structure(&self, relative: bool) -> f64 {
+        let l = if relative { self.layout_rel_within } else { self.layout_within };
+        if l.n_hot == 0 {
+            return f64::NAN;
+        }
+        let connected = l.largest_component as f64 / l.n_hot as f64;
+        let thin = (l.perimeter_ratio / 2.0).clamp(0.0, 1.0);
+        let extent = (l.largest_component as f64 / self.n_side().max(1) as f64).clamp(0.0, 1.0);
+        connected * thin * extent
+    }
+
+    /// The scalar a decision reads once [`StructureMode`] is applied.
+    ///
+    /// **`Multiply` is "uncertain AND structured"**, which floors the uniform sea by
+    /// construction; `Replace` says structure is the whole answer. The recommendation on record
+    /// is multiply, and the recommendation does not decide — `error(B)` does.
+    ///
+    /// A `NaN` structure term propagates rather than being coerced to 0 or 1. Under `Multiply`
+    /// that demotes an undetermined quad to the bottom of any ranking, which is the wrong
+    /// standing for "could not be measured" and is why the mode is a measured choice rather than
+    /// an obvious one. It is stated here so it is read off the code rather than discovered.
+    pub fn signal_with(&self, criterion: Criterion, agg: Agg, mode: StructureMode) -> f64 {
+        let base = self.signal(criterion, agg);
+        match mode {
+            StructureMode::Off => base,
+            StructureMode::Replace => self.structure(true),
+            StructureMode::Multiply => base * self.structure(true),
         }
     }
 
@@ -208,6 +292,48 @@ impl QuadReduction {
     pub fn between_collapsed(&self) -> bool {
         self.n_distinct_ic < self.n_footprints
     }
+}
+
+/// Whether the spatial-structure term enters the decision, and how.
+///
+/// §2.2's open question, implemented as both variants because it is the sort of thing this
+/// project has settled by measurement rather than argument.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum StructureMode {
+    /// The signal alone. Today's behaviour, and the control.
+    #[default]
+    Off,
+    /// Structure is the whole answer.
+    ///
+    /// **This mode has no criterion axis**: `signal_with(_, _, Replace)` discards both arguments,
+    /// so `replace x within` and `replace x between` are the same ranking, and both are
+    /// identically `Rank::StructureOnly`. Measured and confirmed — their `error(B)` curves match
+    /// to five digits on every target. That is a structural identity, not a finding, and it is
+    /// stated here so a table carrying both does not read as two independent rows agreeing.
+    Replace,
+    /// *Uncertain **and** structured.* Keeps the determinacy question `ensemble_spread` answers
+    /// while adding the structure question it cannot.
+    Multiply,
+}
+
+impl StructureMode {
+    pub fn name(self) -> &'static str {
+        match self {
+            StructureMode::Off => "off",
+            StructureMode::Replace => "replace",
+            StructureMode::Multiply => "multiply",
+        }
+    }
+    pub fn parse(s: &str) -> Option<StructureMode> {
+        Some(match s {
+            "off" => StructureMode::Off,
+            "replace" => StructureMode::Replace,
+            "multiply" => StructureMode::Multiply,
+            _ => return None,
+        })
+    }
+    pub const ALL: [StructureMode; 3] =
+        [StructureMode::Off, StructureMode::Replace, StructureMode::Multiply];
 }
 
 /// Which signal a split decision reads.
@@ -252,6 +378,15 @@ pub enum Criterion {
     /// property to read, not a defect to hide: NaN never wins a comparison, so the ranking is
     /// decided entirely by the 2.9% it does score.
     TerminationGradient,
+    /// Hot-set layout on the **relative** mask. The desaturated twin of [`Criterion::Layout`];
+    /// connectedness alone, since `frac_hot` is constant under a quantile rule.
+    LayoutRel,
+    /// RMS spatial gradient of `ensemble_spread` across the footprint grid.
+    ///
+    /// **The only candidate here with no threshold in it.** That makes it the control on the
+    /// whole hot-mask family: if a masked signal cannot beat it, the mask is not earning its
+    /// parameter.
+    GradRms,
 }
 
 impl Criterion {
@@ -266,6 +401,8 @@ impl Criterion {
             Criterion::RunningMax => "running_max",
             Criterion::FirstDivergence => "first_div",
             Criterion::TerminationGradient => "term_grad",
+            Criterion::LayoutRel => "layout_rel",
+            Criterion::GradRms => "grad_rms",
         }
     }
     pub fn parse(s: &str) -> Option<Criterion> {
@@ -279,11 +416,13 @@ impl Criterion {
             "running_max" => Criterion::RunningMax,
             "first_div" => Criterion::FirstDivergence,
             "term_grad" => Criterion::TerminationGradient,
+            "layout_rel" => Criterion::LayoutRel,
+            "grad_rms" => Criterion::GradRms,
             _ => return None,
         })
     }
     /// Every variant, for sweeps that must not silently omit one.
-    pub const ALL: [Criterion; 9] = [
+    pub const ALL: [Criterion; 11] = [
         Criterion::Within,
         Criterion::Between,
         Criterion::MaxOfBoth,
@@ -293,6 +432,8 @@ impl Criterion {
         Criterion::RunningMax,
         Criterion::FirstDivergence,
         Criterion::TerminationGradient,
+        Criterion::LayoutRel,
+        Criterion::GradRms,
     ];
 }
 
@@ -365,6 +506,14 @@ pub enum Decision {
     /// region has a zero spread over perfectly distinct ICs, and conflating the two would flag
     /// the physics as a numerical failure.
     Collapsed,
+    /// **Split to satisfy the 2:1 balance constraint, not because the criterion asked.**
+    ///
+    /// No two adjacent leaves may differ by more than one level or the adaptive render has
+    /// cracks. That forces splits the criterion declined, and they are spent from the same
+    /// budget — so a run where most of the budget went on geometry rather than physics must be
+    /// *countable*, not inferred. A `Split` here would be indistinguishable from a
+    /// criterion-driven one, which is the same failure the stop-reason column exists to prevent.
+    BalanceForced,
 }
 
 impl Decision {
@@ -380,6 +529,7 @@ impl Decision {
             Decision::ScreenFloor => "screen_floor",
             Decision::MaxRelDepth => "max_rel_depth",
             Decision::Collapsed => "collapsed",
+            Decision::BalanceForced => "balance",
         }
     }
     pub fn code(self) -> u8 {
@@ -394,6 +544,7 @@ impl Decision {
             Decision::ScreenFloor => 7,
             Decision::MaxRelDepth => 8,
             Decision::Collapsed => 9,
+            Decision::BalanceForced => 10,
         }
     }
 }

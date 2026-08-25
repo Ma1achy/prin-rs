@@ -19,8 +19,8 @@ use crate::ensemble::pixel::{evaluate, EnsembleCfg, PixelOut};
 use crate::grid::Chart;
 use crate::ensemble::stats;
 use crate::physics::shape;
-use crate::quad::{quantile, Agg, Criterion, Decision, QuadReduction, QuadTree};
-use crate::spatial::{self, Layout};
+use crate::quad::{quantile, Agg, Criterion, Decision, Dir, QuadReduction, QuadTree, StructureMode};
+use crate::spatial::{self, HotRule, Layout};
 use crate::render::Precision;
 use crate::rng::SplitMix64;
 
@@ -83,6 +83,39 @@ impl Order {
     }
 }
 
+/// The two modes, which are **one mechanism at different budgets** (§3.1).
+///
+/// The reframe that matters: *the screen floor stops things; the criterion decides what gets
+/// attention first.* The criterion was never a stop condition.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Mode {
+    /// Every quad that passes the guards splits, to the veto. The criterion is **off**, and this
+    /// is the control that must degenerate to uniform depth — without it, a balanced mode that
+    /// was merely frozen would look the same in a depth-variance plot.
+    Uniform,
+    /// The same descent, frontier **ranked**, top `k` per round gets budget. The criterion is a
+    /// **priority ordering**, never a threshold, so it cannot land above or below the
+    /// distribution the way a fixed `tau` does.
+    #[default]
+    Balanced,
+}
+
+impl Mode {
+    pub fn name(self) -> &'static str {
+        match self {
+            Mode::Uniform => "uniform",
+            Mode::Balanced => "balanced",
+        }
+    }
+    pub fn parse(s: &str) -> Option<Mode> {
+        Some(match s {
+            "uniform" => Mode::Uniform,
+            "balanced" => Mode::Balanced,
+            _ => return None,
+        })
+    }
+}
+
 #[derive(Clone, Copy, Debug)]
 pub struct SchedCfg {
     /// `N`, samples per quad axis. The quality/compute driver: `N²(E+1)` trajectories per quad.
@@ -105,6 +138,13 @@ pub struct SchedCfg {
     /// `Decision::Split`. Complexity stays the sole trigger.
     pub camera: Option<Camera>,
     pub tau_display: f64,
+    /// How a footprint is called hot for the **shape** statistics.
+    ///
+    /// Separate from `tau_display`, which still drives the split gate and the absolute mask.
+    /// The absolute mask is not replaced: `frac_hot` is identically constant under any quantile
+    /// rule, and `frac_hot_between` is the best criterion measured here. See
+    /// [`crate::spatial::HotRule`].
+    pub hot_rule: HotRule,
     /// Split above this exponent, floor below `alpha_lo`. Between them: keep.
     pub alpha_hi: f64,
     pub alpha_lo: f64,
@@ -116,6 +156,34 @@ pub struct SchedCfg {
     /// Which signal the split decision reads. Every criterion is computed and dumped whatever
     /// this is set to, so criteria can be compared offline without re-integrating.
     pub criterion: Criterion,
+    /// Whether the spatial-structure term enters the signal, and how. §2.2.
+    pub structure: StructureMode,
+    /// Uniform or balanced. See [`Mode`].
+    pub mode: Mode,
+    /// **Balanced mode's budget**: the fraction of the split-eligible frontier refined per round.
+    ///
+    /// `1.0` reproduces the unranked descent exactly, which is what keeps every prior run
+    /// reproducible. It has **no recommended value** — it is swept, and the sweep is the result.
+    /// Picking one because a tree looked right is the constant-tuning defect in its most tempting
+    /// form, and this is the knob most exposed to it.
+    pub k_frac: f64,
+    /// **Camera bias in the PRIORITY** (§4.3): rank on the visible part of a quad, not the whole
+    /// quad. A quad half off-screen has structure the viewer cannot see, and ranking on it spends
+    /// budget on nothing.
+    ///
+    /// `None` disables it, which is every run before this. The value is the viewport margin in
+    /// quad-widths — §4.3's honest baseline, against which any prediction model must justify
+    /// itself. **The camera enters `priority` here and `veto` never; a `Quad` gains no camera
+    /// field.**
+    pub camera_bias: Option<f64>,
+    /// Enforce the **2:1 balance constraint** — no two adjacent leaves more than one level
+    /// apart, or the adaptive render has cracks.
+    ///
+    /// Off by default so every prior run reproduces byte for byte. It is a *rendering*
+    /// requirement, separate from the neighbour-contrast idea that shares the same lookup, and
+    /// the splits it forces are marked [`Decision::BalanceForced`] so the share of the budget
+    /// spent on geometry rather than physics is countable.
+    pub balance: bool,
     /// The chart every quad decodes through. One tree, one chart.
     pub chart: Chart,
     /// Retain each quad's `N²` footprints for the adaptive render. Not a cache — the run is
@@ -133,6 +201,7 @@ impl Default for SchedCfg {
             max_level: None,
             camera: None,
             tau_display: 1e-2,
+            hot_rule: HotRule::Quantile(0.5),
             alpha_hi: 0.5,
             alpha_lo: 0.2,
             sib_tau: 0.5,
@@ -140,6 +209,11 @@ impl Default for SchedCfg {
             order: Order::Spread,
             agg: Agg::Median,
             criterion: Criterion::Within,
+            structure: StructureMode::Off,
+            mode: Mode::Balanced,
+            k_frac: 1.0,
+            camera_bias: None,
+            balance: false,
             chart: Chart::BodyPlane,
             keep_pixels: false,
             seed: 0,
@@ -164,6 +238,10 @@ pub struct SchedStats {
     /// duplication is `1/N` of a quad and is a *known cost*, reported rather than fixed: keeping
     /// `Slice` shared with the uniform kernel is worth more than the saving.
     pub footprints: usize,
+    /// Quads split to satisfy 2:1 rather than because the criterion asked. **Reported**: if this
+    /// is a large share of `quads_computed`, the budget went on geometry rather than physics,
+    /// and that is a fact about the run rather than a detail of it.
+    pub balance_forced: usize,
 }
 
 /// Compute one quad: `N²` footprints, each an `E+1` ensemble, reduced to one `QuadReduction`.
@@ -175,6 +253,7 @@ fn compute_quad<T: crate::Real>(
     ens: &EnsembleCfg,
     n: usize,
     tau: f64,
+    hot_rule: HotRule,
 ) -> (QuadReduction, Vec<PixelOut>) {
     let slice = tree.nodes[i].slice(n, tree.body, tree.chart);
     let px: Vec<PixelOut> = (0..slice.npix())
@@ -184,7 +263,7 @@ fn compute_quad<T: crate::Real>(
     // Distinctness before divergence: N^2 decodes, no integration, and it is the only test
     // that separates a collapsed decode from a genuinely uniform region.
     let ics: Vec<crate::physics::Cart<f64>> = (0..slice.npix()).map(|k| slice.nominal::<f64>(k)).collect();
-    let mut red = reduce(&px, n, tau, ens.t_max);
+    let mut red = reduce(&px, n, tau, hot_rule, ens.t_max);
     red.n_distinct_ic = crate::decode::distinct(&ics) as u32;
     (red, px)
 }
@@ -196,15 +275,25 @@ fn compute_quad<T: crate::Real>(
 /// `tau` an input to the *measurement*, not only to the *decision* — a real widening of what
 /// `tau` does, and worth saying out loud given the vertical slice promoted it to the dominant
 /// knob under the screen floor.
-pub fn reduce(px: &[PixelOut], n: usize, tau: f64, t_max: f64) -> QuadReduction {
+pub fn reduce(px: &[PixelOut], n: usize, tau: f64, hot_rule: HotRule, t_max: f64) -> QuadReduction {
     let finite = |x: &f64| x.is_finite();
     let mut sp: Vec<f64> = px.iter().map(|p| p.ensemble_spread).filter(finite).collect();
     let mut sh: Vec<f64> = px.iter().map(|p| p.spread_shape).filter(finite).collect();
     let mut ev: Vec<f64> = px.iter().map(|p| p.spread_event).filter(finite).collect();
     let nfin = sp.len().max(1) as f64;
     let mean = sp.iter().sum::<f64>() / nfin;
-    let Between { shape: b_shape, event: b_event, matched: b_matched, pooled, lay_within, lay_between } =
-        between(px, n, tau);
+    let Between {
+        shape: b_shape,
+        event: b_event,
+        matched: b_matched,
+        pooled,
+        lay_within,
+        lay_between,
+        lay_rel_within,
+        lay_rel_between,
+        grad_within,
+        grad_between,
+    } = between(px, n, tau, hot_rule);
     let (term_frac, esc_frac, grad) = termination_gradient(px, n, t_max);
     QuadReduction {
         spread_mean: mean,
@@ -235,6 +324,11 @@ pub fn reduce(px: &[PixelOut], n: usize, tau: f64, t_max: f64) -> QuadReduction 
         layout_between: lay_between,
         frac_above_tau_within: lay_within.frac_hot(n),
         frac_above_tau_between: lay_between.frac_hot(n),
+
+        layout_rel_within: lay_rel_within,
+        layout_rel_between: lay_rel_between,
+        grad_rms_within: grad_within,
+        grad_rms_between: grad_between,
 
         terminated_fraction: term_frac,
         escape_fraction: esc_frac,
@@ -280,9 +374,13 @@ struct Between {
     pooled: f64,
     lay_within: Layout,
     lay_between: Layout,
+    lay_rel_within: Layout,
+    lay_rel_between: Layout,
+    grad_within: f64,
+    grad_between: f64,
 }
 
-fn between(px: &[PixelOut], n: usize, tau: f64) -> Between {
+fn between(px: &[PixelOut], n: usize, tau: f64, hot_rule: HotRule) -> Between {
     // Copy 0 only. The nominal is un-jittered, so between-footprint variation is not
     // contaminated by the within-footprint jitter — which would otherwise put the same
     // perturbation into both arms and make their correlation partly an artefact of sharing an
@@ -336,14 +434,21 @@ fn between(px: &[PixelOut], n: usize, tau: f64) -> Between {
         })
         .collect();
 
-    // Non-finite is hot. A footprint that could not be determined is not evidence of calm, and
-    // treating it as cold would make the pathological case invisible to exactly the statistic
-    // built to find structure.
-    let hot_w: Vec<bool> = px
-        .iter()
-        .map(|p| !p.ensemble_spread.is_finite() || p.ensemble_spread > tau)
-        .collect();
-    let hot_b: Vec<bool> = dev.iter().map(|&d| !d.is_finite() || d > tau).collect();
+    // **Both hot rules, on both arms.** Non-finite is hot under either -- a footprint that could
+    // not be determined is not evidence of calm, and treating it as cold would make the
+    // pathological case invisible to exactly the statistic built to find structure.
+    //
+    // The absolute pair keeps `frac_above_tau_*` and the `frac_hot_*` criteria untouched; the
+    // relative pair is what desaturates the shape statistics. Measured on the committed corpus,
+    // the absolute mask reads `n_hot == N^2` in 98.8% of the 75,359 `charts/` leaves and 87.1%
+    // over all 92,880: one blob covering the whole quad, nearly everywhere, which is no
+    // measurement at all. (Two scopes, both stated -- the chart dumps are the saturated end and
+    // the zoom ladders the unsaturated one.)
+    let field_w: Vec<f64> = px.iter().map(|p| p.ensemble_spread).collect();
+    let hot_w = spatial::hot_mask(&field_w, HotRule::AbsTau(tau));
+    let hot_b = spatial::hot_mask(&dev, HotRule::AbsTau(tau));
+    let rel_w = spatial::hot_mask(&field_w, hot_rule);
+    let rel_b = spatial::hot_mask(&dev, hot_rule);
 
     Between {
         shape,
@@ -352,6 +457,10 @@ fn between(px: &[PixelOut], n: usize, tau: f64) -> Between {
         pooled,
         lay_within: spatial::layout(&hot_w, n),
         lay_between: spatial::layout(&hot_b, n),
+        lay_rel_within: spatial::layout(&rel_w, n),
+        lay_rel_between: spatial::layout(&rel_b, n),
+        grad_within: spatial::grad_rms(&field_w, n),
+        grad_between: spatial::grad_rms(&dev, n),
     }
 }
 
@@ -403,6 +512,51 @@ fn termination_gradient(px: &[PixelOut], n: usize, t_max: f64) -> (f64, f64, f64
     (frac, esc_only, if pairs == 0 { f64::NAN } else { acc / pairs as f64 })
 }
 
+/// **The 2:1 balance pass.** Split any leaf more than one level coarser than a neighbour.
+///
+/// Uses the existing [`QuadTree::neighbour`], which returns the *same-or-coarser* neighbour by
+/// root descent — so a deep leaf's probe lands on the coarse quad that needs splitting, which is
+/// exactly the direction this needs.
+///
+/// Iterated to a fixed point, because splitting a coarse quad creates children that may
+/// themselves be two levels under one of *their* neighbours. Bounded by `room` (in quads, not
+/// splits) and by a hard iteration cap: an unbounded loop inside a scheduler is not a failure
+/// mode worth leaving available, and if the cap is ever reached that is a bug rather than a
+/// budget.
+///
+/// Returns the newly created nodes, which still need computing.
+fn balance_pass(tree: &mut QuadTree, iteration: u32, room: usize) -> Vec<usize> {
+    let mut made: Vec<usize> = Vec::new();
+    for _ in 0..64 {
+        let mut want: Vec<usize> = Vec::new();
+        for i in tree.leaves() {
+            let lv = tree.nodes[i].level;
+            for d in Dir::ALL {
+                if let Some(j) = tree.neighbour(i, d) {
+                    // `j` is a leaf that is at least two levels coarser: it must split.
+                    if tree.nodes[j].children.is_none() && tree.nodes[j].level + 1 < lv {
+                        want.push(j);
+                    }
+                }
+            }
+        }
+        want.sort_unstable();
+        want.dedup();
+        if want.is_empty() {
+            return made;
+        }
+        for i in want {
+            if made.len() + 4 > room {
+                return made;
+            }
+            tree.nodes[i].decision = Decision::BalanceForced;
+            made.extend_from_slice(&tree.split(i, iteration));
+        }
+    }
+    debug_assert!(false, "balance pass did not reach a fixed point in 64 rounds");
+    made
+}
+
 /// Run the descent. Returns the tree and what it did.
 pub fn descend(
     cx: f64,
@@ -436,8 +590,12 @@ pub fn descend(
         let reds: Vec<(QuadReduction, Vec<PixelOut>)> = pending
             .iter()
             .map(|&i| match precision {
-                Precision::F32 => compute_quad::<f32>(&tree, i, ens, cfg.n, cfg.tau_display),
-                Precision::F64 => compute_quad::<f64>(&tree, i, ens, cfg.n, cfg.tau_display),
+                Precision::F32 => {
+                    compute_quad::<f32>(&tree, i, ens, cfg.n, cfg.tau_display, cfg.hot_rule)
+                }
+                Precision::F64 => {
+                    compute_quad::<f64>(&tree, i, ens, cfg.n, cfg.tau_display, cfg.hot_rule)
+                }
             })
             .collect();
         for (&i, (r, px)) in pending.iter().zip(reds) {
@@ -500,6 +658,24 @@ pub fn descend(
 
         // ---- order, then split ---------------------------------------------------------
         order_queue(&mut want, &tree, cfg);
+
+        // **The frontier is ranked and the top `k` gets budget.** This is where the criterion
+        // stops being a threshold and becomes a priority: a quad that falls down the ranking is
+        // simply not spent on, which is the demotion §3.1 asks for -- no merging, no eviction.
+        //
+        // `k_frac = 1.0` refines the whole eligible frontier, reproducing the unranked descent
+        // exactly, so every prior run stays byte-identical. Deferred quads are **`Keep`, not
+        // `BudgetExhausted`**: they were not refused for want of budget, they were outranked, and
+        // conflating the two would hide the mechanism inside the stop-reason column that exists
+        // to expose it.
+        if cfg.k_frac < 1.0 && !want.is_empty() {
+            let k = ((want.len() as f64 * cfg.k_frac).ceil() as usize).clamp(1, want.len());
+            for &i in want.iter().skip(k) {
+                tree.nodes[i].decision = Decision::Keep;
+            }
+            want.truncate(k);
+        }
+
         let room = cfg.budget.saturating_sub(st.quads_computed) / 4;
         if want.len() > room {
             for &i in want.iter().skip(room) {
@@ -512,6 +688,15 @@ pub fn descend(
         pending = Vec::new();
         for i in want {
             pending.extend_from_slice(&tree.split(i, iteration));
+        }
+
+        // **After the criterion's splits, not instead of them.** Balance is a rendering
+        // requirement and never a reason to refine, so it runs last and can only add.
+        if cfg.balance {
+            let room = cfg.budget.saturating_sub(st.quads_computed + pending.len());
+            let forced = balance_pass(&mut tree, iteration, room);
+            st.balance_forced += forced.len();
+            pending.extend_from_slice(&forced);
         }
     }
 
@@ -563,7 +748,14 @@ pub fn decide(tree: &QuadTree, i: usize, cfg: &SchedCfg) -> Decision {
         return Decision::Collapsed;
     }
 
-    let spread = q.red.signal(cfg.criterion, cfg.agg);
+    // **Uniform mode turns the criterion off entirely.** Not "sets a permissive threshold" --
+    // off. It is the control for §3.2's depth-variance test and must be able to reach the veto
+    // on every branch, or the test is comparing two criteria rather than criterion against none.
+    if cfg.mode == Mode::Uniform {
+        return Decision::Split;
+    }
+
+    let spread = q.red.signal_with(cfg.criterion, cfg.agg, cfg.structure);
     if !(spread > cfg.tau_display) {
         return Decision::Keep;
     }
@@ -591,19 +783,32 @@ fn alpha_branch(alpha: Option<f64>, cfg: &SchedCfg) -> Decision {
     }
 }
 
+/// The quantity the queue orders by.
+///
+/// **This used to read `red.spread(agg)` and ignore `cfg.criterion` entirely.** Every
+/// `--order spread` run in the corpus therefore ordered by the within arm whatever its header
+/// said, so those orderings were measured on a different quantity than they claimed. Fixed here,
+/// and recorded rather than quietly corrected: it means a prior `order` result compared the
+/// *budget-truncation point* under one signal while the header named another.
+pub fn priority(tree: &QuadTree, i: usize, cfg: &SchedCfg) -> f64 {
+    let q = &tree.nodes[i];
+    let v = q.red.signal_with(cfg.criterion, cfg.agg, cfg.structure);
+    let v = match cfg.order {
+        Order::SpreadArea => v * q.half.powi(2),
+        _ => v,
+    };
+    // **A product of two terms, never either alone** (§4.3). Structure changes only when a quad
+    // is recomputed or the zoom changes; relevance changes on every frame the camera moves --
+    // which is the split the persistent frontier is built around, and the reason this is
+    // computed here rather than stored.
+    match (cfg.camera_bias, cfg.camera) {
+        (Some(margin), Some(cam)) => v * cam.relevance(q.cx, q.cy, q.half, margin),
+        _ => v,
+    }
+}
+
 fn order_queue(want: &mut [usize], tree: &QuadTree, cfg: &SchedCfg) {
     match cfg.order {
-        Order::Spread => want.sort_by(|&a, &b| {
-            tree.nodes[b]
-                .red
-                .spread(cfg.agg)
-                .partial_cmp(&tree.nodes[a].red.spread(cfg.agg))
-                .unwrap_or(std::cmp::Ordering::Equal)
-        }),
-        Order::SpreadArea => want.sort_by(|&a, &b| {
-            let w = |i: usize| tree.nodes[i].red.spread(cfg.agg) * tree.nodes[i].half.powi(2);
-            w(b).partial_cmp(&w(a)).unwrap_or(std::cmp::Ordering::Equal)
-        }),
         Order::Shuffled => {
             let mut rng = SplitMix64::new(cfg.seed ^ 0x5EED_C0DE_5EED_C0DE);
             for j in (1..want.len()).rev() {
@@ -611,5 +816,17 @@ fn order_queue(want: &mut [usize], tree: &QuadTree, cfg: &SchedCfg) {
                 want.swap(j, k);
             }
         }
+        // Descending priority. NaN sorts LAST rather than blocking: a signal that declines to
+        // score must not outrank one that did, and must not stop the ones that did from being
+        // ordered among themselves.
+        _ => want.sort_by(|&a, &b| {
+            let (pa, pb) = (priority(tree, a, cfg), priority(tree, b, cfg));
+            match (pa.is_nan(), pb.is_nan()) {
+                (true, true) => a.cmp(&b),
+                (true, false) => std::cmp::Ordering::Greater,
+                (false, true) => std::cmp::Ordering::Less,
+                _ => pb.partial_cmp(&pa).unwrap_or(std::cmp::Ordering::Equal),
+            }
+        }),
     }
 }

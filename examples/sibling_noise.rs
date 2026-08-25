@@ -49,6 +49,7 @@ use prin_rs::grid::{self, Slice};
 use prin_rs::physics::energy;
 use prin_rs::quad::Agg;
 use prin_rs::scheduler::reduce;
+use prin_rs::spatial::HotRule;
 use prin_rs::stats;
 
 fn arg<T: std::str::FromStr>(i: usize, d: T) -> T {
@@ -89,7 +90,7 @@ fn sigma0(cx: f64, cy: f64, half: f64, body: usize, n: usize, e: usize, sc: Sche
 fn signal(cx: f64, cy: f64, half: f64, body: usize, n: usize, ens: &EnsembleCfg, tau: f64) -> f64 {
     let s = Slice::body_plane(n, n, cx, cy, half, body);
     let px: Vec<_> = (0..s.npix()).into_par_iter().map(|i| evaluate::<f64>(&s, i, ens)).collect();
-    reduce(&px, n, tau, ens.t_max).spread(Agg::Median)
+    reduce(&px, n, tau, HotRule::default(), ens.t_max).spread(Agg::Median)
 }
 
 /// `(alphas, sibling ranges)` over every parent above `levels`, under an arbitrary per-quad

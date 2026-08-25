@@ -89,6 +89,12 @@ rows = [struct.unpack_from(f"<{nf}d", d, off + i*nf*8) for i in range(n)]
 | `output/chart_gallery.txt` | the 26-case gallery run: per-case row, event-class histogram, and the depth~`terminated_fraction` lines |
 | `output/gallery_table.txt` | **what actually stopped each descent**, re-derived from the `.prnq` dumps — and whether the mechanism test can be read at all |
 | `output/preset_control.txt` | the negative control on the preset fix: correct basis against crossed and against its transposition, and `half = 3.0` against `1.0` |
+| `output/threshold_diagnosis.txt` | **where `tau` sits in the distribution it is meant to cut**, re-derived from all 69 committed `.prnq` dumps: the percentile ladder, the mask saturation, the two-sided failure, and which gate stopped each criterion-bound tree |
+| `output/sched_sweep.txt` | `tau` x `alpha_hi`, no camera. Ladder `1e-8 … 1e-1`: **both** low rungs are labelled degenerate controls, for *different* regions — `1e-8` is the only rung below `far`'s bulk |
+| `output/sweep_screen.txt` | the same sweep under the screen floor, with the `tau` span taken over the whole ladder rather than between two named rungs |
+| `output/structure_metric.txt` | **§2.2 settled**: `error(B)` for `off` / `multiply` / `replace` on three targets, with `structure_only` and the threshold-free `grad_rms` as controls. Read the oracle-to-random separation first, then `off` against `multiply` on the *same arm* |
+| `output/balanced_march.txt` | **§3.2's acceptance test**: depth variance and per-quad churn against `t`, balanced against the uniform control. Carries the median leaf spread per row, which is what shows the treadmill premise to be wrong in sign |
+| `output/hot_rule_sweep.txt` | the hot rule swept per region — mask saturation and component counts under `abs` against `q[0.50/0.75/0.90]`, with a constant leaf count asserted as the control |
 
 ## The scheduler
 
@@ -146,6 +152,33 @@ together — the pair is the evidence, either alone is not.
 `cargo test --release --test xcheck -- --ignored --nocapture`, and the horizon tables with
 `python3 tools/xcheck/horizon.py [--lc-unstable]`.
 
+## A note on the tree dumps and their version
+
+**The corpus was mixed-version before this PR and is uniform now.** `vertical/` was still
+**PRNQ v1** (24 columns, predating the between-arm and hot-mask block entirely); `charts/` and
+`criterion/` were v2 (48). Everything is **v3** (58) after the regeneration, and every v1 and v2
+column reproduced **bitwise** — verified by diffing the regenerated dumps against the versions at
+`HEAD`.
+
+That mixture had a consequence worth knowing about: a corpus-wide statistic over the hot-mask
+columns silently ran on the v2 dumps only, because the v1 records do not carry them. Two numbers
+printed side by side could therefore have different denominators without saying so. They do not
+now, and `examples/threshold_diagnosis.rs` prints its counts per statistic rather than once at the
+top.
+
+`.prnq` is **PRNQ v3** from this PR: the v2 record's 48 columns plus ten appended — the two
+**relative** hot-set layouts (`*_rel_within`, `*_rel_between`) and `grad_rms_within` /
+`grad_rms_between`. The header gained a `hot_rule=` token. New columns go at the end, so a
+positional reader that stops at 48 still reads every v2 field correctly; both readers in this
+project parse the `fields=` line by name.
+
+**Do not read `frac_hot` off the relative layouts.** Under any quantile rule `n_hot` is fixed by
+the rule and not by the field — 31 of 64 at `N = 8, q = 0.5`. The signal there is
+`n_components`, `largest_component` and `perimeter_ratio`. The absolute mask is still computed and
+still carries `frac_above_tau_*`, which is what the best-measured criterion reads.
+
+`.qcache` is **PRQC v2**, with the matching `sig_layout_rel`, `sig_grad_rms` and their contrasts.
+
 ## A note on refinement
 
 The experiment examples run with `refine_flagged: false`, deliberately. Experiments A and B
@@ -187,7 +220,7 @@ render cannot show that, which is why it went unnoticed.
 images are **identical by construction** — the resolve of one copy is that copy. A difference
 there would be a bug in the resolve rather than a finding.
 
-### Zoom ladders — `zoom_<region>_NN.png`, `zoom_<region>_animated.png`
+### Zoom ladders — `zoom_<region>_NN.png` (the animation is in [`animated/`](animated/))
 
 Nine frames at 384×384, each re-descending from a root box of `half = 0.05 / 2^k` with the camera
 framing it. **This is the only artefact that shows the screen floor is view-relative**, and a
@@ -250,7 +283,7 @@ you whether the structure around it was subdivided *around* it or straight *thro
 drew boundaries over a **uniform** base, which conflated the two, and that is how `deep
 interior`'s bad tree went unnoticed for a whole build.
 
-### The budget animation — `budget_<region>_t<T>_animated.png`, `..._wire_animated.png`
+### The budget animation — in [`animated/`](animated/): `budget_<region>_t<T>_animated.png`, `..._wire_animated.png`
 
 The single most useful artefact here. Each frame is **`greedy_oracle` on the left,
 `within/median` — the shipped default — on the right**, at the same budget, drawn at true texel
@@ -262,7 +295,7 @@ Watch where the right-hand side spends its budget. §10.3's table says it is bea
 
 Every frame is also on disk as `budget_<region>_t<T>_NN.png`, so nothing depends on APNG support.
 
-### Slice gallery — `slice_<case>.png`, `slice_gallery_animated.png`
+### Slice gallery — `slice_<case>.png` (the animation is in [`animated/`](animated/))
 
 Ten charts through **one shared centre configuration**, so only the 2-plane changes: the
 axis-aligned body plane, oblique planes at 15/30/45°, cross-body mixes, and the shape chart at
@@ -295,7 +328,27 @@ That is a **constant of the quad**, because quads are disjoint, which is what ma
 exact and the greedy priority queue static. It also carries **every criterion's scalar** whatever
 the run ranked on, so criteria can be compared offline without re-integrating.
 
-### Pan frames — `pan_<region>_NN.png`, `pan_<region>_animated.png`
+### Structure-mode curves — `structure_<target>_t<T>.png`
+
+`error(B)` per structure mode, one figure per target, from `examples/structure_metric.rs`. Dashed
+series are the controls. `off` is the identity row and `multiply` must be read against **it**, not
+against the field; `structure_only` has no signal in it at all and says whether the term is buying
+structure or merely re-weighting the spread. `replace` is identically `structure_only` — one
+expression, not two rows agreeing.
+
+### The balanced march — `march_var_<region>.png`, `march_churn_<region>.png`
+
+Depth variance and per-quad churn against the playhead, one pair per region, from
+`examples/balanced_march.rs`. **Read them together.** A flat variance curve alone cannot
+distinguish a balanced tree from a *frozen* one — frozen is variance-flat and churn-zero. The
+dashed `uniform` series is the control: criterion off, split to the veto, and it must sit in the
+figure's zero band at every `t`. If it does not, it was budget-bound rather than veto-bound and
+proves nothing.
+
+Churn is over quads present at **both** playheads; the captured output prints the shared count and
+flags it when small.
+
+### Pan frames — `pan_<region>_NN.png` (the animation is in [`animated/`](animated/))
 
 Nine camera positions across the region. **The animation showing nothing change is the result**:
 `Camera::veto` reads `tile_size_px`, which does not depend on `cx`/`cy`, so panning changes no
@@ -326,7 +379,7 @@ extent controls. Per chart:
 | `<case>_uniform.png` | bivariate/spread_shape | **what the chart looks like** — one sample per pixel, no tree at all |
 | `<case>_outcome.png`, `<case>_uniform_outcome.png` | outcome | the categorical control — `(state, detail)`, saturated at `t = 13` |
 | `<case>_event.png`, `<case>_uniform_event.png` | event_class/viridis | **the matched-reference mode** — see below |
-| `<case>_levels.png`, `<case>_levels_wire.png` | bivariate/spread_shape | **how the tree got there** — one descent truncated at each depth |
+| `animated/<case>_levels.png`, `animated/<case>_levels_wire.png` | bivariate/spread_shape | **how the tree got there** — one descent truncated at each depth. In [`animated/`](animated/), not beside the stills |
 | `<case>_termdepth.png` | — | leaf depth against `terminated_fraction`, the mechanism test |
 | `<case>.prnq` | — | the quad dump, with `chart_params` carrying the full basis |
 
@@ -432,6 +485,134 @@ Four things to know before reading any of them, all in RESULTS §12:
 - The `latent_*` rows are a different base point on purpose — off-origin so no sigmoid rests at
   its symmetry point. The presets are at the origin for the opposite reason. Compare within a
   chart, never across.
+
+## `glsl/` — the four reference slices, refining
+
+**Four animations, one per GLSL preset**, from `examples/glsl_refinement.rs`. The reference's own
+default slices (`Ma1achy/principia-ii`, `src/state.ts:71-76`) at `z0 = 0` — the equilateral
+Lagrange configuration — over the reference UI's `Slice +/- 3.0e+0` window.
+
+| file | quads | leaves | frames |
+|---|---|---|---|
+| `shape.png` | 241 | 181 | 49 |
+| `prho.png` | 3593 | 2695 | 50 |
+| `plambda.png` | 3361 | 2521 | 49 |
+| `shape_pl.png` | 1801 | 1351 | 49 |
+
+**A frame is a batch of quads, not a level.** `animated/<case>_levels.png` steps one level per
+frame, so a depth-6 tree is a six-frame animation — too few to read as motion, and it was the
+reason a first attempt at these was unreadable. Here a frame is emitted every few quads **in the
+order the scheduler computed them**, so the picture sharpens continuously and the frame count is a
+parameter rather than an accident of the tree's depth. The final frame is held, so the loop reads
+as an ending rather than a snap back to coarse.
+
+One descent per chart at `k_frac = 1.0` — the whole eligible frontier each round, so the tree
+fills out. These are a picture of *refinement*, not of the demotion mechanism; that one is
+`refinement/<case>_kfrac.png`.
+
+512², and the wireframe twins are deliberately absent: they doubled the folder to 104 MB for a
+diagnostic that `refinement/` already carries.
+
+## `refinement/` — the new mechanism, animated
+
+**104 APNGs, three views per chart, from `examples/refinement_animation.rs`.** These are the only
+artefacts that show the *new* refinement mechanism working. `animated/<case>_levels.png` truncates
+a descent **by depth**, which was the right picture when the criterion was a stop condition — the
+tree grows level by level and the animation shows how deep it got.
+
+**It cannot show this mechanism at all.** The criterion is now a priority ordering over a ranked
+frontier, and in a depth ladder a quad refined last and a quad never refined sit at the same depth
+in every frame. So these three advance the three things that actually vary.
+
+### `<case>_budget.png`, `<case>_budget_wire.png` — the frontier being spent
+
+One frame per descent round: rank the frontier, spend the top `k`, repeat. Reconstructed from a
+**single** descent, because every `Quad` carries the `iteration` it was computed in — one run, not
+one per frame. Read the colour and wire twins together, as with the level ladders: only the wire
+says whether the tree cut around a structure or through it.
+
+### `<case>_oldnew.png` — the shipped criterion against the measured-best one
+
+Two panels at the same budget, `within/median` **left** and `frac_hot_between/median` **right**,
+both under the ranked frontier. §16 measured the second beating the random band in all three
+targets and reaching `0.07038` against greedy's `0.06881` on `preset_shape`, while the first is
+beaten by random at every budget — on **31 distinct values against 5418**.
+
+### `<case>_kfrac.png` — the demotion mechanism itself
+
+Four frames: `k_frac` 0.25, 0.5, 0.75, 1.0. The last is the **control** — it refines the whole
+eligible frontier and reproduces the unranked descent exactly. The frames before it are quads
+being *outranked rather than refused*, marked `Keep` and never `BudgetExhausted`, which is what
+keeps the two distinguishable in a dump. Measured on `body_plane`: **19 → 49 → 142 → 442 leaves**.
+
+### Read the `veto%` column first, and it decides which charts are worth looking at
+
+On most charts a **camera veto** stops the majority of leaves, so the two panels of `_oldnew` are
+largely the same cap reached by two routes and the difference between them is not a criterion
+difference. From `results/output/refinement_animation.txt`:
+
+| chart | veto% | `within` leaves | `frac_hot_between` leaves |
+|---|---|---|---|
+| **`preset_shape`** | **0%** | **10** | **34** |
+| `preset_plambda` | 22% | 109 | 73 |
+| `body_plane`, `plane_00deg` | 24% | 61 | 49 |
+| `shape_sphere` | 35% | 97 | 91 |
+| `preset_shape_h1` | 44% | 103 | 82 |
+| the other 20 charts | 51–67% | — | — |
+
+**`preset_shape` is the one to look at.** It is the only chart whose tree is entirely its own
+decisions, and the new criterion refines it **3.4× harder** — 34 leaves against 10, on a field
+whose ramp spans four decades. The others are mostly a veto being reached.
+
+### These are diagnostics, not measurements
+
+They run at a **512** viewport against the committed stills' 1024, so the screen floor bites one
+level shallower and **these are not the committed trees**. Do not read a leaf count off a frame:
+the measurements are `results/output/structure_metric.txt` and the `error(B)` curves. These say
+what a tree looks like *while it is being built*.
+
+## `animated/` — everything that moves
+
+**72 APNGs, and they are the only artefacts here that show a process rather than a result.** They
+were scattered across `charts/`, `criterion/` and `vertical/` among a thousand stills, where being
+findable depended on knowing the filename already. One folder, names unchanged.
+
+They are **APNG, not GIF**. An APNG *is* a PNG, so a viewer that does not animate shows the first
+frame instead of refusing the file — which is why the extension stays `.png`. Browsers, macOS
+Preview and Finder all animate them; some image libraries will show frame one only.
+
+### The refinement, per chart — `<case>_levels.png`, `<case>_levels_wire.png`
+
+**These are the refinement animations**: one descent truncated at each depth, so the frames are
+levels 0, 1, 2 … of the *same* tree rather than separate runs. 26 charts, each with a colour twin
+and a wireframe twin — 52 files.
+
+**Read the pair together.** The colour frame says what is displayed; the wire frame says where the
+tree cut. A coarse texel tells you a leaf is coarse; only the wire says whether the structure
+around it was subdivided *around* it or straight *through* it. Drawing boundaries over a uniform
+base conflated those two once already and let a bad tree survive a whole build unnoticed.
+
+**And read them against the stop-reason column**, not as a picture of the criterion working. On 23
+of 26 charts a **camera veto** stops 95%+ of leaves, so most of what these animations show is a cap
+being reached, not a criterion deciding. `preset_shape` is the one chart whose tree is entirely its
+own decisions — and it is 16 leaves, which is what a criterion failing outright looks like.
+
+### Across all charts — `gallery.png`, `gallery_wire.png`
+
+One frame per chart at full depth, the whole 26-case set swept in order. The set is the point
+rather than any one frame: chart families that look alike here differ by 5.7x in leaf count.
+
+### Budget, pan, zoom, slices
+
+| file | what moves between frames |
+|---|---|
+| `budget_<region>_t<T>_animated.png` | the refinement budget `B`, one frame per budget step — the visual form of the `error(B)` curve |
+| `slice_gallery_animated.png` | the slice, through the `plane`/`shape` families |
+| `pan_<region>_animated.png` | the camera centre. **Before this PR the tree was byte-identical in all nine frames** — `Camera::veto` reads no position term, so the animation showed a still. It is a real pan only with `camera_bias` on |
+| `zoom_<region>_animated.png` | `half_world`, nine steps. Zoom **does** move the tree, and step 4 is the most selective tree in the whole corpus at 7.5% of leaves at max depth |
+
+Each has a `_wire_` twin where one exists, and every frame is also on disk as a still beside its
+`.prnq`, so nothing here depends on APNG support to be readable.
 
 ## `colour/` — from `examples/colour_check.rs`
 

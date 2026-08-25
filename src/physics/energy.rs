@@ -7,18 +7,30 @@ use crate::{Real, Vec2};
 ///
 /// `ke = 0.5 sum_k m_k |v_k|^2`, `pe = -sum_pairs G m_i m_j / sqrt(|d|^2 + eps2)`.
 pub fn energy<T: Real>(r: &[Vec2<T>; 3], v: &[Vec2<T>; 3], m: &[T; 3], eps2: T) -> T {
+    kinetic(v, m) + potential(r, m, eps2)
+}
+
+/// `T = 0.5 sum_k m_k |v_k|^2`.
+///
+/// Split out of [`energy`] rather than duplicated: the invariant-momentum charts construct
+/// momenta to hit a target `K` exactly, and a second definition of `K` sitting beside the first
+/// is how the two quietly stop agreeing.
+pub fn kinetic<T: Real>(v: &[Vec2<T>; 3], m: &[T; 3]) -> T {
     let mut ke = T::zero();
     for k in 0..3 {
         ke += m[k] * v[k].norm_sq();
     }
-    ke = ke * T::lit(0.5);
+    ke * T::lit(0.5)
+}
 
+/// `U = -sum_pairs G m_i m_j / sqrt(|d|^2 + eps2)`.
+pub fn potential<T: Real>(r: &[Vec2<T>; 3], m: &[T; 3], eps2: T) -> T {
     let mut pe = T::zero();
     for &(i, j) in PAIRS.iter() {
         let d2 = (r[j] - r[i]).norm_sq() + eps2;
         pe -= T::lit(G) * m[i] * m[j] / d2.sqrt();
     }
-    ke + pe
+    pe
 }
 
 /// Centre of mass.

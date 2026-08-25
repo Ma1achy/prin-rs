@@ -271,3 +271,139 @@ Confounds to dump, not hide:
       ratio to nothing. Nothing left to correct, which is the outcome the switch was for
 - [x] `alpha` **not** smoothed over neighbouring quads, per the instruction
 - [x] all captured output and images regenerated under the new default
+
+## Pooling correction · **NINTH PR**
+
+- [x] **the pooled parent is not a parent** — confirmed by building the true one. Pooled error
+      `0.67 -> 0.07` with `E`; true two-resolution error **flat at 0.0227**
+- [x] BRIEF §8 experiment 1 rewritten: render at `N` and `N/2`, not by aggregation. Noted that
+      any `alpha` measured by pooling carries this, including in the prior NumPy work
+- [x] per-quad scatter re-measured the right way. Pooling **understates** it ~2x
+- [!] "regions not quads" was too blunt **in both directions**: tame regions resolve per quad
+      (interdecile `0.0004`-`0.001`), chaotic ones do not (`1.1`-`1.3`). Separation `0.9862`
+- [x] RESULTS.md §1 rewritten — cost curve deleted, constraint restated as chaotic divergence
+- [x] the heavy tail recorded: excess kurtosis **110**, interdecile/sd `0.866` against a normal
+      `2.563`. Read the interdecile; the variance is a statement about the tail
+- [x] the two-resolution method's own residual is `+0.0227`, visible independently in the
+      `sigma_E(0)` control and the tame-region `alpha_shape` median `1.0229`
+- [x] Halton-advantage-grows anomaly reported, not chased; control variate stays dropped
+
+## The refinement scheduler · **TENTH PR**
+
+- [x] `SCHEDULER_BRIEF.md` with §2.1/§3.4/§3.6 fixed, plus §2.5 (shared-footprint geometry, verified)
+      and §2.6 (precision floor at level 45.87, guard at 35.90)
+- [x] `src/quad.rs`, `src/scheduler.rs`, `src/output/tree.rs`, `src/bin/prinq.rs`
+- [x] `tests/quadtree.rs` — 9 invariants incl. bitwise cell-width halving and never-pooled
+- [x] **q1 terminates**: 100% of leaves in all three regions, well inside a 50k budget
+- [!] but termination is **at `tau = 1e-4`**; at `tau = 1e-8` near-field exhausted 2000 quads with
+      869 leaves still wanting. Bounded, not general
+- [x] **q2 floor engages**: 40.9% deep interior, 17.6% near-field, 0% far
+- [!] `tau` terminates the descent, not the floor — 82.4% of near-field leaves exit through *keep*
+- [!] **q3 the tree is wrong in deep interior**: leaves the largest high-spread structures at
+      level 2. And the first overlay used the outcome base, which would have passed inspection
+- [x] **q4 thrash real and falls with N**: 0.339, 0.218, 0.073. Edge sharing suppresses it, so the
+      trend is understated
+- [x] **q5 sibling policy 9.3x cheaper** for depth 11 vs 12; floors 63% vs 18%. Cheaper, not
+      obviously better — leaves an order more spread unresolved
+- [x] **q6 ordering matters (42% of leaves), which ordering does not** (spread == spread x area)
+- [x] **q7 `alpha_hi` dominates, `tau` inert over four orders**
+- [x] **§3.4 aggregation flips half the decisions** — the largest single effect measured here
+- [!] **N sweep: coarse N OVER-refines**, opposite to the stated concern. N=7 CRN probe inconclusive
+- [x] three measurements of mine that could not have failed, caught and fixed: the leaf `Split`
+      column (always 0), `far`'s thrash on a uniform tree, and order at a budget that never bound
+
+---
+
+## The vertical slice (PR #12)
+
+- [x] `src/grid.rs` — `Chart` enum: `BodyPlane` (bitwise-preserved), oblique `Plane` in the 6D
+      position space, nonlinear `Shape`. `Slice::body_plane` constructor; nine literal sites updated
+- [x] `src/physics/shape.rs` — the Hopf **inverse** (`from_shape`, `inertia`, `exp_map`,
+      `tangent_frame`, `reduced_masses`). Round-trips to 7.2e-16 over 1445 points; the reflected
+      sign is asserted to break it
+- [x] `src/camera.rs` — camera, screen floor as a structural **veto**, `MAX_REL_DEPTH`
+- [x] `src/output/adaptive.rs` — texels at true per-quad size, `texel_scaling` acceptance
+- [x] `src/output/ssaa.rs` — resolve, kept distinct from spread
+- [x] `src/decode.rs` — five decode paths and `distinct`, the exact collapse measurement
+- [x] `ensemble::jitter` — jitter moved into **chart** coordinates (was perturbing `r[slice.body]`
+      directly, correct only for `BodyPlane`); bitwise identical there
+- [x] `tests/vertical_slice.rs` — 13 assertions, every one chosen by asking what makes it fire
+- [x] q1, q2, q3, q7 re-run under the veto; the `E` sweep with and without it; both open items
+- [x] adaptive renders, SSAA panels, zoom-ladder APNGs and `.prnq` dumps in `results/vertical/`
+
+### Left open, deliberately
+
+- **Which aggregation a scheduler should use.** §8.9 narrows it — the median is blind, and both
+  mean and p90 descend where it stalls — but not which of the two is right. §5's finding that the
+  three flip half the shared decisions still stands.
+- **`alpha_sibling_spread`'s own noise.** The range of four samples is a noisy statistic; it was
+  flagged in the PR #11 review as the next thing to characterise rather than the first thing to
+  trust, and this build did not characterise it.
+- **`deep interior`'s floor is partly integration error** (§8.9, drift 3.3e-1 against 3.0e-3).
+  The fix is BRIEF §2.5's flag-and-re-integrate, run over that region at finer `eta`, not a
+  scheduler change. Not attempted here.
+- **Interaction, eviction, async, promotion, GUI.** Still out of scope. If one appears, it is a bug.
+
+---
+
+## After the criterion build
+
+**Settled here.**
+
+- Which aggregation a scheduler should use — superseded. The question was mean/median/p90 within
+  the *within* arm; the §2 metric says `within/median` is beaten by **random** at every budget
+  past 383 in both regions, so the choice is not between its aggregations. `frac_hot_between`
+  and `between/median` are the candidates.
+- `alpha_sibling_spread`'s own noise — characterised (§10.5). Sampling noise p90 0.21-0.36
+  against `sib_tau = 0.5`; the sibling median is 0.45 and 0.79-1.05. Usable as a signal, not at
+  that threshold.
+
+---
+
+## The colouring, the charts, and the re-measure
+
+- [x] `src/output/colour.rs` — vMF site-blend on six computed landmarks, polarity and curve as
+      properties of the field, `DEBUG_NAN` for every undetermined case
+- [!] the `atan2` hue map does **not** seam — it is identically `C_MAX*(n1,n2)`, agreement
+      `4.2e-17`. Its fault is that it is 2-to-1 in `n0`. My first diagnosis was wrong
+- [!] and the 2-to-1 merge cost little: `n0` interdecile is 0.0665 / 0.1684 against a span of
+      1.99. **The flat images were the ramp**, plus a p99 set by `spread_event`'s 5-value
+      staircase describing 1.7% of the region — a window 12.7x too wide
+- [!] `far` is featureless in the **data** (hue coverage exactly 0.0000 at every kappa), and the
+      auto-ranged ramp hides it: `error(root) = 0.60` over a window of `(1.3e-9, 1.1e-8)`
+- [x] `src/output/plot.rs` on plotters; NaN dropped and counted, exact zeros in their own band
+      one row per series, a degenerate figure that says so
+- [x] `src/output/fcache.rs` — PRQF, so a colouring change is a replay. Bitwise-asserted
+- [x] `src/physics/decoder.rs` — shared `D` and `C`; `grid::Chart` gains all five families
+- [!] `sum p = 0` does **not** catch the crossed-mass swap. Jacobi round-trip and the KE identity
+      do (`6.8e-2`, `2.6e-1`), and both are empty at `m0 == m1`
+- [!] `(Lz,E)` and `(Lz,K)` are the same map, bitwise
+- [!] `momenta_for` returned a **drifting** system for a non-COM-centred input. Found by a test
+- [x] §5 re-measure at level 7 (1024²) under the shipping colouring
+- [x] **`frac_hot_between/median` is the only criterion beating the random band, in both
+      measurable regions.** The aggregation, not the within/between arm
+- [!] `greedy_oracle` beaten **2.4x by a scan order** in `far`
+- [!] the chart families are **tame** where they are centred: `alpha` 0.99–1.01 against 0.14 for
+      `body_plane`. They do not exercise the criterion where it is hard
+- [!] a `criterion_metric -- 3 8` validation run overwrote committed 512² artefacts with 128x64
+      ones. Everything re-rendered at 1024²; `pan_sequence` had `frame_res` hardcoded at 384
+
+**Open.**
+
+- **Change the default criterion.** Now decision-ready: `frac_hot_between/median` beats the
+  random band in both measurable regions and `within/median` does not. Still not done here,
+  because a default change is a decision to take with the numbers in front of you rather than a
+  tidy-up folded into the PR that produced them.
+- **`deep interior`'s floor is partly integration error.** Still not attempted. The fix is
+  BRIEF §2.5's flag-and-re-integrate over that region at finer `eta`, not a scheduler change.
+- **Why `within/median` is worse than random.** It has 5418 distinct values of 5461, so it is a
+  real ordering that is anti-correlated with image change. *Why* is unexplained, and it is the
+  most interesting open question here — an actively wrong signal is more informative than a
+  noisy one.
+- **`far` has no measurable image at 512².** Every leaf-count comparison ever made on it was
+  about a featureless region. Either find a colouring with structure there, or stop using it as
+  anything but a control that the machinery does not invent signal.
+- **Anisotropic splitting**, if §10.9's costing supports it. Costed only; nothing implemented.
+- **Caching.** `pan_sequence` measures what would be evictable and asserts a recomputed quad
+  comes back bitwise. Neither a cache nor an eviction policy exists, and adding one is a scope
+  change.

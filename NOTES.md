@@ -1066,3 +1066,776 @@ The f64 truths also differ between schemes by up to 1.8x (near-field mean `1.606
 against `2.897e-2` PCG). That is expected and is not an error: different offsets measure a
 different ensemble. Only the f32-tracks-f64 comparison is scheme-independent, which is why it is
 the one gated.
+
+---
+
+## 10. The pooled parent is not a parent
+
+Following the fixed-offset switch, the `+38.6%` bias was traced to the aggregation rather than
+the estimator (§9). This settles it by building the thing the aggregation was standing in for.
+
+A **true** parent quad at 2x cell width carries offsets scaled to *its* width. A pooled 2x2 block
+carries offsets scaled to the *child's* width, four times over. They are not the same ensemble.
+Rendering at `N` and `N/2` makes both sides real. `alpha` for `sigma_E(0)`, true value exactly
+1.0, near-field, fine 64x64 against coarse 32x32:
+
+| E+1 | scheme | pooled median | true median | pooled err | **true err** |
+|---|---|---|---|---|---|
+| 4 | Halton | 1.6678 | 1.0231 | 0.6678 | **0.0231** |
+| 8 | Halton | 1.3857 | 1.0227 | 0.3857 | **0.0227** |
+| 16 | Halton | 1.1668 | 1.0227 | 0.1668 | **0.0227** |
+| 32 | Halton | 1.0661 | 1.0227 | 0.0661 | **0.0227** |
+| 4 | Pcg | 1.2798 | 0.8843 | 0.2798 | 0.1157 |
+| 8 | Pcg | 1.0762 | 0.9447 | 0.0762 | 0.0553 |
+| 16 | Pcg | 1.0137 | 0.9762 | 0.0137 | 0.0238 |
+| 32 | Pcg | 0.9887 | 0.9872 | 0.0113 | 0.0128 |
+
+The pooled error runs `0.67 -> 0.07` with `E`; the true error is **flat at 0.0227**. Confirmed:
+the bias is the surrogate. The remedy is to render twice, not to calibrate.
+
+The 0.0227 residual is the two-resolution method's own cost. It does not shrink with `E`, and it
+reappears independently below as the tame-region `alpha_shape` median of 1.0229 — same constant,
+two unrelated quantities, so it is a property of the method rather than of either measurement.
+
+**Under PCG the two errors partly cancel.** Pooling gives 4x the samples and per-footprint
+randomisation blurs the surrogate mismatch, so the pooled figure reads *better* than the true one
+at small `E` (0.0762 against 0.0553 at `E+1 = 8` is close; at `E+1 = 4` pooled 0.2798 against
+true 0.1157 is not). Two wrongs partially offsetting is why this survived until the fixed scheme
+removed the randomisation.
+
+### The criterion, re-measured properly — and it is sharper than reported
+
+True two-resolution `alpha_shape`, fixed Halton prefix, `t = 13`:
+
+| region | p10 | median | p90 | interdecile |
+|---|---|---|---|---|
+| near-field | −0.6568 | 0.0368 | 0.6696 | **1.3264** |
+| body2 core | −0.3673 | 0.1844 | 0.7405 | **1.1078** |
+| mid-field | 1.0224 | 1.0229 | 1.0235 | **0.0010** |
+| far | 1.0228 | 1.0230 | 1.0232 | **0.0004** |
+
+Separation between region medians: **0.9862**.
+
+**"Regions not quads" was too blunt, in both directions.** In the tame regions the exponent is
+essentially exact — interdecile `0.0004`–`0.001` — so per-quad decisions there are trivial, and
+the ~0.63 scatter pooling reported for those regions was **entirely surrogate error**. In the
+chaotic regions the scatter is `1.1`–`1.3`, twice what pooling suggested, and it is chaotic
+divergence rather than sampling noise.
+
+That is the criterion working, not failing: **"not resolvable per quad" is the answer for a
+chaotic quad.** The scatter is the measurement, not an error bar around one.
+
+### Read the interdecile, not the variance
+
+`alpha_shape` under Halton: variance `5.331e-1`, sd `0.7302`, interdecile `0.6326` (pooled) —
+`interdecile / sd = 0.866` where a normal distribution gives 2.563, and **excess kurtosis 110.0**.
+
+The variance lives in the tails; the interdecile describes the bulk. That resolves the apparent
+tension between "variance fell 6.9% under Halton" and "scatter unchanged" — both true, of
+different parts of one distribution. **A scheduler decides per typical quad, so the interdecile
+is the measure and it is the one that did not move.** Do not quote the 6.9% as the improvement.
+
+### Two things left alone
+
+The **Halton advantage growing with `E`** (discrepancy ratios 0.748, 0.624, 0.489, 0.395 at
+`E+1 = 4..32`) is reported, not chased. Low-discrepancy sequences are usually most valuable at
+small `N`, so growing benefit suggests the raw unscrambled prefix's early terms are less well
+distributed than its later ones — a known property in low dimensions. Scrambling is the standard
+remedy if it ever matters; nothing here depends on it.
+
+The **control variate** stays dropped. Two variance reductions targeted the same component and
+the cheaper one won: the offset scheme had already removed what the control variate would have
+corrected, which is why `beta = -153.76` was a division by nothing.
+
+---
+
+## 11. The scheduler — the criterion in a loop
+
+Every measurement before this ran the criterion on **one split in isolation**. `prinq` descends
+from one quad, adaptively, at a fixed playhead, and dumps the tree with every decision and reason.
+
+Three regions: `near-field` (mixed), `deep interior` (richest), `far` (tame control). `N = 8`
+footprints per quad axis, `E+1 = 8` copies per footprint, so **one quad is 512 trajectories**.
+
+### The sweep had to run first, and it is the result
+
+`tau_display` cannot be chosen before measuring, because the quad spread spans **six orders across
+regions**: `~4e-8` in `far`, `~2e-3` in near-field, median `7.5e-5` but p90 `1.4e-1` in
+`deep interior`. Any `tau` picked in advance would be the arbitrary constant that has already
+disqualified two candidate designs here.
+
+### `alpha_hi` dominates the criterion; `tau` is inert over most of its range
+
+near-field, budget 2000 quads:
+
+| tau | alpha_hi | quads | leaves | floor | keep | budget | depth |
+|---|---|---|---|---|---|---|---|
+| 1e-8 | **0.20** | 1997 | 1498 | 428 | 201 | **869** | **8** |
+| 1e-8 | 0.50 | 25 | 19 | 5 | 14 | 0 | 3 |
+| 1e-6 | **0.20** | 1997 | 1498 | 428 | 201 | **869** | **8** |
+| 1e-6 | 0.50 | 25 | 19 | 5 | 14 | 0 | 3 |
+| 1e-4 | 0.20 | 1997 | 1498 | 423 | 732 | 343 | 8 |
+| 1e-3 | 0.20 | 441 | 331 | 131 | 200 | 0 | 8 |
+| 1e-2 | 0.20 | 21 | 16 | 0 | 16 | 0 | 2 |
+
+`tau = 1e-8` and `1e-6` produce **identical** trees — the spread never falls that low, so `tau`
+never binds. Meanwhile `alpha_hi` from 0.20 to 0.50 collapses the tree **80x**, from 1997 quads at
+depth 8 to 25 at depth 3.
+
+near-field's `alpha` median is **+0.389**, so the threshold sits *inside* the distribution and a
+small move flips most decisions. That is §4 question 7's "a criterion whose output is dominated by
+an arbitrary threshold is not a criterion" — and it is the case that the sibling-reliability policy
+(§3.3) exists to sidestep, since that one does not need a trustworthy `alpha` value at all.
+
+Which knob binds is **region-dependent**: at `tau = 1e-4`, deep interior stops at 29 quads (its
+median spread `7.5e-5` is below `tau`) while near-field runs to the cap (`2.3e-3` is above it).
+
+### Coarse `N` OVER-splits — the opposite of the stated concern
+
+The concern on record was that too low an `N` makes a quad misclassify itself as **coherent** by
+undersampling its own area. Measured, at a fixed budget of 4000 quads and `tau = 1e-4`:
+
+| region | N | traj/quad | leaves | depth | floor | keep | median alpha |
+|---|---|---|---|---|---|---|---|
+| far | 4 | 128 | 16 | 2 | 0 | 16 | 1.0013 |
+| far | 7 | 392 | 16 | 2 | 0 | 16 | 1.0010 |
+| far | 8 | 512 | 16 | 2 | 0 | 16 | 1.0010 |
+| far | 16 | 2048 | 16 | 2 | 0 | 16 | 1.0010 |
+| near-field | 4 | 128 | **106** | **5** | 57 | 49 | 0.2781 |
+| near-field | 7 | 392 | 31 | 5 | 14 | 17 | 0.3857 |
+| near-field | 8 | 512 | 19 | 3 | 5 | 14 | 0.3451 |
+| near-field | 16 | 2048 | **16** | **2** | 8 | 8 | 0.2108 |
+| deep interior | 4 | 128 | **40** | **4** | 24 | 16 | 0.3320 |
+| deep interior | 7 | 392 | 19 | 3 | 7 | 12 | 0.4941 |
+| deep interior | 8 | 512 | 19 | 3 | 6 | 13 | 0.3742 |
+| deep interior | 16 | 2048 | **16** | **2** | 5 | 11 | 0.2488 |
+
+Leaf count and depth fall **monotonically with `N`** in both chaotic regions: near-field 106 → 31 →
+19 → 16, deep interior 40 → 19 → 19 → 16. A coarse quad does not call itself coherent; it calls
+itself **uncertain** and demands refinement. The mechanism is the one §5 warns about — a noisy,
+undersampled spread estimate biases toward *refine*, the conservative failure direction — and under
+a budget that is not benign: **`N = 4` spends four times as many quads as `N = 16` to cover the same
+region.** Cheaper quads, more of them, and the saving is smaller than it looks.
+
+`far` is flat at 16 leaves for every `N`, with `alpha = 1.001` — the tame control both terminates
+immediately and reproduces the uniform kernel's tame-region exponent independently.
+
+**The `N = 7` CRN probe is inconclusive, and honestly so.** It was included because the parent–child
+common-random-numbers overlap is 32.65% at `N = 7` against exactly 25.00% at every even `N`, so it
+is the only lever that varies CRN strength. Measured, `N = 7` sits between `N = 4` and `N = 8` on
+leaf count in near-field (31, between 106 and 19) and is *identical* to `N = 8` in deep interior
+(19 leaves, depth 3). The `N` trend dominates; no separable CRN effect. It carries the highest
+median `alpha` in two of three regions (0.3857, 0.4941), which is the direction more CRN would
+predict, but one region disagrees and the effect is inside the scatter. **Reported as not
+separated, rather than claimed.**
+
+### Thrash is real, and falls with `N` for a reason the confound cannot explain
+
+Adjacent leaf pairs whose spreads are within a factor of 1.5, at `tau = 1e-4`, `alpha_hi = 0.2`,
+budget 4000 quads. "Thrash" is the fraction of those that sit at **different levels**:
+
+| region | N | leaves | depth | similar pairs | diff level | thrash | edge share |
+|---|---|---|---|---|---|---|---|
+| far | 4 | 16 | 2 | 24 | 0 | 0.0000 | 25.0% |
+| far | 8 | 16 | 2 | 24 | 0 | 0.0000 | 12.5% |
+| far | 16 | 16 | 2 | 24 | 0 | 0.0000 | 6.2% |
+| near-field | 4 | 2998 | 9 | 3579 | 1214 | **0.3392** | 25.0% |
+| near-field | 8 | 2998 | 10 | 2529 | 551 | **0.2179** | 12.5% |
+| near-field | 16 | 2569 | 10 | 2688 | 197 | **0.0733** | 6.2% |
+| deep interior | 4 | 1936 | 10 | 3453 | 31 | 0.0090 | 25.0% |
+| deep interior | 8 | 22 | 4 | 20 | 6 | 0.3000 | 12.5% |
+| deep interior | 16 | 16 | 2 | 13 | 0 | 0.0000 | 6.2% |
+
+**In near-field thrash is substantial and falls with `N`: 34% → 22% → 7%.** More samples per quad
+means a less noisy spread estimate, so neighbours agree more often — which is the direct
+confirmation that the thrash is *per-quad noise* rather than real structure.
+
+**The edge-sharing confound cannot explain that trend, and the direction is the argument.** Shared
+footprints make neighbours *more alike*, so they *suppress* apparent thrash. The sharing is 25% at
+`N = 4` and 6.25% at `N = 16` — so the most-suppressed row is the one showing the **most** thrash.
+The true `N = 4` figure is higher than 0.3392, and the fall with `N` is if anything understated.
+
+**`far` reads 0.0000 at every `N` and that is not evidence.** The tree stops at the bootstrap, so
+every leaf is level 2 and "different level" is structurally impossible. A uniform tree cannot
+thrash. Depth is printed beside thrash for exactly this reason — the same "a test that cannot fail
+is indistinguishable from a test that passes" rule, arriving inside a diagnostic of my own.
+
+**`deep interior` is not comparable across `N`.** At `tau = 1e-4` its median spread (`7.5e-5`) sits
+*below* `tau` at `N = 8`, so the descent stops at 22 leaves; at `N = 4` the noisier estimate reads
+above `tau` and it runs to 1936. Trees of 1936 and 22 leaves do not have comparable thrash
+statistics, and the 0.3000 at `N = 8` rests on 20 similar pairs. Reported, not averaged.
+
+### §4 q1 and q2: it terminates, and the floor engages
+
+`alpha_hi = 0.2`, `tau = 1e-4`, **no `max_level`**, budget 50 000 quads:
+
+| region | quads used | leaves | depth | terminated | floored | budget hit |
+|---|---|---|---|---|---|---|
+| far | **21** | 16 | 2 | 100% | 0.0% | no |
+| near-field | **4617** | 3463 | 12 | 100% | 17.6% | no |
+| deep interior | **29** | 22 | 4 | 100% | 40.9% | no |
+
+**The descent terminates of its own accord in every region, well inside the budget.** The
+Wada-dense-boundary fear — that spread stays high however far you refine, flagged at the outset of
+this work and never tested — does not materialise at this playhead and these thresholds. Not one
+leaf hit the cap, the depth cap, or the precision floor.
+
+**The floor branch engages, and hardest where it should**: 40.9% of leaves in `deep interior`,
+17.6% in near-field, 0% in `far`. A tame region has nothing to floor — its spread is below `tau`,
+so it exits through *keep*, which is the correct branch for "already resolved".
+
+near-field's leaf-count-against-iteration is a clean saturation:
+`1, 4, 16, 55, 127, 223, 412, 844, 1579, 2536, 3088, 3433, 3463` — the last three iterations add
+345, then 30, then nothing.
+
+**What terminates it is `tau`, not the floor.** In near-field's deepest two levels the exponent has
+median **+3.945** (p10 +2.256, p90 +5.825) — far above the `alpha = 1` that a halving represents —
+while the spread there is `1.4e-5`, below `tau = 1e-4`. Those quads split because their *parents*
+were above `tau`, and the split collapsed the spread by ~2^4 rather than 2^1. So the descent ends
+by crossing `tau` from above, and 82.4% of near-field's leaves exit through *keep*. The floor is
+real but it is the minority branch.
+
+That also means **the termination result is a statement about `tau`**, and `tau` is the knob the
+sweep shows to be inert over four orders in this region. Termination at `tau = 1e-4` is not
+evidence of termination at `tau = 1e-8`, where the same sweep exhausted a 2000-quad budget with 869
+leaves still wanting to split. **Reported as bounded, not as general.**
+
+### §4 q5: the sibling policy is 9x cheaper for the same depth
+
+Equal budget 10 000 quads, `tau = 1e-4`, `alpha_hi = 0.2`:
+
+| region | policy | quads | leaves | floor | keep | depth | median quad spread |
+|---|---|---|---|---|---|---|---|
+| far | alpha | 21 | 16 | 0 | 16 | 2 | 4.268e-8 |
+| far | sibling | 21 | 16 | 0 | 16 | 2 | 4.268e-8 |
+| near-field | alpha | **4617** | 3463 | 609 | 2854 | 12 | 5.775e-5 |
+| near-field | sibling | **497** | 373 | 235 | 138 | 11 | 7.970e-4 |
+| deep interior | alpha | 29 | 22 | 9 | 13 | 4 | 9.446e-5 |
+| deep interior | sibling | 21 | 16 | 6 | 10 | 2 | 7.533e-5 |
+
+In near-field the sibling policy reaches depth **11 against 12** for **497 quads against 4617** — a
+factor of **9.3**. It floors 63% of its leaves against the alpha policy's 18%, which is exactly the
+intended behaviour: where the four sibling exponents scatter, the unreliability *is* the answer and
+no trustworthy `alpha` is needed.
+
+**It is cheaper, not obviously better, and the distinction matters.** Its median quad spread is
+`7.97e-4` against `5.78e-5` — an order of magnitude more uncertainty left on the table. The alpha
+policy spent 4617 quads driving the median spread down by 13x. Whether that was worth it is a
+budget question, not a correctness one, and this measurement does not settle it. What it does
+settle is that the reliability signal **works as a floor detector**: it identifies the chaotic sea
+and declines to spend there.
+
+Leaf overlap in near-field: 264 shared, 3199 alpha-only, 109 sibling-only. The two trees are not
+nested — the sibling policy refines 109 leaves the alpha policy does not — so it is not simply a
+truncation of the other.
+
+**The caveat stands and is now the next thing to do.** `alpha_sibling_spread` is the **range** of
+four samples, which is itself a noisy statistic. This result makes the policy worth pursuing, so
+characterising that noise is the next step rather than the first thing to trust.
+
+### §4 q6: priority matters, but the choice of priority does not
+
+The first attempt at this question answered nothing, and the reason is worth keeping. At a budget
+of 10 000 the descent terminated at 4617 quads in near-field and 21–29 elsewhere, so the cap never
+bound — and **when the cap does not bind, every ordering computes the same set and a jaccard of
+1.0000 is structural, not a result.** The run had to be repeated at a budget *below* the natural
+termination point. The table now prints a `cap hit` column so the reading cannot be made without
+it.
+
+Budget 1500 quads, `tau = 1e-4`, `alpha_hi = 0.2`:
+
+| region | order | quads | leaves | depth | cap hit | vs spread | jaccard |
+|---|---|---|---|---|---|---|---|
+| far | spread / spread_area / shuffled | 21 | 16 | 2 | **no** | 0 | 1.0000 |
+| near-field | spread | 1497 | 1123 | 8 | **yes** | 0 | 1.0000 |
+| near-field | spread_area | 1497 | 1123 | 8 | **yes** | **0** | **1.0000** |
+| near-field | shuffled | 1497 | 1123 | 8 | **yes** | **600** | **0.5784** |
+| deep interior | spread / spread_area / shuffled | 29 | 22 | 4 | **no** | 0 | 1.0000 |
+
+Where the budget binds, **ordering is load-bearing**: shuffling changes 600 of 1123 leaves, 42% of
+the tree, at identical cost. But **spread and spread × area produce byte-identical trees** — the
+symmetric difference is exactly zero. So the priority function is doing real work and the choice
+between these two candidates is free; area weighting buys nothing here, because within one
+iteration the frontier is mostly at a single level and the area factor is then a constant.
+
+`far` and `deep interior` show 1.0000 for the other reason — their descents finish in 21 and 29
+quads, so a 1500-quad cap cannot bind. Same non-answer as the first attempt, correctly labelled
+this time rather than read as a result.
+
+### §4 q3: the tree is sensible in near-field and **not** in deep interior
+
+The overlay was initially drawn over the **outcome** image, which was the wrong base and hid this.
+near-field's outcome image is 97.7% one colour, so a tree refining "where nothing is happening"
+looked fine. The tree does not track outcome labels — it tracks `ensemble_spread` — so the spread
+image is the direct check, and both are now written
+(`sched-*_tree_outcome.png`, `sched-*_tree_spread.png`).
+
+Against the spread base:
+
+- **near-field** — dense refinement in coherent bands, sparse elsewhere. Plausibly right in shape.
+  But the **brightest, thinnest spread filaments (the lower-left diagonals) sit in coarse quads.**
+- **deep interior** — the tree fails. It leaves the large high-spread wedge in the top-left and the
+  bright diagonal bands in the lower-right at **level 2**, while spending its only fine refinement
+  on an unremarkable patch in the middle. 22 leaves, depth 4, against structure spanning the whole
+  box.
+- **far** — uniform at level 2, which is correct: there is no structure to track.
+
+**The cause is `tau` and the aggregation together, and both are measured elsewhere here.** Deep
+interior's median quad spread is `7.5e-5`, below `tau = 1e-4`, so nearly every quad is kept at
+once. And a **median is blind to a thin filament crossing a quad**: most of that quad's footprints
+are still in the smooth sea, so the median reads low however bright the filament is. §3.4's warning
+was not a formality — it is the mechanism behind the failure in the picture.
+
+**This is the honest answer to "does the tree look right?": in one region yes, in another no, and
+the picture is what surfaced it.** It is also a caution about the picture itself — the first
+overlay, on the wrong base, would have passed inspection.
+
+### §3.4: the aggregation changes half the decisions — three schedulers, not one
+
+Budget 6000 quads, `tau = 1e-4`, `alpha_hi = 0.2`:
+
+| region | agg | quads | leaves | depth | floor | keep | cap hit | leaf jaccard vs median |
+|---|---|---|---|---|---|---|---|---|
+| far | median / mean / p90 | 21 | 16 | 2 | 0 | 16 | no | 1.0000 |
+| near-field | median | 4617 | 3463 | 12 | 609 | 2854 | no | — |
+| near-field | mean | 5997 | 4498 | 9 | 847 | 1139 | **yes** | **0.0963** |
+| near-field | p90 | 1141 | 856 | **14** | 472 | 384 | no | **0.0283** |
+| deep interior | median | 29 | 22 | 4 | 9 | 13 | no | — |
+| deep interior | mean | 161 | 121 | 7 | 38 | 83 | no | 0.1260 |
+| deep interior | p90 | 81 | 61 | 7 | 30 | 31 | no | 0.2388 |
+
+**Decision-level disagreement over quads present in both trees** — the figure the brief asks for:
+
+| region | mean vs median | p90 vs median |
+|---|---|---|
+| near-field | **54.1%** (749 of 1385) | **49.1%** (136 of 277) |
+| deep interior | **34.5%** (10 of 29) | **34.5%** (10 of 29) |
+
+**Half the shared decisions flip, and the resulting trees overlap by 3–13%.** This is not a
+detail to pick quietly; it is three different schedulers wearing one name. §3.4's instruction not
+to choose silently was right, and the reason turns out to be much larger than the kurtosis argument
+that motivated it.
+
+Each behaves distinctly, and the behaviours are intelligible:
+
+- **median under-refines structure.** Blind to a thin filament crossing a quad, because most of
+  that quad's footprints remain in the smooth sea. This is the mechanism behind the `deep interior`
+  failure in the overlay — at `median` it stops at 29 quads and leaves the largest high-spread
+  regions at level 2; at `mean` it takes 161 and at `p90` 81.
+- **mean over-refines and blows the budget.** 5997 of 6000 quads in near-field, the only
+  configuration in this study to hit a cap. Hostage to a single footprint, exactly as expected with
+  excess kurtosis 110.
+- **p90 refines deepest and narrowest.** Fewest quads (1141) but the greatest depth (14), and it
+  **floors 55% of its leaves** against median's 18%. It sees the filament, observes that refining
+  does not reduce the extreme, and floors — which is arguably the *correct* answer, since a
+  filament genuinely is unresolvable at that scale.
+
+**No recommendation is made here.** The three encode different intentions — "resolve the typical
+footprint", "resolve the total", "resolve the worst" — and which is wanted is a display question
+this measurement cannot settle. What it settles is that the choice is load-bearing and must be
+stated wherever a tree is quoted.
+
+---
+
+## 12. The vertical slice — what the isolation was hiding
+
+Every build before this one was deliberately isolated, and each isolation hid something the next
+one found. This build put the camera, the screen floor, the adaptive render, SSAA, and the
+linearised decoder together for the first time. Three of the findings below are in the **seams**
+rather than in any component, which is where the brief predicted they would be.
+
+### 12.1 A standing rule: a small difference can mean both sides are dead
+
+**Before reading any agreement number, assert that each side still resolves what it is supposed to
+resolve.** Two things that have both collapsed agree perfectly, and their agreement carries no
+information whatever.
+
+This is not the same rule as "a test that cannot fail" (§ CLAUDE.md), though it is a cousin. That
+rule is about a *configuration* in which nothing could have gone wrong. This one is about a
+*statistic* that reports success from two simultaneous failures. The tell is different: ask not
+"what would make this fire" but "what would make this quantity small", and check that "both sides
+lost their data" is not on the list.
+
+Three catches in planning this build alone:
+
+- a **curvature term on an affine chart** — `Slice::decode_pos` is a linspace, so `J_D` is
+  constant, `x = x0 + J_D.delta` is exact, and "where does the linearisation start to matter"
+  answers "never" at every depth;
+- a **linearised f32 sum whose samples all collapse to `x0`** — at depth 40 the increment is
+  ~1e-13 against an O(1) centre, so every sample is the same initial condition, agreeing
+  perfectly with a direct path that collapsed too;
+- an **`E` null that a veto-capped tree would have produced whatever `E` did** — the screen floor
+  caps a tree at `4^6 = 4096` leaves, so an over-refining low-`E` run saturates and the sweep
+  reports a null the veto manufactured.
+
+The remedy in each case was to measure the *resolving power* first and the agreement second.
+`decode::distinct` exists for exactly this: it counts how many of a quad's `N²` sample initial
+conditions are actually different, and a divergence figure is only admissible where both sides
+are fully distinct.
+
+### 12.2 A collapsed decode makes the criterion maximally confident
+
+The consequence of §12.1 inside the scheduler, and the sharpest seam in this build.
+
+When a decode path has collapsed, every footprint in a quad is the **same** initial condition and
+every copy is the **same** trajectory. `ensemble_spread` is then exactly zero. The criterion reads
+zero spread as *"this quad is perfectly resolved"* and stops — confidently, with a small tidy
+tree, having integrated nothing distinguishable at all.
+
+This is the project's own standing pattern arriving from a new direction: *a statistic can report
+maximum confidence precisely when it is least informed*. It has now been caught four times, in
+`drift max` scatter, in terminal-outcome purity under lockstep, in the `Gamma` residual, and here.
+
+The guard is not a threshold. It is to count distinct initial conditions per quad and treat a
+collapsed quad as **undetermined**, in the same way a non-finite copy is a measurement outcome
+rather than missing data.
+
+### 12.3 The deep-zoom floor is a property of *where* you zoom, not of the renderer
+
+PR #11 recorded a plain-f64 cell-width floor at level **45.87**. That figure is conditional on the
+chart coordinate being of order 1, and the condition was never stated.
+
+Measured over four configurations at matched settings (`results/output/decode_ladder.txt`), with
+64 samples per quad:
+
+| chart | centre | `direct_f64` still resolves 64/64 to | `direct_f32` to |
+|---|---|---|---|
+| `body_plane` | \|c\| ~ 3 | depth 44 | depth 14 |
+| `body_plane` | 0 | **depth 55+ (no floor at all)** | **depth 55+** |
+| `shape` | \|c\| ~ 3 | depth 35 | depth 14 |
+| `shape` | 0 | depth 45 | depth 45 |
+
+A quad centred at the chart origin has **no O(1) neighbour for the increment to be absorbed
+into**, and therefore no cell-width floor in the tested range — on either precision. So 45.87 is
+not a universal limit on zoom depth; it is the limit at coordinates of order one, and moving the
+same box to the origin removes it entirely. Quote the coordinate magnitude alongside any floor
+depth, or the number means nothing.
+
+### 12.4 The linearised decoder buys ~24 levels over f32 and none over f64
+
+The contract's claim is that quad-local relative coordinates extend usable zoom from ~23 to ~50+.
+Measured on `body_plane` at \|c\| ~ 3:
+
+| path | all 64 samples distinct to | collapsed to 1 by |
+|---|---|---|
+| `direct_f32` | depth 14 | depth 22 |
+| `L-naive_f32` (the literal formula) | depth 14 | depth 22 |
+| `L-split_f32` | depth 44 | depth 50 |
+| `direct_f64` | depth 44 | depth 50 |
+
+Two results, and the second is the one to carry:
+
+**The literal formula buys nothing.** `L-naive` — `x0`, `J_D.delta` and the sum all in f32 —
+collapses on **exactly the same curve** as forming the chart coordinate in f32 in the first place
+(56, 18, 2, 1 at depths 16, 18, 20, 22 for both). Adding a ~1e-13 term to an O(1) f32 quantity is
+the same operation as never having the term.
+
+**The split form reaches f64's floor and stops there.** `L-split` — `x0` in f64 on the CPU,
+`delta` and `J_D.delta` in f32, promoted and summed in f64 — tracks `direct_f64` rung for rung.
+So the gain is ~24 levels *for an f32 consumer*, and **exactly zero over f64**. The "~50+" in the
+contract is f64's floor, not something the linearisation creates. That follows from the bound
+stated before the run: the initial conditions must be formed as absolute O(1) numbers before
+integration, because the three-body separations are O(1) and no nonlinear integrator can carry
+`(x0, delta)` separately through the march.
+
+One exception, and it is modest: on the **nonlinear** chart at \|c\| ~ 3, `L-split` holds 64/64 to
+depth 45 where `direct_f64` has fallen to 10/64. A single fused affine step loses fewer bits than
+a decode through `cos`, `sin` and a renormalisation. Worth ~6 levels, from conditioning rather
+than from the design's stated mechanism.
+
+### 12.5 Where the linearisation actually matters is the coarse end, not the deep end
+
+On the shape chart the linearisation error relative to the sample spacing runs `0.39` at
+`half = 0.05`, `1.5e-3` at depth 8, `3.6e-7` at depth 20 — it falls as the box shrinks, because
+the discarded term is `O(h²)` against a spacing of `O(h)`. It exceeds one sample spacing only at
+`half >= 0.5`, i.e. boxes larger than any this project renders.
+
+So the approximation is worst exactly where it is least needed and best exactly where it is used.
+That is the opposite of the intuition that a linearisation "breaks down at depth", and it is worth
+saying plainly because the intuition is load-bearing in the caching design.
+
+On `body_plane` the same column is **structurally zero**, and is reported as structural rather
+than as a measurement. What it does show at depth 44 is `0.55` — that is not curvature but
+accumulation rounding reaching half a sample spacing, arriving exactly where distinctness starts
+to fail.
+
+### 12.6 "Zero spread" is not zero, and a collapse detector written that way cannot fire
+
+Caught in this build's own instrumentation, which makes it the fourth catch of the same family
+and the first one that was mine rather than the brief's.
+
+The first version of `deep_zoom` detected a collapsed decode by testing
+`red.spread_median == 0.0`. It reported **no collapse anywhere**, including at depth 40 where
+exactly **1 of 64** initial conditions was distinct and every trajectory in the quad was the same
+trajectory.
+
+Identical inputs do not give an identically zero spread. `spread_shape` is the mean distance of
+the copies' `shape_vec` from their centroid; eight identical unit vectors summed and divided by
+eight do not return the value bitwise, so the residual is **5.551115e-17**. Measured directly:
+
+```
+  direct_f64: copies distinct 8/8  spread 2.351651e-14  sigma_E(0) 5.329e-15
+  direct_f32: copies distinct 1/8  spread 5.551115e-17  sigma_E(0) 0.000e0
+```
+
+That residual is **exactly `2^-54`** — one rounding step, `f64::EPSILON / 4` — which is what makes
+it structurally unreachable by an equality test rather than merely small. It is twelve orders
+below `tau_display = 1e-4`. **No threshold anyone would set can separate a fully collapsed quad
+from a perfectly resolved one**, and a small tidy tree built out
+of nothing is exactly what a collapsed decode produces.
+
+The fix is not a smaller epsilon. It is to stop asking a *statistic* whether the data was there
+and ask the *data*: `decode::distinct` counts distinct initial conditions by bitwise comparison of
+all twelve state components, which is exact and cannot drift. The spread is reported beside it, as
+the number the criterion would have believed.
+
+**And it connects to a limitation already on record.** `deep interior`'s floored quads carry a
+median `worst_energy_drift` of **3.256e-1** — 33% energy error — while `error_ratio` on the same
+quads does not flag them. That is exactly the blind spot the design notes record: `error_ratio` is
+a ratio of *spreads*, so a drift correlated across the copies cancels in it. Two findings that
+corroborate: the flag that should have caught the bad quads is structurally blind to that failure
+mode, and `worst_energy_drift` beside it is what caught them. Both fields are needed, as specced,
+and neither is redundant.
+
+Note `sigma_E(0) = 0` in the collapsed row. That is a second, independent signal of the same
+failure and it *is* exactly zero, because it is a spread of energies rather than a distance from a
+computed centroid. It would make a serviceable secondary guard — but it is a symptom too, and the
+distinct count is the measurement.
+
+### 12.7 The collapse arrives from the leaves upward, so a root-level check is not enough
+
+Measured in `deep_zoom.txt` at camera depth 14 under `direct_f32`: the **root quad still resolves
+all 64 of its samples** while **16 of its 21 descendants have collapsed**. Children sit at half the
+parent's cell width, so the failure begins at the leaves — exactly where the scheduler is spending
+its budget — and works upward as the zoom deepens.
+
+The consequence for any distinctness guard: it has to be **per quad, at the moment the quad is
+computed**, not a once-per-frame check on the view. A frame whose root is fine can be built almost
+entirely from collapsed leaves.
+
+And the dangerous case is not the fully collapsed one. At depth 14 the partly-collapsed quads
+reported a spread of **1.811e-7** — small, but not absurd, and nothing a sanity check would flag.
+Full collapse at least produces the recognisable `5.551e-17`.
+
+### 12.8 Tree size is slice-conditional to a factor of 4; the exponent is not
+
+`slice_variety.txt`, at **one** fixed centre configuration (near-field's, which is Burrau's own),
+varying only the 2-plane through it, with bases orthonormal in the 6D position metric so a unit of
+chart coordinate moves the system the same distance in every case.
+
+Leaf count spans **226 to 970** — a factor of **4.3**. Among pure rotations within one body's
+plane it is only 403 to 526 (a factor of 1.3), so most of the variation comes from **which bodies
+the plane moves**, not from the angle. The nonlinear shape chart is the most structured of all at
+970 leaves.
+
+The `alpha` distribution, by contrast, barely moves: median 0.172 to 0.289, p10 between -0.09 and
+-0.17, p90 between 0.51 and 1.26, across every case including the nonlinear chart.
+
+So the exponent the criterion reads is far more stable than the tree it produces. Two consequences:
+
+- **Every leaf count in this repository is conditional on the slice, to about a factor of 4.** Say
+  so when quoting one. The comparisons *within* a slice (with and without the veto, across `E`,
+  across aggregation) are unaffected, because they share a slice.
+- A criterion tuned on one slice family is more likely to transfer than a *budget* tuned on one.
+
+**The control is exact and the check is on the right quantity.** `plane 0deg` reproduces
+`body_plane` with `max |dIC| = 0` and an identical tree. The check compares initial conditions,
+not trees: a tree is downstream of a chaotic integration, so checking it would be testing chaos
+rather than the charts.
+
+**And a gauge check nobody planned.** The three `shape phase` rows — 0.0, 0.4, 1.3 — are bitwise
+identical in every column. The fibre phase is a global rotation and the three-body problem is
+rotation-invariant, so they must be; if the Hopf inverse or the AZ port had broken rotational
+invariance, they would have separated. Kept, because it costs nothing and it is the only
+rotational-invariance check in the suite that runs through the *new* chart code.
+
+### 12.9 The screen floor and `MAX_REL_DEPTH` are different caps, and reporting one hides the other
+
+Raised in the PR #12 review: `deep interior` under mean or p90 reaches depth 7, and the screen
+floor at `N = 8` on a 512² viewport sits at level 6. Does the aggregation fix collide with the
+veto in exactly the configuration production runs?
+
+**Yes, and it separates the two aggregations.** Measured in `agg_vs_floor.txt`:
+
+| viewport | `MAX_REL_DEPTH` | agg | leaves | depth | cost of the cap |
+|---|---|---|---|---|---|
+| 512² | 6 | mean | 79 | 6 | **−42 of 121, 34.7%** |
+| 512² | 6 | p90 | 58 | 6 | **−3 of 61, 4.9%** |
+| 1024² | 7 | mean | 121 | 7 | none |
+| 1024² | 7 | p90 | 61 | 7 | 4 leaves screen-floored |
+
+Both keep an identical tree at levels 2–5; the whole difference is what piles up at the cap. So
+**p90's fix survives the production viewport nearly intact and mean's does not** — a reason to
+prefer p90 that has nothing to do with the statistic's own properties, and one neither the design
+docs nor PR #11 could have found, because neither had a camera.
+
+The collision is a *resolution* limit rather than a design conflict: `4^7 x 64 = 1,048,576`, so
+level 7 is displayable at 1024² and the aggregation the region needs is affordable one viewport
+step up.
+
+**The trap, and it is the point of this note.** At 1024² with `MAX_REL_DEPTH` left at its default
+6, the tree is **identical to the 512² tree** and the `screen` column reads **zero**. That reads
+as "the viewport made no difference". It is wrong: `MAX_REL_DEPTH` had taken over as the binding
+cap. The two coincide at 512² by construction — the contract's `MAX_REL_DEPTH <= screen floor`,
+with 6 chosen to match — and **diverge at every larger viewport**, where the default silently
+becomes the tighter of the two.
+
+The first version of this run reported only `screen`, showed it falling to zero while the tree did
+not grow by one quad, and would have been written up as "the viewport is inert". Two caps, one
+column, wrong conclusion.
+
+**And the two regions answer the collision question oppositely.** `deep interior` is
+**criterion-bound** — the veto touches 4 of p90's 61 leaves at 512² and none at 2048², so a
+viewport step hands the region back to the criterion. near-field is **view-bound at every viewport
+tested**: at 1024² with `MAX_REL_DEPTH = 7` it still floors 576 of median's 844 leaves, 756 of
+mean's 988, 88 of p90's 271; at 2048² with `MAX_REL_DEPTH = 8`, 2172 of mean's 2617 and 148 of
+p90's 382. Uncapped, p90 reaches **depth 14** there. Its structure is dense at every scale, so more pixels buy more tree
+and never reach the point where the criterion decides. A question about "the" collision has no
+single answer; it is a per-region property and has to be reported as one.
+
+**So: a scheduler's depth cap is two numbers, and a tree quoted with only one of them is
+underspecified.** `MAX_REL_DEPTH` is a policy default; the screen floor is arithmetic. State both
+wherever a tree is quoted, the same way §11 requires the aggregation to be stated.
+
+---
+
+## 13. Improving the criterion — what the brief got right, and where it got there differently
+
+### 13.1 §1's conclusion is right and its mechanism is not
+
+The brief reads `ensemble_spread` as a category error: a *within*-footprint statistic where only
+*between*-footprint variation is reducible. Two things in the repo say the premise does not
+describe this implementation.
+
+`jitter_frac` defaults to **0.5** and `halton_offset` returns `[-1, 1)^2` scaled by cell width
+per axis. So the copies span **±0.5 cell widths — the whole cell, edge to edge**. They are a
+quasi-random sample of exactly the area the footprint stands for, not a cloud around a point.
+The design-record quote §1.2 leans on — *"the ICs there are identical up to perturbation"* — is
+about a different construction.
+
+And the corroboration was already measured before this build: the Halton control's true `alpha`
+is **exactly 1.0**. `alpha = log2(spread_parent/spread_child)` can only be 1 because splitting
+halves the jitter ball along with the cell; an irreducible within-point statistic would have
+`alpha == 0` by construction.
+
+Measured directly, with counts matched:
+
+| region | rho all | rho mix | scale (matched count) | count (matched extent) | n mix |
+|---|---|---|---|---|---|
+| near-field | 0.7240 | 0.5818 | 1.172 | 1.013 | 192 |
+| far | 1.0000 | — | 9.555 | 1.003 | 0 |
+| deep interior | 0.6828 | 0.6361 | 2.062 | 1.012 | 27 |
+
+`count` is `within_pooled / between_shape` at **equal extent**: 1.01 everywhere. Matched for
+extent and sample count the two arms are the **same estimator**. `scale` is
+`between_matched / within` at **equal sample count**: 1.17 in the chaotic region and **9.56** in
+the tame one, which is what a smooth field gives when the window widens by `N-1 = 7`, and what a
+saturated field gives when widening buys nothing.
+
+But `rho mix` — quads whose hot set is a proper subset, i.e. containing a transition — is only
+**0.58–0.64**. At their actual settings the arms rank quads materially differently. So §1's
+practical conclusion survives; what changes is the mechanism, and with it the fix: the fault is
+the **aggregation**, and §3.1/§3.2 address it, not a new arm alone.
+
+Two guards were needed to get a readable number. An unstratified `rho` is dominated by tame
+quads where both arms read near zero and agree trivially — it would read high whatever happened
+at the boundaries. And the first stratification chosen (`looks_like_boundary`) had a population
+of **2, 0 and 4**: in a chaotic region most quads are *uniformly* hot, so there is no internal
+hot/cold edge and they are correctly not boundaries. `med hot` is 1.000 in near-field. The
+`mixed` stratum is the weaker, better-populated one.
+
+### 13.2 The metric, and the shipped criterion coming last
+
+`error(B)`: reference = the fully-refined tree at one sample per pixel, error = mean per-pixel
+OKLab distance, criteria entered as **orderings** with no threshold consulted.
+
+That last choice is not cosmetic. §13.1's `scale` factor means a threshold comparison would
+score the 1.17-vs-9.56 rescaling instead of the signal. A ranking is invariant to any monotone
+rescaling, so the confound simply does not arise.
+
+`deep interior`, the region that matters, oracle-to-random gap wide enough to discriminate:
+
+```
+               B=      191       767      1535
+  greedy_oracle     0.01386   0.00240   0.00004
+  frac_hot_between  0.01446   0.00366   0.00002
+  running_max       0.01786   0.00425   0.00158
+  between/median    0.01882   0.00560   0.00003
+  within/median     0.01861   0.01509   0.01386   <- shipped default
+  random lo         0.01814   0.01288   0.00932
+```
+
+`within/median` is beaten by **random** at every budget past 383, in both regions. In near-field
+it is flat at 0.00394 to `B=767` while `within/mean`, `between/median` and `max_of_both` all
+reach the oracle's zero at `B=191`.
+
+`far` **cannot be measured at all**: `error(root) = 0.00000`. The outcome image is featureless
+at 512², so every criterion reads zero and none of it is data. That is the metric's own guard
+firing, and it is reported as undefined rather than as agreement. It also reframes every earlier
+leaf-count comparison on `far`: there was never an image there to get right.
+
+### 13.3 A flat curve has two causes and they need different fixes
+
+I predicted `within/median`'s flatness was a degenerate ranking. **It is not.**
+
+| signal | distinct of 5461 | modal% | reading |
+|---|---|---|---|
+| within/median | 5418 | 0.3% | fine-grained, and actively bad |
+| within/mean | 5461 | 0.0% | fine-grained, and good |
+| frac_hot_within | 58 | 40.8% | degenerate — no ordering |
+| layout | 78 | 40.8% | degenerate — no ordering |
+| frac_hot_between | 65 | 33.9% | degenerate, **and the best criterion in `deep interior`** |
+
+A bad ordering and no ordering produce the same flat `error(B)`, and the curve cannot separate
+them. Counting distinct values can, which is why it is printed **above** the curves.
+
+The last row is the one that resists a tidy story: a 65-valued signal beats a 4994-valued one.
+Resolution is not what makes a ranking good. Nor is coverage — `term_grad` is **NaN on 97.1%**
+of near-field and still reaches the oracle's zero by `B = 383`, because the 2.9% it does score
+are exactly the structured quads.
+
+### 13.4 Four measurements that could not have failed, caught in one build
+
+- **The `sigma_E(0)` control for `alpha_sibling_spread`.** True `alpha` exactly 1.0, true sibling
+  range exactly 0, no integration — and it reads **0.003, flat in both `N` and `E+1`**. The
+  flatness is the tell: under the fixed Halton prefix the offsets *and* the footprint positions
+  are fixed, so the quantity is deterministic and there is no sampling noise in it to measure.
+  Kept as a geometric floor, labelled as one; part 2 varies a `Pcg` seed for a real draw.
+- **`between_shape == 0.0` as a collapse test.** A genuinely uniform region has zero spread over
+  perfectly distinct ICs. Tested on `decode::distinct` instead, which cannot confuse the two.
+- **An unstratified `rho` between the two arms** (§13.1).
+- **The `escaped` fraction.** `t_end` is set by whichever terminating event came first, so
+  `deep interior` reads **0.99 terminated with the escape arm silent** — collisions. Reporting
+  that as an escape fraction would have contradicted the standing "zero of 1024 near-field
+  pixels escape at `t = 13`" while appearing to agree with it. `terminated_fraction` and
+  `escape_fraction` are now separate columns.
+
+### 13.5 §5's accumulators: the event arm already existed, and the shape arm is not a null
+
+The brief says the temporal accumulators are specced and missing. Half of that is wrong:
+`spread_event_max` is a running max over boundaries, `t_spread_event` is a first-divergence time
+that is NaN rather than `t_max` when it never fires, and `spread_event_latched` is the
+persistence-guarded latch with `LATCH_RUN = 3`. What was absent is the **continuous** arm.
+
+Built, it is **not** the clean null the short horizon made plausible. `running_max` reaches
+0.00158 at `B=1535` in `deep interior` where `within/median` sits at 0.01509 — third best of
+everything tested there. `first_divergence` is degenerate (63 distinct, 82.3% modal) and
+middling.
+
+The driver had no extension point: `cart` is overwritten in place every boundary and
+`AzOut::state` is final-only. `boundary_shapes` is pushed beside `tight`, behind a flag, and
+reduced inside one footprint's evaluation so peak cost is one footprint's worth. It is **ragged**
+— copies terminate at different boundaries under `stop_on_event` — and the reducer carries each
+copy's last recorded shape forward rather than truncating to the shortest, which would discard
+exactly the boundaries where the survivors are diverging.
+
+### 13.6 §7's questions are mostly identities in the current design
+
+`Camera::veto` reads `tile_size_px`, which depends on the quad's width and the camera's
+`half_world` and `viewport` — **and not on `cx`/`cy` at all**. There is no view culling and no
+cache. So "does the tree persist across a pan" is an identity, and reporting it as a finding
+would be reporting one.
+
+What is left open, and is measured: what *would* be evictable (`Camera::covers`, a predicate the
+scheduler never consults), and whether a quad recomputed after leaving view comes back
+**bitwise** what it was — the property a future cache would need to be sound.

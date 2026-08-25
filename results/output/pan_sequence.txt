@@ -1,0 +1,33 @@
+    Finished `release` profile [optimized] target(s) in 0.07s
+     Running `target/release/examples/pan_sequence 9 20000 1024`
+pan across near-field, 9 steps, budget 20000, viewport 1024^2.
+Camera::veto does not read cx/cy, so panning changes NO scheduling decision here.
+`covers` is a predicate the scheduler never consults; nothing is evicted.
+
+ step    cam cx   quads in view       new would-cache%  recompute%   floored
+    0   0.95000    1125     487      1125         0.0%      100.0%       576
+    1   0.96250    1125     725         0       100.0%      100.0%       576
+    2   0.97500    1125     893         0       100.0%      100.0%       576
+    3   0.98750    1125     933         0       100.0%      100.0%       576
+    4   1.00000    1125    1125         0       100.0%      100.0%       576
+    5   1.01250    1125    1099         0       100.0%      100.0%       576
+    6   1.02500    1125     971         0       100.0%      100.0%       576
+    7   1.03750    1125     895         0       100.0%      100.0%       576
+    8   1.05000    1125     687         0       100.0%      100.0%       576
+
+9000 quads recomputed after having been seen before.
+0 came back with a DIFFERENT reduction. 0 with a different decision.
+
+Zero payload mismatches is the property a cache would need: a recomputed reduction
+and a cached one are interchangeable. It holds because the ensemble offsets are a
+fixed Halton prefix indexed by COPY -- not by pixel, not by camera, not by time --
+so a quad's ensemble does not know the camera exists.
+
+`recompute%` is 100 by construction: nothing is cached, so everything is recomputed
+every frame. `would-cache%` is what a cache would have served, and is the number a
+caching design would be buying. No eviction policy is implemented and none is implied.
+
+`in view` uses Camera::covers, which the scheduler never consults. If it ever does,
+that is view culling and a scope change -- the screen floor is a veto on SCALE, and
+adding a position term to it would make a quad's decision depend on where the camera
+is pointing, which is the thing `never cached as a quad fact` exists to keep out.

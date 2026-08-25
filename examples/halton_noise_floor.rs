@@ -93,13 +93,12 @@ fn quads() -> Vec<[usize; 4]> {
 
 /// `sigma_E(0)` only — no integration, so this is cheap enough to sweep `E`.
 fn e0_grid(s: &Slice, n_copies: usize, scheme: Scheme) -> Vec<Vec<f64>> {
-    let m = burrau::masses::<f64>();
     (0..s.npix())
         .into_par_iter()
         .map(|i| {
             jitter::copies_with::<f64>(s, i, n_copies - 1, 0.5, 0, scheme)
                 .iter()
-                .map(|x| energy::energy(&x.r, &x.v, &m, 0.0))
+                .map(|x| energy::energy(&x.s.r, &x.s.v, &x.m, 0.0))
                 .collect()
         })
         .collect()
@@ -187,9 +186,9 @@ fn main() {
                 let mut et = Vec::new();
                 let mut shapes = Vec::new();
                 for x in &c {
-                    e0.push(energy::energy(&x.r, &x.v, &m, 0.0));
+                    e0.push(energy::energy(&x.s.r, &x.s.v, &x.m, 0.0));
                     let o = az::integrate_az_opts(
-                        *x, &m, 13.0, 32, 0.01, 30_000,
+                        x.s, &x.m, 13.0, 32, 0.01, 30_000,
                         &AzOpts { r_coll_frac: 1e-3, stop_on_event: true, ..Default::default() },
                     );
                     et.push(energy::energy(&o.state.r, &o.state.v, &m, 0.0));
@@ -254,6 +253,21 @@ fn main() {
         println!("  rho(alpha_E - 1, alpha_shape) = {rho:+.4}");
         println!("  fitted beta = {beta:+.4}");
         println!("  predicted variance reduction 1 - rho^2 = {:.4}", 1.0 - rho * rho);
+        // Variance and interdecile imply very different widths for alpha_shape. They can only
+        // do that if the distribution is heavy-tailed, and which one a scheduler should read
+        // depends on the answer: it decides per TYPICAL quad, so the interdecile is the right
+        // measure — and the interdecile is the one that did not move between schemes.
+        {
+            let f: Vec<f64> = a_sh.iter().cloned().filter(|x| x.is_finite()).collect();
+            let nn = f.len() as f64;
+            let mean = f.iter().sum::<f64>() / nn;
+            let var = f.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / nn;
+            let sd = var.sqrt();
+            let kurt = f.iter().map(|x| ((x - mean) / sd).powi(4)).sum::<f64>() / nn - 3.0;
+            println!("  alpha_shape sd = {sd:.4}, interdecile = {:.4}, ratio = {:.3} (normal 2.563)",
+                     s90 - s10, (s90 - s10) / sd);
+            println!("  excess kurtosis = {kurt:.2} (normal 0) — the variance lives in the tails");
+        }
         println!("  measured floor ratio, regression      = {:.4}", (c90 - c10) / (s90 - s10));
         println!("  measured floor ratio, additive        = {:.4}", (ad90 - ad10) / (s90 - s10));
         println!("  var(alpha_E) = {var_d:.3e}   var(alpha_shape) = {:.3e}",

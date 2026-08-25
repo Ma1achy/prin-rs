@@ -16,16 +16,21 @@ use crate::outcome::State;
 ///
 /// `detail = 3` — the two "all three" outcomes — gets the brightest shade of its family, so a
 /// triple reads at a glance rather than blending into ordinary collisions or escapes.
-fn outcome_rgb(p: &PixelOut) -> [u8; 3] {
+pub fn outcome_rgb(p: &PixelOut) -> [u8; 3] {
     if p.n_nonfinite > 0 {
-        return [255, 0, 255]; // magenta: undetermined, deliberately loud
+        return crate::output::colour::DEBUG_NAN; // deliberately loud
     }
     let base = match State::from_bits(p.state) {
         Some(State::Escape) => [220, 80, 60],
         Some(State::Collision) => [110, 190, 110],
         Some(State::Bounded) => [70, 150, 220],
         Some(State::Running) => [200, 190, 90],
-        Some(State::SimFailed) => return [255, 0, 255],
+        // Both failure states are undetermined and take the reserved colour. `DecodeFailed`
+        // previously fell to the catch-all grey, where it was indistinguishable from an
+        // invalid state byte -- a pixel whose IC could not be formed read as ordinary data.
+        Some(State::SimFailed) | Some(State::DecodeFailed) => {
+            return crate::output::colour::DEBUG_NAN
+        }
         _ => [40, 40, 48],
     };
     let k = 0.55 + 0.15 * p.detail as f64;

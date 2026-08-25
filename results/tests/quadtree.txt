@@ -1,0 +1,49 @@
+    Finished `release` profile [optimized] target(s) in 0.08s
+     Running tests/quadtree.rs (target/release/deps/quadtree-17a9d4a3f9327c40)
+
+running 9 tests
+ level            half      cell width     ratio
+     0     5.000000e-2     1.428571e-2         -
+     1     2.500000e-2     7.142857e-3    2.0000
+     2     1.250000e-2     3.571429e-3    2.0000
+     3     6.250000e-3     1.785714e-3    2.0000
+     4     3.125000e-3     8.928571e-4    2.0000
+     5     1.562500e-3     4.464286e-4    2.0000
+     6     7.812500e-4     2.232143e-4    2.0000
+     7     3.906250e-4     1.116071e-4    2.0000
+     8     1.953125e-4     5.580357e-5    2.0000
+     9     9.765625e-5     2.790179e-5    2.0000
+    10     4.882813e-5     1.395089e-5    2.0000
+
+Exact in binary at every level, so alpha's factor of two holds by construction.
+
+thread 'a_single_sample_quad_is_rejected' (135718584) panicked at src/quad.rs:178:9:
+samples per quad axis must be >= 2; Slice::axis corner-anchors at n <= 1 and cell_widths clamps to 2*half
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+N=8: samples span [0.95, 1.05] with cell width 1.428571e-2
+guard fires at level 35: cell width 4.1577e-13, 634.7x eps*scale
+machine epsilon would be reached at level ~45.9
+test a_childs_cell_width_is_exactly_half_its_parents ... ok
+test a_quads_slice_spans_its_own_box ... ok
+test the_precision_floor_fires_above_machine_epsilon ... ok
+13 leaves tile the root: areas sum exactly, no pair overlaps
+test leaves_tile_the_root_exactly ... ok
+test a_single_sample_quad_is_rejected - should panic ... ok
+budget   5: computed   5, exhausted true, 4 quads flagged
+   alpha /       spread:  21 quads,  16 leaves, depth 2
+every computed quad reduced exactly 64 footprints of its own
+test a_parent_is_never_synthesised_from_its_children ... ok
+budget  21: computed  21, exhausted true, 16 quads flagged
+   alpha /  spread_area:  21 quads,  16 leaves, depth 2
+   alpha /     shuffled:  21 quads,  16 leaves, depth 2
+21 parents carry the range of their four children's exponents
+test the_sibling_range_is_set_on_the_parent_from_four_children ... ok
+ sibling /       spread:  21 quads,  16 leaves, depth 2
+budget  60: computed  57, exhausted true, 43 quads flagged
+test the_budget_is_respected_and_exhaustion_is_reported ... ok
+ sibling /  spread_area:  21 quads,  16 leaves, depth 2
+ sibling /     shuffled:  21 quads,  16 leaves, depth 2
+test both_policies_descend ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.35s
+

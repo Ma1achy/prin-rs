@@ -1,0 +1,29 @@
+    Finished `release` profile [optimized] target(s) in 0.01s
+     Running `target/release/examples/spread_bias_e 48`
+uniform 48x48 renders, identical nominal footprints, only E+1 varying.
+Halton offsets are a fixed prefix, so the E+1 = 2 copies are a SUBSET of the
+E+1 = 32 copies. Any movement is the estimator, not a different sample.
+
+        region   E+1   spread p10   spread med   spread p90    vs E+1=32     wall_s
+    near-field     2    1.9071e-4    1.0240e-3    3.0865e-3       0.5389        0.4
+    near-field     4    5.9037e-4    1.5310e-3    3.3328e-3       0.8057        0.8
+    near-field     8    7.4596e-4    1.6759e-3    3.4366e-3       0.8820        1.7
+    near-field    16    8.4742e-4    1.8336e-3    3.5820e-3       0.9650        3.1
+    near-field    32    9.1832e-4    1.9002e-3    3.8333e-3       1.0000        6.3
+
+ deep interior     2    7.5931e-6    3.7561e-5    4.4476e-3       0.5583        0.1
+ deep interior     4    2.4828e-5    5.6143e-5    3.3333e-1       0.8345        0.3
+ deep interior     8    3.2562e-5    5.9894e-5    4.2857e-1       0.8903        0.6
+ deep interior    16    3.5924e-5    6.6699e-5    3.3333e-1       0.9915        1.2
+ deep interior    32    3.8310e-5    6.7274e-5    3.2258e-1       1.0000        2.2
+
+           far     2    4.0803e-9    4.1383e-9    4.1972e-9       0.1306        0.1
+           far     4    1.3770e-8    1.3882e-8    1.3995e-8       0.4382        0.1
+           far     8    2.5150e-8    2.5364e-8    2.5581e-8       0.8006        0.2
+           far    16    2.9008e-8    2.9256e-8    2.9506e-8       0.9234        0.5
+           far    32    3.1413e-8    3.1682e-8    3.1955e-8       1.0000        1.0
+
+If the median spread rises monotonically with E on identical footprints, the low-E
+under-refinement is a SMALL-SAMPLE BIAS in the estimator, not sampling noise, and
+more copies is the only fix. If it is flat, the explanation is wrong and the leaf-
+count trend needs another one.

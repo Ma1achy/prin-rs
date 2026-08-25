@@ -1,0 +1,22 @@
+   Compiling prin-rs v0.1.0 (/Users/malachy/src/principia-rs-test)
+    Finished `release` profile [optimized] target(s) in 4.50s
+     Running `target/release/examples/zoom_sequence near-field 9 2000`
+zoom ladder over near-field: 9 frames, 384x384, budget 2000 quads each.
+Each frame re-descends from a root box of half = 0.05 / 2^depth with the camera
+framing it, so `camera_depth` is 0 in every frame and the screen floor always sits
+six levels below the view. The samples in frame k+1 are NEW, not upsampled.
+
+ frame         half   quads  leaves  depth screen   keep  spread med    wall_s
+     0    5.0000e-2     549     412      6    252     60    9.747e-4      24.7
+     1    2.5000e-2     781     586      6    468     41    3.023e-4      35.9
+     2    1.2500e-2    1393    1045      6    868     90    9.568e-5      63.6
+     3    6.2500e-3    1081     811      6    484    246    3.197e-5      49.4
+     4    3.1250e-3     285     214      6     16    173    2.773e-5      13.1
+     5    1.5625e-3      97      73      4      0     69    3.960e-5       4.4
+     6    7.8125e-4      21      16      2      0     16    3.496e-5       1.0
+     7    3.9063e-4      21      16      2      0     16    9.683e-6       1.0
+     8    1.9531e-4      21      16      2      0     16    4.813e-6       1.0
+
+wrote 9 frames, results/vertical/zoom_near-field_animated.png (APNG), and one .prnq per frame.
+The `screen` column is the point: at every zoom level a fresh population of leaves
+is stopped by the view, and the previous frame's floored quads have refined again.

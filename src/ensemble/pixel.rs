@@ -1,9 +1,10 @@
 //! Per-pixel evaluation: build the copies, integrate them, reduce.
 
+use crate::decode::Path;
 use crate::grid::Slice;
 use crate::integrate::az::{self, AzOpts, RefPolicy};
 use crate::outcome::{self, Outcome, State};
-use crate::physics::{burrau, energy, shape};
+use crate::physics::{energy, shape};
 use crate::Real;
 
 use super::jitter::Scheme;
@@ -55,6 +56,40 @@ pub struct EnsembleCfg {
     /// Factor applied to `eta` on each refinement pass. 1/4 sits past the measured cliff,
     /// which closed between `1e-2` and `3e-3`.
     pub refine_eta_factor: f64,
+    /// Which arithmetic forms each copy's initial condition. Default [`Path::DirectF64`] —
+    /// every result before the vertical slice. The other paths exist for the deep-zoom
+    /// measurement, where a **collapsed** decode is the failure to watch for: identical
+    /// footprints give a spread of exactly zero, which the criterion reads as
+    /// "perfectly resolved" rather than as "no data".
+    pub decode_path: Path,
+    /// Keep each copy's packed outcome, for the SSAA resolve. Off by default: it is only
+    /// wanted at render time, and it makes `PixelOut` allocate.
+    pub keep_copy_outcomes: bool,
+    /// Keep each copy's `shape_vec`, for the criterion's **matched-count** comparison.
+    ///
+    /// Off by default, for the same reason as [`Self::keep_copy_outcomes`]: it allocates
+    /// `E+1` triples per footprint. It exists because comparing an `E+1`-sample within-cell
+    /// spread against an `N^2`-sample between-quad spread conflates *scale* with *sample
+    /// count*, and a spread estimator's expectation depends on the count — measured, `E+1 = 2`
+    /// reports 0.539 of `E+1 = 32`'s spread in near-field and 0.131 in `far`. `within_pooled`
+    /// needs every copy, not just the nominal, to hold the count fixed while the extent moves.
+    pub keep_copy_shapes: bool,
+    /// Record each copy's `shape_vec` at every sync boundary, for the §5 temporal
+    /// accumulators. Off by default; reduced and dropped inside one footprint's evaluation.
+    pub keep_boundary_shapes: bool,
+    /// Also run the nominal copy through the Benettin/diffusion accumulators, for the
+    /// production colouring's lightness field. `None` skips it entirely.
+    ///
+    /// **Off by default and expensive**: it is a second, fixed-step, unregularised march at
+    /// `dt` alongside the AZ one, so at `t = 13, dt = 1e-4` it is 130,000 steps against AZ's
+    /// few thousand. Only the nominal copy is run — FTLE is a per-point scalar, not an
+    /// ensemble statistic — so the cost is per footprint, not per copy.
+    ///
+    /// It is the **unregularised** integrator, so the result is only trustworthy away from a
+    /// close approach. `d_min` from the AZ march is the column to read beside it.
+    pub ftle: Option<crate::physics::ftle::FtleOpts>,
+    /// Fixed step for the FTLE march. The reference's `1e-4`.
+    pub ftle_dt: f64,
     /// Maximum refinement passes. **Bounded on purpose, and not a scheduler**: each pass is
     /// one extra evaluation of a shrinking flagged subset, with no tree and no state carried
     /// between pixels.
@@ -87,6 +122,12 @@ impl Default for EnsembleCfg {
             refine_threshold: 10.0,
             refine_eta_factor: 0.25,
             refine_max_passes: 3,
+            keep_copy_outcomes: false,
+            keep_copy_shapes: false,
+            keep_boundary_shapes: false,
+            ftle: None,
+            ftle_dt: 1e-4,
+            decode_path: Path::DirectF64,
         }
     }
 }
@@ -227,7 +268,89 @@ pub struct PixelOut {
     pub energy_drift_max_coarse: f64,
     /// Whether the second pass ran on this pixel.
     pub refined: bool,
+
+    /// Every copy's packed `(state, detail)`, in copy order. Empty unless
+    /// [`EnsembleCfg::keep_copy_outcomes`] is set.
+    ///
+    /// **This is the SSAA input, and it is not `spread_event`.** The `E+1` copies serve two
+    /// jobs that must not be confused: `spread_*` is a *disagreement* statistic and drives
+    /// scheduling; resolve is an *average* and drives display. A pixel where the copies split
+    /// 4/4 has a large spread and a blended colour, and neither number substitutes for the
+    /// other.
+    pub copy_outcomes: Vec<u8>,
+
+    /// The **nominal copy's event class** at the final sync boundary: the identity of its
+    /// currently-tightest pair, or `TERMINAL_TAG + terminal` once it has stopped.
+    ///
+    /// One byte, always retained, and it exists so a *between*-footprint event statistic can
+    /// be built without reinstating a quantity the project has already rejected. The obvious
+    /// implementation of `between_event` is `spread_event` over the `N^2` footprints'
+    /// [`Self::outcome`] — and that is **the terminal outcome**, which is terminal-grain and
+    /// inverts under lockstep: early in the march nothing has terminated, every footprint
+    /// agrees, and the field reports maximum confidence at exactly the playhead where least is
+    /// known. The event class is defined at every playhead. Building the between-footprint arm
+    /// on `outcome` would be that regression at a new level, so the class is carried instead.
+    pub event_class: u8,
+
+    /// Integrator substeps summed over the `E+1` copies — the cost side of a cost-aware
+    /// priority. `AzOut::steps` was computed on every march and never read; ranking by
+    /// `spread / cost` only pays if the cost distribution is wide, and this is what says
+    /// whether it is.
+    pub total_substeps: u64,
+
+    /// Every copy's `shape_vec`, in copy order. Empty unless
+    /// [`EnsembleCfg::keep_copy_shapes`] is set.
+    ///
+    /// The input to `within_pooled` — the within-footprint arm evaluated at the *same* sample
+    /// count as the between-footprint arm, so the two can be differenced without the
+    /// small-sample bias standing in for a scale effect.
+    pub copy_shapes: Vec<[f64; 3]>,
+
+    // -----------------------------------------------------------------------------------
+    // §5 — the temporal accumulators, shape arm.
+    //
+    // **The event arm already has all three**, contrary to the brief: `spread_event_max` is a
+    // running max over boundaries, `t_spread_event` is a first-divergence time that is NaN
+    // rather than `t_max` when it never fires, and `spread_event_latched` is the
+    // persistence-guarded latch. What was missing is the CONTINUOUS arm, below.
+    //
+    // All three are `NaN` unless `EnsembleCfg::keep_boundary_shapes` is set — never 0, which
+    // would read as "no divergence" on a quantity that was not measured.
+    // -----------------------------------------------------------------------------------
+    /// Running max of `spread_shape` over every boundary up to the playhead.
+    ///
+    /// Empirically justified rather than assumed: the shape spread was observed to **fall 6x**
+    /// between `t = 6` and `t = 8` in one region, so an instantaneous read genuinely misses
+    /// divergence that has already happened. Max-updated, never decayed.
+    pub running_max_divergence: f64,
+    /// OLS slope of `spread_shape` against boundary time — is divergence still growing at the
+    /// playhead, or has it saturated? NaN below two boundaries.
+    pub divergence_trend: f64,
+    /// First boundary time at which `spread_shape` crosses [`DIVERGENCE_TRIGGER`] of its
+    /// achievable maximum; **NaN if it never does** — not `t_max`, which would be
+    /// indistinguishable from crossing at the last boundary.
+    ///
+    /// **The one signal that cannot saturate.** Every instantaneous spread saturates once the
+    /// copies fill the accessible space, and then reports `lambda ~ 0` for the *most* chaotic
+    /// regions — the inversion this project has now met three times. A crossing time cannot do
+    /// that.
+    pub first_divergence_t: f64,
+
+    /// Benettin FTLE of the **nominal** copy, `NaN` unless `EnsembleCfg::ftle` is set.
+    pub ftle: f64,
+    /// Slope of `log(inertia)` against `t` for the nominal copy, `NaN` unless enabled.
+    pub diffusion: f64,
+    /// Renormalisations completed. **Assert this is nonzero before reading `ftle`**: without
+    /// renormalisation the shadow saturates and the estimator reports `lambda ~ 0` for the most
+    /// chaotic regions, which is the inversion rather than a small error.
+    pub ftle_renorm: u64,
 }
+
+/// Fraction of `spread_shape`'s achievable maximum that counts as diverged.
+///
+/// `spread_shape` is a mean chord distance halved, so it is bounded by 1 and this is an
+/// absolute fraction of a known ceiling rather than a tuned constant.
+pub const DIVERGENCE_TRIGGER: f64 = 0.1;
 
 /// Consecutive boundaries a disagreement must survive before the latch counts it.
 ///
@@ -268,16 +391,22 @@ pub fn evaluate<T: Real>(slice: &Slice, idx: usize, cfg: &EnsembleCfg) -> PixelO
 
 /// The single pass. `eta` is explicit so the refinement pass can differ from `cfg.eta`.
 pub fn evaluate_at<T: Real>(slice: &Slice, idx: usize, cfg: &EnsembleCfg, eta_v: f64) -> PixelOut {
-    let m = burrau::masses::<T>();
-    let copies = jitter::copies_with::<T>(
-        slice, idx, cfg.n_extra, cfg.jitter_frac, cfg.seed, cfg.jitter_scheme,
+    let copies = jitter::copies_with_path::<T>(
+        slice, idx, cfg.n_extra, cfg.jitter_frac, cfg.seed, cfg.jitter_scheme, cfg.decode_path,
     );
     let n = copies.len();
+
+    // **Masses come from the decode, not from a global.** They used to be `burrau::masses()`
+    // read here; four of the five chart families vary them. `m` is the NOMINAL copy's, used for
+    // every whole-footprint statistic; per-copy masses are used where a copy is integrated or
+    // its energy taken, because on a mass chart two jittered copies are two different systems.
+    let m = copies[0].m;
 
     let t_max = T::lit(cfg.t_max);
     let eta = T::lit(eta_v);
 
     let base = AzOpts::<T> {
+        keep_boundary_shapes: cfg.keep_boundary_shapes,
         forced_refs: None,
         lc_stable: cfg.lc_stable,
         r_coll_frac: T::lit(cfg.r_coll_frac),
@@ -286,7 +415,8 @@ pub fn evaluate_at<T: Real>(slice: &Slice, idx: usize, cfg: &EnsembleCfg, eta_v:
 
     // The nominal copy first: its reference-body choices are what the shared policy hands to
     // the others.
-    let nominal = az::integrate_az_opts(copies[0], &m, t_max, cfg.n_sync, eta, cfg.max_steps, &base);
+    let nominal =
+        az::integrate_az_opts(copies[0].s, &copies[0].m, t_max, cfg.n_sync, eta, cfg.max_steps, &base);
     let nominal_refs = nominal.refs.clone();
 
     let mut outs = Vec::with_capacity(n);
@@ -297,14 +427,14 @@ pub fn evaluate_at<T: Real>(slice: &Slice, idx: usize, cfg: &EnsembleCfg, eta_v:
             RefPolicy::PerCopy => None,
         };
         outs.push(az::integrate_az_opts(
-            *c, &m, t_max, cfg.n_sync, eta, cfg.max_steps,
+            c.s, &c.m, t_max, cfg.n_sync, eta, cfg.max_steps,
             &AzOpts { forced_refs: forced, ..base },
         ));
     }
 
     let e0: Vec<T> = copies
         .iter()
-        .map(|c| energy::energy(&c.r, &c.v, &m, T::zero()))
+        .map(|c| energy::energy(&c.s.r, &c.s.v, &c.m, T::zero()))
         .collect();
     let et: Vec<T> = outs
         .iter()
@@ -343,6 +473,67 @@ pub fn evaluate_at<T: Real>(slice: &Slice, idx: usize, cfg: &EnsembleCfg, eta_v:
     let per_boundary: Vec<f64> = (0..cfg.n_sync)
         .map(|k| stats::spread_event::<T>(&ev_at(k)).to_f64().unwrap())
         .collect();
+    // ---- §5, shape arm: per-boundary spread over the copies ----
+    //
+    // Ragged by construction: copies terminate at different boundaries under `stop_on_event`,
+    // so a copy's record is short and its LAST recorded shape is carried forward. Truncating to
+    // the shortest instead would silently discard the boundaries where the surviving copies are
+    // doing the diverging, which is the whole quantity.
+    let (t_run_max, t_trend, t_first_div) = if cfg.keep_boundary_shapes {
+        let bs: Vec<&[[T; 3]]> = outs.iter().map(|o| o.boundary_shapes.as_slice()).collect();
+        let n_b = bs.iter().map(|b| b.len()).max().unwrap_or(0);
+        let mut series: Vec<(f64, f64)> = Vec::with_capacity(n_b);
+        for k in 0..n_b {
+            let at: Vec<[T; 3]> = bs
+                .iter()
+                .filter_map(|b| if b.is_empty() { None } else { Some(b[k.min(b.len() - 1)]) })
+                .collect();
+            if at.len() < 2 {
+                continue;
+            }
+            let t = cfg.t_max * (k + 1) as f64 / n_b as f64;
+            series.push((t, shape::spread_shape(&at).to_f64().unwrap()));
+        }
+        if series.is_empty() {
+            (f64::NAN, f64::NAN, f64::NAN)
+        } else {
+            let run_max = series.iter().map(|p| p.1).fold(0.0f64, f64::max);
+            let first = series
+                .iter()
+                .find(|p| p.1 >= DIVERGENCE_TRIGGER)
+                .map(|p| p.0)
+                .unwrap_or(f64::NAN);
+            let trend = if series.len() >= 2 {
+                let n = series.len() as f64;
+                let (st, sy): (f64, f64) =
+                    series.iter().fold((0.0, 0.0), |a, p| (a.0 + p.0, a.1 + p.1));
+                let (stt, sty): (f64, f64) = series
+                    .iter()
+                    .fold((0.0, 0.0), |a, p| (a.0 + p.0 * p.0, a.1 + p.0 * p.1));
+                let den = n * stt - st * st;
+                if den.abs() > 1e-12 { (n * sty - st * sy) / den } else { f64::NAN }
+            } else {
+                f64::NAN
+            };
+            (run_max, trend, first)
+        }
+    } else {
+        (f64::NAN, f64::NAN, f64::NAN)
+    };
+
+    // The lightness field, nominal copy only. A separate integrator with a separate reference
+    // (`tb_ftle.py` sits on `tb.py`), cross-checked at 8.88e-16 -- see `tests/xcheck.rs`.
+    let ftle_out = cfg.ftle.as_ref().map(|o| {
+        crate::physics::ftle::integrate_full::<T>(
+            copies[0].s,
+            &m,
+            T::lit(cfg.t_max),
+            T::lit(cfg.ftle_dt),
+            o,
+            &crate::physics::ftle::unit_perturbation::<T>(cfg.seed),
+        )
+    });
+
     let sp_event = per_boundary[cfg.n_sync - 1];
     let sp_event_max = per_boundary.iter().cloned().fold(0.0f64, f64::max);
     let n_disagree = per_boundary.iter().filter(|&&x| x > 0.0).count() as u16;
@@ -475,5 +666,28 @@ pub fn evaluate_at<T: Real>(slice: &Slice, idx: usize, cfg: &EnsembleCfg, eta_v:
         error_ratio_coarse: ratio.to_f64().unwrap(),
         energy_drift_max_coarse: drift_max,
         refined: false,
+        copy_outcomes: if cfg.keep_copy_outcomes { packed.clone() } else { Vec::new() },
+        event_class: stats::event_class_at(&outs[0].tight, packed[0], cfg.n_sync - 1),
+        total_substeps: outs.iter().map(|o| o.steps as u64).sum(),
+        copy_shapes: if cfg.keep_copy_shapes {
+            shapes
+                .iter()
+                .map(|s| {
+                    [
+                        s[0].to_f64().unwrap(),
+                        s[1].to_f64().unwrap(),
+                        s[2].to_f64().unwrap(),
+                    ]
+                })
+                .collect()
+        } else {
+            Vec::new()
+        },
+        running_max_divergence: t_run_max,
+        divergence_trend: t_trend,
+        first_divergence_t: t_first_div,
+        ftle: ftle_out.map(|o| o.ftle.to_f64().unwrap()).unwrap_or(f64::NAN),
+        diffusion: ftle_out.map(|o| o.diffusion.to_f64().unwrap()).unwrap_or(f64::NAN),
+        ftle_renorm: ftle_out.map(|o| o.n_renorm).unwrap_or(0),
     }
 }

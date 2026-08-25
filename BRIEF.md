@@ -408,9 +408,26 @@ Three experiments become possible. **Do not build machinery for them; just make 
 carries the fields.**
 
 1. **The refinement criterion, without a scheduler.** The criterion compares a parent quad against its
-   children — and **a fine uniform grid already contains every coarser scale by aggregation.**
-   Aggregate 2×2 blocks to synthesise the parent, compare against the children, and the whole
-   exponent machinery is testable with no quadtree at all.
+   children, and the exponent machinery is testable with no quadtree at all — **but not by
+   aggregation.**
+
+   An earlier version of this section said "a fine uniform grid already contains every coarser scale
+   by aggregation". **That is true of the positions and false of the ensemble.** Copy offsets are a
+   *fixed* prefix scaled by cell width (§3), so a pooled 2×2 block is four **exact repeats** of one
+   offset pattern at four cell centres, while a true parent at 2× cell width carries offsets scaled to
+   **its own** width — a wider footprint. Aggregation increases *spatial* coverage without increasing
+   *ensemble* diversity, so the pooled parent is not the parent.
+
+   Measured on `alpha` for `sigma_E(0)`, whose true value is exactly 1.0: the pooled exponent is
+   **+38.6% high at `E+1 = 8`**, falling as `1/E` (+66.8% at 4, +6.6% at 32), while the true
+   two-resolution exponent is **flat at +2.3%** for every `E`. Pooling also *understates* the per-quad
+   scatter in `alpha_shape` by about 2× (interdecile 0.63 pooled against 1.33 true).
+
+   **So render at two actual resolutions — `N` and `N/2` — and compare like with like.** More
+   expensive, entirely straightforward, and it removes a systematic error instead of calibrating one.
+   Still no quadtree and still no scheduler.
+
+   **Any `alpha` measured by pooling carries this error, including in the prior NumPy work.**
 2. **The f32 question, natively.** There is an unresolved dispute about whether AZ is usable in f32.
    One measurement says raw energy drift is fine (f32 AZ *beats* softened leapfrog at some horizons);
    another says the ensemble-spread diagnostic breaks early. The hypothesis is §3's reference-switching

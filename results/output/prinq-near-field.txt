@@ -1,0 +1,22 @@
+    Finished `release` profile [optimized] target(s) in 0.06s
+     Running `target/release/prinq --region near-field --budget 8000 --tau 1e-4 --alpha-hi 0.2 --alpha-band 0.4 --overlay 512 --out results/sched-near-field`
+region near-field half=0.05 body=0  N=8 copies=8  precision=f64
+policy=alpha order=spread agg=median tau=0.0001 alpha_hi=0.2 alpha_lo=0.08000000000000002 sib_tau=0.5 bootstrap=2
+
+  4617 quads computed of a 8000 budget, 295488 footprints, 2363904 trajectories
+  206.80 s wall, 44.8 ms/quad
+  13 iterations, 3463 leaves
+
+  leaf decisions:  split 0  floor 609  keep 2854  precision_floor 0  max_level 0  budget 0
+  budget exhausted: false
+
+  depth histogram: 2:3 3:28 4:64 5:65 6:108 7:331 8:661 9:1092 10:621 11:450 12:40
+  leaves per iteration: 1 4 16 55 127 223 412 844 1579 2536 3088 3433 3463
+
+wrote results/sched-near-field.tree
+wrote results/sched-near-field_tree_outcome.png and results/sched-near-field_tree_spread.png (512x512 base)
+spread base log scaled over [2.145e-5, 1.429e-1]; the tree tracks spread, not
+outcome labels, so that is the base the tree should be checked against.
+
+The tree and the decisions are the output; the image is a diagnostic. A threshold
+chosen because the picture looked right is an arbitrary constant — sweep, do not tune.

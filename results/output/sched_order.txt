@@ -1,0 +1,21 @@
+    Finished `release` profile [optimized] target(s) in 0.06s
+     Running `target/release/examples/sched_order 1500 1e-4 0.2`
+budget 1500 quads, tau=1e-4, alpha_hi=0.2, N=8, t=13, f64
+
+**Order can only matter when the budget BINDS.** If the descent terminates before the
+cap, every ordering computes the same set and a jaccard of 1.0000 is structural, not
+a result. The budget-exhausted column says whether this run could see anything.
+
+        region         order    quads   leaves  depth   cap hit vs spread   jaccard
+           far        spread       21       16      2     false         0    1.0000
+           far   spread_area       21       16      2     false         0    1.0000
+           far      shuffled       21       16      2     false         0    1.0000
+    near-field        spread     1497     1123      8      true         0    1.0000
+    near-field   spread_area     1497     1123      8      true         0    1.0000
+    near-field      shuffled     1497     1123      8      true       600    0.5784
+ deep interior        spread       29       22      4     false         0    1.0000
+ deep interior   spread_area       29       22      4     false         0    1.0000
+ deep interior      shuffled       29       22      4     false         0    1.0000
+
+'vs spread' is the symmetric difference of the leaf sets against the spread-ordered
+run; jaccard is their overlap. 1.0000 means the order made no difference at all.

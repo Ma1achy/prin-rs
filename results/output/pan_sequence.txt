@@ -1,5 +1,3 @@
-    Finished `release` profile [optimized] target(s) in 0.07s
-     Running `target/release/examples/pan_sequence 9 20000 1024`
 pan across near-field, 9 steps, budget 20000, viewport 1024^2.
 Camera::veto does not read cx/cy, so panning changes NO scheduling decision here.
 `covers` is a predicate the scheduler never consults; nothing is evicted.

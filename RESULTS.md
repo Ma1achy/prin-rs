@@ -1928,26 +1928,35 @@ event histogram is dominated by `collision d0=361886, d1=234807, d2=234812`. Car
 ## 14. The threshold, and the mask it saturated
 
 The refinement criterion was diagnosed as *"an always-split rule wearing a threshold's clothing"*.
-Re-derived here over **all 69 committed `.prnq` dumps, 89,088 leaves**, by
+Re-derived here over **all 69 committed `.prnq` dumps, 92,880 leaves**, by
 `examples/threshold_diagnosis.rs` — no integration, the dumps carry every quad's spread and
 decision already.
 
-### 14.1 `tau` sits at the 0.4th percentile of the distribution it is meant to cut
+### 14.1 `tau` sits in the bottom few percent of the distribution it is meant to cut
 
-Pooled leaf spread: p1 `1.47e-4`, median `6.61e-4`, p99 `7.87e-3`. Against that,
+**Both scopes, because they differ and the first draft of this section mixed them.** It quoted the
+`charts/`-only figures under a heading that said "all 69 dumps" — the mislabelled-denominator
+fault this same section warns about, committed inside it.
 
-| `tau` | % of quads exceeding | percentile of `tau` |
+| | `charts/` only (26 dumps, 75,359 leaves) | whole corpus (69 dumps, 92,880 leaves) |
 |---|---|---|
-| **1e-4 (shipped in every run)** | **99.6** | **0.4** |
-| 3e-4 | 88.4 | 11.6 |
-| 1e-3 | 29.1 | 70.9 |
-| 3e-3 | 3.1 | 96.9 |
-| 1e-2 | 0.9 | 99.1 |
+| p1 / median / p99 | `1.47e-4` / `6.61e-4` / `7.87e-3` | `2.69e-5` / `6.73e-4` / `9.82e-3` |
+| **`tau = 1e-4`** | **99.6% exceed, 0.4th pct** | **95.7% exceed, 4.3rd pct** |
+| `3e-4` | 88.4%, 11.6 | 84.8%, 15.2 |
+| `1e-3` | 29.1%, 70.9 | 30.2%, 69.8 |
+| `3e-3` | 3.1%, 96.9 | 3.3%, 96.7 |
+| `1e-2` | 0.9%, 99.1 | 1.0%, 99.0 |
 
-The predicate is true for essentially every quad. The sweep ladder in `sched_sweep` and
-`sweep_screen` used to run `1e-8 … 1e-2`; the two lowest rungs measure the same always-split
-regime twice. It now runs `1e-4 … 1e-1` with `1e-6` retained as a **labelled degenerate control**,
-so the sweep shows the failure it corrects rather than merely avoiding it.
+The two agree from `1e-3` up and part company below it: the whole corpus carries the `vertical/`
+zoom ladder and `far`, whose spreads reach `4.26e-8`, so its lower tail is three orders deeper.
+**The conclusion is the same on either scope** — the predicate is true for 96–99.6% of quads and
+`tau` sits in the bottom few percent of its own distribution. Which scope a figure comes from is
+stated wherever one is quoted now.
+
+The sweep ladder in `sched_sweep` and `sweep_screen` used to run `1e-8 … 1e-2`. It now runs
+`1e-8 … 1e-1`: the top extended past the point where the predicate goes false everywhere, and
+**both** low rungs kept as labelled degenerate controls — for *different regions*. Dropping one of
+them was an error; see §14.10.
 
 ### 14.2 The failure has two sides, and that is the argument for rank
 
@@ -2384,6 +2393,18 @@ halved the apparent texel size at every level.
 
 ## 13. Reproducing any of this
 
+**Two of these commands were wrong, and only running them found it.** The `pan_sequence` line said
+`9 2000 512` where the committed dumps were made at `9 20000 1024`, and the `slice_gallery` line
+said `4000 … 512` against a committed `40000 … 1024`. Regenerating from the documented commands
+produced nineteen dumps that did not reproduce: nine at a tenth of the budget, and ten with an
+**identical tree and a different `decision` column** — 252 leaves moved from `MaxRelDepth` to
+`ScreenFloor` purely by the viewport. Same leaf count, different stop reason, which is this
+project's own standing lesson arriving through its documentation.
+
+A sample of eleven dumps had already reported "reproduces bitwise". Checking all sixty-nine is what
+caught it. **Verify a regeneration over the whole corpus, not a sample**, and diff the `decision`
+column specifically — it is the one that moves when a parameter is wrong while the tree is not.
+
 Every table above comes from a committed example. Raw output for all of them is in
 [`results/output/`](results/output/), the acceptance-gate and cross-check output is in
 [`results/tests/`](results/tests/), and the images and 64×64 raw dumps are in
@@ -2434,11 +2455,11 @@ Every table above comes from a committed example. Raw output for all of them is 
 | §10.5 sibling noise | `cargo run --release --example sibling_noise -- 5 3` |
 | §10.6 the FTLE cross-check | `cargo test --release --test xcheck -- --ignored ftle --nocapture` |
 | §10.7 the bivariate colouring | `cargo run --release --example bivariate_colour -- 5 8 13 1e-4` |
-| §10.8 panning | `cargo run --release --example pan_sequence -- 9 2000 512 near-field` |
+| §10.8 panning | `cargo run --release --example pan_sequence -- 9 20000 1024 near-field` |
 | §10.9 the two costings | `cargo run --release --example cost_and_anisotropy -- 5 8` |
 | the criterion gates | `cargo test --release --test criterion -- --nocapture` |
-| §10.9 the slice gallery | `cargo run --release --example slice_gallery -- 4000 1e-4 0.2 512` |
-| §12 the chart gallery, all 17 cases | `cargo run --release --example chart_gallery -- 40000 1e-4 0.2 1024` |
+| §10.9 the slice gallery | `cargo run --release --example slice_gallery -- 40000 1e-4 0.2 1024` |
+| §12 the chart gallery, all 26 cases | `cargo run --release --example chart_gallery -- 40000 1e-4 0.2 1024` |
 | §12 the decoder and preset gates | `cargo test --release --test charts -- --nocapture` |
 | §14 the threshold diagnosis | `cargo run --release --example threshold_diagnosis` |
 | §14.5-14.6 the hot rule swept | `cargo run --release --example hot_rule_sweep` |

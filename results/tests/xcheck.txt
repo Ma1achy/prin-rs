@@ -1,29 +1,13 @@
-    Finished `release` profile [optimized] target(s) in 0.26s
-     Running tests/xcheck.rs (target/release/deps/xcheck-4f9961c334e3ff44)
 
 running 4 tests
 
-=== az_t0p5 ===
-
 === az_t13 ===
+
+=== az_t0p5 ===
 wrote xcheck_out/ref_algebra.tsv: 256 rows
 wrote xcheck_out/ref_az_t0p5.tsv: 9 rows, n_sync=1, stepped-vs-monolithic dev=0.00e+00
 wrote xcheck_out/rs_az_t0p5.tsv: 9 rows, n_sync=1
 wrote xcheck_out/rs_algebra.tsv: 256 rows
-column               max abs       max rel  argmax row
-------------------------------------------------------
-energy             3.553e-15     5.001e-16         140
-d01                0.000e+00     0.000e+00          -1
-d02                0.000e+00     0.000e+00          -1
-d12                0.000e+00     0.000e+00          -1
-inertia            2.842e-14     2.200e-16           1
-hyperradius        4.441e-16     2.539e-16         198
-n0                 0.000e+00     0.000e+00          -1
-n1                 0.000e+00     0.000e+00          -1
-n2                 0.000e+00     0.000e+00          -1
-------------------------------------------------------
-tolerances: rel 1.0e-15  or  abs 1.0e-15
-PASS
 column               max abs       max rel  argmax row
 ------------------------------------------------------
 r0x                0.000e+00     0.000e+00          -1
@@ -48,6 +32,20 @@ tolerances: rel 1.0e-13  or  abs 1.0e-13
 PASS
 
 === az_t1 ===
+column               max abs       max rel  argmax row
+------------------------------------------------------
+energy             3.553e-15     5.001e-16         140
+d01                0.000e+00     0.000e+00          -1
+d02                0.000e+00     0.000e+00          -1
+d12                0.000e+00     0.000e+00          -1
+inertia            2.842e-14     2.200e-16           1
+hyperradius        4.441e-16     2.539e-16         198
+n0                 0.000e+00     0.000e+00          -1
+n1                 0.000e+00     0.000e+00          -1
+n2                 0.000e+00     0.000e+00          -1
+------------------------------------------------------
+tolerances: rel 1.0e-15  or  abs 1.0e-15
+PASS
 test algebra_matches_the_reference ... ok
 wrote xcheck_out/ref_az_t1.tsv: 9 rows, n_sync=2, stepped-vs-monolithic dev=0.00e+00
 wrote xcheck_out/rs_az_t1.tsv: 9 rows, n_sync=2
@@ -178,5 +176,5 @@ Judged on absolute agreement; relative figures are inflated where a
 coordinate passes near zero. See tools/xcheck/horizon.py for the growth curve.
 test long_horizon_t13 ... ok
 
-test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.90s
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.75s
 

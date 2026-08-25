@@ -252,7 +252,11 @@ fn main() {
     println!();
 
     // ---- 2. the saturation this causes ----------------------------------------------
-    println!("hot mask, ABSOLUTE rule, over {} leaves:", hot_sat.1);
+    // **The denominator is printed with the statistic, not once at the top.** Before this PR the
+    // corpus was mixed-version -- `vertical/` was still PRNQ v1 and carries none of the hot-mask
+    // columns -- so this ran over a strict subset of the leaves the pooled spread above used, and
+    // two numbers side by side had different denominators without saying so.
+    println!("hot mask, ABSOLUTE rule, over {} of {} pooled leaves:", hot_sat.1, pooled.len());
     println!("  n_hot == n_footprints : {:.1}%", 100.0 * hot_sat.0 as f64 / hot_sat.1 as f64);
     println!("  n_components <= 1     : {:.1}%", 100.0 * comp_one.0 as f64 / comp_one.1 as f64);
     println!("  ^ one blob covering the whole quad, everywhere. The spatial fields cannot");

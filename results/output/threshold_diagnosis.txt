@@ -14,9 +14,9 @@ pooled leaf spread: p1 2.689e-5  median 6.729e-4  p99 9.824e-3
   ^ the shipped value is the first row. A predicate true for 99.6% of quads is not
     selecting; it is an always-split rule. The interesting range starts at 1e-3.
 
-hot mask, ABSOLUTE rule, over 89088 leaves:
-  n_hot == n_footprints : 90.2%
-  n_components <= 1     : 95.0%
+hot mask, ABSOLUTE rule, over 92880 of 92880 pooled leaves:
+  n_hot == n_footprints : 87.1%
+  n_components <= 1     : 92.6%
   ^ one blob covering the whole quad, everywhere. The spatial fields cannot
     discriminate as thresholded, so measuring them before this is fixed returns
     a null that was guaranteed.

@@ -596,8 +596,10 @@ there. Nothing has collapsed — the chart simply does not move that quantity. T
 give the same count, and the guard has to measure what the chart actually varies.
 
 **A fixed threshold fails on BOTH sides, and that is the argument for rank.** `tau_display = 1e-4`
-sits at the **0.4th percentile** of the pooled leaf-spread distribution (89,088 leaves, median
-`6.61e-4`), so 99.6% of quads clear it and the tree is uniform at **max depth**. The other side is
+sits at the **0.4th percentile** of the `charts/` leaf-spread distribution (75,359 leaves, median
+`6.61e-4`) and the **4.3rd** of the whole corpus (92,880 leaves) — **state which scope**, because
+the first write-up quoted the first under a heading naming the second. So 95.7-99.6% of quads
+clear it and the tree is uniform at **max depth**. The other side is
 in the same corpus: where the bulk sits *below* `tau` everything keeps and the tree is uniform at
 **depth 2** — 16 leaves against a complete 4096. **16 of the 18 trees the camera veto does not bind
 are stopped that way** (`far`, `deep interior`, every deep zoom step; medians `9.45e-5` down to
@@ -763,6 +765,24 @@ after a zoom-out is ~0"* presupposes a tree persisting across frames, and the sc
 a zoomed-out descent computes 537 quads against a zoomed-in 597, and **zero** of its boxes are
 absent from the zoomed-in run — so a persistent tree would compute none of them. Say that, rather
 than the claim the build cannot support.
+
+**A DOCUMENTED REPRODUCTION COMMAND CAN BE WRONG, AND ONLY RUNNING IT FINDS OUT.** RESULTS §13's
+lines for `pan_sequence` and `slice_gallery` named `9 2000 512` and `4000 ... 512` where the
+committed dumps were made at `9 20000 1024` and `40000 ... 1024`. Nineteen dumps failed to
+reproduce: nine at a tenth of the budget, and ten with an **identical tree and a different
+`decision` column** -- 252 leaves moved from `MaxRelDepth` to `ScreenFloor` purely by the viewport.
+Same leaf count, different stop reason. **Verify a regeneration over the WHOLE corpus, never a
+sample** -- eleven dumps had already reported "reproduces bitwise" -- and diff `decision`
+specifically, because it is the column that moves when a parameter is wrong and the tree is not.
+
+**The corpus was mixed-version and a corpus-wide statistic silently ran on a subset.** `vertical/`
+was PRNQ **v1** (24 columns, no hot-mask block) while `charts/` and `criterion/` were v2, so any
+statistic over the mask columns covered the v2 dumps only -- and two numbers printed side by side
+had different denominators without saying so. Measured both ways: `tau = 1e-4` is at the **0.4th
+percentile of `charts/`** (75,359 leaves) and the **4.3rd of the whole corpus** (92,880); the mask
+saturates on **98.8%** of chart leaves and **87.1%** corpus-wide. The conclusion survives either
+scope, which is exactly why the mislabelling was survivable and had to be caught by arithmetic
+rather than by a wrong answer. **State the scope with every figure.**
 
 ---
 

@@ -152,8 +152,10 @@ pub fn layout(mask: &[bool], n: usize) -> Layout {
 /// So the absolute rule keeps `frac_above_tau_*` exactly as it was, and the relative rule is added
 /// beside it to desaturate the shape statistics. Measured cause of the saturation: with
 /// `tau_display = 1e-4` sitting at the **0.4th percentile** of the observed spread distribution,
-/// `n_hot_within == N^2` in **98.8%** of the 75,359 committed leaves and `n_components == 1` in
-/// **99.5%** of them.
+/// `n_hot_within == N^2` in **98.8%** of the 75,359 committed `charts/` leaves (**87.1%** over
+/// the whole 92,880-leaf corpus) and `n_components == 1` in **99.6%** (**92.6%**). Two scopes,
+/// both stated: the chart dumps are the saturated end and the zoom ladders the unsaturated one,
+/// and quoting one under the other's name is how this got written up wrong the first time.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum HotRule {
     /// Above a fixed level. The shipped rule, and the cause of the saturation above.

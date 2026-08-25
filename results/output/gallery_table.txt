@@ -1,6 +1,3 @@
-   Compiling prin-rs v0.1.0 (/Users/malachy/src/principia-rs-test)
-    Finished `release` profile [optimized] target(s) in 3.35s
-     Running `target/release/examples/gallery_table`
 What actually stopped each descent, read from the committed .prnq dumps.
 `max_rel_depth` and `screen` are CAMERA VETOES -- a quad stopped by one has not
 exercised the criterion, and the row's leaf count and alpha are facts about the cap.

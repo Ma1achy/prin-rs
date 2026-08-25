@@ -440,8 +440,10 @@ fn between(px: &[PixelOut], n: usize, tau: f64, hot_rule: HotRule) -> Between {
     //
     // The absolute pair keeps `frac_above_tau_*` and the `frac_hot_*` criteria untouched; the
     // relative pair is what desaturates the shape statistics. Measured on the committed corpus,
-    // the absolute mask reads `n_hot == N^2` in 98.8% of leaves and `n_components == 1` in
-    // 99.5%: one blob covering the whole quad, everywhere, which is no measurement at all.
+    // the absolute mask reads `n_hot == N^2` in 98.8% of the 75,359 `charts/` leaves and 87.1%
+    // over all 92,880: one blob covering the whole quad, nearly everywhere, which is no
+    // measurement at all. (Two scopes, both stated -- the chart dumps are the saturated end and
+    // the zoom ladders the unsaturated one.)
     let field_w: Vec<f64> = px.iter().map(|p| p.ensemble_spread).collect();
     let hot_w = spatial::hot_mask(&field_w, HotRule::AbsTau(tau));
     let hot_b = spatial::hot_mask(&dev, HotRule::AbsTau(tau));

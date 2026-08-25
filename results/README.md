@@ -154,6 +154,18 @@ together — the pair is the evidence, either alone is not.
 
 ## A note on the tree dumps and their version
 
+**The corpus was mixed-version before this PR and is uniform now.** `vertical/` was still
+**PRNQ v1** (24 columns, predating the between-arm and hot-mask block entirely); `charts/` and
+`criterion/` were v2 (48). Everything is **v3** (58) after the regeneration, and every v1 and v2
+column reproduced **bitwise** — verified by diffing the regenerated dumps against the versions at
+`HEAD`.
+
+That mixture had a consequence worth knowing about: a corpus-wide statistic over the hot-mask
+columns silently ran on the v2 dumps only, because the v1 records do not carry them. Two numbers
+printed side by side could therefore have different denominators without saying so. They do not
+now, and `examples/threshold_diagnosis.rs` prints its counts per statistic rather than once at the
+top.
+
 `.prnq` is **PRNQ v3** from this PR: the v2 record's 48 columns plus ten appended — the two
 **relative** hot-set layouts (`*_rel_within`, `*_rel_between`) and `grad_rms_within` /
 `grad_rms_between`. The header gained a `hot_rule=` token. New columns go at the end, so a

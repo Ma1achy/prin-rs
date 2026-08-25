@@ -34,10 +34,9 @@
 
 use prin_rs::camera::Camera;
 use prin_rs::ensemble::pixel::{EnsembleCfg, PixelOut};
-use prin_rs::grid::{self, Chart, Domain};
+use prin_rs::grid::{self, Domain};
 use prin_rs::output::colour::{self, Scalar};
 use prin_rs::output::{adaptive, apng, png, wire};
-use prin_rs::physics::decoder::Latent;
 use prin_rs::quad::{Agg, Decision, QuadTree};
 use prin_rs::render::Precision;
 use prin_rs::scheduler::{self, SchedCfg};
@@ -100,127 +99,8 @@ fn main() {
     // A base latent point. Deliberately not the origin: at z = 0 every sigmoid sits at 0.5 and
     // several coordinates would be at a symmetry point, which is exactly where a sign error
     // hides.
-    let z0 = Latent {
-        z_alpha: 0.35,
-        z_beta: -0.45,
-        z_q: [0.25, -0.15, 0.40, 0.05],
-        z_mu: [0.20, -0.30],
-    };
+    let cases = grid::gallery_cases();
 
-    // Twelve instances across all five families, **each carrying its own centre**.
-    //
-    // The centre is a property of the chart INSTANCE, not of its variant, and inferring it from
-    // the variant is how this example first failed: `Chart::plane_for_body` zeroes the varying
-    // body in `origin` and carries the whole position in `(u,v)`, so it is centred like
-    // `BodyPlane` at (1,3) -- while `slice_gallery`'s oblique planes carry the configuration in
-    // `origin` and are centred at zero. Centring the first at (0,0) sampled a box three units
-    // away and gave 29 quads against 549. The control caught it; the fix is to stop inferring.
-    // The latent chart's own natural half-width -- the reference UI's `Slice +/- 3.0e+0`, and
-    // the one number that was wrong in every committed preset image.
-    let ph = Chart::preset_shape().default_half();
-    let cases: Vec<(&str, Chart, f64, f64, f64)> = vec![
-        ("body_plane", Chart::BodyPlane, 1.0, 3.0, 0.05),
-        ("plane_00deg", Chart::plane_for_body(0), 1.0, 3.0, 0.05),
-        ("shape_sphere", Chart::shape_at_burrau(0.0), 0.0, 0.0, 0.05),
-        // The five named axis-aligned latent planes from the reference's table.
-        ("latent_shape", Chart::latent_axes(z0, 0, 1), 0.0, 0.0, 1.5),
-        ("latent_inner_p", Chart::latent_axes(z0, 2, 3), 0.0, 0.0, 1.5),
-        ("latent_outer_p", Chart::latent_axes(z0, 4, 5), 0.0, 0.0, 1.5),
-        ("latent_mass", Chart::latent_axes(z0, 6, 7), 0.0, 0.0, 1.5),
-        ("latent_mixed", Chart::latent_axes(z0, 0, 4), 0.0, 0.0, 1.5),
-        // Two oblique planes. The bases are recorded by `Chart::params` in every dump.
-        (
-            "latent_oblique_a",
-            Chart::latent_oblique(
-                z0,
-                [0.3, -1.2, 0.5, 0.9, -0.4, 0.1, 0.7, -0.6],
-                [1.1, 0.2, -0.8, 0.3, 0.6, -0.9, 0.15, 0.4],
-            ),
-            0.0,
-            0.0,
-            1.5,
-        ),
-        (
-            "latent_oblique_b",
-            Chart::latent_oblique(
-                z0,
-                [-0.7, 0.4, 1.0, -0.2, 0.55, 0.8, -0.35, 0.6],
-                [0.25, 1.3, -0.15, 0.7, -0.9, 0.3, 0.85, -0.4],
-            ),
-            0.0,
-            0.0,
-            1.5,
-        ),
-        ("burrau_nu_k", Chart::BurrauFamily { nu_lo: 0.05, nu_hi: 0.95, k_max: 4.0, gamma_k: 1.5 }, 0.5, 0.5, 0.45),
-        (
-            "invariant_lz_k",
-            Chart::Invariant { base: z0, k_max: 4.0, gamma_k: 1.5, report_e: false },
-            0.5,
-            0.5,
-            0.45,
-        ),
-        (
-            "mass_simplex",
-            Chart::MassSimplex { z_alpha: 0.35, z_beta: -0.45, z_q: [0.25, -0.15, 0.40, 0.05], margin: 0.02 },
-            0.5,
-            0.5,
-            0.45,
-        ),
-        // ---- The GLSL reference's four default presets ----------------------------------
-        //
-        // `Ma1achy/principia-ii`, `src/state.ts:71-76`, with the bases built by
-        // `Chart::preset_*` rather than written out here -- the `shape_pl` literal appeared in
-        // three places and was wrong in all three, so a correction has to land once.
-        //
-        // These are **new cases beside** the `latent_*` rows above rather than replacements:
-        // those sit at an off-origin `z0` deliberately, so no sigmoid rests at its symmetry
-        // point. These sit at `z0 = 0` for the opposite reason -- that point decodes to the
-        // **equilateral Lagrange configuration**, which is what makes the picture something a
-        // person can recognise rather than a field to be tabulated.
-        //
-        // **The window is 3.0, from the reference UI's `Slice +/- 3.0e+0`.** It shipped at 1.0,
-        // which is a 3x crop on the middle of the picture:
-        //
-        //     half = 1.0  ->  alpha in [0.446, 1.125], beta in [0.845, 2.297]  =  46% of azimuth
-        //     half = 3.0  ->  alpha in [0.120, 1.451], beta in [0.149, 2.993]  =  90% of azimuth
-        //
-        // In the GLSL the fractal core is a small disk inside large smooth regions; at half = 1.0
-        // it fills the frame. Same structure, wrong crop -- which is exactly why the port read as
-        // "similar but not the same". The number comes from `Chart::default_half()` and not from
-        // a literal here, because one shared default silently meant two different things and that
-        // is how this got through.
-        //
-        // Centre `(0,0)` with that half reproduces the reference's `z0 + (2u-1)*q1 + (2v-1)*q2`
-        // over `(u,v) in [0,1]^2` exactly: `decode_state` is `z0 + u*q1 + v*q2` and the slice
-        // already supplies the signed box, so the factor of two lives in the camera and not in a
-        // second place where it could hide.
-        //
-        // The images are **transposed relative to the GLSL** -- it puts `beta` at index 0 and
-        // this module uses the spec's `(z_alpha, z_beta)` order. See `decoder.rs`'s module
-        // header. That is faithfulness, not a bug.
-        ("preset_shape", Chart::preset_shape(), 0.0, 0.0, ph),
-        ("preset_prho", Chart::preset_prho(), 0.0, 0.0, ph),
-        ("preset_plambda", Chart::preset_plambda(), 0.0, 0.0, ph),
-        ("preset_shape_pl", Chart::preset_shape_pl(), 0.0, 0.0, ph),
-        // **The crop control.** The same four charts, the same bases, one number changed. A
-        // plausible explanation for why the port looked wrong becomes a demonstrated one only
-        // if the narrow window reproduces the old picture and the wide one does not -- and
-        // these are the rows that say so.
-        ("preset_shape_h1", Chart::preset_shape(), 0.0, 0.0, 1.0),
-        ("preset_prho_h1", Chart::preset_prho(), 0.0, 0.0, 1.0),
-        ("preset_plambda_h1", Chart::preset_plambda(), 0.0, 0.0, 1.0),
-        ("preset_shape_pl_h1", Chart::preset_shape_pl(), 0.0, 0.0, 1.0),
-        // **The extent control on the pre-existing latent rows.** §12.4's standing result is
-        // that a chart's tameness is set by WHICH COORDINATES it varies, not by where it is
-        // centred. Those rows were all measured at `half = 1.5`, so the claim has never been
-        // tested against extent. These twins give it a second axis to survive; if it turns out
-        // to be extent-conditional that is a more interesting result than the original.
-        ("latent_shape_h3", Chart::latent_axes(z0, 0, 1), 0.0, 0.0, ph),
-        ("latent_inner_p_h3", Chart::latent_axes(z0, 2, 3), 0.0, 0.0, ph),
-        ("latent_outer_p_h3", Chart::latent_axes(z0, 4, 5), 0.0, 0.0, ph),
-        ("latent_mass_h3", Chart::latent_axes(z0, 6, 7), 0.0, 0.0, ph),
-        ("latent_mixed_h3", Chart::latent_axes(z0, 0, 4), 0.0, 0.0, ph),
-    ];
 
     println!(
         "budget {budget}, tau={tau:e}, alpha_hi={alpha_hi}, N=8, E+1={}, t={}, f64, {res}^2, \

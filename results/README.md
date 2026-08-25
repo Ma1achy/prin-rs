@@ -486,6 +486,64 @@ Four things to know before reading any of them, all in RESULTS §12:
   its symmetry point. The presets are at the origin for the opposite reason. Compare within a
   chart, never across.
 
+## `refinement/` — the new mechanism, animated
+
+**104 APNGs, three views per chart, from `examples/refinement_animation.rs`.** These are the only
+artefacts that show the *new* refinement mechanism working. `animated/<case>_levels.png` truncates
+a descent **by depth**, which was the right picture when the criterion was a stop condition — the
+tree grows level by level and the animation shows how deep it got.
+
+**It cannot show this mechanism at all.** The criterion is now a priority ordering over a ranked
+frontier, and in a depth ladder a quad refined last and a quad never refined sit at the same depth
+in every frame. So these three advance the three things that actually vary.
+
+### `<case>_budget.png`, `<case>_budget_wire.png` — the frontier being spent
+
+One frame per descent round: rank the frontier, spend the top `k`, repeat. Reconstructed from a
+**single** descent, because every `Quad` carries the `iteration` it was computed in — one run, not
+one per frame. Read the colour and wire twins together, as with the level ladders: only the wire
+says whether the tree cut around a structure or through it.
+
+### `<case>_oldnew.png` — the shipped criterion against the measured-best one
+
+Two panels at the same budget, `within/median` **left** and `frac_hot_between/median` **right**,
+both under the ranked frontier. §16 measured the second beating the random band in all three
+targets and reaching `0.07038` against greedy's `0.06881` on `preset_shape`, while the first is
+beaten by random at every budget — on **31 distinct values against 5418**.
+
+### `<case>_kfrac.png` — the demotion mechanism itself
+
+Four frames: `k_frac` 0.25, 0.5, 0.75, 1.0. The last is the **control** — it refines the whole
+eligible frontier and reproduces the unranked descent exactly. The frames before it are quads
+being *outranked rather than refused*, marked `Keep` and never `BudgetExhausted`, which is what
+keeps the two distinguishable in a dump. Measured on `body_plane`: **19 → 49 → 142 → 442 leaves**.
+
+### Read the `veto%` column first, and it decides which charts are worth looking at
+
+On most charts a **camera veto** stops the majority of leaves, so the two panels of `_oldnew` are
+largely the same cap reached by two routes and the difference between them is not a criterion
+difference. From `results/output/refinement_animation.txt`:
+
+| chart | veto% | `within` leaves | `frac_hot_between` leaves |
+|---|---|---|---|
+| **`preset_shape`** | **0%** | **10** | **34** |
+| `preset_plambda` | 22% | 109 | 73 |
+| `body_plane`, `plane_00deg` | 24% | 61 | 49 |
+| `shape_sphere` | 35% | 97 | 91 |
+| `preset_shape_h1` | 44% | 103 | 82 |
+| the other 20 charts | 51–67% | — | — |
+
+**`preset_shape` is the one to look at.** It is the only chart whose tree is entirely its own
+decisions, and the new criterion refines it **3.4× harder** — 34 leaves against 10, on a field
+whose ramp spans four decades. The others are mostly a veto being reached.
+
+### These are diagnostics, not measurements
+
+They run at a **512** viewport against the committed stills' 1024, so the screen floor bites one
+level shallower and **these are not the committed trees**. Do not read a leaf count off a frame:
+the measurements are `results/output/structure_metric.txt` and the `error(B)` curves. These say
+what a tree looks like *while it is being built*.
+
 ## `animated/` — everything that moves
 
 **72 APNGs, and they are the only artefacts here that show a process rather than a result.** They

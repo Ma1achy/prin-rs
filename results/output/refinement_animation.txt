@@ -1,0 +1,68 @@
+refinement animations. budget 40000, tau=1e-4, alpha_hi=0.2, N=8, E+1=8, t=13, f64, 512^2
+new = frac_hot_between/median, old = within/median, both Mode::Balanced. k_frac main 0.5, sweep [0.25, 0.5, 0.75, 1.0]
+DIAGNOSTICS, not measurements: the viewport is 512 against the stills' 1024,
+so the screen floor bites 1 level(s) shallower and these are NOT the committed trees.
+
+                case  rounds  leaves  depth   veto%  old lvs   new lvs    wall s
+          body_plane       7      49      6     24%       61        49      64.6
+                       k_frac [0.25, 0.5, 0.75, 1.0] -> leaves [19, 49, 142, 442]
+         plane_00deg       7      49      6     24%       61        49      46.2
+                       k_frac [0.25, 0.5, 0.75, 1.0] -> leaves [19, 49, 142, 442]
+        shape_sphere       7      91      6     35%       97        91     116.8
+                       k_frac [0.25, 0.5, 0.75, 1.0] -> leaves [19, 91, 481, 1240]
+        latent_shape       7     190      6     67%      190       190       8.2
+                       k_frac [0.25, 0.5, 0.75, 1.0] -> leaves [19, 190, 1093, 4096]
+      latent_inner_p       7     190      6     67%      181       190       9.1
+                       k_frac [0.25, 0.5, 0.75, 1.0] -> leaves [19, 190, 1093, 4048]
+      latent_outer_p       7     178      6     65%      181       178      10.0
+                       k_frac [0.25, 0.5, 0.75, 1.0] -> leaves [19, 178, 1063, 3781]
+         latent_mass       7     190      6     67%      190       190       7.4
+                       k_frac [0.25, 0.5, 0.75, 1.0] -> leaves [19, 190, 1093, 4096]
+        latent_mixed       7     190      6     67%      181       190       8.1
+                       k_frac [0.25, 0.5, 0.75, 1.0] -> leaves [19, 190, 1021, 3838]
+    latent_oblique_a       7     190      6     67%      181       190      10.9
+                       k_frac [0.25, 0.5, 0.75, 1.0] -> leaves [19, 190, 1093, 4066]
+    latent_oblique_b       7     190      6     67%      190       190      11.4
+                       k_frac [0.25, 0.5, 0.75, 1.0] -> leaves [19, 190, 973, 3523]
+         burrau_nu_k       7     181      6     66%      181       181      13.9
+                       k_frac [0.25, 0.5, 0.75, 1.0] -> leaves [19, 181, 1054, 3697]
+      invariant_lz_k       7     184      6     65%      190       184      13.8
+                       k_frac [0.25, 0.5, 0.75, 1.0] -> leaves [19, 184, 1084, 4072]
+        mass_simplex       7     190      6     67%      190       190      19.2
+                       k_frac [0.25, 0.5, 0.75, 1.0] -> leaves [19, 190, 1093, 4096]
+        preset_shape       6      34      5      0%       10        34       5.4
+                       k_frac [0.25, 0.5, 0.75, 1.0] -> leaves [16, 34, 127, 181]
+         preset_prho       7     109      6     51%       97       109      11.7
+                       k_frac [0.25, 0.5, 0.75, 1.0] -> leaves [13, 109, 706, 2695]
+      preset_plambda       7      73      6     22%      109        73       8.6
+                       k_frac [0.25, 0.5, 0.75, 1.0] -> leaves [16, 73, 568, 2521]
+     preset_shape_pl       7     100      6     64%       97       100       2.9
+                       k_frac [0.25, 0.5, 0.75, 1.0] -> leaves [19, 100, 430, 1351]
+     preset_shape_h1       7      82      6     44%      103        82      32.0
+                       k_frac [0.25, 0.5, 0.75, 1.0] -> leaves [19, 82, 403, 1027]
+      preset_prho_h1       7     190      6     67%      103       190      13.3
+                       k_frac [0.25, 0.5, 0.75, 1.0] -> leaves [19, 190, 883, 3268]
+   preset_plambda_h1       7     145      6     66%      139       145      15.7
+                       k_frac [0.25, 0.5, 0.75, 1.0] -> leaves [19, 145, 940, 3370]
+  preset_shape_pl_h1       7     190      6     67%      145       190      12.4
+                       k_frac [0.25, 0.5, 0.75, 1.0] -> leaves [19, 190, 961, 3496]
+     latent_shape_h3       7     190      6     67%      181       190      11.0
+                       k_frac [0.25, 0.5, 0.75, 1.0] -> leaves [19, 190, 1093, 3952]
+   latent_inner_p_h3       7     145      6     66%      124       145       5.8
+                       k_frac [0.25, 0.5, 0.75, 1.0] -> leaves [19, 145, 796, 2866]
+   latent_outer_p_h3       7     124      6     58%      133       124       6.4
+                       k_frac [0.25, 0.5, 0.75, 1.0] -> leaves [19, 124, 784, 2908]
+      latent_mass_h3       7     190      6     67%      190       190       7.2
+                       k_frac [0.25, 0.5, 0.75, 1.0] -> leaves [19, 190, 1054, 3715]
+     latent_mixed_h3       7     172      6     65%      190       172       9.1
+                       k_frac [0.25, 0.5, 0.75, 1.0] -> leaves [19, 172, 1051, 3715]
+
+Three animations per chart, in results/refinement/:
+  _budget.png / _budget_wire.png  one frame per descent round -- the frontier being
+                                  spent. What the depth ladder cannot show.
+  _oldnew.png                     two panels, within/median | frac_hot_between/median.
+  _kfrac.png                      k_frac [0.25, 0.5, 0.75, 1.0]; the last frame is the control.
+
+READ THE veto% COLUMN FIRST. Where it is high the two panels of _oldnew are largely
+the same cap reached by two routes, and the difference between them is not a
+criterion difference. The charts worth looking at are the ones with a low veto share.

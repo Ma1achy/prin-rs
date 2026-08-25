@@ -252,3 +252,26 @@ proportional to the jitter and so to cell width, while integration error is
 not. Use sigma_e_0 and sigma_e_t from the dump before comparing across sizes.
     Finished `release` profile [optimized] target(s) in 0.12s
      Running `target/release/prin --region near-field --size 1024 --precision f32 --out /tmp/prin_f32/nf`
+region near-field 1024x1024 half=0.05 body=0  precision=f32  t_max=13 eta=0.01 copies=8
+  2039.34 s wall, 1.94 ms/pixel
+
+  error_ratio   max 4.8891e3  p99 2.3197e3  median 2.352941  argmax pixel 963562
+  sigma_E(0)    median 4.863739e-5   <- proportional to cell width; see below
+  |dE/E|        median 9.123e-6  max 1.556e-2
+  d_min_gap     median 0.000e0  max 0.000e0
+  ref_disagree  total 219554
+  t_end         median 13.0000
+  outcomes      bounded 0.977 collision 0.023
+  refined       39478 of 1048576 pixels re-integrated at finer eta (23933 still flagged)
+  |dE/E| max    1.007e8 before refinement, 1.556e-2 after
+  pixels with a non-finite copy: 0 of 1048576
+
+wrote /tmp/prin_f32/nf.raw, /tmp/prin_f32/nf_outcome.png, /tmp/prin_f32/nf_spread.png
+spread image is LOG scaled over [3.734e-6, 4.527e-3] (this grid's
+p1 to p99); non-finite is painted at full scale. The dump is the product.
+
+error_ratio uses the maximum deviation within a footprint and aggregates across
+pixels by max. It is a boolean flag: its magnitude is unstable.
+It also inflates with resolution for a trivial reason - sigma_E(0) is
+proportional to the jitter and so to cell width, while integration error is
+not. Use sigma_e_0 and sigma_e_t from the dump before comparing across sizes.

@@ -114,6 +114,49 @@ def dump_az(name, out):
     print(f"wrote {out}: {len(r0)} rows, n_sync={n_sync}, stepped-vs-monolithic dev={dev:.2e}")
 
 
+def dump_ftle(name, out):
+    """Benettin FTLE + diffusion, through `tb_ftle.integrate_full` **unmodified**.
+
+    The only substitution is the perturbation direction: numpy's Ziggurat is not ported, and
+    reproducing it is not required, because the direction merely seeds the shadow and a
+    comparison needs both sides to use the same one. `default_rng` is patched for the duration
+    of the call so the reference's own normalisation and loop run exactly as written -- nothing
+    of the algebra is reimplemented here, which is the whole point of a cross-check.
+    """
+    c = cases.CASES[name]
+    r0, v0, _gid, _, _hx = tb.burrau_grid(
+        c["nx"], c["ny"], c["cx"], c["cy"], c["half"], body=c["body"], ens=0
+    )
+
+    pert = np.array(cases.FTLE_PERT, dtype=np.float64).reshape(3, 2)
+
+    class _Fixed:
+        def normal(self, size=None):
+            return np.broadcast_to(pert, size).copy()
+
+    real = np.random.default_rng
+    np.random.default_rng = lambda *a, **k: _Fixed()
+    try:
+        res = tb_ftle.integrate_full(
+            r0, v0, c["t_max"], c["dt"],
+            eps=c["eps"], d0=c["d0"], renorm_every=c["renorm_every"],
+        )
+    finally:
+        np.random.default_rng = real
+
+    with open(out, "w") as f:
+        for line in cases.header_lines(name):
+            f.write(line + "\n")
+        for i in range(r0.shape[0]):
+            row = [
+                i,
+                res["ftle"][i], res["diffusion"][i], res["dmin"][i],
+                res["nre"][i], res["S"][i],
+                res["r"][i, 0, 0], res["r"][i, 0, 1],
+            ]
+            f.write("\t".join(f"{x!r}" if isinstance(x, int) else repr(float(x)) for x in row) + "\n")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--case", required=True, choices=sorted(cases.CASES))
@@ -128,6 +171,8 @@ def main():
         dump_algebra(a.case, a.out)
     elif kind == "az":
         dump_az(a.case, a.out)
+    elif kind == "ftle":
+        dump_ftle(a.case, a.out)
     else:
         raise SystemExit(f"unhandled case kind: {kind}")
 

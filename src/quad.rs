@@ -50,6 +50,103 @@ pub struct QuadReduction {
     pub worst_energy_drift: f64,
     pub n_nonfinite: u32,
     pub n_footprints: u32,
+
+    // ---------------------------------------------------------------------------------
+    // The between-footprint arm.
+    //
+    // `spread_*` above are statistics over the `E+1` copies of one footprint, aggregated over
+    // the quad. The brief's §1 reads that as a category error — that refinement can only
+    // reduce *between*-footprint variation, so a *within*-footprint statistic is the wrong
+    // quantity. **The premise does not describe this implementation**, and the reason is
+    // measurable: `jitter_frac` is 0.5 and `halton_offset` returns `[-1, 1)^2` scaled by cell
+    // width, so the copies span the **whole cell, edge to edge**. They are a quasi-random
+    // sample of exactly the area the footprint stands for, not a cloud around a point. The
+    // corroboration is already on record: the Halton control's true `alpha` is exactly 1.0,
+    // and an irreducible within-point statistic would have `alpha == 0` by construction,
+    // because splitting would not shrink it.
+    //
+    // What genuinely differs is **scale** (cell against quad), **sample count** (`E+1` against
+    // `N^2`), and the aggregation. All four numbers below are carried so those can be
+    // separated rather than argued about.
+    // ---------------------------------------------------------------------------------
+    /// `spread_shape` over the `N^2` **nominal** (copy 0, un-jittered) shape vectors. §1.4 as
+    /// briefed. Copy 0 only, so between-footprint variation is not contaminated by the
+    /// within-footprint jitter.
+    pub between_shape: f64,
+    /// `spread_event` over the `N^2` nominals' **event class** — not their terminal outcome.
+    /// See `PixelOut::event_class` for why that distinction is load-bearing here.
+    pub between_event: f64,
+    /// `max` of the two, the between-arm analogue of `ensemble_spread`.
+    pub between_spread: f64,
+    /// [`Self::between_shape`] over only the first `E+1` nominals, **holding the sample count
+    /// fixed** so the comparison against `spread_*` isolates scale rather than count.
+    ///
+    /// Required, not decorative: a spread estimator's expectation depends on its sample size,
+    /// and `E+1 = 2` reports 0.539 of `E+1 = 32`'s value in near-field and 0.131 in `far`.
+    /// Differencing an 8-sample statistic against a 64-sample one would read that bias as a
+    /// scale effect.
+    pub between_matched: f64,
+    /// `spread_shape` over **all** `N^2 * (E+1)` copies pooled — the within arm at the
+    /// between arm's sample count, holding the count fixed while the extent moves. `NaN`
+    /// unless `EnsembleCfg::keep_copy_shapes` is set.
+    pub within_pooled: f64,
+
+    /// Where the hot footprints sit, on the within-footprint field (`ensemble_spread > tau`).
+    pub layout_within: crate::spatial::Layout,
+    /// The same, on the per-footprint contribution to [`Self::between_shape`] — each nominal's
+    /// distance from the quad's nominal centroid, halved. That is the one between-arm quantity
+    /// that is defined *per footprint* and so can carry a mask at all.
+    pub layout_between: crate::spatial::Layout,
+    /// Fraction of footprints above `tau`, both arms. §3.1: the direct form of "does this quad
+    /// contain a boundary?" is a **count in the tail**, not a quantile of the distribution. A
+    /// quad with 5% hot footprints has a filament; one with a high median is uniformly
+    /// blurred, and every quantile conflates them.
+    pub frac_above_tau_within: f64,
+    pub frac_above_tau_between: f64,
+
+    /// Footprints whose nominal **terminated** before the horizon — collision *or* escape.
+    ///
+    /// **Not "escaped", which is what an earlier draft of this called it and got wrong.** §3.5
+    /// asks for a `t_end` gradient, and `t_end` is set by whichever terminating event came
+    /// first. In `deep interior` this reads **0.99** while the escape arm is silent: those are
+    /// collisions. Quoting it as an escape fraction would have contradicted a standing result
+    /// ("zero of 1024 near-field pixels escape at `t_max = 13`") while agreeing with it, which
+    /// is worse than either.
+    ///
+    /// [`Self::escape_fraction`] is carried separately so the two cannot be confused again.
+    pub terminated_fraction: f64,
+    /// Footprints whose nominal terminated **by escape** specifically.
+    pub escape_fraction: f64,
+    /// Mean absolute spatial gradient of nominal `t_end`, over the **terminated** subset only.
+    ///
+    /// **`NaN` when nothing terminated**, never 0. Censoring is the failure mode: `t_end` pinned
+    /// at the horizon carries no gradient information, so a gradient computed over censored
+    /// footprints would be a gradient of the horizon constant — exactly zero, everywhere, and
+    /// indistinguishable from a smooth field.
+    pub t_end_gradient: f64,
+    /// Total integrator substeps over the quad — the cost side of §8's cost-aware priority.
+    pub total_substeps: u64,
+    /// Distinct **initial conditions** among the `N^2` footprints, by exact bitwise comparison
+    /// of the full state. Equal to `n_footprints` on any healthy quad.
+    ///
+    /// Read before any spread is read. `decode::distinct` is the existing guard, and the rule
+    /// it enforces is that a difference can be small because both sides are right or because
+    /// both are dead — count distinct ICs first, read divergence second.
+    pub n_distinct_ic: u32,
+
+    /// §5, shape arm, aggregated over footprints. `NaN` unless
+    /// `EnsembleCfg::keep_boundary_shapes` is set — never 0.
+    pub running_max_divergence_median: f64,
+    pub divergence_trend_median: f64,
+    /// Fraction of footprints whose copies ever crossed the divergence trigger.
+    ///
+    /// The *time* is the quantity that cannot saturate; a fraction can, at 1.0. Both are
+    /// carried: the fraction is what a ranking can read without a NaN convention, and
+    /// [`Self::first_divergence_median`] is the one to read when asking whether the signal is
+    /// still informative in a saturated region.
+    pub frac_diverged: f64,
+    /// Median first-divergence time over the footprints that crossed. `NaN` if none did.
+    pub first_divergence_median: f64,
 }
 
 impl QuadReduction {
@@ -61,6 +158,142 @@ impl QuadReduction {
             Agg::P90 => self.spread_p90,
         }
     }
+
+    /// The scalar a decision reads, by criterion and aggregation.
+    ///
+    /// `agg` is ignored by every criterion but [`Criterion::Within`]: the between-footprint and
+    /// layout signals are already one number per quad, with no `N^2` distribution left to
+    /// aggregate. That asymmetry is the point — half the current parameter surface exists only
+    /// because the within arm keeps a distribution it then throws away.
+    pub fn signal(&self, criterion: Criterion, agg: Agg) -> f64 {
+        match criterion {
+            Criterion::Within => self.spread(agg),
+            Criterion::Between => self.between_spread,
+            Criterion::MaxOfBoth => self.spread(agg).max(self.between_spread),
+            Criterion::FracHotWithin => self.frac_above_tau_within,
+            Criterion::FracHotBetween => self.frac_above_tau_between,
+            Criterion::RunningMax => self.running_max_divergence_median,
+            Criterion::FirstDivergence => self.frac_diverged,
+            Criterion::TerminationGradient => {
+                // NaN where nothing escaped. Deliberately NOT mapped to 0 here: a caller
+                // ranking on this must decide what an undetermined quad means, and silently
+                // calling it "no structure" is the failure this signal is most prone to.
+                self.t_end_gradient
+            }
+            Criterion::Layout => {
+                // Thin and connected reads as a boundary and must outrank scatter of the same
+                // count; scattered hot footprints are chaos, which no refinement resolves.
+                let l = self.layout_within;
+                if l.n_hot == 0 {
+                    0.0
+                } else {
+                    l.frac_hot(self.n_side()) * (l.largest_component as f64 / l.n_hot as f64)
+                }
+            }
+        }
+    }
+
+    /// `N`, recovered from the footprint count. The reduction does not carry the grid width
+    /// separately, and every quad is square by construction (`Quad::slice` builds `n x n`).
+    pub fn n_side(&self) -> usize {
+        (self.n_footprints as f64).sqrt().round() as usize
+    }
+
+    /// Is this quad's between-footprint arm **collapsed** — every nominal bitwise identical?
+    ///
+    /// A collapsed decode gives a spread of exactly zero, which reads as "perfectly resolved"
+    /// and stops the descent with a small tidy tree built from nothing. Treated as
+    /// **undetermined**, the same way a non-finite copy is a measurement outcome rather than
+    /// missing data.
+    pub fn between_collapsed(&self) -> bool {
+        self.n_distinct_ic < self.n_footprints
+    }
+}
+
+/// Which signal a split decision reads.
+///
+/// All are computed and dumped on every run whatever this is set to — the point is to compare
+/// criteria offline without re-integrating, and the marginal cost of every one of them is
+/// `O(N^2)` against 512 trajectories per quad.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Criterion {
+    /// `ensemble_spread` aggregated over footprints — the criterion as it stands. The default
+    /// until the §2 metric says otherwise; a change of default is a measured decision, not a
+    /// tidy-up.
+    #[default]
+    Within,
+    /// The between-footprint arm alone.
+    Between,
+    /// `max` of the two. Both quantities are wanted and they answer different questions —
+    /// within is the trust / display-honesty signal, between is the refinement signal — so
+    /// this is the conservative join rather than a replacement.
+    MaxOfBoth,
+    /// Fraction of footprints above `tau`, within arm (§3.1).
+    FracHotWithin,
+    /// The same on the between arm.
+    FracHotBetween,
+    /// Hot-set layout (§3.2): connectedness weighted by count.
+    Layout,
+    /// Running max of the shape spread over boundaries (§5) — catches divergence that has
+    /// already happened and then subsided. The shape spread was measured falling **6x**
+    /// between `t = 6` and `t = 8`, so an instantaneous read genuinely misses it.
+    RunningMax,
+    /// Fraction of footprints whose copies ever crossed the divergence trigger (§5).
+    ///
+    /// **The sign of its usefulness is not obvious and is left to the measurement.** A quad
+    /// that diverges early is uncertain, but chaotic uncertainty is exactly what refinement
+    /// cannot reduce. Ranking it high and ranking it low are both defensible before the fact,
+    /// so the §2 curve decides rather than an argument.
+    FirstDivergence,
+    /// Spatial gradient of nominal `t_end` (§3.5) — a boundary detector needing no ensemble.
+    ///
+    /// Admissible only where `terminated_fraction` is nonzero, and that column is reported
+    /// beside it. In `near-field` at `t = 13` it is `NaN` on **97.1%** of quads, which is a
+    /// property to read, not a defect to hide: NaN never wins a comparison, so the ranking is
+    /// decided entirely by the 2.9% it does score.
+    TerminationGradient,
+}
+
+impl Criterion {
+    pub fn name(self) -> &'static str {
+        match self {
+            Criterion::Within => "within",
+            Criterion::Between => "between",
+            Criterion::MaxOfBoth => "max_of_both",
+            Criterion::FracHotWithin => "frac_hot_within",
+            Criterion::FracHotBetween => "frac_hot_between",
+            Criterion::Layout => "layout",
+            Criterion::RunningMax => "running_max",
+            Criterion::FirstDivergence => "first_div",
+            Criterion::TerminationGradient => "term_grad",
+        }
+    }
+    pub fn parse(s: &str) -> Option<Criterion> {
+        Some(match s {
+            "within" => Criterion::Within,
+            "between" => Criterion::Between,
+            "max_of_both" => Criterion::MaxOfBoth,
+            "frac_hot_within" => Criterion::FracHotWithin,
+            "frac_hot_between" => Criterion::FracHotBetween,
+            "layout" => Criterion::Layout,
+            "running_max" => Criterion::RunningMax,
+            "first_div" => Criterion::FirstDivergence,
+            "term_grad" => Criterion::TerminationGradient,
+            _ => return None,
+        })
+    }
+    /// Every variant, for sweeps that must not silently omit one.
+    pub const ALL: [Criterion; 9] = [
+        Criterion::Within,
+        Criterion::Between,
+        Criterion::MaxOfBoth,
+        Criterion::FracHotWithin,
+        Criterion::FracHotBetween,
+        Criterion::Layout,
+        Criterion::RunningMax,
+        Criterion::FirstDivergence,
+        Criterion::TerminationGradient,
+    ];
 }
 
 /// Which aggregation of the `N²` footprint spreads a decision uses.
@@ -117,6 +350,21 @@ pub enum Decision {
     /// `level >= camera_depth + MAX_REL_DEPTH`. Replaces absolute `MaxLevel`, which caps
     /// infinite zoom at ~14. Scheduler state, never on the sim key.
     MaxRelDepth,
+    /// **The decode has collapsed**: fewer distinct initial conditions than footprints, so the
+    /// quad's `N^2` samples are repeats and every spread computed over them is spread over
+    /// nothing.
+    ///
+    /// A separate decision rather than a `Floor`, because the failure it names is invisible
+    /// otherwise: identical footprints give a spread of exactly **zero**, which reads as
+    /// "perfectly resolved" and terminates the descent with a small tidy tree built from no
+    /// information. Treated as *undetermined* — the same standing that a non-finite copy has as
+    /// a measurement outcome rather than missing data — and it must be countable in the dump,
+    /// which a `Floor` would not be.
+    ///
+    /// Tested on **initial conditions**, never on the spread being zero: a genuinely uniform
+    /// region has a zero spread over perfectly distinct ICs, and conflating the two would flag
+    /// the physics as a numerical failure.
+    Collapsed,
 }
 
 impl Decision {
@@ -131,6 +379,7 @@ impl Decision {
             Decision::BudgetExhausted => "budget_exhausted",
             Decision::ScreenFloor => "screen_floor",
             Decision::MaxRelDepth => "max_rel_depth",
+            Decision::Collapsed => "collapsed",
         }
     }
     pub fn code(self) -> u8 {
@@ -144,6 +393,7 @@ impl Decision {
             Decision::BudgetExhausted => 6,
             Decision::ScreenFloor => 7,
             Decision::MaxRelDepth => 8,
+            Decision::Collapsed => 9,
         }
     }
 }
@@ -292,6 +542,72 @@ impl QuadTree {
         (0..self.nodes.len()).filter(|&i| self.nodes[i].is_leaf())
     }
 
+    /// The same-or-coarser neighbour across one edge, or `None` at the root box's border.
+    ///
+    /// Descends from the root toward a point just outside the edge, stopping at the deepest
+    /// existing node that is **no finer than the query quad**. Same-or-coarser is the right
+    /// answer rather than a limitation: a finer neighbour is several quads, and picking one of
+    /// them would make the contrast depend on which.
+    ///
+    /// `O(level)`, no neighbour pointers, nothing cached. The only adjacency code that existed
+    /// before this was an `O(n^2)` geometric box-touch test inside `examples/sched_thrash.rs`;
+    /// `tests/criterion.rs` checks this against that predicate over a whole tree, which is a
+    /// comparison against an independent implementation rather than against itself.
+    pub fn neighbour(&self, i: usize, dir: Dir) -> Option<usize> {
+        let q = &self.nodes[i];
+        // Just outside the edge. A fraction of the quad's own half-width, so the probe scales
+        // with the box and cannot fall through a neighbour at any depth.
+        let e = q.half * 1e-6;
+        let (px, py) = match dir {
+            Dir::NegX => (q.cx - q.half - e, q.cy),
+            Dir::PosX => (q.cx + q.half + e, q.cy),
+            Dir::NegY => (q.cx, q.cy - q.half - e),
+            Dir::PosY => (q.cx, q.cy + q.half + e),
+        };
+
+        let root = &self.nodes[0];
+        if (px - root.cx).abs() > root.half || (py - root.cy).abs() > root.half {
+            return None;
+        }
+
+        let mut cur = 0usize;
+        while self.nodes[cur].level < q.level {
+            let Some(kids) = self.nodes[cur].children else { break };
+            let node = &self.nodes[cur];
+            let jx = usize::from(px >= node.cx);
+            let jy = usize::from(py >= node.cy);
+            cur = kids[jy * 2 + jx];
+        }
+        Some(cur)
+    }
+
+    /// Neighbour contrast: `max` over the four edges of `|signal_self - signal_neighbour|`.
+    ///
+    /// **Computed at decision time and never stored on a `Quad`.** It is a relative quantity,
+    /// and freezing one onto a node is the mistake the screen floor's "never cached as a quad
+    /// fact" rule exists to prevent — a neighbour can be split after this is read.
+    ///
+    /// Returns the contrast and how many edges contributed. The count matters: a quad on the
+    /// root border has fewer neighbours, so its contrast is a max over a smaller set and is
+    /// biased low by construction. Reported, never silently absorbed.
+    pub fn contrast(&self, i: usize, criterion: Criterion, agg: Agg) -> (f64, u8) {
+        let me = self.nodes[i].red.signal(criterion, agg);
+        let (mut best, mut count) = (0.0f64, 0u8);
+        for d in Dir::ALL {
+            if let Some(j) = self.neighbour(i, d) {
+                if self.nodes[j].red.n_footprints == 0 {
+                    continue; // not yet computed; not a zero contrast
+                }
+                let v = self.nodes[j].red.signal(criterion, agg);
+                if v.is_finite() && me.is_finite() {
+                    best = best.max((me - v).abs());
+                    count += 1;
+                }
+            }
+        }
+        (if count == 0 { f64::NAN } else { best }, count)
+    }
+
     pub fn depth_histogram(&self) -> Vec<usize> {
         let mut h = Vec::new();
         for i in self.leaves() {
@@ -302,6 +618,27 @@ impl QuadTree {
             h[l] += 1;
         }
         h
+    }
+}
+
+/// One of the four edges of a quad.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Dir {
+    NegX,
+    PosX,
+    NegY,
+    PosY,
+}
+
+impl Dir {
+    pub const ALL: [Dir; 4] = [Dir::NegX, Dir::PosX, Dir::NegY, Dir::PosY];
+    pub fn opposite(self) -> Dir {
+        match self {
+            Dir::NegX => Dir::PosX,
+            Dir::PosX => Dir::NegX,
+            Dir::NegY => Dir::PosY,
+            Dir::PosY => Dir::NegY,
+        }
     }
 }
 

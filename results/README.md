@@ -203,3 +203,180 @@ The same self-describing `PRNQ` format as `results/sched-*.tree`: a magic, a ver
 header naming every parameter including `chart`, then one record of 24 `f64` fields per quad.
 One dump per rendered tree and one per zoom frame, so every picture above can be checked against
 the numbers that produced it.
+
+---
+
+## `results/criterion/` — improving the criterion
+
+### Reference and criterion renders — `<region>_reference.png`, `<region>_B682_<rank>.png`
+
+`<region>_reference.png` is the **fully-refined tree at 512², one sample per pixel**. It is what
+`error(B)` is measured against, and it is a *specific finite sampling* rather than the true
+image: at the screen floor, which side of a filament a pixel lands on is an accident of where
+its sample fell. `error = 0` means "matches this sampling".
+
+The `_B682_` panels are each ranking's tree at one eighth of the full budget, drawn at **true
+per-quad texel sizes** so a coarse leaf is visibly coarse. Compare `within_median` — the shipped
+default — against `greedy_oracle` and `frac_hot_between`: the shipped one spends its budget in
+visibly the wrong places, which is the picture behind §10.3's table.
+
+`far_*.png` are included and are the control: they are featureless, which is exactly the point.
+`error(root) = 0.00000` there, so the metric is **undefined** on `far` and every criterion reads
+zero. It is not that they agree.
+
+### Colour-coupling renders — `colour_<region>_<colouring>_*.png`
+
+The production bivariate scheme — hue from the shape sphere, lightness from a selectable scalar —
+against the diagnostic outcome colouring. §6's coupling question is whether `error(B)` reorders
+the criteria when lightness switches from `spread` to `diffusion`; if it does, the criterion
+needs a term for the lightness field and has none.
+
+The hue map is `atan2(n2, n1)` with chroma tied to `sqrt(n1² + n2²)`, in OKLCh. The azimuthal
+discontinuity is invisible **by construction**: hue is undefined at the poles and chroma goes to
+zero there, so the two colours either side of the cut converge on the same grey.
+
+### Wire twins — `*_wire.png`
+
+**Every image in this directory has a `_wire` twin, and neither replaces the other.** The plain
+render says *what is displayed* — texels at true per-quad sizes, so a coarse leaf is visibly
+coarse. The wire says *where the tree cut*, with brightness graded by level so a boundary can be
+attributed to a depth.
+
+They answer different questions. A coarse texel tells you a leaf is coarse; only the wire tells
+you whether the structure around it was subdivided *around* it or straight *through* it. PR #11
+drew boundaries over a **uniform** base, which conflated the two, and that is how `deep
+interior`'s bad tree went unnoticed for a whole build.
+
+### The budget animation — `budget_<region>_t<T>_animated.png`, `..._wire_animated.png`
+
+The single most useful artefact here. Each frame is **`greedy_oracle` on the left,
+`within/median` — the shipped default — on the right**, at the same budget, drawn at true texel
+sizes. Side by side in one frame on purpose: two separate animations would make you hold one in
+memory while watching the other, which is exactly the comparison the picture exists to remove.
+
+Watch where the right-hand side spends its budget. §10.3's table says it is beaten by random past
+`B = 383`; this is what that looks like.
+
+Every frame is also on disk as `budget_<region>_t<T>_NN.png`, so nothing depends on APNG support.
+
+### Slice gallery — `slice_<case>.png`, `slice_gallery_animated.png`
+
+Ten charts through **one shared centre configuration**, so only the 2-plane changes: the
+axis-aligned body plane, oblique planes at 15/30/45°, cross-body mixes, and the shape chart at
+three fibre phases. Bases are orthonormal in the 6D position metric, so a unit of chart
+coordinate moves the system equally far in each — otherwise a "different slice" would be a
+different *scale*.
+
+`slice_body_plane.png` and `slice_plane_00deg.png` are the **control pair**: the same chart
+written two ways, asserted **bitwise identical**. If they differ, every other panel is comparing
+different physics rather than different slices.
+
+`slice_variety` measured tree size as slice-conditional to **4.3×** while the `alpha` distribution
+stayed put (median 0.172–0.289). These are what that looks like.
+
+### `error(B)` curves — `curve_<region>_t<T>.png`
+
+Log y, because the curves span four decades and the interesting part is the bottom one. **An
+exact zero cannot sit on a log axis, so it is drawn at the floor and ticked rather than dropped**
+— on several of these curves reaching zero *is* the result. Controls (`greedy_oracle`, `random`)
+are dashed so they read as references rather than candidates.
+
+### The complete-tree cache — `<region>_t<T>.qcache`
+
+`PRQC`: magic, version, a text header naming every parameter, then 50 `f64` per quad for all
+5461 quads of the complete tree. **Without this the tree lived only in RAM for one process**, and
+reproducing any §10 table meant paying the 2.8-million-trajectory integration again.
+
+It carries `err_sum` — this quad's summed OKLab distance to the reference were it drawn as a leaf.
+That is a **constant of the quad**, because quads are disjoint, which is what makes the replay
+exact and the greedy priority queue static. It also carries **every criterion's scalar** whatever
+the run ranked on, so criteria can be compared offline without re-integrating.
+
+### Pan frames — `pan_<region>_NN.png`, `pan_<region>_animated.png`
+
+Nine camera positions across the region. **The animation showing nothing change is the result**:
+`Camera::veto` reads `tile_size_px`, which does not depend on `cx`/`cy`, so panning changes no
+scheduling decision at all. The `_wire` twin makes that unmissable — the mesh is identical in
+every frame.
+
+### Quad dumps — `between_<region>.prnq`, `slice_<case>.prnq`, `pan_<region>_NN.prnq`
+
+`PRNQ` **version 2**: the same self-describing format, now 48 `f64` fields per quad. v2 appends
+the between-footprint arm, the two matched-count controls, the hot-set layout, the
+termination-gradient pair, the cost column, the IC-distinctness count and the temporal
+accumulators. A reader that indexes by name still works on v1; one that indexes by position does
+not, which is why the version moved.
+
+---
+
+## `charts/` — every chart family, from `examples/chart_gallery.rs`
+
+Thirteen chart instances across the reference's five families, all at **1024²**, budget 40000 so
+every descent stops on the criterion rather than the cap. Per chart:
+
+| file | what it answers |
+|---|---|
+| `<case>.png` | **what is displayed** — adaptive render, texels at true per-quad sizes |
+| `<case>_wire.png` | **where the tree cut** — the same image with leaf boundaries, graded by level |
+| `<case>_uniform.png` | **what the chart looks like** — one sample per pixel, no tree at all |
+| `<case>_outcome.png`, `<case>_uniform_outcome.png` | the categorical control |
+| `<case>_levels.png`, `<case>_levels_wire.png` | **how the tree got there** — one descent truncated at each depth |
+| `<case>.prnq` | the quad dump, with `chart_params` carrying the full basis |
+
+**Read all three of the first three, never one alone.** The adaptive render is a picture of the
+*scheduler*: near-field's `alpha` median is 0.14 against `alpha_hi = 0.2`, so the criterion says
+refinement does not pay and keeps coarse leaves — and a coarse leaf is one flat tile, because the
+render never interpolates. That reads as blur and is an honest picture of an unrefined tree.
+`_uniform` is the chart without the tree in the way. Reading either alone is how a criterion's
+failure gets mistaken for a rendering artefact, or a rendering choice for a finding.
+
+The level ladder is **one** descent truncated at each depth, not a fresh descent per frame — so
+it is one refinement seen at several playheads rather than several unrelated trees.
+
+## `colour/` — from `examples/colour_check.rs`
+
+Three regions × three lightness fields at 1024², plus the outcome control. The point of the set
+is the **pair** `<region>_spread.png` and `<region>_spread_shape.png`: `ensemble_spread` is
+`max(spread_shape, spread_event)` and the event arm is a count ratio over `E+1` copies, so where
+it dominates the field is a staircase. `results/output/colour_check.txt` prints the distinct-value
+count and the event-arm fraction, and those are what to read before either image.
+
+## Footprint caches — `<region>_t<T>.fcache`, **not committed**
+
+`PRQF`: the colour-relevant projection of every footprint of a complete tree — enough to recolour
+`error(B)` under any colouring without re-integrating. At level 7 that is 1.4M footprints × 14
+`f64`, about 160 MB each and 940 MB for six, with no redundancy to remove at one sample per pixel.
+
+They exist so a colouring change costs a **replay within a working session**. Committing a
+gigabyte so that survives a clone is the wrong trade, so they are gitignored with the regeneration
+command recorded beside them in `.gitignore`.
+
+`PRQC` is still committed: it is the per-quad reductions and every criterion's scalar, which is
+what every table is read from.
+
+## A note on raster sizes
+
+Everything generated in this build is **1024²** (figures are 1400×800; budget side-by-sides are
+2048×1024). Anything smaller in `results/` predates it.
+
+If an image looks blurry, **measure its pixel dimensions first**. Wireframe lines are written with
+integer pixel `set` calls and adaptive texels are nearest-neighbour, so neither can be soft in the
+file — softness is always a viewer upscaling a small raster. That diagnosis cost a round trip in
+this build, after a `criterion_metric -- 3 8` validation run was allowed to overwrite committed
+512² artefacts with 128×64 ones.
+
+### Regenerating the top-level region images and raw dumps
+
+`prin --size` drives **both** the PNG pair and the per-pixel `.raw` dump, and they want opposite
+sizes: the images want 1024², while the dumps are 64×64 by design and would be **320 MB per
+region** at 1024². So it is run twice per region, with the large run's dump kept out of
+`results/`:
+
+```sh
+for r in near-field mid-field far "body2 core" "body1 slice" "deep interior"; do
+  stem="${r// /-}"
+  cargo run --release --bin prin -- --region "$r" --size 1024 --out "/tmp/big/$stem"
+  cp "/tmp/big/${stem}_outcome.png" "/tmp/big/${stem}_spread.png" results/
+  cargo run --release --bin prin -- --region "$r" --size 64 --out "results/$stem"
+done
+```

@@ -1,0 +1,75 @@
+    Finished `release` profile [optimized] target(s) in 0.03s
+     Running `target/release/examples/colour_check 1024 13`
+res 1024^2, t=13, n_sync=32, E+1=8, kappa=3
+sites (computed from the masses, never hard-coded):
+    collision(0,1)  n = [-1.0000, +0.0000, +0.0000]
+    collision(0,2)  n = [+0.2857, -0.9583, -0.0000]
+    collision(1,2)  n = [+0.5238, +0.8518, +0.0000]
+          lambda=0  n = [+1.0000, +0.0000, +0.0000]
+       lagrange(+)  n = [-0.1246, -0.0816, -0.9888]
+       lagrange(-)  n = [-0.1246, -0.0816, +0.9888]
+      euler(mid=0)  n = [-0.6398, -0.7686, +0.0000]
+      euler(mid=1)  n = [-0.6100, +0.7924, +0.0000]
+      euler(mid=2)  n = [+0.9751, -0.2218, -0.0000]
+  worst angular gap to the nearest site over the sphere: 1.111 rad
+
+        region          field  distinct   finite   modal%         p1        p99    event%
+    near-field         spread   1038084  1048576     0.3%   1.044e-5   1.429e-1      1.0%
+    near-field   spread_shape   1048575  1048575     0.0%   1.044e-5   1.175e-2      1.0%
+    near-field   spread_event         7  1048576    99.0%    0.000e0   1.429e-1      1.0%
+    near-field             -- n0 span = 1.9988  n0 interdecile = 0.0662  (0 nonfinite shapes)
+    near-field   hue coverage  k=0.5: 0.0013  k=1: 0.0026  k=2: 0.0047  k=3: 0.0058  k=6: 0.0056  k=12: 0.0053
+
+           far         spread   1048576  1048576     0.0%   1.151e-9   1.180e-9      0.0%
+           far   spread_shape   1048576  1048576     0.0%   1.151e-9   1.180e-9      0.0%
+           far   spread_event         1  1048576   100.0%    0.000e0    0.000e0      0.0%
+           far             -- n0 span = 0.0000  n0 interdecile = 0.0000  (0 nonfinite shapes)
+           far   hue coverage  k=0.5: 0.0000  k=1: 0.0000  k=2: 0.0000  k=3: 0.0000  k=6: 0.0000  k=12: 0.0000
+
+ deep interior         spread    975312  1048576     2.0%   1.641e-6   8.571e-1      6.8%
+ deep interior   spread_shape   1046681  1046681     0.0%   1.640e-6   4.750e-1      6.8%
+ deep interior   spread_event         8  1048576    92.5%    0.000e0   8.571e-1      6.8%
+ deep interior             -- n0 span = 1.9999  n0 interdecile = 0.1665  (254 nonfinite shapes)
+ deep interior   hue coverage  k=0.5: 0.0045  k=1: 0.0091  k=2: 0.0168  k=3: 0.0214  k=6: 0.0252  k=12: 0.0256
+
+
+per-level scaling of the lightness field (levels 0..4, N=8):
+        region  level   quads   cell width   med spread    ratio    med t_end    ratio
+    near-field      0       1    1.4286e-2    3.6675e-3      NaN     1.3000e1      NaN
+    near-field      1       4    7.1429e-3    2.4591e-3    1.491     1.3000e1    1.000
+    near-field      2      16    3.5714e-3    1.9301e-3    1.274     1.3000e1    1.000
+    near-field      3      64    1.7857e-3    1.5990e-3    1.207     1.3000e1    1.000
+    near-field      4     256    8.9286e-4    1.3423e-3    1.191     1.3000e1    1.000
+ deep interior      0       1    1.4286e-2    1.6006e-4      NaN     3.0709e0      NaN
+ deep interior      1       4    7.1429e-3    9.8841e-5    1.619     3.0435e0    1.009
+ deep interior      2      16    3.5714e-3    6.6131e-5    1.495     3.0503e0    0.998
+ deep interior      3      64    1.7857e-3    5.7061e-5    1.159     3.0457e0    1.001
+ deep interior      4     256    8.9286e-4    5.4424e-5    1.048     3.0466e0    1.000
+
+Cell width halves every level, so a field proportional to it would show `ratio`
+= 2.000 in every row. Measured 1.19-1.62, FALLING with depth: the dependence is
+sub-linear and saturates, which is the chaotic-divergence signature -- past some
+cell width the copies decohere fully however close they started. Consistent with
+the standing measurement that cell width falling 9x moves sigma_E(0) by 8.6x
+(proportional) and `ensemble_spread` by only 2.1x.
+
+So a bivariate render DOES carry a mild scale term: a level-0 leaf reads brighter
+than a level-4 leaf at the same place. Under the log ramp that is about 12% of the
+lightness range across five levels. Stated rather than corrected -- normalising by
+cell width would change what the field means. `t_end` is the scale-free control and
+is flat, which is what says the effect above is the cell width and not the depth.
+
+Read `distinct` and `modal%` before either image. A field whose modal value covers a
+large fraction of the region has that many pixels painted one colour, and the picture
+is describing the estimator rather than the physics. `event%` says whether the event
+arm is what is doing it -- it is a count ratio over E+1 copies and is quantised by
+construction, so where it dominates, `spread_shape` is the field with structure in it.
+
+`n0 span` is the extent of the shape-sphere axis the previous hue map discarded. It is
+the size of what was invisible, measured per region rather than asserted -- but it
+is a MAX statistic, so read `n0 interdecile` beside it. A span of 2 with a tiny
+interdecile means the axis was reached by a few pixels, not used by the region.
+
+`hue coverage` chooses kappa on a number. A region that genuinely visits one kind
+of configuration SHOULD read near zero at every kappa, and that is a true answer
+rather than a broken palette -- `far` is the control for exactly that.

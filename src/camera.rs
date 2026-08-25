@@ -90,6 +90,23 @@ impl Camera {
     /// That this returns `Option<Decision>` and never `Decision::Split` is the structural
     /// enforcement of "the screen floor is a veto, complexity the sole trigger". A test asserts
     /// the return value is one of the two stopping variants.
+    /// Does this quad's box intersect the viewport?
+    ///
+    /// **A measurement, not a policy.** It is deliberately *not* consulted by [`Self::veto`]:
+    /// adding view culling to the scheduler would be a caching/eviction decision, and this
+    /// build has neither. It exists so §7 can report what *would* be evictable under a pan
+    /// without anything being evicted.
+    ///
+    /// It also names a real property of the current camera: `veto` reads `tile_size_px`, which
+    /// depends on the quad's width and the camera's `half_world` and `viewport` — **and not on
+    /// `cx`/`cy` at all**. So panning changes no scheduling decision whatsoever today, and a
+    /// pan study that measured tree persistence without saying so would be reporting "the tree
+    /// persists perfectly" as a result when it is an identity.
+    pub fn covers(&self, cx: f64, cy: f64, half: f64) -> bool {
+        (cx - self.cx).abs() <= self.half_world + half
+            && (cy - self.cy).abs() <= self.half_world + half
+    }
+
     pub fn veto(&self, q: &Quad, n: usize, root_half: f64) -> Option<Decision> {
         if self.screen_floor(q, n) {
             return Some(Decision::ScreenFloor);

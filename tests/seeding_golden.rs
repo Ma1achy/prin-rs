@@ -9,7 +9,7 @@
 use prin_rs::ensemble::jitter::{self, Scheme};
 use prin_rs::grid;
 
-fn pcg(s: &grid::Slice, idx: usize, seed: u64) -> Vec<prin_rs::physics::Cart<f64>> {
+fn pcg(s: &grid::Slice, idx: usize, seed: u64) -> Vec<prin_rs::physics::Ic<f64>> {
     jitter::copies_with::<f64>(s, idx, 7, 0.5, seed, Scheme::Pcg)
 }
 
@@ -26,11 +26,11 @@ fn copy_zero_is_always_the_un_jittered_nominal() {
         let cs = pcg(&s, idx, 12345);
         let nom = s.nominal::<f64>(idx);
         for k in 0..3 {
-            assert_eq!(cs[0].r[k], nom.r[k], "pixel {idx} copy 0 was jittered");
-            assert_eq!(cs[0].v[k], nom.v[k]);
+            assert_eq!(cs[0].s.r[k], nom.r[k], "pixel {idx} copy 0 was jittered");
+            assert_eq!(cs[0].s.v[k], nom.v[k]);
         }
         // and the others are not
-        assert!(cs[1..].iter().all(|c| c.r[s.body] != nom.r[s.body]), "pixel {idx}: a copy was not jittered");
+        assert!(cs[1..].iter().all(|c| c.s.r[s.body] != nom.r[s.body]), "pixel {idx}: a copy was not jittered");
     }
 }
 
@@ -48,22 +48,22 @@ fn pixels_are_independent_and_order_free() {
     for (i, f) in forward.iter().enumerate() {
         let b = &backward[s.npix() - 1 - i];
         for (cf, cb) in f.iter().zip(b.iter()) {
-            assert_eq!(cf.r[s.body], cb.r[s.body], "pixel {i} depends on evaluation order");
+            assert_eq!(cf.s.r[s.body], cb.s.r[s.body], "pixel {i} depends on evaluation order");
         }
     }
 
     // Distinct pixels must not share a stream — under PCG.
     let a = pcg(&s, 0, 99);
     let c = pcg(&s, 1, 99);
-    assert_ne!(a[1].r[s.body] - a[0].r[s.body], c[1].r[s.body] - c[0].r[s.body]);
+    assert_ne!(a[1].s.r[s.body] - a[0].s.r[s.body], c[1].s.r[s.body] - c[0].s.r[s.body]);
 
     // And under Halton they must, which is the whole point of the change. Asserted here so the
     // contrast is a test rather than a comment.
     let ha = jitter::copies_with::<f64>(&s, 0, 7, 0.5, 99, Scheme::Halton);
     let hc = jitter::copies_with::<f64>(&s, 1, 7, 0.5, 99, Scheme::Halton);
     assert_eq!(
-        ha[1].r[s.body] - ha[0].r[s.body],
-        hc[1].r[s.body] - hc[0].r[s.body],
+        ha[1].s.r[s.body] - ha[0].s.r[s.body],
+        hc[1].s.r[s.body] - hc[0].s.r[s.body],
         "the fixed prefix must give distinct pixels the same offset"
     );
 }
@@ -82,7 +82,7 @@ fn jitter_is_bounded_by_the_per_axis_cell_width() {
         let cs = jitter::copies_with::<f64>(&s, idx, 7, frac, 7, scheme);
         let nom = s.nominal::<f64>(idx);
         for c in cs.iter().skip(1) {
-            let d = c.r[s.body] - nom.r[s.body];
+            let d = c.s.r[s.body] - nom.r[s.body];
             assert!(d.x.abs() <= frac * hx, "x jitter {} exceeded {}", d.x, frac * hx);
             assert!(d.y.abs() <= frac * hy, "y jitter {} exceeded {}", d.y, frac * hy);
         }
@@ -102,7 +102,7 @@ fn golden_jitter_values() {
         .skip(1)
         .take(3)
         .map(|c| {
-            let d = c.r[s.body] - nom.r[s.body];
+            let d = c.s.r[s.body] - nom.r[s.body];
             (d.x, d.y)
         })
         .collect();

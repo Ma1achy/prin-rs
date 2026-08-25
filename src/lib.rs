@@ -11,6 +11,7 @@ pub mod decode;
 pub mod ensemble;
 pub mod grid;
 pub mod integrate;
+pub mod metric;
 pub mod outcome;
 pub mod physics;
 pub mod output;
@@ -18,6 +19,8 @@ pub mod quad;
 pub mod render;
 pub mod rng;
 pub mod scheduler;
+pub mod spatial;
+pub mod stats;
 
 pub use real::Real;
 pub use vec2::Vec2;

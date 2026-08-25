@@ -133,11 +133,14 @@ fn sub_scaled(p: &Cart<f64>, m: &Cart<f64>, s: f64) -> Cart<f64> {
 }
 
 pub fn linearise(chart: &Chart, body: usize, cu: f64, cv: f64, half: f64) -> Lin {
-    let x0 = decode_state(chart, body, cu, cv);
-    let up = decode_state(chart, body, cu + half, cv);
-    let um = decode_state(chart, body, cu - half, cv);
-    let vp = decode_state(chart, body, cu, cv + half);
-    let vm = decode_state(chart, body, cu, cv - half);
+    // Positions only. Masses are O(1) numbers formed from O(1) latent coordinates, so they have
+    // no cancellation to escape and are taken from a direct decode at the sample point --
+    // exactly, not as an approximation. The linearisation exists for the CONFIGURATION.
+    let x0 = decode_state(chart, body, cu, cv).s;
+    let up = decode_state(chart, body, cu + half, cv).s;
+    let um = decode_state(chart, body, cu - half, cv).s;
+    let vp = decode_state(chart, body, cu, cv + half).s;
+    let vm = decode_state(chart, body, cu, cv - half).s;
     Lin { x0, ju: sub_scaled(&up, &um, 0.5), jv: sub_scaled(&vp, &vm, 0.5) }
 }
 
@@ -154,12 +157,12 @@ pub fn sample(
     lin: &Lin,
 ) -> Cart<f64> {
     match path {
-        Path::DirectF64 => decode_state(chart, body, cu + du * half, cv + dv * half),
+        Path::DirectF64 => decode_state(chart, body, cu + du * half, cv + dv * half).s,
         Path::DirectF32 => {
             // The chart coordinate itself formed in f32 — where this path's floor lives.
             let u = (cu as f32 + (du as f32) * (half as f32)) as f64;
             let v = (cv as f32 + (dv as f32) * (half as f32)) as f64;
-            decode_state(chart, body, u, v)
+            decode_state(chart, body, u, v).s
         }
         Path::LinSplitF64 => axpy(&axpy(&lin.x0, du, &lin.ju), dv, &lin.jv),
         Path::LinSplitF32 => {

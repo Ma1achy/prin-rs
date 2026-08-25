@@ -1,0 +1,66 @@
+    Finished `release` profile [optimized] target(s) in 0.02s
+     Running `target/release/prinq --region near-field --budget 2000 --overlay 1024 --out results/sched-near-field`
+region near-field half=0.05 body=0  N=8 copies=8  precision=f64
+policy=alpha order=spread agg=median tau=0.01 alpha_hi=0.5 alpha_lo=0.2 sib_tau=0.5 bootstrap=2
+
+  21 quads computed of a 2000 budget, 1344 footprints, 10752 trajectories
+  0.96 s wall, 45.8 ms/quad
+  3 iterations, 16 leaves
+
+  leaf decisions:  split 0  floor 0  keep 16  precision_floor 0  max_level 0  budget 0
+  budget exhausted: false
+
+  depth histogram: 2:16
+  leaves per iteration: 1 4 16
+
+wrote results/sched-near-field.tree
+wrote results/sched-near-field_tree_outcome.png and results/sched-near-field_tree_spread.png (1024x1024 base)
+spread base log scaled over [1.044e-5, 1.429e-1]; the tree tracks spread, not
+outcome labels, so that is the base the tree should be checked against.
+
+The tree and the decisions are the output; the image is a diagnostic. A threshold
+chosen because the picture looked right is an arbitrary constant — sweep, do not tune.
+    Finished `release` profile [optimized] target(s) in 0.12s
+     Running `target/release/prinq --region 'deep interior' --budget 2000 --overlay 1024 --out results/sched-deep-interior`
+region deep interior half=0.05 body=0  N=8 copies=8  precision=f64
+policy=alpha order=spread agg=median tau=0.01 alpha_hi=0.5 alpha_lo=0.2 sib_tau=0.5 bootstrap=2
+
+  21 quads computed of a 2000 budget, 1344 footprints, 10752 trajectories
+  0.33 s wall, 15.9 ms/quad
+  3 iterations, 16 leaves
+
+  leaf decisions:  split 0  floor 4  keep 12  precision_floor 0  max_level 0  budget 0
+  budget exhausted: false
+
+  depth histogram: 2:16
+  leaves per iteration: 1 4 16
+
+wrote results/sched-deep-interior.tree
+wrote results/sched-deep-interior_tree_outcome.png and results/sched-deep-interior_tree_spread.png (1024x1024 base)
+spread base log scaled over [1.641e-6, 8.571e-1]; the tree tracks spread, not
+outcome labels, so that is the base the tree should be checked against.
+
+The tree and the decisions are the output; the image is a diagnostic. A threshold
+chosen because the picture looked right is an arbitrary constant — sweep, do not tune.
+    Finished `release` profile [optimized] target(s) in 0.13s
+     Running `target/release/prinq --region far --budget 2000 --overlay 1024 --out results/sched-far`
+region far half=0.05 body=0  N=8 copies=8  precision=f64
+policy=alpha order=spread agg=median tau=0.01 alpha_hi=0.5 alpha_lo=0.2 sib_tau=0.5 bootstrap=2
+
+  21 quads computed of a 2000 budget, 1344 footprints, 10752 trajectories
+  0.57 s wall, 27.1 ms/quad
+  3 iterations, 16 leaves
+
+  leaf decisions:  split 0  floor 0  keep 16  precision_floor 0  max_level 0  budget 0
+  budget exhausted: false
+
+  depth histogram: 2:16
+  leaves per iteration: 1 4 16
+
+wrote results/sched-far.tree
+wrote results/sched-far_tree_outcome.png and results/sched-far_tree_spread.png (1024x1024 base)
+spread base log scaled over [1.151e-9, 1.180e-9]; the tree tracks spread, not
+outcome labels, so that is the base the tree should be checked against.
+
+The tree and the decisions are the output; the image is a diagnostic. A threshold
+chosen because the picture looked right is an arbitrary constant — sweep, do not tune.

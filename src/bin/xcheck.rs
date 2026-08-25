@@ -124,6 +124,72 @@ fn dump_az(name: &str, t_max: f64, path: &str, lc_stable: bool) -> std::io::Resu
     Ok(())
 }
 
+/// Benettin FTLE + the diffusion regression, against `tb_ftle.integrate_full`.
+///
+/// The perturbation direction is pinned analytically on both sides rather than drawn: numpy's
+/// Ziggurat is not ported, reproducing it is not required, and the direction only seeds the
+/// shadow. Nothing about an RNG enters the validated path.
+///
+/// `sample_every` is 25 on both sides because the reference **hardcodes** `s % 25 == 0` and
+/// takes no parameter for it. It appears in the header so the two sides are asserted to agree
+/// on it rather than coincidentally sharing a literal.
+fn dump_ftle(path: &str) -> std::io::Result<()> {
+    use prin_rs::physics::ftle;
+
+    const NX: usize = 4;
+    const NY: usize = 4;
+    const CX: f64 = 1.0;
+    const CY: f64 = 3.0;
+    const HALF: f64 = 0.05;
+    const BODY: usize = 0;
+    const T_MAX: f64 = 2.0;
+    const DT: f64 = 1e-4;
+    const EPS: f64 = 0.03;
+    const D0: f64 = 1e-8;
+    const RENORM: usize = 200;
+    const SAMPLE: usize = 25;
+    const PERT: [f64; 6] = [1.0, -2.0, 3.0, -4.0, 5.0, -6.0];
+
+    let m = burrau::masses::<f64>();
+    let slice = Slice::body_plane(NX, NY, CX, CY, HALF, BODY);
+    let pert = ftle::normalise::<f64>(PERT);
+    let opts = ftle::FtleOpts {
+        eps2: EPS * EPS,
+        d0: D0,
+        renorm_every: RENORM,
+        sample_every: SAMPLE,
+    };
+
+    let f = File::create(path)?;
+    let mut w = BufWriter::new(f);
+    writeln!(
+        w,
+        "# case=ftle kind=ftle nx={NX} ny={NY} cx={CX:?} cy={CY:?} half={HALF:?} body={BODY}"
+    )?;
+    writeln!(
+        w,
+        // `d0` is written as the literal Python renders: `repr(1e-8)` is "1e-08" and Rust's
+        // `{:?}` is "1e-8". `compare.py` asserts the headers match, so a formatting difference
+        // fails the case exactly as a parameter difference would -- which is the intent, and is
+        // why this is pinned rather than the assertion relaxed.
+        "# t_max={T_MAX:?} dt={DT:?} eps={EPS:?} d0=1e-08 renorm_every={RENORM} \
+sample_every={SAMPLE} masses=3,4,5 G=1 pert={}",
+        PERT.iter().map(|x| format!("{x:?}")).collect::<Vec<_>>().join(",")
+    )?;
+    writeln!(w, "# columns=idx,ftle,diffusion,dmin,nre,S,rx0,ry0")?;
+
+    for i in 0..slice.npix() {
+        let s0 = slice.nominal::<f64>(i);
+        let o = ftle::integrate_full(s0, &m, T_MAX, DT, &opts, &pert);
+        writeln!(
+            w,
+            "{i}\t{:?}\t{:?}\t{:?}\t{}\t{:?}\t{:?}\t{:?}",
+            o.ftle, o.diffusion, o.d_min, o.n_renorm, o.s_accum, o.state.r[0].x, o.state.r[0].y
+        )?;
+    }
+    Ok(())
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     let get = |flag: &str| -> Option<String> {
@@ -146,6 +212,7 @@ fn main() {
     }
     let res = match case.as_str() {
         "algebra" => dump_algebra(&out),
+        "ftle" => dump_ftle(&out),
         "az_t0p5" => dump_az("az_t0p5", 0.5, &out, lc_stable),
         "az_t1" => dump_az("az_t1", 1.0, &out, lc_stable),
         "az_t2" => dump_az("az_t2", 2.0, &out, lc_stable),

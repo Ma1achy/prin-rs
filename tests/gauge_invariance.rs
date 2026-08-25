@@ -26,14 +26,14 @@ fn measure(idx: usize, alpha: f64, t_max: f64) -> (f64, f64, f64) {
         .iter()
         .map(|c| {
             let scaled = Cart::new(
-                [c.r[0] * alpha, c.r[1] * alpha, c.r[2] * alpha],
+                [c.s.r[0] * alpha, c.s.r[1] * alpha, c.s.r[2] * alpha],
                 // Released from rest, so velocities are zero; the alpha^{-1/2} factor that
                 // would apply to a moving configuration is written out anyway so the test
                 // stays correct if the initial condition ever changes.
                 [
-                    c.v[0] / alpha.sqrt(),
-                    c.v[1] / alpha.sqrt(),
-                    c.v[2] / alpha.sqrt(),
+                    c.s.v[0] / alpha.sqrt(),
+                    c.s.v[1] / alpha.sqrt(),
+                    c.s.v[2] / alpha.sqrt(),
                 ],
             );
             let o = az::integrate_az(

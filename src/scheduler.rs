@@ -17,7 +17,10 @@ use rayon::prelude::*;
 use crate::camera::Camera;
 use crate::ensemble::pixel::{evaluate, EnsembleCfg, PixelOut};
 use crate::grid::Chart;
-use crate::quad::{quantile, Agg, Decision, QuadReduction, QuadTree};
+use crate::ensemble::stats;
+use crate::physics::shape;
+use crate::quad::{quantile, Agg, Criterion, Decision, QuadReduction, QuadTree};
+use crate::spatial::{self, Layout};
 use crate::render::Precision;
 use crate::rng::SplitMix64;
 
@@ -110,6 +113,9 @@ pub struct SchedCfg {
     pub policy: Policy,
     pub order: Order,
     pub agg: Agg,
+    /// Which signal the split decision reads. Every criterion is computed and dumped whatever
+    /// this is set to, so criteria can be compared offline without re-integrating.
+    pub criterion: Criterion,
     /// The chart every quad decodes through. One tree, one chart.
     pub chart: Chart,
     /// Retain each quad's `N²` footprints for the adaptive render. Not a cache — the run is
@@ -133,6 +139,7 @@ impl Default for SchedCfg {
             policy: Policy::Alpha,
             order: Order::Spread,
             agg: Agg::Median,
+            criterion: Criterion::Within,
             chart: Chart::BodyPlane,
             keep_pixels: false,
             seed: 0,
@@ -167,22 +174,38 @@ fn compute_quad<T: crate::Real>(
     i: usize,
     ens: &EnsembleCfg,
     n: usize,
+    tau: f64,
 ) -> (QuadReduction, Vec<PixelOut>) {
     let slice = tree.nodes[i].slice(n, tree.body, tree.chart);
     let px: Vec<PixelOut> = (0..slice.npix())
         .into_par_iter()
         .map(|k| evaluate::<T>(&slice, k, ens))
         .collect();
-    (reduce(&px), px)
+    // Distinctness before divergence: N^2 decodes, no integration, and it is the only test
+    // that separates a collapsed decode from a genuinely uniform region.
+    let ics: Vec<crate::physics::Cart<f64>> = (0..slice.npix()).map(|k| slice.nominal::<f64>(k)).collect();
+    let mut red = reduce(&px, n, tau, ens.t_max);
+    red.n_distinct_ic = crate::decode::distinct(&ics) as u32;
+    (red, px)
 }
 
-pub fn reduce(px: &[PixelOut]) -> QuadReduction {
+/// Reduce `N x N` footprints to one quad number per field.
+///
+/// `tau` is needed here and not only at decision time because the §3.1/§3.2 signals are
+/// **counts and shapes of the hot set**, which have no meaning without a threshold. That makes
+/// `tau` an input to the *measurement*, not only to the *decision* — a real widening of what
+/// `tau` does, and worth saying out loud given the vertical slice promoted it to the dominant
+/// knob under the screen floor.
+pub fn reduce(px: &[PixelOut], n: usize, tau: f64, t_max: f64) -> QuadReduction {
     let finite = |x: &f64| x.is_finite();
     let mut sp: Vec<f64> = px.iter().map(|p| p.ensemble_spread).filter(finite).collect();
     let mut sh: Vec<f64> = px.iter().map(|p| p.spread_shape).filter(finite).collect();
     let mut ev: Vec<f64> = px.iter().map(|p| p.spread_event).filter(finite).collect();
-    let n = sp.len().max(1) as f64;
-    let mean = sp.iter().sum::<f64>() / n;
+    let nfin = sp.len().max(1) as f64;
+    let mean = sp.iter().sum::<f64>() / nfin;
+    let Between { shape: b_shape, event: b_event, matched: b_matched, pooled, lay_within, lay_between } =
+        between(px, n, tau);
+    let (term_frac, esc_frac, grad) = termination_gradient(px, n, t_max);
     QuadReduction {
         spread_mean: mean,
         spread_median: quantile(&mut sp.clone(), 0.5),
@@ -201,7 +224,183 @@ pub fn reduce(px: &[PixelOut]) -> QuadReduction {
             .fold(0.0f64, f64::max),
         n_nonfinite: px.iter().map(|p| p.n_nonfinite as u32).sum(),
         n_footprints: px.len() as u32,
+
+        between_shape: b_shape,
+        between_event: b_event,
+        between_spread: b_shape.max(b_event),
+        between_matched: b_matched,
+        within_pooled: pooled,
+
+        layout_within: lay_within,
+        layout_between: lay_between,
+        frac_above_tau_within: lay_within.frac_hot(n),
+        frac_above_tau_between: lay_between.frac_hot(n),
+
+        terminated_fraction: term_frac,
+        escape_fraction: esc_frac,
+        t_end_gradient: grad,
+        total_substeps: px.iter().map(|p| p.total_substeps as u64).sum(),
+        // Overwritten by `compute_quad`, which has the slice. Defaulting to the footprint count
+        // keeps a hand-built reduction from reading as collapsed.
+        n_distinct_ic: px.len() as u32,
+
+        running_max_divergence_median: quantile(
+            &mut px.iter().map(|p| p.running_max_divergence).filter(finite).collect(),
+            0.5,
+        ),
+        divergence_trend_median: quantile(
+            &mut px.iter().map(|p| p.divergence_trend).filter(finite).collect(),
+            0.5,
+        ),
+        // A footprint that never crossed is a measurement outcome, not missing data: it counts
+        // in the denominator. Only footprints whose accumulators were never computed at all
+        // are excluded, and then the fraction is NaN rather than 0.
+        frac_diverged: if px.iter().all(|p| p.running_max_divergence.is_nan()) {
+            f64::NAN
+        } else {
+            px.iter().filter(|p| p.first_divergence_t.is_finite()).count() as f64
+                / px.len().max(1) as f64
+        },
+        first_divergence_median: quantile(
+            &mut px.iter().map(|p| p.first_divergence_t).filter(finite).collect(),
+            0.5,
+        ),
     }
+}
+
+/// The between-footprint arm, the matched-count controls, and the layout fields.
+///
+/// Split out of [`reduce`] so the ordering is visible: the nominals are collected once, the
+/// centroid distances are the per-footprint between-field, and the hot masks are built from
+/// that same field rather than from a second pass with a different definition.
+struct Between {
+    shape: f64,
+    event: f64,
+    matched: f64,
+    pooled: f64,
+    lay_within: Layout,
+    lay_between: Layout,
+}
+
+fn between(px: &[PixelOut], n: usize, tau: f64) -> Between {
+    // Copy 0 only. The nominal is un-jittered, so between-footprint variation is not
+    // contaminated by the within-footprint jitter — which would otherwise put the same
+    // perturbation into both arms and make their correlation partly an artefact of sharing an
+    // input.
+    let nominals: Vec<[f64; 3]> = px.iter().map(|p| p.shape_vec).collect();
+    let classes: Vec<u8> = px.iter().map(|p| p.event_class).collect();
+
+    let shape = shape::spread_shape(&nominals);
+    let event: f64 = stats::spread_event(&classes);
+
+    // Matched count: the first `E+1` nominals. `E+1` is read from the ensemble the footprints
+    // actually carry rather than from cfg, so this cannot silently disagree with them.
+    let e1 = px
+        .first()
+        .map(|p| p.copy_shapes.len().max(p.copy_outcomes.len()))
+        .filter(|&k| k > 1)
+        .unwrap_or(0);
+    let matched = if e1 >= 2 && e1 <= nominals.len() {
+        shape::spread_shape(&nominals[..e1])
+    } else {
+        f64::NAN
+    };
+
+    // Pooled: every copy of every footprint. NaN unless the copies were kept — reported as
+    // "not measured", never as zero.
+    let pooled = if px.iter().all(|p| !p.copy_shapes.is_empty()) && !px.is_empty() {
+        let all: Vec<[f64; 3]> = px.iter().flat_map(|p| p.copy_shapes.iter().cloned()).collect();
+        shape::spread_shape(&all)
+    } else {
+        f64::NAN
+    };
+
+    // The per-footprint between-field: each nominal's distance from the quad's nominal
+    // centroid, halved to match `spread_shape`'s chord convention. This is the only between-arm
+    // quantity defined per footprint, and therefore the only one that can carry a mask.
+    let cnt = nominals.len().max(1) as f64;
+    let mut c = [0.0f64; 3];
+    for v in &nominals {
+        for k in 0..3 {
+            c[k] += v[k];
+        }
+    }
+    for k in 0..3 {
+        c[k] /= cnt;
+    }
+    let dev: Vec<f64> = nominals
+        .iter()
+        .map(|v| {
+            let d = [v[0] - c[0], v[1] - c[1], v[2] - c[2]];
+            (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt() / 2.0
+        })
+        .collect();
+
+    // Non-finite is hot. A footprint that could not be determined is not evidence of calm, and
+    // treating it as cold would make the pathological case invisible to exactly the statistic
+    // built to find structure.
+    let hot_w: Vec<bool> = px
+        .iter()
+        .map(|p| !p.ensemble_spread.is_finite() || p.ensemble_spread > tau)
+        .collect();
+    let hot_b: Vec<bool> = dev.iter().map(|&d| !d.is_finite() || d > tau).collect();
+
+    Between {
+        shape,
+        event,
+        matched,
+        pooled,
+        lay_within: spatial::layout(&hot_w, n),
+        lay_between: spatial::layout(&hot_b, n),
+    }
+}
+
+/// Mean absolute spatial gradient of nominal `t_end`, over the **terminated** footprints only.
+///
+/// Returns `(terminated_fraction, escape_fraction, gradient)`; the gradient is `NaN` when fewer
+/// than two adjacent terminated footprints exist. **Not 0** — a zero would be a null that could
+/// not have failed, reported as though it were a measurement about the field.
+///
+/// Terminated means collision **or** escape, because `t_end` is set by whichever came first.
+/// The two are counted separately because they are not interchangeable: `deep interior` reads
+/// `terminated = 0.99` with the escape arm silent, and calling that an escape fraction would
+/// contradict a standing result while appearing to agree with it.
+fn termination_gradient(px: &[PixelOut], n: usize, t_max: f64) -> (f64, f64, f64) {
+    use crate::outcome::State;
+    // `t_end` pinned at the horizon is the censoring case and carries no gradient information.
+    let esc: Vec<bool> = px
+        .iter()
+        .map(|p| !p.censored && p.t_end.is_finite() && p.t_end < t_max * (1.0 - 1e-12))
+        .collect();
+    let n_term = esc.iter().filter(|&&e| e).count();
+    let frac = n_term as f64 / px.len().max(1) as f64;
+    let esc_only = px
+        .iter()
+        .zip(&esc)
+        .filter(|(p, &e)| e && State::from_bits(p.state) == Some(State::Escape))
+        .count() as f64
+        / px.len().max(1) as f64;
+
+    let idx = |jx: usize, jy: usize| jy * n + jx;
+    let mut acc = 0.0;
+    let mut pairs = 0usize;
+    for jy in 0..n {
+        for jx in 0..n {
+            let a = idx(jx, jy);
+            if !esc[a] {
+                continue;
+            }
+            if jx + 1 < n && esc[idx(jx + 1, jy)] {
+                acc += (px[a].t_end - px[idx(jx + 1, jy)].t_end).abs();
+                pairs += 1;
+            }
+            if jy + 1 < n && esc[idx(jx, jy + 1)] {
+                acc += (px[a].t_end - px[idx(jx, jy + 1)].t_end).abs();
+                pairs += 1;
+            }
+        }
+    }
+    (frac, esc_only, if pairs == 0 { f64::NAN } else { acc / pairs as f64 })
 }
 
 /// Run the descent. Returns the tree and what it did.
@@ -237,8 +436,8 @@ pub fn descend(
         let reds: Vec<(QuadReduction, Vec<PixelOut>)> = pending
             .iter()
             .map(|&i| match precision {
-                Precision::F32 => compute_quad::<f32>(&tree, i, ens, cfg.n),
-                Precision::F64 => compute_quad::<f64>(&tree, i, ens, cfg.n),
+                Precision::F32 => compute_quad::<f32>(&tree, i, ens, cfg.n, cfg.tau_display),
+                Precision::F64 => compute_quad::<f64>(&tree, i, ens, cfg.n, cfg.tau_display),
             })
             .collect();
         for (&i, (r, px)) in pending.iter().zip(reds) {
@@ -357,7 +556,14 @@ pub fn decide(tree: &QuadTree, i: usize, cfg: &SchedCfg) -> Decision {
         return Decision::Split;
     }
 
-    let spread = q.red.spread(cfg.agg);
+    // Undetermined, not resolved. Placed with the precision floor rather than among the policy
+    // branches because it is a property of the samples, not of the signal read from them — a
+    // collapsed quad is collapsed under every criterion at once.
+    if q.red.between_collapsed() {
+        return Decision::Collapsed;
+    }
+
+    let spread = q.red.signal(cfg.criterion, cfg.agg);
     if !(spread > cfg.tau_display) {
         return Decision::Keep;
     }

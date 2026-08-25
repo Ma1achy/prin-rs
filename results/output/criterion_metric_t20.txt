@@ -1,0 +1,139 @@
+    Finished `release` profile [optimized] target(s) in 0.17s
+     Running `target/release/examples/criterion_metric 7 8 1e-4 20`
+complete tree to level 7, N=8, E+1=8, res 1024^2, tau=1e-4, t=20 n_sync=49, f64
+21845 quads per region, 11184640 trajectories
+
+  replay check: recolour to `outcome` reproduces the control reference BITWISE
+--- near-field --- built in 1310.6s, 11184640 trajectories; error(root)=0.11265 error(full)=0.0e0
+               ramp [6.4690e-6, 5.1924e-2]  span x8026.613
+  terminated: mean 0.8170, 18055 of 21845 quads with any  |  escaped: mean 0.0006, 588 quads
+                signal distinct   modal%    nan%    spread
+         within/median    21710     0.0%    0.0%  2.098e-2
+           within/mean    21845     0.0%    0.0%  1.139e-1
+            within/p90    20898     2.4%    0.0%  5.714e-1
+        between/median    20899     1.6%    0.0%  5.079e-1
+    max_of_both/median    20899     1.6%    0.0%  5.079e-1
+frac_hot_within/median       65    24.5%    0.0%   1.000e0
+frac_hot_between/median       65    23.3%    0.0%   1.000e0
+         layout/median       80    24.5%    0.0%   1.000e0
+      term_grad/median    18043    17.4%   17.4%  6.877e-1
+    running_max/median    21717     0.0%    0.0%  1.186e-1
+      first_div/median       37    85.9%    0.0%  5.938e-1
+
+                   B =         5        11        23        47        95       191       383       767      1535      3071      6143     12287     21845
+         greedy_oracle   0.07103   0.06299   0.05462   0.05108   0.04903   0.04772   0.04648   0.04482   0.04219   0.03817   0.03230   0.02270   0.00000
+         within/median   0.07103   0.06538   0.06456   0.06450   0.06441   0.06424   0.06384   0.06278   0.06068   0.05713   0.04749   0.01890   0.00000
+           within/mean   0.07103   0.06538   0.05562   0.05440   0.05404   0.05218   0.05018   0.04849   0.04491   0.04118   0.03157   0.01801   0.00000
+            within/p90   0.07103   0.06299   0.05622   0.05440   0.05349   0.05328   0.05278   0.05043   0.04796   0.04331   0.03465   0.01818   0.00000
+        between/median   0.07103   0.06538   0.06361   0.06325   0.05395   0.05298   0.04986   0.04607   0.04432   0.04119   0.03013   0.01729   0.00000
+    max_of_both/median   0.07103   0.06538   0.06361   0.06325   0.05395   0.05298   0.04986   0.04607   0.04432   0.04119   0.03024   0.01730   0.00000
+frac_hot_within/median   0.07103   0.06538   0.06492   0.06478   0.06456   0.06442   0.06411   0.06311   0.06057   0.05726   0.04751   0.01755   0.00000
+frac_hot_between/median   0.07103   0.06538   0.05549   0.05140   0.04961   0.04858   0.04737   0.04662   0.04459   0.04068   0.02990   0.01709   0.00000
+         layout/median   0.07103   0.06538   0.06492   0.06478   0.06456   0.06442   0.06411   0.06311   0.06057   0.05725   0.03637   0.01760   0.00000
+      term_grad/median   0.07103   0.06299   0.06189   0.06181   0.06136   0.06149   0.06003   0.05812   0.05566   0.05138   0.03824   0.02168   0.00000
+    running_max/median   0.07103   0.07112   0.07138   0.07124   0.07099   0.07061   0.06999   0.06845   0.06510   0.06029   0.03917   0.02168   0.00000
+      first_div/median   0.07103   0.06299   0.06090   0.06052   0.05284   0.05165   0.04981   0.04666   0.04308   0.03671   0.02995   0.01867   0.00000
+contrast:within/median   0.07103   0.06538   0.06322   0.05504   0.05318   0.05156   0.05086   0.04737   0.04465   0.04130   0.03235   0.01694   0.00000
+contrast:between/median   0.07103   0.07112   0.06449   0.06263   0.06218   0.05182   0.04882   0.04685   0.04434   0.03840   0.03152   0.01783   0.00000
+    greedy_oracle/cost   0.07103   0.06299   0.05462   0.05112   0.04904   0.04783   0.04661   0.04505   0.04230   0.03817   0.03238   0.02270   0.00000
+             random lo   0.07103   0.06299   0.06280   0.05526   0.05350   0.05164   0.04989   0.04870   0.04542   0.04124   0.03517   0.02034   0.00000
+             random hi   0.07103   0.07167   0.07161   0.06458   0.06394   0.06312   0.06247   0.06061   0.05753   0.05373   0.03837   0.02222   0.00000
+  13 animation frames (oracle | within/median) at true texel sizes
+  images at B=2730 written to results/criterion/near-field_*.png
+
+  replay check: recolour to `outcome` reproduces the control reference BITWISE
+--- far --- built in 169.0s, 11184640 trajectories; error(root)=0.60218 error(full)=0.0e0
+               ramp [1.3113e-9, 1.0617e-8]  span x8.097
+  terminated: mean 1.0000, 21845 of 21845 quads with any  |  escaped: mean 0.0000, 0 quads
+                signal distinct   modal%    nan%    spread
+         within/median    21845     0.0%    0.0%  1.687e-7
+           within/mean    21845     0.0%    0.0%  1.687e-7
+            within/p90    21845     0.0%    0.0%  1.703e-7
+        between/median    21845     0.0%    0.0%  1.775e-6
+    max_of_both/median    21845     0.0%    0.0%  1.775e-6
+frac_hot_within/median        1   100.0%    0.0%   0.000e0
+frac_hot_between/median        1   100.0%    0.0%   0.000e0
+         layout/median        1   100.0%    0.0%   0.000e0
+      term_grad/median    21844     0.0%    0.0%  4.266e-6
+    running_max/median    21845     0.0%    0.0%  5.719e-5
+      first_div/median        1   100.0%    0.0%   0.000e0
+
+                   B =         5        11        23        47        95       191       383       767      1535      3071      6143     12287     21845
+         greedy_oracle   0.60218   0.60218   0.60218   0.59838   0.59013   0.58422   0.57614   0.57175   0.54760   0.50224   0.42250   0.26391   0.00000
+         within/median   0.60218   0.60218   0.60218   0.60218   0.60063   0.58165   0.54322   0.47685   0.36557   0.29575   0.17891   0.10885   0.00000
+           within/mean   0.60218   0.60218   0.60218   0.60218   0.60063   0.58165   0.54322   0.47685   0.36557   0.29575   0.17891   0.10885   0.00000
+            within/p90   0.60218   0.60218   0.60218   0.60218   0.60063   0.58165   0.54322   0.47685   0.36557   0.29575   0.17891   0.10885   0.00000
+        between/median   0.60218   0.60218   0.60218   0.60218   0.60063   0.58165   0.54322   0.47685   0.36557   0.29575   0.17891   0.10885   0.00000
+    max_of_both/median   0.60218   0.60218   0.60218   0.60218   0.60063   0.58165   0.54322   0.47685   0.36557   0.29575   0.17891   0.10885   0.00000
+frac_hot_within/median   0.60218   0.60218   0.60218   0.60218   0.60063   0.58141   0.54316   0.47691   0.36561   0.29563   0.17890   0.10888   0.00000
+frac_hot_between/median   0.60218   0.60218   0.60218   0.60218   0.60063   0.58141   0.54316   0.47691   0.36561   0.29563   0.17890   0.10888   0.00000
+         layout/median   0.60218   0.60218   0.60218   0.60218   0.60063   0.58141   0.54316   0.47691   0.36561   0.29563   0.17890   0.10888   0.00000
+      term_grad/median   0.60218   0.60218   0.60218   0.60218   0.60063   0.58155   0.54318   0.47692   0.36560   0.29565   0.17891   0.10891   0.00000
+    running_max/median   0.60218   0.60218   0.60218   0.60218   0.60063   0.58155   0.54318   0.47692   0.36561   0.29565   0.17890   0.10891   0.00000
+      first_div/median   0.60218   0.60218   0.60218   0.60218   0.60063   0.58141   0.54316   0.47691   0.36561   0.29563   0.17890   0.10888   0.00000
+contrast:within/median   0.60218   0.60218   0.60218   0.60218   0.60063   0.58161   0.54321   0.47687   0.36558   0.29574   0.17891   0.10886   0.00000
+contrast:between/median   0.60218   0.60218   0.60218   0.60218   0.60063   0.58161   0.54321   0.47687   0.36557   0.29574   0.17891   0.10885   0.00000
+    greedy_oracle/cost   0.60218   0.60218   0.60218   0.59838   0.59013   0.58422   0.57614   0.57175   0.54760   0.50224   0.42250   0.26391   0.00000
+             random lo   0.60218   0.60218   0.60054   0.59763   0.59311   0.58071   0.56095   0.53653   0.48550   0.42229   0.32752   0.17767   0.00000
+             random hi   0.60218   0.60218   0.60218   0.60140   0.59732   0.58889   0.57651   0.55558   0.52048   0.46770   0.36606   0.19936   0.00000
+  13 animation frames (oracle | within/median) at true texel sizes
+  images at B=2730 written to results/criterion/far_*.png
+
+  replay check: recolour to `outcome` reproduces the control reference BITWISE
+--- deep interior --- built in 336.3s, 11184640 trajectories; error(root)=0.14846 error(full)=0.0e0
+               ramp [3.6130e-6, 4.4075e-1]  span x121990.095
+  terminated: mean 0.9979, 21845 of 21845 quads with any  |  escaped: mean 0.0798, 4115 quads
+                signal distinct   modal%    nan%    spread
+         within/median    20902     1.4%    0.0%  7.143e-1
+           within/mean    21843     0.0%    0.0%  7.589e-1
+            within/p90    18153     4.8%    0.0%  8.571e-1
+        between/median    18578     0.6%    0.0%  8.413e-1
+    max_of_both/median    18578     0.6%    0.0%  8.413e-1
+frac_hot_within/median       65    52.7%    0.0%   1.000e0
+frac_hot_between/median       65    39.5%    0.0%   1.000e0
+         layout/median       80    52.7%    0.0%   1.000e0
+      term_grad/median    21498     1.6%    0.0%   5.401e0
+    running_max/median    21659     0.0%    0.0%  4.921e-1
+      first_div/median       65    86.7%    0.0%   1.000e0
+
+                   B =         5        11        23        47        95       191       383       767      1535      3071      6143     12287     21845
+         greedy_oracle   0.11029   0.10491   0.09462   0.08804   0.08333   0.07918   0.07470   0.06887   0.06139   0.05199   0.04130   0.02676   0.00000
+         within/median   0.11029   0.10658   0.10478   0.10461   0.10267   0.10000   0.09530   0.08949   0.08409   0.07298   0.05865   0.02339   0.00000
+           within/mean   0.11029   0.10658   0.10478   0.10461   0.10423   0.10285   0.09633   0.08901   0.08291   0.06391   0.04209   0.02271   0.00000
+            within/p90   0.11029   0.10491   0.10317   0.10283   0.10260   0.10202   0.10085   0.09066   0.07731   0.06421   0.04225   0.02248   0.00000
+        between/median   0.11029   0.10658   0.10478   0.10461   0.10419   0.10167   0.09818   0.09361   0.08461   0.06488   0.03960   0.02240   0.00000
+    max_of_both/median   0.11029   0.10658   0.10478   0.10461   0.10419   0.10167   0.09818   0.09345   0.08498   0.06440   0.03962   0.02240   0.00000
+frac_hot_within/median   0.11029   0.10658   0.10444   0.10322   0.10266   0.10158   0.09922   0.09504   0.08454   0.07447   0.05895   0.02147   0.00000
+frac_hot_between/median   0.11029   0.10491   0.09614   0.09170   0.08834   0.08491   0.07847   0.07440   0.06637   0.05761   0.03959   0.02255   0.00000
+         layout/median   0.11029   0.10658   0.10444   0.10322   0.10266   0.10158   0.09922   0.09534   0.08458   0.07112   0.04995   0.02147   0.00000
+      term_grad/median   0.11029   0.10491   0.10343   0.10333   0.10306   0.10249   0.10092   0.09228   0.07610   0.06553   0.04504   0.02832   0.00000
+    running_max/median   0.11029   0.10658   0.10478   0.10461   0.10424   0.10185   0.09828   0.09166   0.06903   0.05462   0.04624   0.02757   0.00000
+      first_div/median   0.11029   0.10658   0.10478   0.10461   0.10427   0.10180   0.09901   0.08972   0.07854   0.06232   0.04804   0.02761   0.00000
+contrast:within/median   0.11029   0.10658   0.10534   0.10480   0.10247   0.09941   0.09532   0.08011   0.07260   0.06458   0.04171   0.02507   0.00000
+contrast:between/median   0.11029   0.10743   0.10296   0.09707   0.09382   0.09179   0.08904   0.08524   0.07704   0.05614   0.03805   0.02302   0.00000
+    greedy_oracle/cost   0.11029   0.10491   0.09462   0.08806   0.08365   0.07924   0.07507   0.06918   0.06194   0.05308   0.04213   0.02670   0.00000
+             random lo   0.11029   0.10491   0.10113   0.09085   0.08776   0.08572   0.08318   0.08069   0.07447   0.06602   0.05299   0.03087   0.00000
+             random hi   0.11029   0.10743   0.10519   0.10082   0.10022   0.09615   0.09372   0.09183   0.08868   0.08164   0.06617   0.04388   0.00000
+  13 animation frames (oracle | within/median) at true texel sizes
+  images at B=2730 written to results/criterion/deep_interior_*.png
+
+Read the oracle-to-random gap FIRST, per region. If greedy_oracle and the random band
+overlap, the metric does not discriminate there and nothing below it is readable.
+
+`greedy_oracle` is a reference, not a bound: greedy declines a low-gain split that
+unlocks large gains two levels down, so a criterion beating it at some budget indicates
+LOOKAHEAD VALUE and is not a bug. There is no assertion anywhere that it dominates.
+
+`nan%` is how much of the region a signal declines to score. A signal that is NaN
+nearly everywhere is not ranking; NaN never wins a comparison, so its curve is the
+tie-break's scan order. Read `escaped:` above for why escape_grad is that at t=13.
+
+Read `distinct`/`modal%` before the curves. A criterion whose signal takes ONE value
+across the region is not ranking at all -- its curve is the tie-break's scan order, and
+a flat curve there means `no ordering`, not `a bad ordering`. Those are different
+faults with different fixes and the error curve alone cannot separate them.
+
+error(full) is exactly 0 by construction -- the reference IS the fully-refined tree.
+That makes the zero locatable, not meaningful as image quality: at the screen floor
+sub-pixel structure is sampled arbitrarily, so `error = 0` reads as `matches this
+sampling`.

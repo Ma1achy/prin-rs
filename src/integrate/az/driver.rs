@@ -56,6 +56,19 @@ pub struct AzOut<T> {
     /// whether `spread_event` may latch — a running max would make a near-tie permanent and
     /// it would never clear. See NOTES §5.
     pub tie_ratio: Vec<T>,
+    /// The **shape vector at each completed sync boundary**, when
+    /// `AzOpts::keep_boundary_shapes` is set; empty otherwise.
+    ///
+    /// Needed because the temporal accumulators are a *cross-copy* statistic: the spread at
+    /// boundary `k` is over the copies, so each copy's own history must survive until they can
+    /// be compared. `AzOut::state` is the final state only — `cart` is overwritten in place
+    /// every boundary — so there was no extension point and this is one.
+    ///
+    /// **Ragged by construction.** Copies terminate at different boundaries under
+    /// `stop_on_event`, so these vectors have different lengths and any reader must handle that
+    /// or it silently reads short. `stats::event_class_at` already does, with `tight.get(k)`
+    /// and a terminal fallback.
+    pub boundary_shapes: Vec<[T; 3]>,
     /// Time of the first terminating event, or the time reached if none fired. Distinct from
     /// `t` only when `stop_on_event` is off, where the run continues past the event.
     pub t_end: T,
@@ -80,11 +93,23 @@ pub struct AzOpts<'a, T> {
     /// `t_max` and the event is recorded but not acted on — which is what the reference does,
     /// and what keeps every copy's continuous fields evaluated at a common playhead.
     pub stop_on_event: bool,
+    /// Record the shape vector at every sync boundary, for the temporal accumulators (§5).
+    ///
+    /// Off by default: `n_sync` triples per copy is ~70x the size of a `PixelOut`, and it is
+    /// reduced and dropped inside one footprint's evaluation, so the peak cost is one
+    /// footprint's worth rather than the tree's.
+    pub keep_boundary_shapes: bool,
 }
 
 impl<T: Real> Default for AzOpts<'_, T> {
     fn default() -> Self {
-        Self { forced_refs: None, lc_stable: true, r_coll_frac: T::zero(), stop_on_event: true }
+        Self {
+            forced_refs: None,
+            lc_stable: true,
+            r_coll_frac: T::zero(),
+            stop_on_event: true,
+            keep_boundary_shapes: false,
+        }
     }
 }
 
@@ -124,7 +149,13 @@ pub fn integrate_az_lc<T: Real>(
     // costs nothing and changes no arithmetic — but nothing acts on them.
     integrate_az_opts(
         s0, m, t_max, n_sync, eta, max_steps,
-        &AzOpts { forced_refs, lc_stable, r_coll_frac: T::zero(), stop_on_event: false },
+        &AzOpts {
+            forced_refs,
+            lc_stable,
+            r_coll_frac: T::zero(),
+            stop_on_event: false,
+            keep_boundary_shapes: false,
+        },
     )
 }
 
@@ -151,6 +182,8 @@ pub fn integrate_az_opts<T: Real>(
     let mut refs = Vec::with_capacity(n_sync);
     let mut tight = Vec::with_capacity(n_sync);
     let mut tie_ratio = Vec::with_capacity(n_sync);
+    let mut boundary_shapes: Vec<[T; 3]> =
+        Vec::with_capacity(if opts.keep_boundary_shapes { n_sync } else { 0 });
     let mut total_steps = 0usize;
     let mut finite = true;
     let mut budget_exhausted = false;
@@ -270,6 +303,9 @@ pub fn integrate_az_opts<T: Real>(
         t += s.t.min(dt_left);
 
         tight.push(crate::outcome::binary_id(&cart));
+        if opts.keep_boundary_shapes {
+            boundary_shapes.push(crate::physics::shape::shape_vec(&cart.r, m));
+        }
         {
             let mut d = crate::physics::newton::pair_dists(&cart.r);
             d.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
@@ -304,6 +340,7 @@ pub fn integrate_az_opts<T: Real>(
         refs,
         tight,
         tie_ratio,
+        boundary_shapes,
         steps: total_steps,
         finite,
         budget_exhausted,

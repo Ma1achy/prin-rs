@@ -93,13 +93,12 @@ fn quads() -> Vec<[usize; 4]> {
 
 /// `sigma_E(0)` only — no integration, so this is cheap enough to sweep `E`.
 fn e0_grid(s: &Slice, n_copies: usize, scheme: Scheme) -> Vec<Vec<f64>> {
-    let m = burrau::masses::<f64>();
     (0..s.npix())
         .into_par_iter()
         .map(|i| {
             jitter::copies_with::<f64>(s, i, n_copies - 1, 0.5, 0, scheme)
                 .iter()
-                .map(|x| energy::energy(&x.r, &x.v, &m, 0.0))
+                .map(|x| energy::energy(&x.s.r, &x.s.v, &x.m, 0.0))
                 .collect()
         })
         .collect()
@@ -187,9 +186,9 @@ fn main() {
                 let mut et = Vec::new();
                 let mut shapes = Vec::new();
                 for x in &c {
-                    e0.push(energy::energy(&x.r, &x.v, &m, 0.0));
+                    e0.push(energy::energy(&x.s.r, &x.s.v, &x.m, 0.0));
                     let o = az::integrate_az_opts(
-                        *x, &m, 13.0, 32, 0.01, 30_000,
+                        x.s, &x.m, 13.0, 32, 0.01, 30_000,
                         &AzOpts { r_coll_frac: 1e-3, stop_on_event: true, ..Default::default() },
                     );
                     et.push(energy::energy(&o.state.r, &o.state.v, &m, 0.0));

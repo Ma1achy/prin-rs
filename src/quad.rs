@@ -304,6 +304,12 @@ pub enum StructureMode {
     #[default]
     Off,
     /// Structure is the whole answer.
+    ///
+    /// **This mode has no criterion axis**: `signal_with(_, _, Replace)` discards both arguments,
+    /// so `replace x within` and `replace x between` are the same ranking, and both are
+    /// identically `Rank::StructureOnly`. Measured and confirmed — their `error(B)` curves match
+    /// to five digits on every target. That is a structural identity, not a finding, and it is
+    /// stated here so a table carrying both does not read as two independent rows agreeing.
     Replace,
     /// *Uncertain **and** structured.* Keeps the determinacy question `ensemble_spread` answers
     /// while adding the structure question it cannot.
@@ -500,6 +506,14 @@ pub enum Decision {
     /// region has a zero spread over perfectly distinct ICs, and conflating the two would flag
     /// the physics as a numerical failure.
     Collapsed,
+    /// **Split to satisfy the 2:1 balance constraint, not because the criterion asked.**
+    ///
+    /// No two adjacent leaves may differ by more than one level or the adaptive render has
+    /// cracks. That forces splits the criterion declined, and they are spent from the same
+    /// budget — so a run where most of the budget went on geometry rather than physics must be
+    /// *countable*, not inferred. A `Split` here would be indistinguishable from a
+    /// criterion-driven one, which is the same failure the stop-reason column exists to prevent.
+    BalanceForced,
 }
 
 impl Decision {
@@ -515,6 +529,7 @@ impl Decision {
             Decision::ScreenFloor => "screen_floor",
             Decision::MaxRelDepth => "max_rel_depth",
             Decision::Collapsed => "collapsed",
+            Decision::BalanceForced => "balance",
         }
     }
     pub fn code(self) -> u8 {
@@ -529,6 +544,7 @@ impl Decision {
             Decision::ScreenFloor => 7,
             Decision::MaxRelDepth => 8,
             Decision::Collapsed => 9,
+            Decision::BalanceForced => 10,
         }
     }
 }

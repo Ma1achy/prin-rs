@@ -19,7 +19,7 @@ use crate::ensemble::pixel::{evaluate, EnsembleCfg, PixelOut};
 use crate::grid::Chart;
 use crate::ensemble::stats;
 use crate::physics::shape;
-use crate::quad::{quantile, Agg, Criterion, Decision, QuadReduction, QuadTree, StructureMode};
+use crate::quad::{quantile, Agg, Criterion, Decision, Dir, QuadReduction, QuadTree, StructureMode};
 use crate::spatial::{self, HotRule, Layout};
 use crate::render::Precision;
 use crate::rng::SplitMix64;
@@ -167,6 +167,23 @@ pub struct SchedCfg {
     /// Picking one because a tree looked right is the constant-tuning defect in its most tempting
     /// form, and this is the knob most exposed to it.
     pub k_frac: f64,
+    /// **Camera bias in the PRIORITY** (§4.3): rank on the visible part of a quad, not the whole
+    /// quad. A quad half off-screen has structure the viewer cannot see, and ranking on it spends
+    /// budget on nothing.
+    ///
+    /// `None` disables it, which is every run before this. The value is the viewport margin in
+    /// quad-widths — §4.3's honest baseline, against which any prediction model must justify
+    /// itself. **The camera enters `priority` here and `veto` never; a `Quad` gains no camera
+    /// field.**
+    pub camera_bias: Option<f64>,
+    /// Enforce the **2:1 balance constraint** — no two adjacent leaves more than one level
+    /// apart, or the adaptive render has cracks.
+    ///
+    /// Off by default so every prior run reproduces byte for byte. It is a *rendering*
+    /// requirement, separate from the neighbour-contrast idea that shares the same lookup, and
+    /// the splits it forces are marked [`Decision::BalanceForced`] so the share of the budget
+    /// spent on geometry rather than physics is countable.
+    pub balance: bool,
     /// The chart every quad decodes through. One tree, one chart.
     pub chart: Chart,
     /// Retain each quad's `N²` footprints for the adaptive render. Not a cache — the run is
@@ -195,6 +212,8 @@ impl Default for SchedCfg {
             structure: StructureMode::Off,
             mode: Mode::Balanced,
             k_frac: 1.0,
+            camera_bias: None,
+            balance: false,
             chart: Chart::BodyPlane,
             keep_pixels: false,
             seed: 0,
@@ -219,6 +238,10 @@ pub struct SchedStats {
     /// duplication is `1/N` of a quad and is a *known cost*, reported rather than fixed: keeping
     /// `Slice` shared with the uniform kernel is worth more than the saving.
     pub footprints: usize,
+    /// Quads split to satisfy 2:1 rather than because the criterion asked. **Reported**: if this
+    /// is a large share of `quads_computed`, the budget went on geometry rather than physics,
+    /// and that is a fact about the run rather than a detail of it.
+    pub balance_forced: usize,
 }
 
 /// Compute one quad: `N²` footprints, each an `E+1` ensemble, reduced to one `QuadReduction`.
@@ -487,6 +510,51 @@ fn termination_gradient(px: &[PixelOut], n: usize, t_max: f64) -> (f64, f64, f64
     (frac, esc_only, if pairs == 0 { f64::NAN } else { acc / pairs as f64 })
 }
 
+/// **The 2:1 balance pass.** Split any leaf more than one level coarser than a neighbour.
+///
+/// Uses the existing [`QuadTree::neighbour`], which returns the *same-or-coarser* neighbour by
+/// root descent — so a deep leaf's probe lands on the coarse quad that needs splitting, which is
+/// exactly the direction this needs.
+///
+/// Iterated to a fixed point, because splitting a coarse quad creates children that may
+/// themselves be two levels under one of *their* neighbours. Bounded by `room` (in quads, not
+/// splits) and by a hard iteration cap: an unbounded loop inside a scheduler is not a failure
+/// mode worth leaving available, and if the cap is ever reached that is a bug rather than a
+/// budget.
+///
+/// Returns the newly created nodes, which still need computing.
+fn balance_pass(tree: &mut QuadTree, iteration: u32, room: usize) -> Vec<usize> {
+    let mut made: Vec<usize> = Vec::new();
+    for _ in 0..64 {
+        let mut want: Vec<usize> = Vec::new();
+        for i in tree.leaves() {
+            let lv = tree.nodes[i].level;
+            for d in Dir::ALL {
+                if let Some(j) = tree.neighbour(i, d) {
+                    // `j` is a leaf that is at least two levels coarser: it must split.
+                    if tree.nodes[j].children.is_none() && tree.nodes[j].level + 1 < lv {
+                        want.push(j);
+                    }
+                }
+            }
+        }
+        want.sort_unstable();
+        want.dedup();
+        if want.is_empty() {
+            return made;
+        }
+        for i in want {
+            if made.len() + 4 > room {
+                return made;
+            }
+            tree.nodes[i].decision = Decision::BalanceForced;
+            made.extend_from_slice(&tree.split(i, iteration));
+        }
+    }
+    debug_assert!(false, "balance pass did not reach a fixed point in 64 rounds");
+    made
+}
+
 /// Run the descent. Returns the tree and what it did.
 pub fn descend(
     cx: f64,
@@ -619,6 +687,15 @@ pub fn descend(
         for i in want {
             pending.extend_from_slice(&tree.split(i, iteration));
         }
+
+        // **After the criterion's splits, not instead of them.** Balance is a rendering
+        // requirement and never a reason to refine, so it runs last and can only add.
+        if cfg.balance {
+            let room = cfg.budget.saturating_sub(st.quads_computed + pending.len());
+            let forced = balance_pass(&mut tree, iteration, room);
+            st.balance_forced += forced.len();
+            pending.extend_from_slice(&forced);
+        }
     }
 
     st.iterations = iteration;
@@ -714,8 +791,16 @@ fn alpha_branch(alpha: Option<f64>, cfg: &SchedCfg) -> Decision {
 pub fn priority(tree: &QuadTree, i: usize, cfg: &SchedCfg) -> f64 {
     let q = &tree.nodes[i];
     let v = q.red.signal_with(cfg.criterion, cfg.agg, cfg.structure);
-    match cfg.order {
+    let v = match cfg.order {
         Order::SpreadArea => v * q.half.powi(2),
+        _ => v,
+    };
+    // **A product of two terms, never either alone** (§4.3). Structure changes only when a quad
+    // is recomputed or the zoom changes; relevance changes on every frame the camera moves --
+    // which is the split the persistent frontier is built around, and the reason this is
+    // computed here rather than stored.
+    match (cfg.camera_bias, cfg.camera) {
+        (Some(margin), Some(cam)) => v * cam.relevance(q.cx, q.cy, q.half, margin),
         _ => v,
     }
 }

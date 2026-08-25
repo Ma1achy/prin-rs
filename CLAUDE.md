@@ -717,6 +717,53 @@ fully hot 0.0000, filament 1.0000, checkerboard 0.0039, isolated cell 0.1250 —
 a case the other two score at maximum. `NaN` on an empty mask, never 0, because `far`'s mask is
 empty on every leaf.
 
+**STRUCTURE NEITHER REPLACES NOR MULTIPLIES — and it wrecks the best criterion.** §2.2's
+recommendation on record was multiply. Measured by `error(B)` at levels 6 under the shipping
+colouring, on near-field, `deep interior` and `preset_shape`: multiply **never helps**, is a wash
+to five digits on the `within` arm (already the worst criterion tested), and takes
+`frac_hot_between` on `preset_shape` from **0.07038 to 0.13133** — from greedy's neighbourhood to
+worse than the random band's upper edge. `replace` is worse still and is **not a second data
+point**: `signal_with(_, _, Replace)` discards both arguments, so `replace x within`,
+`replace x between` and `structure_only` are one expression printed three times. As
+`structure_only` it is the **worst row in the `preset_shape` table**, beaten by random *high*.
+
+**`frac_hot_between/median` with structure OFF is the answer, on 31 distinct values.** It beats the
+random band at nearly every budget in all three targets, and on `preset_shape` — the only tree the
+criterion actually controls — it reaches **0.07038 against greedy's 0.06881**. It does this on 31 /
+65 / 64 distinct values with modal shares of **83.1% / 33.9% / 40.4%**, while `within/median`'s 5418
+distinct values are beaten by random at every budget. *Signal resolution is not what makes a ranking
+good*, at full strength.
+
+**And it reads the ABSOLUTE mask** — the one the "make the threshold relative" instruction would
+have replaced. The relative mask desaturated the spatial fields exactly as intended, and every
+criterion built on it still loses to a saturated 31-valued count. **Desaturating was necessary and
+is not sufficient.** `grad_rms`, threshold-free with every quad distinct, sits mid-pack.
+
+**A test whose subject never executes is decoration, and `t = 2` is where that keeps happening.**
+Three times in this build a scheduler test was written at a short horizon and read as a failure of
+the thing under test: near-field at `t = 2` is tame enough that every leaf reads `Keep`, so the
+ranking never runs, no tree ever becomes unbalanced, and a pan cannot change anything. Pin
+scheduler tests at `t = 13`. Same family: under the veto near-field reaches a **complete tree at
+one depth**, where 2:1 holds trivially — use `deep interior` for the balance test.
+
+**`band_of` conflated `NaN` with `+inf` under one `is_finite` guard.** Undetermined and
+maximally-important into the same bucket. Nothing in the current signal produces `+inf`, which is
+exactly why it would have sat there unnoticed. `NaN` to the bottom, `+inf` to the top.
+
+**The coarse-ancestor fill was a missing FILTER, not a missing feature.** `adaptive::render` drew
+only leaves, so an uncomputed leaf left raw background — a hole, which reads as "nothing here"
+rather than "not yet resolved". Drawing every node with samples, coarsest first, IS §4.5's option
+1, and it is **bitwise identical wherever the tree is complete** because leaves tile the root. Keep
+`LeafTexel` leaves-only: including the fill would double its rows and halve the apparent texel size
+at every level.
+
+**The zoom-out assertion cannot be made in the form the brief states.** *"Newly-computed quads
+after a zoom-out is ~0"* presupposes a tree persisting across frames, and the scope discipline is
+*no eviction, no caching, no async, no promotion*. What is measurable is the arithmetic underneath:
+a zoomed-out descent computes 537 quads against a zoomed-in 597, and **zero** of its boxes are
+absent from the zoomed-in run — so a persistent tree would compute none of them. Say that, rather
+than the claim the build cannot support.
+
 ---
 
 ## SMOKE TEST

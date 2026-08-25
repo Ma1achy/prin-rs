@@ -2234,6 +2234,154 @@ factors catches a case the other two score at maximum.
 `structure` is `NaN` on an empty mask, not 0. `far`'s absolute mask is empty on every leaf
 (§14.6), and a 0 there would read as "no structure found" rather than "not measured".
 
+## 16. §2.2 answered: structure neither replaces nor multiplies
+
+`examples/structure_metric.rs`, levels 6 (5461 quads, 512² reference), `N = 8`, `E+1 = 8`,
+`tau = 1e-4`, `t = 13`, under the **shipping** colouring. Three targets: `near-field`,
+`deep interior` — because a change that only improves near-field is tuning — and `preset_shape`,
+the **only tree in the corpus whose leaves are entirely its own decisions** (0% camera veto).
+`far` is deliberately absent: its reference window is `(1.3e-9, 1.1e-8)`, the integrator's
+arithmetic rather than physics.
+
+Oracle-to-random separation, read first: **0.00597 / 0.00675 / 0.01768**. The metric discriminates
+on all three, and by far the most on `preset_shape` — the one where the criterion is doing the
+deciding.
+
+### 16.1 The recommendation on record was multiply. The measurement says no.
+
+`error(B)` at `B = 191`, `off` against `multiply` on the same arm:
+
+| target | arm | `off` | `multiply` |
+|---|---|---|---|
+| near-field | within | 0.11622 | 0.11543 |
+| near-field | between | **0.10110** | 0.10585 |
+| near-field | frac_hot_between | **0.09313** | 0.11554 |
+| `deep interior` | within | 0.07910 | 0.07898 |
+| `deep interior` | between | **0.07958** | 0.08048 |
+| `deep interior` | frac_hot_between | **0.06220** | 0.07003 |
+| `preset_shape` | within | 0.12471 | 0.12471 |
+| `preset_shape` | between | **0.12477** | 0.13218 |
+| `preset_shape` | frac_hot_between | **0.07038** | 0.13133 |
+
+**Multiply never helps and it wrecks the best criterion** — `frac_hot_between` on `preset_shape`
+goes 0.07038 to 0.13133, from beating greedy's neighbourhood to worse than the random band's
+*upper* edge. On the `within` arm it is a wash to five digits, which is the only place it does no
+harm, and that is the arm that was already the worst criterion tested.
+
+**`replace` is worse still, and it is not a second data point.** `signal_with(_, _, Replace)`
+discards both arguments, so `replace × within`, `replace × between` and `structure_only` are the
+same expression; their curves match to five digits because they *are* one row. Documented at the
+enum. As `structure_only` it is the **worst row in the `preset_shape` table** — 0.13348 at
+`B = 191` against a random *high* of 0.10814. Ranking on structure alone is worse than ranking at
+random badly.
+
+So §2.2's answer is **neither**. The structure term does not replace the signal and does not
+usefully multiply it.
+
+### 16.2 The winner is the criterion the instruction would have deleted
+
+**`frac_hot_between/median`, with the structure term off**, beats the random band at nearly every
+budget in all three targets:
+
+| target | `B = 47` | `B = 191` | `B = 767` | `B = 1535` |
+|---|---|---|---|---|
+| near-field | **0.10457** / 0.10334 | **0.09313** / 0.09474 | **0.08046** / 0.08273 | 0.06914 / 0.06707 |
+| `deep interior` | **0.06879** / 0.07140 | **0.06220** / 0.06258 | **0.04750** / 0.05173 | **0.02772** / 0.03983 |
+| `preset_shape` | **0.09565** / 0.09970 | **0.07038** / 0.08649 | **0.04654** / 0.06676 | **0.03203** / 0.05044 |
+
+(criterion / best random.) On `preset_shape` it is close to `greedy_oracle` itself — 0.07038
+against 0.06881 at `B = 191` — which is the strongest showing any criterion has made on this
+project, on the one tree the criterion actually controls.
+
+**It does this on 31, 65 and 64 distinct values, with modal shares of 83.1%, 33.9% and 40.4%.**
+Near-field's ordering has thirty-one distinct values over 5461 quads and an 83% mode, and it still
+wins. That is the standing rule at full strength: *signal resolution is not what makes a ranking
+good*. Meanwhile `within/median` carries 5418 distinct values in near-field and is beaten by
+random at every budget — a fine-grained ordering that is actively bad.
+
+**And this is the criterion that reads the ABSOLUTE mask** — the one the instruction to "make the
+threshold relative" would have replaced. §14.5 caught that before it shipped. The relative mask
+desaturated the spatial fields exactly as intended, and every criterion built on it still loses to
+a saturated 31-valued count.
+
+### 16.3 The threshold-free control does not rescue the family
+
+`grad_rms` has **5461 distinct values — every quad distinct — and no threshold in it at all**. It
+sits mid-pack: better than `within`, worse than `frac_hot_between`, worse than random. `layout_rel`
+— the desaturated mask's own criterion — carries 46 / 174 / 214 distinct values and is the second
+best non-`frac_hot` row on `preset_shape` (0.08970) while still losing to random there.
+
+So the mask family's problem was never only the saturation. **Desaturating was necessary and is
+not sufficient**, and nothing built on the spatial layout has yet beaten a plain count in the tail.
+
+## 17. The slippy map
+
+### 17.1 2:1 balance, and the share of the budget it costs
+
+`Decision::BalanceForced` (code 10) is a separate decision so the geometry cost is **countable**;
+a `Split` would be indistinguishable from a criterion-driven one. Measured on `deep interior`
+under a camera: unbalanced 46 leaves with a worst adjacent gap of **2**, balanced 64 leaves with a
+gap of **1**, and **14.1% of the quads computed** were balance-forced.
+
+The unbalanced arm is the control, and it is not decorative: under the veto near-field reaches a
+complete tree at one depth, where 2:1 holds trivially and the test would pass having measured
+nothing.
+
+### 17.2 The camera enters the priority and never the veto
+
+`Camera::relevance(cx, cy, half, margin)` is the visible-area fraction, computed at query time.
+`Camera::veto` stays position-free, which is what keeps a quad's *decision* independent of where
+the camera points — the standing rule. Both halves are asserted: the veto returns the same
+decision for a camera sitting on the quad and one ten units away, while relevance goes 1.0 → 0.0
+and is strictly graded (0.5) for a quad straddling the edge.
+
+**A pan now means something.** Without the bias, panning `cx` 1.00 → 1.04 leaves the tree
+identical — the standing identity, now asserted as one rather than reported as a result. With it,
+52 → 55 leaves. `margin` is §4.3's honest baseline: widen the viewport, drop prediction. Velocity
+extrapolation fails on flick-and-stop, and the swept-path variant must beat this before its
+complexity is justified.
+
+### 17.3 The persistent frontier, and the reference kept beside it
+
+`src/frontier.rs`: priority split into a **stored** physics term and a **derived** camera term,
+bucketed into 24 log-spaced bands. Log-spaced because the signal spans six orders across regions;
+linear bands would put a whole region in one bucket, which is the saturation failure this project
+has already met twice.
+
+`Frontier::rebuild` — the from-scratch path — is **kept permanently** and
+`agrees_with_rebuild` compares them after inserts, cross-band reprioritisations and removals. The
+failure mode is staleness, and it is invisible: a quad sitting high on a priority it no longer has
+looks exactly like a bad criterion. Two paths that must agree is the only thing that catches it.
+
+`band_of` conflated `NaN` with `+inf` under one `is_finite` guard — undetermined and
+maximally-important sent to the same bucket. Nothing in the current signal produces `+inf`, which
+is exactly why it would have sat there. `NaN` goes to the bottom, `+inf` to the top.
+
+### 17.4 Zoom-out is free, but not in the form the brief states
+
+§4.5 asks for *"the count of newly-computed quads after a zoom-out is ≈ 0"*. That presupposes a
+tree persisting across frames, and this build deliberately has none — the scope discipline is *no
+eviction, no caching, no async, no promotion*. Asserting it as written would require building the
+thing the scope forbids; asserting it against a from-scratch descent would measure nothing.
+
+What is available is the arithmetic underneath: measured, a zoomed-out descent computes **537
+quads against 537 of the zoomed-in run's 597**, and **zero** of its boxes are absent from the
+zoomed-in descent. So a persistent tree would have to compute none of them. Stated that way rather
+than as the claim the build cannot support.
+
+### 17.5 The coarse-ancestor fill was a missing filter, not a missing feature
+
+`adaptive::render` drew only leaves, so a leaf without computed samples left raw background — a
+hole, which reads as *"nothing here"* rather than *"not yet resolved"*, and is the one outcome
+worse than a blocky texel. It now draws **every node with samples, coarsest first**, which is
+§4.5's option 1 exactly: draw the coarse ancestor and let it sharpen.
+
+**Wherever the tree is complete this is bitwise identical**, because leaves tile the root and a
+parent is wholly overwritten by its children. It differs only where a leaf is missing — a
+budget-exhausted quad truncated before compute, or a frontier the camera has just revealed. The
+returned `LeafTexel` list stays leaves-only; including the fill would have doubled its rows and
+halved the apparent texel size at every level.
+
 ## 13. Reproducing any of this
 
 Every table above comes from a committed example. Raw output for all of them is in
@@ -2295,3 +2443,5 @@ Every table above comes from a committed example. Raw output for all of them is 
 | §14 the threshold diagnosis | `cargo run --release --example threshold_diagnosis` |
 | §14.5-14.6 the hot rule swept | `cargo run --release --example hot_rule_sweep` |
 | §15.3-15.4 the balanced march | `cargo run --release --example balanced_march` |
+| §16 structure modes by error(B) | `cargo run --release --example structure_metric -- 6 8 1e-4 13` |
+| §17 the slippy-map gates | `cargo test --release --test slippy -- --nocapture` |

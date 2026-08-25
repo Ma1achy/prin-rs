@@ -92,6 +92,7 @@ rows = [struct.unpack_from(f"<{nf}d", d, off + i*nf*8) for i in range(n)]
 | `output/threshold_diagnosis.txt` | **where `tau` sits in the distribution it is meant to cut**, re-derived from all 69 committed `.prnq` dumps: the percentile ladder, the mask saturation, the two-sided failure, and which gate stopped each criterion-bound tree |
 | `output/sched_sweep.txt` | `tau` x `alpha_hi`, no camera. Ladder `1e-8 … 1e-1`: **both** low rungs are labelled degenerate controls, for *different* regions — `1e-8` is the only rung below `far`'s bulk |
 | `output/sweep_screen.txt` | the same sweep under the screen floor, with the `tau` span taken over the whole ladder rather than between two named rungs |
+| `output/structure_metric.txt` | **§2.2 settled**: `error(B)` for `off` / `multiply` / `replace` on three targets, with `structure_only` and the threshold-free `grad_rms` as controls. Read the oracle-to-random separation first, then `off` against `multiply` on the *same arm* |
 | `output/balanced_march.txt` | **§3.2's acceptance test**: depth variance and per-quad churn against `t`, balanced against the uniform control. Carries the median leaf spread per row, which is what shows the treadmill premise to be wrong in sign |
 | `output/hot_rule_sweep.txt` | the hot rule swept per region — mask saturation and component counts under `abs` against `q[0.50/0.75/0.90]`, with a constant leaf count asserted as the control |
 
@@ -314,6 +315,14 @@ It carries `err_sum` — this quad's summed OKLab distance to the reference were
 That is a **constant of the quad**, because quads are disjoint, which is what makes the replay
 exact and the greedy priority queue static. It also carries **every criterion's scalar** whatever
 the run ranked on, so criteria can be compared offline without re-integrating.
+
+### Structure-mode curves — `structure_<target>_t<T>.png`
+
+`error(B)` per structure mode, one figure per target, from `examples/structure_metric.rs`. Dashed
+series are the controls. `off` is the identity row and `multiply` must be read against **it**, not
+against the field; `structure_only` has no signal in it at all and says whether the term is buying
+structure or merely re-weighting the spread. `replace` is identically `structure_only` — one
+expression, not two rows agreeing.
 
 ### The balanced march — `march_var_<region>.png`, `march_churn_<region>.png`
 

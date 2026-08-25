@@ -9,6 +9,7 @@ pub mod camera;
 pub mod config;
 pub mod decode;
 pub mod ensemble;
+pub mod frontier;
 pub mod grid;
 pub mod integrate;
 pub mod metric;

@@ -358,11 +358,42 @@ Confounds to dump, not hide:
   against `sib_tau = 0.5`; the sibling median is 0.45 and 0.79-1.05. Usable as a signal, not at
   that threshold.
 
+---
+
+## The colouring, the charts, and the re-measure
+
+- [x] `src/output/colour.rs` — vMF site-blend on six computed landmarks, polarity and curve as
+      properties of the field, `DEBUG_NAN` for every undetermined case
+- [!] the `atan2` hue map does **not** seam — it is identically `C_MAX*(n1,n2)`, agreement
+      `4.2e-17`. Its fault is that it is 2-to-1 in `n0`. My first diagnosis was wrong
+- [!] and the 2-to-1 merge cost little: `n0` interdecile is 0.0665 / 0.1684 against a span of
+      1.99. **The flat images were the ramp**, plus a p99 set by `spread_event`'s 5-value
+      staircase describing 1.7% of the region — a window 12.7x too wide
+- [!] `far` is featureless in the **data** (hue coverage exactly 0.0000 at every kappa), and the
+      auto-ranged ramp hides it: `error(root) = 0.60` over a window of `(1.3e-9, 1.1e-8)`
+- [x] `src/output/plot.rs` on plotters; NaN dropped and counted, exact zeros in their own band
+      one row per series, a degenerate figure that says so
+- [x] `src/output/fcache.rs` — PRQF, so a colouring change is a replay. Bitwise-asserted
+- [x] `src/physics/decoder.rs` — shared `D` and `C`; `grid::Chart` gains all five families
+- [!] `sum p = 0` does **not** catch the crossed-mass swap. Jacobi round-trip and the KE identity
+      do (`6.8e-2`, `2.6e-1`), and both are empty at `m0 == m1`
+- [!] `(Lz,E)` and `(Lz,K)` are the same map, bitwise
+- [!] `momenta_for` returned a **drifting** system for a non-COM-centred input. Found by a test
+- [x] §5 re-measure at level 7 (1024²) under the shipping colouring
+- [x] **`frac_hot_between/median` is the only criterion beating the random band, in both
+      measurable regions.** The aggregation, not the within/between arm
+- [!] `greedy_oracle` beaten **2.4x by a scan order** in `far`
+- [!] the chart families are **tame** where they are centred: `alpha` 0.99–1.01 against 0.14 for
+      `body_plane`. They do not exercise the criterion where it is hard
+- [!] a `criterion_metric -- 3 8` validation run overwrote committed 512² artefacts with 128x64
+      ones. Everything re-rendered at 1024²; `pan_sequence` had `frame_res` hardcoded at 384
+
 **Open.**
 
-- **Change the default criterion.** The measurement supports it and this build did not do it:
-  `Criterion::Within` is still the default, because a default change is a decision to take with
-  the numbers in front of you rather than a tidy-up folded into the PR that produced them.
+- **Change the default criterion.** Now decision-ready: `frac_hot_between/median` beats the
+  random band in both measurable regions and `within/median` does not. Still not done here,
+  because a default change is a decision to take with the numbers in front of you rather than a
+  tidy-up folded into the PR that produced them.
 - **`deep interior`'s floor is partly integration error.** Still not attempted. The fix is
   BRIEF §2.5's flag-and-re-integrate over that region at finer `eta`, not a scheduler change.
 - **Why `within/median` is worse than random.** It has 5418 distinct values of 5461, so it is a

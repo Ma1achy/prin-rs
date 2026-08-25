@@ -39,6 +39,15 @@ fn arg<T: std::str::FromStr>(i: usize, d: T) -> T {
     std::env::args().nth(i).and_then(|s| s.parse().ok()).unwrap_or(d)
 }
 
+/// The colouring the criterion is scored under.
+///
+/// **This is a criterion parameter, not a presentation one.** `error(B)` measures image change,
+/// so what is displayed decides which quads matter -- the standing rule is *choose a criterion
+/// under the colouring that will ship*. PR #13 scored every criterion under `Outcome`, which at
+/// `t = 13` is a saturated categorical label: near-field's reference image is two flat colours.
+const SHIPPING: metric::Colouring =
+    metric::Colouring::Bivariate(prin_rs::output::colour::Scalar::ShapeSpread);
+
 fn main() {
     let levels: u32 = arg(1, 6);
     let n: usize = arg(2, 8);
@@ -85,9 +94,47 @@ fn main() {
         .filter(|r| matches!(r.0, "far" | "near-field" | "deep interior"))
     {
         let t0 = std::time::Instant::now();
-        let cache = metric::build(
-            region, cx, cy, 0.05, body, Chart::BodyPlane, levels, n, res, tau, &ens, metric::Colouring::Outcome,
+        // The production colouring, and the outcome control beside it, from ONE integration
+        // pass. `outcome` is categorical and saturated at t = 13 -- near-field's reference image
+        // is two flat colours -- so it is kept as a control rather than as the target.
+        let (mut caches, px_of) = metric::build_multi_with_footprints(
+            region,
+            cx,
+            cy,
+            0.05,
+            body,
+            Chart::BodyPlane,
+            levels,
+            n,
+            res,
+            tau,
+            &ens,
+            &[SHIPPING, metric::Colouring::Outcome],
         );
+        let control = caches.pop().unwrap();
+        let cache = caches.pop().unwrap();
+
+        // The footprints, so no future colouring change costs another integration. PRQC stores
+        // a BAKED err_sum and cannot be replayed under a new colouring; this can.
+        let stem0 = region.replace(' ', "_");
+        if let Ok(f) = std::fs::File::create(format!("results/criterion/{stem0}_t{t_max}.fcache")) {
+            let mut w = std::io::BufWriter::new(f);
+            let fp = cache.footprints_from(&px_of, t_max);
+            let _ = prin_rs::output::fcache::write(&mut w, &fp);
+        }
+        // A cheap assertion that the replay path is live on real data, not only in the unit
+        // test: recolouring to the control must reproduce the control bitwise.
+        {
+            let fp = cache.footprints_from(&px_of, t_max);
+            match cache.recolour(&fp, metric::Colouring::Outcome) {
+                Ok(r) => println!(
+                    "  replay check: recolour to `outcome` reproduces the control reference {}",
+                    if r.reference == control.reference { "BITWISE" } else { "**DIFFERENTLY**" }
+                ),
+                Err(e) => println!("  replay check FAILED: {e}"),
+            }
+        }
+        drop(px_of);
         let build_s = t0.elapsed().as_secs_f64();
 
         // Reference sanity, before any curve is read: the deepest-level tree must give exactly
@@ -103,8 +150,41 @@ fn main() {
 
         println!(
             "--- {region} --- built in {build_s:.1}s, {} trajectories; \
-             error(root)={e_root:.5} error(full)={e_full:.1e}",
-            cache.trajectories
+             error(root)={e_root:.5} error(full)={e_full:.1e}\n\
+             {:>14} ramp [{:.4e}, {:.4e}]  span x{:.3}{}",
+            cache.trajectories,
+            "",
+            cache.ramp.0,
+            cache.ramp.1,
+            cache.ramp.1 / cache.ramp.0.max(f64::MIN_POSITIVE),
+            // Two arms, because the ratio alone is not enough. `far` reads a span of x8 -- above
+            // any sensible ratio threshold -- over a window of (1.3e-9, 1.1e-8). `spread_shape`
+            // is a mean chord distance on the unit sphere and is dimensionless, so a p99 of 1e-8
+            // means the copies agree to eight digits: the field is at the level of the
+            // integrator's own arithmetic, not of the physics.
+            //
+            // The absolute arm compares against a MEASURED floor rather than a chosen constant:
+            // the region's own median energy drift. A field whose whole range sits within two
+            // orders of that is not distinguishable from integration noise.
+            {
+                let mut d: Vec<f64> = cache
+                    .quads
+                    .values()
+                    .map(|q| q.red.worst_energy_drift)
+                    .filter(|x| x.is_finite() && *x > 0.0)
+                    .collect();
+                let floor = if d.is_empty() {
+                    0.0
+                } else {
+                    100.0 * prin_rs::stats::quantile(&mut d, 0.5)
+                };
+                if cache.ramp.1 / cache.ramp.0.max(f64::MIN_POSITIVE) < 2.0 || cache.ramp.1 < floor
+                {
+                    "  <-- AUTO-RANGED OVER NOISE: the ramp is normalised to this region's own p1-p99, so a field with no dynamic range -- or one whose whole range sits at the integrator's own arithmetic floor -- is stretched to full scale and error(B) becomes nonzero for a region with nothing in it. Read this before the curve."
+                } else {
+                    ""
+                }
+            }
         );
 
         // ---- degeneracy, read BEFORE the curves ----
@@ -241,7 +321,6 @@ fn main() {
         // table above means paying the 2.8M-trajectory integration again. Every criterion's
         // scalar is dumped whatever this run ranked on, which is what makes offline comparison
         // real rather than aspirational.
-        let stem0 = region.replace(' ', "_");
         if let Ok(f) = std::fs::File::create(format!("results/criterion/{stem0}_t{t_max}.qcache")) {
             let mut w = std::io::BufWriter::new(f);
             let _ = prin_rs::output::qcache::write(&mut w, &cache, &ens, tau);
@@ -250,41 +329,61 @@ fn main() {
         // ---- the error(B) curves as a figure ----
         //
         // Log y, because the curves span four decades and the interesting part is the bottom
-        // one. An exact zero cannot sit on a log axis, so it is drawn at the floor and ticked
-        // rather than dropped -- on several of these curves reaching zero IS the result.
+        // one. Exact zeros are NOT snapped to the floor: they get their own band below the log
+        // panel, one row per series, because reaching zero IS the result on several of these
+        // curves and the previous figure drew 15 of 17 `far` series on top of each other.
         {
-            use prin_rs::output::plot::{Plot, Series};
-            let palette: [[u8; 3]; 8] = [
-                [255, 210, 90], [120, 200, 255], [255, 120, 120], [140, 235, 150],
-                [220, 140, 255], [255, 170, 80], [150, 150, 255], [120, 235, 220],
-            ];
+            use prin_rs::output::plot::{palette, Figure, Series};
+            let live: Vec<&(String, Vec<f64>)> = rows
+                .iter()
+                .filter(|(name, _)| !name.starts_with("random") || name == "random[1]")
+                .collect();
+            let pal = palette(live.len());
             let mut ser: Vec<Series> = Vec::new();
-            let mut ci = 0usize;
-            for (name, curve) in &rows {
-                if name.starts_with("random") && name != "random[1]" {
-                    continue;
-                }
+            for (i, (name, curve)) in live.iter().enumerate() {
                 let control = name.starts_with("random") || name.starts_with("greedy");
                 let rgb = if name.starts_with("greedy_oracle") && !name.contains("cost") {
-                    [255, 255, 255]
+                    (255, 255, 255)
                 } else if name.starts_with("random") {
-                    [130, 130, 140]
+                    (150, 150, 160)
                 } else {
-                    let c = palette[ci % palette.len()];
-                    ci += 1;
-                    c
+                    pal[i]
                 };
-                ser.push(Series {
-                    label: name,
-                    points: budgets.iter().zip(curve).map(|(&b, &e)| (b as f64, e)).collect(),
-                    rgb,
-                    dashed: control,
-                });
+                let pts = budgets.iter().zip(curve.iter()).map(|(&b, &e)| (b as f64, e)).collect();
+                let sr = Series::new(name.clone(), pts, rgb);
+                ser.push(if control { sr.dashed() } else { sr });
             }
-            let mut pl = Plot::new(1100, 620);
-            let title = format!("{region}  error(b)  t={t_max}  n={n}  e+1={}", ens.n_extra + 1);
-            pl.draw(&title, &ser, full as f64, 1e-5, 0.1);
-            let _ = pl.save(&format!("results/criterion/curve_{stem0}_t{t_max}.png"));
+            let fig = Figure {
+                title: format!("{region} — error(B) against the fully-refined tree"),
+                x_label: "budget B (quads computed)".into(),
+                y_label: "mean per-pixel OKLab distance".into(),
+                series: ser,
+                y_lo: 1e-6,
+                y_hi: 0.2,
+                notes: vec![
+                    format!(
+                        "t_max = {t_max}, n_sync = {n_sync}, N = {n}, E+1 = {}, eta = {}, \
+                         levels = {levels}, {res}x{res}, f64, criterion = display colouring",
+                        ens.n_extra + 1,
+                        ens.eta
+                    ),
+                    "error = 0 means MATCHES THIS SAMPLING, not correct: the reference is the \
+                     fully-refined tree at one sample per pixel, and at the screen floor \
+                     sub-pixel structure is sampled arbitrarily."
+                        .into(),
+                    "greedy_oracle is a strong reference, NOT a ceiling. A criterion beating it \
+                     indicates lookahead value, not a bug: on a tree, gains are neither \
+                     independent nor immediately available."
+                        .into(),
+                    "A label reading (k/n) means n-k points were non-finite and were DROPPED. \
+                     A high NaN fraction is a property to read, not a defect: term_grad is NaN \
+                     on 97.1% of near-field and still reaches zero by B = 383."
+                        .into(),
+                ],
+            };
+            if let Err(e) = fig.save(&format!("results/criterion/curve_{stem0}_t{t_max}")) {
+                eprintln!("figure failed: {e}");
+            }
         }
 
         // ---- images: the reference, and the best and worst criteria at one budget ----
@@ -390,22 +489,28 @@ fn main() {
                 1,
                 2,
             );
-            // Every frame also as an ordinary PNG, so nothing here depends on APNG support.
-            for (i, fr) in frames.iter().enumerate() {
-                let _ = prin_rs::output::adaptive::save_rect(
-                    &format!("results/criterion/budget_{stem0}_t{t_max}_{i:02}.png"),
-                    res * 2,
-                    res,
-                    fr,
-                );
-            }
-            for (i, fr) in wire_frames.iter().enumerate() {
-                let _ = prin_rs::output::adaptive::save_rect(
-                    &format!("results/criterion/budget_{stem0}_t{t_max}_wire_{i:02}.png"),
-                    res * 2,
-                    res,
-                    fr,
-                );
+            // Three representative frames as ordinary PNGs -- first, middle and last -- so
+            // nothing here depends on APNG support. Not all of them: at 1024^2 the side-by-side
+            // is 2048x1024 and thirteen of them per region per horizon came to 154 MB of
+            // duplicated content, since the animation already carries every frame.
+            let picks = [0usize, frames.len() / 2, frames.len().saturating_sub(1)];
+            for &i in picks.iter() {
+                if let Some(fr) = frames.get(i) {
+                    let _ = prin_rs::output::adaptive::save_rect(
+                        &format!("results/criterion/budget_{stem0}_t{t_max}_{i:02}.png"),
+                        res * 2,
+                        res,
+                        fr,
+                    );
+                }
+                if let Some(fr) = wire_frames.get(i) {
+                    let _ = prin_rs::output::adaptive::save_rect(
+                        &format!("results/criterion/budget_{stem0}_t{t_max}_wire_{i:02}.png"),
+                        res * 2,
+                        res,
+                        fr,
+                    );
+                }
             }
             println!(
                 "  {} animation frames (oracle | within/median) at true texel sizes",

@@ -45,6 +45,7 @@ pub fn write<W: Write>(
          ref_policy={:?} lc_stable={} precision={} eps=0\n\
          r_coll_frac={} stop_on_event={} refine_flagged={} refine_threshold={} refine_eta_factor={} refine_max_passes={}\n\
          chart={} decode_path={}\n\
+         chart_params={}\n\
          fields={}\n",
         slice.nx, slice.ny, slice.cx, slice.cy, slice.half, slice.body,
         cfg.t_max, cfg.n_sync, cfg.eta, cfg.max_steps, cfg.n_extra + 1,
@@ -52,7 +53,7 @@ pub fn write<W: Write>(
         cfg.ref_policy, cfg.lc_stable, precision,
         cfg.r_coll_frac, cfg.stop_on_event,
         cfg.refine_flagged, cfg.refine_threshold, cfg.refine_eta_factor, cfg.refine_max_passes,
-        slice.chart.name(), cfg.decode_path.name(),
+        slice.chart.name(), cfg.decode_path.name(), slice.chart.params(),
         FIELDS.join(","),
     );
     w.write_all(&(header.len() as u32).to_le_bytes())?;

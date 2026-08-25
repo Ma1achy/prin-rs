@@ -3,3 +3,13 @@ __pycache__/
 *.pyc
 /target
 xcheck_out/
+
+# Footprint caches. At levels = 7 these are ~160 MB each and 940 MB for six -- 1.4M
+# footprints x 14 f64, which is irreducible at one sample per pixel at 1024^2. They exist
+# so a colouring change costs a replay rather than a re-integration WITHIN a working
+# session; committing a gigabyte so that survives a clone is the wrong trade.
+#
+# Regenerate with:
+#   cargo run --release --example criterion_metric -- 7 8 1e-4 13
+#   cargo run --release --example criterion_metric -- 7 8 1e-4 20
+results/**/*.fcache

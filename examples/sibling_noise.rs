@@ -46,7 +46,7 @@ use rayon::prelude::*;
 use prin_rs::ensemble::jitter::{self, Scheme};
 use prin_rs::ensemble::pixel::{evaluate, EnsembleCfg};
 use prin_rs::grid::{self, Slice};
-use prin_rs::physics::{burrau, energy};
+use prin_rs::physics::energy;
 use prin_rs::quad::Agg;
 use prin_rs::scheduler::reduce;
 use prin_rs::stats;
@@ -72,14 +72,13 @@ fn rms_dev(v: &[f64]) -> f64 {
 }
 
 fn sigma0(cx: f64, cy: f64, half: f64, body: usize, n: usize, e: usize, sc: Scheme) -> f64 {
-    let m = burrau::masses::<f64>();
     let s = Slice::body_plane(n, n, cx, cy, half, body);
     let e: Vec<f64> = (0..s.npix())
         .into_par_iter()
         .flat_map(|i| {
             jitter::copies_with::<f64>(&s, i, e, 0.5, 0, sc)
                 .into_iter()
-                .map(|x| energy::energy(&x.r, &x.v, &m, 0.0))
+                .map(|x| energy::energy(&x.s.r, &x.s.v, &x.m, 0.0))
                 .collect::<Vec<f64>>()
         })
         .collect();

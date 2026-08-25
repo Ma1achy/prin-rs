@@ -165,7 +165,7 @@ fn per_boundary_curves(s: &prin_rs::grid::Slice) -> Vec<(f64, usize, usize, usiz
                 .iter()
                 .map(|c| {
                     az::integrate_az_opts(
-                        *c, &m, t_max, N_SYNC, 0.01, 30_000,
+                        c.s, &c.m, t_max, N_SYNC, 0.01, 30_000,
                         &AzOpts { r_coll_frac: 1e-3, stop_on_event: true, ..Default::default() },
                     )
                 })

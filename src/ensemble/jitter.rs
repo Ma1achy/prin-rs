@@ -31,7 +31,7 @@
 
 use crate::decode::{self, Path};
 use crate::grid::Slice;
-use crate::physics::Cart;
+use crate::physics::Ic;
 use crate::rng::SplitMix64;
 use crate::Real;
 
@@ -102,7 +102,7 @@ pub fn copies<T: Real>(
     n_extra: usize,
     jitter_frac: f64,
     seed: u64,
-) -> Vec<Cart<T>> {
+) -> Vec<Ic<T>> {
     copies_with(slice, idx, n_extra, jitter_frac, seed, Scheme::default())
 }
 
@@ -114,7 +114,7 @@ pub fn copies_with<T: Real>(
     jitter_frac: f64,
     seed: u64,
     scheme: Scheme,
-) -> Vec<Cart<T>> {
+) -> Vec<Ic<T>> {
     copies_with_path(slice, idx, n_extra, jitter_frac, seed, scheme, Path::DirectF64)
 }
 
@@ -135,7 +135,7 @@ pub fn copies_with_path<T: Real>(
     seed: u64,
     scheme: Scheme,
     path: Path,
-) -> Vec<Cart<T>> {
+) -> Vec<Ic<T>> {
     let (hx, hy) = slice.cell_widths();
     let jx = jitter_frac * hx;
     let jy = jitter_frac * hy;
@@ -144,13 +144,48 @@ pub fn copies_with_path<T: Real>(
     // Only built when a non-default path asks for it: five extra f64 decodes per footprint.
     let lin = (path != Path::DirectF64)
         .then(|| decode::linearise(&slice.chart, slice.body, slice.cx, slice.cy, slice.half));
-    let make = |u: f64, v: f64| -> Cart<f64> {
+    // Masses travel with the copy, not with the footprint: on a chart that varies mass, two
+    // jittered copies of one pixel are two different three-body systems. Under `Path::DirectF64`
+    // the whole `Ic` comes from one decode; under a linearised path the configuration comes from
+    // the linearisation and the masses from a direct decode at the same point, which is exact
+    // (see `decode::linearise`).
+    // On a `Domain::Unit` chart the copies must stay inside the square. `jitter_frac = 0.5`
+    // spans the whole cell edge to edge, so an edge cell's copies leave it -- and outside the
+    // square the feasibility warp's guarantee does not hold.
+    //
+    // **Reflect, never clamp.** Clamping collapses several copies onto the boundary, and a
+    // collapsed decode gives `ensemble_spread` exactly zero, which reads as *perfectly
+    // resolved* and stops the descent with a small tidy tree built from nothing. Reflection
+    // keeps the copies distinct and keeps them sampling an area of the same measure.
+    let unit = slice.chart.domain() == crate::grid::Domain::Unit;
+    let fold = move |x: f64| -> f64 {
+        if !unit {
+            return x;
+        }
+        let mut y = x;
+        for _ in 0..8 {
+            if y < 0.0 {
+                y = -y;
+            } else if y > 1.0 {
+                y = 2.0 - y;
+            } else {
+                return y;
+            }
+        }
+        y.clamp(0.0, 1.0)
+    };
+
+    let make = |u: f64, v: f64| -> Ic<f64> {
+        let (u, v) = (fold(u), fold(v));
         match &lin {
             None => slice.decode_state(u, v),
-            Some(l) => decode::sample(
-                path, &slice.chart, slice.body, slice.cx, slice.cy, slice.half,
-                (u - slice.cx) / slice.half, (v - slice.cy) / slice.half, l,
-            ),
+            Some(l) => Ic {
+                m: slice.decode_state(u, v).m,
+                s: decode::sample(
+                    path, &slice.chart, slice.body, slice.cx, slice.cy, slice.half,
+                    (u - slice.cx) / slice.half, (v - slice.cy) / slice.half, l,
+                ),
+            },
         }
     };
 

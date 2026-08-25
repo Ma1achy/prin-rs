@@ -20,7 +20,7 @@ use prin_rs::ensemble::jitter::Scheme;
 use prin_rs::ensemble::{jitter, stats};
 use prin_rs::grid::{self, Slice};
 use prin_rs::integrate::az::{self, AzOpts};
-use prin_rs::physics::{burrau, energy, shape};
+use prin_rs::physics::{energy, shape};
 
 const FINE: usize = 64;
 const N_EXTRA: usize = 7;
@@ -37,19 +37,18 @@ fn copies_of(s: &Slice, idx: usize) -> Copies {
 }
 
 fn copies_of_with(s: &Slice, idx: usize, n_extra: usize, scheme: Scheme) -> Copies {
-    let m = burrau::masses::<f64>();
     let c = jitter::copies_with::<f64>(s, idx, n_extra, 0.5, 0, scheme);
     let mut e0 = Vec::new();
     let mut et = Vec::new();
     let mut shapes = Vec::new();
     for x in &c {
-        e0.push(energy::energy(&x.r, &x.v, &m, 0.0));
+        e0.push(energy::energy(&x.s.r, &x.s.v, &x.m, 0.0));
         let o = az::integrate_az_opts(
-            *x, &m, 13.0, 32, 0.01, 30_000,
+            x.s, &x.m, 13.0, 32, 0.01, 30_000,
             &AzOpts { r_coll_frac: 1e-3, stop_on_event: true, ..Default::default() },
         );
-        et.push(energy::energy(&o.state.r, &o.state.v, &m, 0.0));
-        shapes.push(shape::shape_vec(&o.state.r, &m));
+        et.push(energy::energy(&o.state.r, &o.state.v, &x.m, 0.0));
+        shapes.push(shape::shape_vec(&o.state.r, &x.m));
     }
     Copies { e0, et, shapes }
 }
@@ -148,7 +147,6 @@ fn control_noise_floor() {
 
 fn control_noise_floor_for(scheme: Scheme) {
     use prin_rs::rng::SplitMix64;
-    let m = burrau::masses::<f64>();
     println!("=== the control's noise floor against ensemble size — {scheme:?} ===");
     println!("alpha for sigma_E(0). True value is exactly 1.0: sigma_E(0) is proportional to");
     println!("the jitter and so to cell width, so doubling the cell doubles it.");
@@ -163,7 +161,7 @@ fn control_noise_floor_for(scheme: Scheme) {
             .map(|i| {
                 jitter::copies_with::<f64>(&s, i, n_copies - 1, 0.5, 0, scheme)
                     .iter()
-                    .map(|x| energy::energy(&x.r, &x.v, &m, 0.0))
+                    .map(|x| energy::energy(&x.s.r, &x.s.v, &x.m, 0.0))
                     .collect()
             })
             .collect();

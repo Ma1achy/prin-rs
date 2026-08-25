@@ -4,7 +4,7 @@ use crate::decode::Path;
 use crate::grid::Slice;
 use crate::integrate::az::{self, AzOpts, RefPolicy};
 use crate::outcome::{self, Outcome, State};
-use crate::physics::{burrau, energy, shape};
+use crate::physics::{energy, shape};
 use crate::Real;
 
 use super::jitter::Scheme;
@@ -391,11 +391,16 @@ pub fn evaluate<T: Real>(slice: &Slice, idx: usize, cfg: &EnsembleCfg) -> PixelO
 
 /// The single pass. `eta` is explicit so the refinement pass can differ from `cfg.eta`.
 pub fn evaluate_at<T: Real>(slice: &Slice, idx: usize, cfg: &EnsembleCfg, eta_v: f64) -> PixelOut {
-    let m = burrau::masses::<T>();
     let copies = jitter::copies_with_path::<T>(
         slice, idx, cfg.n_extra, cfg.jitter_frac, cfg.seed, cfg.jitter_scheme, cfg.decode_path,
     );
     let n = copies.len();
+
+    // **Masses come from the decode, not from a global.** They used to be `burrau::masses()`
+    // read here; four of the five chart families vary them. `m` is the NOMINAL copy's, used for
+    // every whole-footprint statistic; per-copy masses are used where a copy is integrated or
+    // its energy taken, because on a mass chart two jittered copies are two different systems.
+    let m = copies[0].m;
 
     let t_max = T::lit(cfg.t_max);
     let eta = T::lit(eta_v);
@@ -410,7 +415,8 @@ pub fn evaluate_at<T: Real>(slice: &Slice, idx: usize, cfg: &EnsembleCfg, eta_v:
 
     // The nominal copy first: its reference-body choices are what the shared policy hands to
     // the others.
-    let nominal = az::integrate_az_opts(copies[0], &m, t_max, cfg.n_sync, eta, cfg.max_steps, &base);
+    let nominal =
+        az::integrate_az_opts(copies[0].s, &copies[0].m, t_max, cfg.n_sync, eta, cfg.max_steps, &base);
     let nominal_refs = nominal.refs.clone();
 
     let mut outs = Vec::with_capacity(n);
@@ -421,14 +427,14 @@ pub fn evaluate_at<T: Real>(slice: &Slice, idx: usize, cfg: &EnsembleCfg, eta_v:
             RefPolicy::PerCopy => None,
         };
         outs.push(az::integrate_az_opts(
-            *c, &m, t_max, cfg.n_sync, eta, cfg.max_steps,
+            c.s, &c.m, t_max, cfg.n_sync, eta, cfg.max_steps,
             &AzOpts { forced_refs: forced, ..base },
         ));
     }
 
     let e0: Vec<T> = copies
         .iter()
-        .map(|c| energy::energy(&c.r, &c.v, &m, T::zero()))
+        .map(|c| energy::energy(&c.s.r, &c.s.v, &c.m, T::zero()))
         .collect();
     let et: Vec<T> = outs
         .iter()
@@ -519,7 +525,7 @@ pub fn evaluate_at<T: Real>(slice: &Slice, idx: usize, cfg: &EnsembleCfg, eta_v:
     // (`tb_ftle.py` sits on `tb.py`), cross-checked at 8.88e-16 -- see `tests/xcheck.rs`.
     let ftle_out = cfg.ftle.as_ref().map(|o| {
         crate::physics::ftle::integrate_full::<T>(
-            copies[0],
+            copies[0].s,
             &m,
             T::lit(cfg.t_max),
             T::lit(cfg.ftle_dt),

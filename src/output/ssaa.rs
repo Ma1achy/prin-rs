@@ -27,7 +27,9 @@ pub fn packed_rgb(packed: u8) -> [u8; 3] {
         Some(State::Collision) => [110, 190, 110],
         Some(State::Bounded) => [70, 150, 220],
         Some(State::Running) => [200, 190, 90],
-        Some(State::SimFailed) => return [255, 0, 255],
+        Some(State::SimFailed) | Some(State::DecodeFailed) => {
+            return crate::output::colour::DEBUG_NAN
+        }
         _ => [40, 40, 48],
     };
     let k = 0.55 + 0.15 * detail as f64;

@@ -1,0 +1,60 @@
+    Finished `release` profile [optimized] target(s) in 0.06s
+     Running `target/release/examples/chart_gallery 40000 1e-4 0.2 1024`
+budget 40000, tau=1e-4, alpha_hi=0.2, N=8, E+1=8, t=13, f64, 1024^2, screen floor ON.
+Colouring: hue = shape sphere by vMF site-blend, lightness = spread_shape on a log ramp
+over each chart's own p1-p99. The window is printed because a false-colour image without
+its scale is decoration.
+
+              case          chart domain   quads  leaves  depth  screen  distinct  alpha med alpha idec ramp span  bound
+        body_plane     body_plane   free     549     412      6       0     23159     0.1402     1.1203   196.212   crit
+       plane_00deg          plane   free     549     412      6       0     23159     0.1402     1.1203   196.212   crit
+                    [control] plane_00deg vs body_plane: max |dIC| = 0e0 -- the same chart, asserted
+      shape_sphere          shape   free    1293     970      6       0     52038     0.1905     0.9709  2107.649   crit
+      latent_shape         latent   free    5441    4081      6       0    200909     0.9995     0.0355     3.715   crit
+    latent_inner_p         latent   free    5461    4096      6       0    201601     1.0082     0.1912     9.376   crit
+    latent_outer_p         latent   free    5101    3826      6       0    188731     1.0045     0.1033    20.928   crit
+       latent_mass         latent   free    5461    4096      6       0    201601     0.9956     0.0903     6.822   crit
+      latent_mixed         latent   free    4553    3415      6       0    168761     0.9997     0.0486    11.301   crit
+  latent_oblique_a         latent   free    5293    3970      6       0    195561     1.0005     0.0434     4.384   crit
+  latent_oblique_b         latent   free    4845    3634      6       0    179282     1.0021     0.0791     3.634   crit
+       burrau_nu_k         burrau   unit    4753    3565      6       0    193388     1.0038     0.0788     5.968   crit
+    invariant_lz_k invariant_lz_k   unit    5461    4096      6       0    221568     1.0000     0.0817     7.317   crit
+      mass_simplex   mass_simplex   unit    5461    4096      6       0    221753     0.9996     0.1287     4.896   crit
+
+13 charts: still + wire twin + outcome control + level ladder (both) + .prnq each,
+plus the two gallery APNGs. Everything at 1024^2.
+
+`distinct` is how many distinct values the lightness field takes over the chart. Read it
+before the picture: a field with few distinct values has that many colours in it, and no
+ramp recovers what is not there.
+
+`ramp span` is hi/lo of the p1-p99 window. The ramp is auto-ranged per chart, so a chart
+with no dynamic range has its NOISE stretched to full scale and reads as structure. A
+span near 1 means the picture is of the estimator, not the physics.
+
+`screen` is leaves stopped by the screen floor rather than by the criterion. It is a
+VETO on scale and never a trigger, and it is view-relative -- a floored quad refines
+again when zoomed into.
+
+Leaf counts are slice-conditional to 4.3x and compare WITHIN a chart, never across.
+`alpha med` and `alpha idec` are the cross-chart quantities. The interdecile rather than
+the variance: excess kurtosis on alpha_shape is 110, so the variance describes the tail.
+
+READ THE `bound` COLUMN BEFORE ANY LEAF COUNT. A row marked BUDGET stopped because the
+budget ran out, not because the criterion was satisfied -- its quads, leaves and depth
+are facts about the budget and are the same for every such row by construction. Only a
+`crit` row's tree shape is a statement about the chart.
+
+And the substantive finding this table carries: the reference's chart families, centred
+where they are centred here, are TAME. `alpha med` sits at 0.99-1.01 on every latent,
+Burrau and simplex row against 0.14 for `body_plane` and 0.19 for the shape sphere.
+alpha near 1 means splitting halves the spread -- refinement pays, so the scheduler
+refines everywhere and runs to the budget. That is correct behaviour on a tame region,
+not a scheduler fault.
+
+But it means these charts are not exercising the criterion where it is hard. Tameness is
+a property of WHERE a chart is centred, and the base latent point here was chosen to
+avoid the z = 0 symmetry rather than to find chaos. Moving it until the picture gets
+interesting would be tuning; the honest report is that the interesting question -- does
+the criterion behave consistently across charts -- is not answered by a set of charts
+that are all tame.

@@ -306,3 +306,77 @@ the between-footprint arm, the two matched-count controls, the hot-set layout, t
 termination-gradient pair, the cost column, the IC-distinctness count and the temporal
 accumulators. A reader that indexes by name still works on v1; one that indexes by position does
 not, which is why the version moved.
+
+---
+
+## `charts/` — every chart family, from `examples/chart_gallery.rs`
+
+Thirteen chart instances across the reference's five families, all at **1024²**, budget 40000 so
+every descent stops on the criterion rather than the cap. Per chart:
+
+| file | what it answers |
+|---|---|
+| `<case>.png` | **what is displayed** — adaptive render, texels at true per-quad sizes |
+| `<case>_wire.png` | **where the tree cut** — the same image with leaf boundaries, graded by level |
+| `<case>_uniform.png` | **what the chart looks like** — one sample per pixel, no tree at all |
+| `<case>_outcome.png`, `<case>_uniform_outcome.png` | the categorical control |
+| `<case>_levels.png`, `<case>_levels_wire.png` | **how the tree got there** — one descent truncated at each depth |
+| `<case>.prnq` | the quad dump, with `chart_params` carrying the full basis |
+
+**Read all three of the first three, never one alone.** The adaptive render is a picture of the
+*scheduler*: near-field's `alpha` median is 0.14 against `alpha_hi = 0.2`, so the criterion says
+refinement does not pay and keeps coarse leaves — and a coarse leaf is one flat tile, because the
+render never interpolates. That reads as blur and is an honest picture of an unrefined tree.
+`_uniform` is the chart without the tree in the way. Reading either alone is how a criterion's
+failure gets mistaken for a rendering artefact, or a rendering choice for a finding.
+
+The level ladder is **one** descent truncated at each depth, not a fresh descent per frame — so
+it is one refinement seen at several playheads rather than several unrelated trees.
+
+## `colour/` — from `examples/colour_check.rs`
+
+Three regions × three lightness fields at 1024², plus the outcome control. The point of the set
+is the **pair** `<region>_spread.png` and `<region>_spread_shape.png`: `ensemble_spread` is
+`max(spread_shape, spread_event)` and the event arm is a count ratio over `E+1` copies, so where
+it dominates the field is a staircase. `results/output/colour_check.txt` prints the distinct-value
+count and the event-arm fraction, and those are what to read before either image.
+
+## Footprint caches — `<region>_t<T>.fcache`, **not committed**
+
+`PRQF`: the colour-relevant projection of every footprint of a complete tree — enough to recolour
+`error(B)` under any colouring without re-integrating. At level 7 that is 1.4M footprints × 14
+`f64`, about 160 MB each and 940 MB for six, with no redundancy to remove at one sample per pixel.
+
+They exist so a colouring change costs a **replay within a working session**. Committing a
+gigabyte so that survives a clone is the wrong trade, so they are gitignored with the regeneration
+command recorded beside them in `.gitignore`.
+
+`PRQC` is still committed: it is the per-quad reductions and every criterion's scalar, which is
+what every table is read from.
+
+## A note on raster sizes
+
+Everything generated in this build is **1024²** (figures are 1400×800; budget side-by-sides are
+2048×1024). Anything smaller in `results/` predates it.
+
+If an image looks blurry, **measure its pixel dimensions first**. Wireframe lines are written with
+integer pixel `set` calls and adaptive texels are nearest-neighbour, so neither can be soft in the
+file — softness is always a viewer upscaling a small raster. That diagnosis cost a round trip in
+this build, after a `criterion_metric -- 3 8` validation run was allowed to overwrite committed
+512² artefacts with 128×64 ones.
+
+### Regenerating the top-level region images and raw dumps
+
+`prin --size` drives **both** the PNG pair and the per-pixel `.raw` dump, and they want opposite
+sizes: the images want 1024², while the dumps are 64×64 by design and would be **320 MB per
+region** at 1024². So it is run twice per region, with the large run's dump kept out of
+`results/`:
+
+```sh
+for r in near-field mid-field far "body2 core" "body1 slice" "deep interior"; do
+  stem="${r// /-}"
+  cargo run --release --bin prin -- --region "$r" --size 1024 --out "/tmp/big/$stem"
+  cp "/tmp/big/${stem}_outcome.png" "/tmp/big/${stem}_spread.png" results/
+  cargo run --release --bin prin -- --region "$r" --size 64 --out "results/$stem"
+done
+```

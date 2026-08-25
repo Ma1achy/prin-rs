@@ -1,6 +1,7 @@
 //! Newtonian three-body physics in the plane. `G = 1` throughout.
 
 pub mod burrau;
+pub mod decoder;
 pub mod energy;
 pub mod ftle;
 pub mod newton;
@@ -23,6 +24,40 @@ pub const THIRD: [usize; 3] = [2, 1, 0];
 pub struct Cart<T> {
     pub r: [Vec2<T>; 3],
     pub v: [Vec2<T>; 3],
+}
+
+/// A decoded initial condition: **masses and state together**.
+///
+/// Masses used to be the compile-time constant [`burrau::MASSES`], read at three separate sites.
+/// Four of the five chart families in the chart reference vary them — the latent chart carries
+/// `(z_mu1, z_mu2)` as two of its eight coordinates, and the mass simplex is nothing else — so a
+/// mass cannot be a global. It is a property of the point being decoded, and travels with it.
+///
+/// **The guard that makes this safe:** every chart that existed before returns exactly
+/// `burrau::MASSES`, so `BodyPlane` stays bitwise and the Python cross-check is untouched.
+/// `tests/charts.rs` asserts it rather than trusting it.
+///
+/// [`burrau::MASSES`]: crate::physics::burrau::MASSES
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Ic<T> {
+    pub m: [T; 3],
+    pub s: Cart<T>,
+}
+
+impl<T: Real> Ic<T> {
+    pub fn cast<U: Real>(&self) -> Ic<U> {
+        Ic {
+            m: [
+                U::lit(self.m[0].to_f64().unwrap()),
+                U::lit(self.m[1].to_f64().unwrap()),
+                U::lit(self.m[2].to_f64().unwrap()),
+            ],
+            s: self.s.cast(),
+        }
+    }
+    pub fn is_finite(&self) -> bool {
+        self.m.iter().all(|x| x.is_finite()) && self.s.is_finite()
+    }
 }
 
 impl<T: Real> Cart<T> {

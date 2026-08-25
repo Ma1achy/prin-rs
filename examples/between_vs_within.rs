@@ -103,24 +103,28 @@ fn main() {
         // The adaptive render of the tree this criterion built, and the same tree's spread
         // overlay -- the diagnostic that exposed `deep interior`'s failure in the first place.
         {
-            let cam = Camera::framing(s.cx, s.cy, 0.05, 512);
+            // `viewport`, not a literal. It was hardcoded at 512 while the argument set only the
+            // scheduling camera, so asking for a larger render produced the same small raster --
+            // the same fault `pan_sequence` had at 384, and a small raster upscaled by a viewer
+            // reads as a blurry render rather than as a fixed size.
+            let cam = Camera::framing(s.cx, s.cy, 0.05, viewport);
             let (img, _t) = prin_rs::output::adaptive::render(
-                &t, &st.pixels, &cam, 512,
+                &t, &st.pixels, &cam, viewport,
                 prin_rs::output::adaptive::TexelMode::Adaptive,
                 prin_rs::output::png::outcome_rgb,
             );
             let _ = prin_rs::output::adaptive::save(
                 &format!("results/criterion/tree_{}.png", region.replace(' ', "_")),
-                512,
+                viewport,
                 &img,
             );
             let mut wimg = img.clone();
-            let boxes = prin_rs::output::wire::boxes_from_tree(&t, &cam, 512);
+            let boxes = prin_rs::output::wire::boxes_from_tree(&t, &cam, viewport);
             let deepest = boxes.iter().map(|b| b.level).max().unwrap_or(1);
-            prin_rs::output::wire::draw(&mut wimg, 512, 512, &boxes, deepest.max(1));
+            prin_rs::output::wire::draw(&mut wimg, viewport, viewport, &boxes, deepest.max(1));
             let _ = prin_rs::output::adaptive::save(
                 &format!("results/criterion/tree_{}_wire.png", region.replace(' ', "_")),
-                512,
+                viewport,
                 &wimg,
             );
         }

@@ -132,7 +132,7 @@ fn first_disagreement() {
                 .iter()
                 .map(|c| {
                     az::integrate_az_opts(
-                        *c, &m, t_max, n_sync, 0.01, 30_000,
+                        c.s, &c.m, t_max, n_sync, 0.01, 30_000,
                         // stop_on_event ON, matching the dumped field: a terminated copy's
                         // tight record ends there and the join with its terminal class takes
                         // over. With it off the join is never exercised and the comparison

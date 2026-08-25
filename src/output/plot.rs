@@ -1,222 +1,360 @@
-//! A minimal line plot, written to RGB8.
+//! Line figures for the `error(B)` curves, on `plotters`.
 //!
-//! Deliberately small: there is no plotting crate here and adding one to draw a dozen curves
-//! would be a dependency for a figure. This does axes, a log-y grid, and labelled series, which
-//! is what an `error(B)` curve needs and nothing more.
+//! The previous version was hand-rolled: a 3x5 dot-matrix glyph set at 1:1 with no case
+//! distinction and blanks for unsupported characters, so `random[1]` rendered as `random`. That
+//! is what the dependency buys. The dependency does **not** buy the three things that were
+//! actually wrong with the figures, and those are handled here.
 //!
-//! **Log y, always.** The curves in this project span four decades and the interesting part is
-//! the bottom one — a linear axis puts every good criterion on the same flat line at the floor
-//! and makes them indistinguishable, which is the opposite of what the figure is for. Zero is
-//! not representable on a log axis, so an exact zero is drawn **at the floor and marked**, never
-//! silently dropped: `error(B) = 0` is the most important point on several of these curves.
+//! # 1. A NaN is dropped and the drop is reported, never drawn
+//!
+//! The old `ly()` fed NaN through `f64::clamp`, which propagates it, into `as isize`, which
+//! saturates to `0` — so **a NaN point was silently drawn at the top edge as a valid datum**.
+//! `term_grad` is NaN on 97.1% of `near-field` quads, so those curves had spurious lines pinned
+//! to the top of the frame. Here a non-finite point is dropped and the series label carries its
+//! live count (`term_grad (4/11)`), because a criterion that declines to answer must not look
+//! like one answering confidently. A high NaN fraction is a property to read — `term_grad` is
+//! NaN on 97.1% of near-field and still reaches the oracle's zero by `B = 383`, so the 2.9% it
+//! scores are the right quads.
+//!
+//! # 2. An exact zero gets its own band, not the floor
+//!
+//! Zero is not representable on a log axis. Snapping it to the bottom of the log panel makes it
+//! indistinguishable from a small finite value, and `error(B) = 0` is the most important point
+//! on several of these curves. The figure is split: a log panel above, and below a rule, a
+//! **zero band** in which each series that reaches zero gets its own row. Rows rather than one
+//! shared line because `curve_far_t13.png` had all 17 series at exactly zero at every budget,
+//! **15 of them completely overdrawn** — including the white `greedy_oracle` — so the figure
+//! showed one flat line and looked like a plot of one criterion.
+//!
+//! # 3. A figure that cannot distinguish its inputs says so
+//!
+//! If every series is identically zero the figure carries a stated panel rather than a picture.
+//! `far` has `error(root) = 0.00000`: there is no measurable image there at `512^2`, and a
+//! figure that renders it as a line is the plotting equivalent of a test that cannot fail.
+//!
+//! # Output
+//!
+//! Both PNG and SVG, from one description. The SVG is the readable artefact — it stores text as
+//! text, so it renders in whatever face the viewer has and does not depend on this machine's
+//! font resolution. The PNG is the raster twin, for folding into an APNG.
 
-/// A named series of `(x, y)` points.
-pub struct Series<'a> {
-    pub label: &'a str,
+use std::error::Error;
+
+use plotters::coord::Shift;
+use plotters::prelude::*;
+
+use crate::output::oklab;
+
+/// A named series. `points` may contain non-finite `y`; they are dropped at draw time and
+/// counted into the label.
+#[derive(Clone, Debug)]
+pub struct Series {
+    pub label: String,
     pub points: Vec<(f64, f64)>,
-    pub rgb: [u8; 3],
-    /// Drawn as a dashed line. Used for the controls, so a reader can tell at a glance which
-    /// curves are references rather than candidates.
+    pub rgb: (u8, u8, u8),
+    /// Drawn dashed. Used for the controls, so a reader can tell a reference from a candidate.
     pub dashed: bool,
 }
 
-pub struct Plot {
-    pub w: usize,
-    pub h: usize,
-    px: Vec<u8>,
-    bg: [u8; 3],
+impl Series {
+    pub fn new(label: impl Into<String>, points: Vec<(f64, f64)>, rgb: (u8, u8, u8)) -> Self {
+        Series { label: label.into(), points, rgb, dashed: false }
+    }
+    pub fn dashed(mut self) -> Self {
+        self.dashed = true;
+        self
+    }
+    /// `(finite_positive, exact_zero, dropped_non_finite)`.
+    pub fn census(&self) -> (usize, usize, usize) {
+        let mut pos = 0;
+        let mut zero = 0;
+        let mut nan = 0;
+        for &(_, y) in &self.points {
+            if !y.is_finite() {
+                nan += 1;
+            } else if y > 0.0 {
+                pos += 1;
+            } else {
+                zero += 1;
+            }
+        }
+        (pos, zero, nan)
+    }
+    /// The smallest `x` at which this series is exactly zero, if any.
+    pub fn first_zero(&self) -> Option<f64> {
+        self.points
+            .iter()
+            .filter(|&&(_, y)| y.is_finite() && y <= 0.0)
+            .map(|&(x, _)| x)
+            .fold(None, |a: Option<f64>, x| Some(a.map_or(x, |b| b.min(x))))
+    }
+    /// Label with the live-point count appended when any point was dropped.
+    fn display_label(&self) -> String {
+        let (pos, zero, nan) = self.census();
+        if nan == 0 {
+            self.label.clone()
+        } else {
+            format!("{} ({}/{})", self.label, pos + zero, pos + zero + nan)
+        }
+    }
 }
 
-const PAD_L: usize = 64;
-const PAD_R: usize = 150;
-const PAD_T: usize = 28;
-const PAD_B: usize = 40;
+/// One figure: a title, axis names, and the series to draw.
+pub struct Figure {
+    pub title: String,
+    pub x_label: String,
+    pub y_label: String,
+    pub series: Vec<Series>,
+    /// Log-panel y range. Exact zeros go to the zero band regardless.
+    pub y_lo: f64,
+    pub y_hi: f64,
+    /// Extra lines under the title — the parameters a reader needs to not misread the figure.
+    pub notes: Vec<String>,
+}
 
-impl Plot {
-    pub fn new(w: usize, h: usize) -> Self {
-        let bg = [18, 18, 22];
-        Plot { w, h, px: bg.iter().cycle().take(w * h * 3).cloned().collect(), bg }
+const BG: RGBColor = RGBColor(18, 18, 22);
+const FG: RGBColor = RGBColor(215, 215, 225);
+const AXIS: RGBColor = RGBColor(120, 120, 132);
+const GRID: RGBColor = RGBColor(46, 46, 54);
+
+/// `n` perceptually distinct colours, from OKLCh rather than an eight-entry table.
+///
+/// The old palette had 8 entries for 17 series and repeated, so two criteria could not be told
+/// apart by colour at all. Hue is spread evenly and lightness alternates, which separates
+/// adjacent entries on a second axis when `n` is large enough that hue alone is not enough.
+pub fn palette(n: usize) -> Vec<(u8, u8, u8)> {
+    (0..n)
+        .map(|i| {
+            let h = 360.0 * (i as f64) / (n.max(1) as f64) + 20.0;
+            let l = if i % 2 == 0 { 0.78 } else { 0.62 };
+            let c = if i % 3 == 0 { 0.15 } else { 0.12 };
+            let r = h.to_radians();
+            let [x, y, z] = [l, c * r.cos(), c * r.sin()];
+            let v = oklab::oklab_to_srgb([x, y, z]);
+            (v[0], v[1], v[2])
+        })
+        .collect()
+}
+
+/// Whether every series is exactly zero wherever it has a value.
+///
+/// A figure in this state is not a picture of a comparison; the caller is told rather than
+/// handed a line. `far` is the case on record.
+pub fn all_zero(series: &[Series]) -> bool {
+    !series.is_empty()
+        && series.iter().all(|s| {
+            let (pos, zero, _) = s.census();
+            pos == 0 && zero > 0
+        })
+}
+
+impl Figure {
+    /// Write `{stem}.png` and `{stem}.svg`.
+    pub fn save(&self, stem: &str) -> Result<(), Box<dyn Error>> {
+        let (w, h) = (1400u32, 800u32);
+        if let Some(dir) = std::path::Path::new(stem).parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        {
+            // `with_buffer` rather than `BitMapBackend::new`: writing a file directly needs
+            // plotters' `image` feature, which pulls the whole `image` crate to encode a PNG
+            // this repo already has an encoder for. Draw into our own buffer and hand it to
+            // `adaptive::save_rect`, which is the writer every other image here goes through.
+            let mut buf = vec![0u8; (w as usize) * (h as usize) * 3];
+            {
+                let root = BitMapBackend::with_buffer(&mut buf, (w, h)).into_drawing_area();
+                self.render(root)?;
+            }
+            crate::output::adaptive::save_rect(
+                &format!("{stem}.png"),
+                w as usize,
+                h as usize,
+                &buf,
+            )?;
+        }
+        {
+            let svg_path = format!("{stem}.svg");
+            let root = SVGBackend::new(&svg_path, (w, h)).into_drawing_area();
+            self.render(root)?;
+        }
+        Ok(())
     }
 
-    fn set(&mut self, x: isize, y: isize, rgb: [u8; 3]) {
-        if x < 0 || y < 0 || x as usize >= self.w || y as usize >= self.h {
-            return;
+    fn render<DB: DrawingBackend>(&self, root: DrawingArea<DB, Shift>) -> Result<(), Box<dyn Error>>
+    where
+        DB::ErrorType: 'static,
+    {
+        root.fill(&BG)?;
+
+        // Header: title plus the parameters, so the figure is not read without them.
+        let head_h = 26 + 18 * self.notes.len() as i32;
+        let (head, body) = root.split_vertically(head_h as u32);
+        head.draw_text(&self.title, &("sans-serif", 20).into_font().color(&FG), (14, 4))?;
+        for (i, note) in self.notes.iter().enumerate() {
+            head.draw_text(
+                note,
+                &("sans-serif", 13).into_font().color(&AXIS),
+                (14, 26 + 18 * i as i32),
+            )?;
         }
-        let o = (y as usize * self.w + x as usize) * 3;
-        self.px[o] = rgb[0];
-        self.px[o + 1] = rgb[1];
-        self.px[o + 2] = rgb[2];
-    }
 
-    fn line(&mut self, x0: isize, y0: isize, x1: isize, y1: isize, rgb: [u8; 3], dashed: bool) {
-        let (dx, dy) = ((x1 - x0).abs(), -(y1 - y0).abs());
-        let (sx, sy) = (if x0 < x1 { 1 } else { -1 }, if y0 < y1 { 1 } else { -1 });
-        let (mut x, mut y, mut err) = (x0, y0, dx + dy);
-        let mut n = 0usize;
-        loop {
-            if !dashed || (n / 4) % 2 == 0 {
-                // 2px wide, so a curve is legible against the grid at a glance.
-                self.set(x, y, rgb);
-                self.set(x, y + 1, rgb);
+        if all_zero(&self.series) {
+            // Not a picture. Every series is exactly zero at every budget, so there is nothing
+            // to compare and a line would be read as a result.
+            body.draw_text(
+                "every series is exactly 0 at every budget",
+                &("sans-serif", 30).into_font().color(&FG),
+                (60, 120),
+            )?;
+            for (i, line) in [
+                "There is no measurable image here at this resolution: error(root) = 0.",
+                "The reference tree and every budgeted tree render the same pixels, so the",
+                "criteria are not distinguishable and no ordering read from this region means",
+                "anything. This panel is drawn instead of a curve because a flat line at the",
+                "floor looks like a result and is not one.",
+            ]
+            .iter()
+            .enumerate()
+            {
+                body.draw_text(
+                    line,
+                    &("sans-serif", 15).into_font().color(&FG.mix(0.75)),
+                    (60, 170 + 22 * i as i32),
+                )?;
             }
-            n += 1;
-            if x == x1 && y == y1 {
-                break;
-            }
-            let e2 = 2 * err;
-            if e2 >= dy {
-                err += dy;
-                x += sx;
-            }
-            if e2 <= dx {
-                err += dx;
-                y += sy;
-            }
+            root.present()?;
+            return Ok(());
         }
-    }
 
-    /// A 3x5 dot-matrix glyph set — enough for labels and axis numbers.
-    fn glyph(c: char) -> [u8; 5] {
-        match c.to_ascii_lowercase() {
-            '0' => [0b111, 0b101, 0b101, 0b101, 0b111],
-            '1' => [0b010, 0b110, 0b010, 0b010, 0b111],
-            '2' => [0b111, 0b001, 0b111, 0b100, 0b111],
-            '3' => [0b111, 0b001, 0b111, 0b001, 0b111],
-            '4' => [0b101, 0b101, 0b111, 0b001, 0b001],
-            '5' => [0b111, 0b100, 0b111, 0b001, 0b111],
-            '6' => [0b111, 0b100, 0b111, 0b101, 0b111],
-            '7' => [0b111, 0b001, 0b010, 0b010, 0b010],
-            '8' => [0b111, 0b101, 0b111, 0b101, 0b111],
-            '9' => [0b111, 0b101, 0b111, 0b001, 0b111],
-            'a' => [0b010, 0b101, 0b111, 0b101, 0b101],
-            'b' => [0b110, 0b101, 0b110, 0b101, 0b110],
-            'c' => [0b011, 0b100, 0b100, 0b100, 0b011],
-            'd' => [0b110, 0b101, 0b101, 0b101, 0b110],
-            'e' => [0b111, 0b100, 0b110, 0b100, 0b111],
-            'f' => [0b111, 0b100, 0b110, 0b100, 0b100],
-            'g' => [0b011, 0b100, 0b101, 0b101, 0b011],
-            'h' => [0b101, 0b101, 0b111, 0b101, 0b101],
-            'i' => [0b111, 0b010, 0b010, 0b010, 0b111],
-            'j' => [0b001, 0b001, 0b001, 0b101, 0b010],
-            'k' => [0b101, 0b110, 0b100, 0b110, 0b101],
-            'l' => [0b100, 0b100, 0b100, 0b100, 0b111],
-            'm' => [0b101, 0b111, 0b111, 0b101, 0b101],
-            'n' => [0b101, 0b111, 0b111, 0b111, 0b101],
-            'o' => [0b010, 0b101, 0b101, 0b101, 0b010],
-            'p' => [0b110, 0b101, 0b110, 0b100, 0b100],
-            'q' => [0b010, 0b101, 0b101, 0b111, 0b011],
-            'r' => [0b110, 0b101, 0b110, 0b101, 0b101],
-            's' => [0b011, 0b100, 0b010, 0b001, 0b110],
-            't' => [0b111, 0b010, 0b010, 0b010, 0b010],
-            'u' => [0b101, 0b101, 0b101, 0b101, 0b111],
-            'v' => [0b101, 0b101, 0b101, 0b101, 0b010],
-            'w' => [0b101, 0b101, 0b111, 0b111, 0b101],
-            'x' => [0b101, 0b101, 0b010, 0b101, 0b101],
-            'y' => [0b101, 0b101, 0b010, 0b010, 0b010],
-            'z' => [0b111, 0b001, 0b010, 0b100, 0b111],
-            '-' => [0b000, 0b000, 0b111, 0b000, 0b000],
-            '_' => [0b000, 0b000, 0b000, 0b000, 0b111],
-            '/' => [0b001, 0b001, 0b010, 0b100, 0b100],
-            '.' => [0b000, 0b000, 0b000, 0b000, 0b010],
-            ':' => [0b000, 0b010, 0b000, 0b010, 0b000],
-            '=' => [0b000, 0b111, 0b000, 0b111, 0b000],
-            '^' => [0b010, 0b101, 0b000, 0b000, 0b000],
-            '(' => [0b001, 0b010, 0b010, 0b010, 0b001],
-            ')' => [0b100, 0b010, 0b010, 0b010, 0b100],
-            _ => [0; 5],
-        }
-    }
+        // Zero band height: one row per series that reaches zero, plus the rule.
+        let zero_rows: Vec<&Series> = self.series.iter().filter(|s| s.first_zero().is_some()).collect();
+        let band_h = if zero_rows.is_empty() { 0 } else { 58 + 14 * zero_rows.len() as u32 };
+        let body_h = body.dim_in_pixel().1;
+        let (top, band) = body.split_vertically(body_h.saturating_sub(band_h));
 
-    pub fn text(&mut self, x: usize, y: usize, s: &str, rgb: [u8; 3]) {
-        for (i, c) in s.chars().enumerate() {
-            let g = Self::glyph(c);
-            for (r, row) in g.iter().enumerate() {
-                for col in 0..3 {
-                    if row & (1 << (2 - col)) != 0 {
-                        self.set((x + i * 4 + col) as isize, (y + r) as isize, rgb);
-                    }
-                }
+        // x runs from the smallest budget present, not from 1. The old figure anchored the axis
+        // at v = 1 and left 165 px permanently blank.
+        let xs: Vec<f64> = self.series.iter().flat_map(|s| s.points.iter().map(|p| p.0)).collect();
+        let x_lo = xs.iter().cloned().fold(f64::INFINITY, f64::min).max(1.0);
+        let x_hi = xs.iter().cloned().fold(f64::NEG_INFINITY, f64::max).max(x_lo * 2.0);
+
+        let mut chart = ChartBuilder::on(&top)
+            .margin(10)
+            .margin_right(260)
+            .x_label_area_size(if band_h == 0 { 42 } else { 8 })
+            .y_label_area_size(72)
+            .build_cartesian_2d(
+                (x_lo..x_hi).log_scale(),
+                (self.y_lo..self.y_hi).log_scale(),
+            )?;
+
+        {
+            // When the zero band is present it owns the x axis. Drawing it twice puts two rows
+            // of identical tick labels a few pixels apart and reads as two different axes.
+            let mut mesh = chart.configure_mesh();
+            if band_h == 0 {
+                mesh.x_desc(self.x_label.clone());
+            } else {
+                mesh.disable_x_axis();
             }
+            // Budgets are quad counts. A log axis defaults to one decimal, so `383` printed as
+            // `383.0` and the ladder read as a continuous quantity rather than a count.
+            mesh.x_label_formatter(&|v: &f64| format!("{}", v.round() as i64))
+                .y_desc(&self.y_label)
+                .label_style(("sans-serif", 13).into_font().color(&AXIS))
+                .axis_style(AXIS)
+                .bold_line_style(GRID)
+                .light_line_style(BG)
+                .draw()?;
         }
-    }
 
-    /// Draw the axes and every series. `y_floor` is where an exact zero is drawn.
-    pub fn draw(&mut self, title: &str, series: &[Series], x_max: f64, y_lo: f64, y_hi: f64) {
-        let axis = [90, 90, 100];
-        let grid = [40, 40, 48];
-        let fg = [210, 210, 220];
-
-        let plot_w = self.w - PAD_L - PAD_R;
-        let plot_h = self.h - PAD_T - PAD_B;
-
-        // log10 x (budget spans 5 -> 5461) and log10 y.
-        let lx = |v: f64| -> isize {
-            let t = (v.max(1.0).log10()) / (x_max.max(10.0).log10());
-            (PAD_L as f64 + t * plot_w as f64) as isize
-        };
-        let ly = |v: f64| -> isize {
-            // An exact zero is not representable on a log axis. It is drawn at the floor and
-            // marked, never dropped: it is the most important point on several of these curves.
-            let vv = if v <= y_lo { y_lo } else { v };
-            let t = (vv.log10() - y_lo.log10()) / (y_hi.log10() - y_lo.log10());
-            (PAD_T as f64 + (1.0 - t.clamp(0.0, 1.0)) * plot_h as f64) as isize
-        };
-
-        // decade grid
-        let mut d = y_lo.log10().ceil() as i32;
-        while (d as f64) <= y_hi.log10() {
-            let y = ly(10f64.powi(d));
-            for x in PAD_L..(PAD_L + plot_w) {
-                self.set(x as isize, y, grid);
+        for s in &self.series {
+            let c = RGBColor(s.rgb.0, s.rgb.1, s.rgb.2);
+            let style = ShapeStyle::from(&c).stroke_width(2);
+            // Only finite positive points reach the log panel. Non-finite are DROPPED, not
+            // clamped; exact zeros go to the band below.
+            let pts: Vec<(f64, f64)> = s
+                .points
+                .iter()
+                .filter(|&&(_, y)| y.is_finite() && y > 0.0)
+                .cloned()
+                .collect();
+            if pts.is_empty() {
+                // Still needs a legend entry, or a criterion that only ever reached zero would
+                // silently vanish from the figure.
+                chart
+                    .draw_series(std::iter::empty::<Circle<(f64, f64), i32>>())?
+                    .label(s.display_label())
+                    .legend(move |(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], c.stroke_width(2)));
+                continue;
             }
-            self.text(6, (y - 2).max(0) as usize, &format!("1e{d}"), axis);
-            d += 1;
-        }
-        for &b in &[10.0f64, 100.0, 1000.0] {
-            if b <= x_max {
-                let x = lx(b);
-                for y in PAD_T..(PAD_T + plot_h) {
-                    self.set(x, y as isize, grid);
-                }
-                self.text(x as usize - 6, self.h - PAD_B + 8, &format!("{}", b as u64), axis);
+            if s.dashed {
+                chart
+                    .draw_series(DashedLineSeries::new(pts.iter().cloned(), 8, 6, style))?
+                    .label(s.display_label())
+                    .legend(move |(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], c.stroke_width(2)));
+            } else {
+                chart
+                    .draw_series(LineSeries::new(pts.iter().cloned(), style))?
+                    .label(s.display_label())
+                    .legend(move |(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], c.stroke_width(2)));
             }
         }
-        self.text(8, 8, title, fg);
-        self.text(PAD_L, self.h - PAD_B + 20, "budget b (quads computed)", axis);
-        self.text(6, PAD_T - 14, "error(b) oklab", axis);
 
-        for (i, s) in series.iter().enumerate() {
-            let pts: Vec<(isize, isize)> =
-                s.points.iter().map(|&(x, y)| (lx(x), ly(y))).collect();
-            for w in pts.windows(2) {
-                self.line(w[0].0, w[0].1, w[1].0, w[1].1, s.rgb, s.dashed);
-            }
-            // An exact zero gets a tick at the floor so it reads as reached, not missing.
-            for (j, &(_, y)) in s.points.iter().enumerate() {
-                if y == 0.0 {
-                    let x = pts[j].0;
-                    for k in 0..5 {
-                        self.set(x, ly(y_lo) - k, s.rgb);
-                    }
-                    break;
-                }
-            }
-            let ly0 = PAD_T + 6 + i * 10;
-            if ly0 + 6 < self.h {
-                for k in 0..10 {
-                    self.set((self.w - PAD_R + 4 + k) as isize, (ly0 + 2) as isize, s.rgb);
-                }
-                self.text(self.w - PAD_R + 18, ly0, s.label, fg);
+        chart
+            .configure_series_labels()
+            .position(SeriesLabelPosition::UpperRight)
+            .margin(6)
+            .legend_area_size(24)
+            .label_font(("sans-serif", 13).into_font().color(&FG))
+            .background_style(BG.mix(0.85))
+            .border_style(AXIS)
+            .draw()?;
+
+        // ---- the zero band ----
+        if band_h > 0 {
+            let mut zc = ChartBuilder::on(&band)
+                .margin_left(10)
+                .margin_right(260)
+                .margin_top(20)
+                .x_label_area_size(34)
+                .y_label_area_size(72)
+                .build_cartesian_2d((x_lo..x_hi).log_scale(), 0f64..(zero_rows.len() as f64))?;
+            zc.configure_mesh()
+                .disable_y_mesh()
+                .disable_y_axis()
+                .x_label_formatter(&|v: &f64| format!("{}", v.round() as i64))
+                .x_desc(&self.x_label)
+                .label_style(("sans-serif", 13).into_font().color(&AXIS))
+                .axis_style(AXIS)
+                .bold_line_style(GRID)
+                .light_line_style(BG)
+                .draw()?;
+            band.draw_text(
+                "error(B) = 0 exactly",
+                &("sans-serif", 12).into_font().color(&FG),
+                (14, 2),
+            )?;
+
+            // One row per series, so overlapping zeros are all visible. This is the fix for
+            // `far`, where 15 of 17 series were drawn on top of each other.
+            for (row, s) in zero_rows.iter().enumerate() {
+                let y = zero_rows.len() as f64 - 0.5 - row as f64;
+                let x0 = s.first_zero().unwrap().max(x_lo);
+                let c = RGBColor(s.rgb.0, s.rgb.1, s.rgb.2);
+                zc.draw_series(LineSeries::new(
+                    vec![(x0, y), (x_hi, y)],
+                    ShapeStyle::from(&c).stroke_width(3),
+                ))?;
+                zc.draw_series(std::iter::once(Circle::new(
+                    (x0, y),
+                    4,
+                    ShapeStyle::from(&c).filled(),
+                )))?;
             }
         }
-    }
 
-    pub fn save(&self, path: &str) -> std::io::Result<()> {
-        let _ = self.bg;
-        crate::output::adaptive::save_rect(path, self.w, self.h, &self.px)
-    }
-
-    pub fn pixels(&self) -> &[u8] {
-        &self.px
+        root.present()?;
+        Ok(())
     }
 }

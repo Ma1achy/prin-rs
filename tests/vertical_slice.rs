@@ -203,9 +203,9 @@ fn texel_size_varies_as_two_to_the_minus_level_and_uniform_is_rejected() {
 fn ssaa_copy_footprint_scales_with_the_texel() {
     let spread = |half: f64| -> f64 {
         let s = Slice::body_plane(4, 4, 1.0, 3.0, half, 0);
-        let c: Vec<Cart<f64>> = jitter::copies_with(&s, 5, 7, 0.5, 0, Scheme::Halton);
+        let c = jitter::copies_with::<f64>(&s, 5, 7, 0.5, 0, Scheme::Halton);
         let (lo, hi) = c.iter().fold((f64::MAX, f64::MIN), |(l, h), x| {
-            (l.min(x.r[0].x), h.max(x.r[0].x))
+            (l.min(x.s.r[0].x), h.max(x.s.r[0].x))
         });
         hi - lo
     };

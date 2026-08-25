@@ -69,7 +69,10 @@ fn main() {
     // "nothing changes" result is visible rather than only tabulated.
     let mut frames: Vec<Vec<u8>> = Vec::new();
     let mut wire_frames: Vec<Vec<u8>> = Vec::new();
-    let frame_res = 384usize;
+    // Follows the viewport. It was hardcoded at 384 while `viewport` set only the camera, so
+    // asking for a larger pan rendered the same small raster -- and a small raster upscaled by a
+    // viewer reads as a blurry render rather than as a stale size.
+    let frame_res = viewport;
 
     let mut prev: HashSet<(u32, i64, i64)> = HashSet::new();
     // Every quad ever computed, with its reduction, so a re-entering quad can be compared with

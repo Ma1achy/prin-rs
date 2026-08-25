@@ -1038,6 +1038,17 @@ are the last row of `slice_variety.txt` and they cost nothing to keep.
 
 ## 10. Improving the refinement criterion
 
+> **SUPERSEDED BY §11.** Every number in this section was measured under a colouring whose
+> lightness ramp was linear over a window an order of magnitude too wide, and whose hue map was
+> 2-to-1 in `n0`. The standing rule is *choose a criterion under the colouring that will ship*,
+> so these tables score the criteria against a target that no longer exists. They are kept
+> because what a criterion looks like through a broken instrument is itself a finding, and
+> because §11's conclusions are stated as differences from these.
+>
+> The one conclusion that survives unchanged: `within/median` is beaten by random. §11 finds it
+> beaten under the new colouring too, and finds `between/median` beaten as well — which is the
+> part §10 got wrong.
+
 Read §10.2 before anything else in this section. It is the only measurement here that says
 whether a criterion is *good*, and every other result is judged against it.
 
@@ -1369,7 +1380,211 @@ evenly and hits the boundary by accident. That is the mechanism behind §10.4's 
 signal has 5418 distinct values and is still worse than a coin flip, and it is not visible in
 any table — only in the wire.
 
-## 11. Reproducing any of this
+## 11. The colouring, the charts, and the criterion re-measured
+
+**§10 was measured under a colouring that could not see its own signal.** Its tables are kept
+and marked, because what a criterion looks like through a broken instrument is itself a finding —
+but every number in §10 scores the criteria against a target that no longer ships. The standing
+rule is *choose a criterion under the colouring that will ship*.
+
+### 11.1 The production colouring had three faults, and the one I named first was wrong
+
+`bivariate::rgb` mapped hue as `chroma*(cos h, sin h)` with `h = atan2(n2,n1)` and
+`chroma = C_MAX*hypot(n1,n2)`. I recorded that as a **seam**. It is not: that composition is
+algebraically `C_MAX*(n1,n2)` — measured agreement `4.2e-17` over a sphere sweep — a linear
+projection, continuous everywhere.
+
+Its actual fault is that it is exactly **2-to-1**. It discards `n0 = (|rho~|^2 - |lam~|^2)/I`, so
+`n` and its `n0 -> -n0` partner render **bitwise identically**: a tight binary with a distant
+third body and a wide pair with a close third, painted the same colour.
+
+**And that cost less than it sounds.** `n0` is *reached* end to end — span `1.9946` in
+`near-field`, `1.9994` in `deep interior`, against a maximum of 2 — but its interdecile is only
+`0.0665` and `0.1684`. Span is a max statistic. The merge bit in the tail, not the bulk.
+
+**The flat images were the ramp.** Two separate causes, and only together do they explain the
+picture:
+
+| | value |
+|---|---|
+| `ensemble_spread` window, near-field | `(4.19e-5, 2.857e-1)` |
+| the same field's *continuous arm* p99 | `2.244e-2` |
+| ratio | **12.7x too wide** |
+| `spread_event` distinct values | **5** (modal 98.2%) |
+| footprints where the event arm dominates | **1.7%**, all in the top tail |
+
+`ensemble_spread` is `max(spread_shape, spread_event)`. The event arm is a count ratio over
+`E+1 = 8` copies, so it takes five values — and it sets the p99 while describing 1.7% of the
+region. A **linear** ramp over a window an order of magnitude too wide, set by a staircase. The
+committed `colour_near-field_bivariate_spread_reference.png` is a flat navy field.
+
+The replacement (`src/output/colour.rs`) blends **six** vMF sites on the shape sphere, computed
+from the run's own masses; the curve and the polarity are properties of the field
+(`Scalar::curve`, `Scalar::direction`) rather than call-site arguments. The sixth site
+(`lambda = 0`, body 2 at the inner barycentre) was added on a measurement, not for symmetry: with
+five the worst angular gap was `1.193 rad` and it sat at `n0 = +1`. `kappa = 3` was chosen on
+`hue_coverage` — near-field peaks there at `0.0058`, `deep interior` reaches 83% of its saturated
+value.
+
+### 11.2 The reserved null was reachable, and the metric was scoring it as correct
+
+A NaN `shape_vec` — a triple collision, which `shape.rs` deliberately does not floor — went
+through `oklab_to_srgb` into `NaN.round() as u8`, which saturates to `[0,0,0]`, and
+`metric::Cache::render` filled background with `0u8`. **An undetermined pixel was bitwise
+identical to un-rendered background, so `err_sum` scored it as a perfect match.**
+
+Not theoretical: **18 of 65536** `deep interior` footprints at 256² have a non-finite shape.
+`State::DecodeFailed` also had no palette arm and fell to the same grey as an invalid state byte.
+Both now return `DEBUG_NAN`, and `BACKGROUND` is deliberately not black.
+
+### 11.3 `far` is featureless in the data, and an auto-ranged ramp hides that
+
+Predicted: a log ramp would rescue `far`, which §10 could not measure at all
+(`error(root) = 0.00000`). **Refuted, then refuted again in the other direction.**
+
+At 256²: `far` has `n0` span `0.0000`, `spread` p1/p99 differing by 2.6%, and hue coverage
+**exactly `0.0000` at every kappa tested**. It is featureless in the data.
+
+But under the shipping colouring at 1024² it reads `error(root) = 0.60219` — which *looks* like a
+rescue. It is not. The ramp is auto-ranged to each region's own p1–p99, so a field with no
+dynamic range has its **noise** stretched to full scale. `far`'s window is `(1.3e-9, 1.1e-8)`.
+`spread_shape` is a dimensionless chord distance, so a p99 of `1e-8` means the copies agree to
+eight digits.
+
+**A ratio threshold missed it** — span `x8`, against `x1155` for near-field and `x220041` for
+`deep interior`. The warning now carries a second arm comparing the window against the region's
+**own median energy drift**, a measured floor rather than a chosen constant.
+
+### 11.4 The lightness field carries a scale term
+
+An adaptive render draws several levels in one image, and `ensemble_spread` is a spread over
+copies jittered within the **cell**.
+
+| level | cell width | median `spread_shape` | ratio | median `t_end` | ratio |
+|---|---|---|---|---|---|
+| 0 | 1.4286e-2 | 3.6675e-3 | — | 13.0 | — |
+| 1 | 7.1429e-3 | 2.4591e-3 | 1.491 | 13.0 | 1.000 |
+| 2 | 3.5714e-3 | 1.9301e-3 | 1.274 | 13.0 | 1.000 |
+| 3 | 1.7857e-3 | 1.5990e-3 | 1.207 | 13.0 | 1.000 |
+| 4 | 8.9286e-4 | 1.3423e-3 | 1.191 | 13.0 | 1.000 |
+
+Cell width halves each level, so a proportional field would read `2.000` in every row. Measured
+`1.19–1.62`, **falling with depth** — sub-linear and saturating, the chaotic-divergence
+signature, and consistent with the standing measurement that a 9x fall in cell width moves
+`sigma_E(0)` by 8.6x and `ensemble_spread` by only 2.1x. Under the log ramp it is about 12% of
+the lightness range across five levels. `t_end` is the scale-free control and is flat.
+
+Stated rather than corrected — normalising by cell width would change what the field means — but
+`error(B)` under a spread colouring does include a small term for *this leaf is coarse*.
+
+### 11.5 Two corrections to the chart reference
+
+**`sum p_i = 0` does not catch the crossed-mass swap**, which is the one thing the reference says
+it is for. Both forms give `p_lam*(1 - (m0+m1)/M01) = 0`.
+
+| | crossed (correct) | uncrossed (the swap) |
+|---|---|---|
+| `\|sum p\|` | 7.9e-17 | 5.6e-17 |
+| Jacobi round-trip error | 1.1e-16 | **6.8e-2** |
+| kinetic-energy identity error | 4.4e-16 | **2.6e-1** |
+
+Both catches are **empty at `m0 == m1`**, where the two forms are the same expression. Burrau has
+`m0 = 3, m1 = 4`; the mass simplex passes through that line.
+
+**`(Lz,E)` and `(Lz,K)` are one chart with two labels.** The reference lists them separately as
+its most-machinery item, but its own warp parameterises both by `K(t) = K_max t^gamma` and then
+reports `E = U + K(t)` — a relabelling, not a different sweep. Bitwise identical over the unit
+square; only `gamma_k` makes them differ.
+
+### 11.6 The chart families are tame where they are centred
+
+Thirteen instances, budget 40000 so the descent stops on the criterion rather than the cap:
+
+| case | quads | leaves | `alpha` med | `alpha` idec | ramp span |
+|---|---|---|---|---|---|
+| `body_plane` | 549 | 412 | 0.1402 | 1.1203 | 196 |
+| `plane_00deg` *(control, bitwise)* | 549 | 412 | 0.1402 | 1.1203 | 196 |
+| `shape_sphere` | 1293 | 970 | 0.1905 | 0.9709 | 2108 |
+| `latent_shape` | 5441 | 4081 | 0.9995 | 0.0355 | 3.7 |
+| `latent_inner_p` | 5461 | 4096 | 1.0082 | 0.1912 | 9.4 |
+| `latent_outer_p` | 5101 | 3826 | 1.0045 | 0.1033 | 20.9 |
+| `latent_mass` | 5461 | 4096 | 0.9956 | 0.0903 | 6.8 |
+| `latent_mixed` | 4553 | 3415 | 0.9997 | 0.0486 | 11.3 |
+| `latent_oblique_a` | 5293 | 3970 | 1.0005 | 0.0434 | 4.4 |
+| `latent_oblique_b` | 4845 | 3634 | 1.0021 | 0.0791 | 3.6 |
+| `burrau_nu_k` | 4753 | 3565 | 1.0038 | 0.0788 | 6.0 |
+| `invariant_lz_k` | 5461 | 4096 | 1.0000 | 0.0817 | 7.3 |
+| `mass_simplex` | 5461 | 4096 | 0.9996 | 0.1287 | 4.9 |
+
+`alpha` sits at **0.99–1.01** on every new chart against **0.14** for `body_plane`. `alpha` near
+1 means splitting halves the spread — refinement pays — so the scheduler refines everywhere.
+That is correct behaviour on a tame region, not a scheduler fault.
+
+**But it means these charts are not exercising the criterion where it is hard.** Tameness is a
+property of *where* a chart is centred, and the base latent point was chosen to avoid the `z = 0`
+symmetry rather than to find chaos. Moving it until the picture gets interesting would be tuning.
+The honest report: the question these charts were added to answer — does the criterion behave
+consistently across charts — is not answered by a set of charts that are all tame.
+
+### 11.7 The criterion, re-measured under the colouring that ships
+
+Complete tree to level 7, `N = 8`, `E+1 = 8`, 1024², `t = 13`, `f64`. 11,184,640 trajectories per
+region. `error(B)` is the mean per-pixel OKLab distance to the fully-refined tree; `error = 0`
+means **matches this sampling**, not correct.
+
+At `B = 383`:
+
+| ranking | near-field | deep interior |
+|---|---|---|
+| `greedy_oracle` | **0.12243** | **0.07387** |
+| `frac_hot_between/median` | **0.12486** | **0.08075** |
+| random band | 0.13059 – 0.14726 | 0.08334 – 0.10058 |
+| `contrast:within/median` | 0.13668 | — |
+| `layout/median` | 0.13968 | 0.10487 |
+| `within/mean` | 0.15245 | 0.11460 |
+| `between/median` | 0.15243 | 0.10205 |
+| **`within/median` (shipped default)** | **0.15764** | **0.09977** |
+| `running_max/median` | 0.15787 | 0.09095 |
+
+**`frac_hot_between/median` is the only criterion that beats the random band, and it does so in
+both measurable regions.** The shipped default is still beaten by random.
+
+**This shifts §10.1.** Swapping the *within* arm for the *between* arm is not the fix —
+`between/median` is beaten by random too. What fixes it is the **aggregation**: counting how many
+footprints are hot rather than taking their median. That is what the build predicted before
+running, and it now has a number under the colouring that ships.
+
+### 11.8 Greedy is beaten by a scan order where the field is featureless
+
+In `far` at `B = 12287`, `greedy_oracle` reads **0.26391** while every other criterion reads
+**0.10885** — beaten **2.4x**. And every non-greedy row is identical to five digits, *including*
+`frac_hot_within`, `frac_hot_between` and `first_div`, which each have **one distinct value** —
+no ordering at all. So the ranking is irrelevant there, and greedy's loss is not to a better
+ranking but to any ranking: immediate `delta-error` is noise in a featureless region and greedy
+chases it.
+
+This is the standing rule doing its work. A test asserting `greedy_oracle` dominates would have
+fired here on correct behaviour.
+
+Read §11.3 before quoting any `far` number: its ramp sits at the integrator's arithmetic.
+
+### 11.9 What broke the images, and it was not the physics
+
+`budget_far_t13_wire_01.png` was **128x64, 5 KB**. Wireframe lines are written with integer pixel
+`set` calls and adaptive texels are nearest-neighbour, so neither can be soft in the file — a
+blurry image is always a viewer upscaling a small raster.
+
+The cause was a `criterion_metric -- 3 8` **validation run** allowed to write into `results/`,
+overwriting committed 512² artefacts with 64²-derived ones. Everything is re-rendered at 1024².
+`pan_sequence` also had `frame_res` hardcoded at 384 while its `viewport` argument set only the
+camera.
+
+`.fcache` files are gitignored: at level 7 they are 1.4M footprints x 14 `f64` each, 940 MB for
+six, with no redundancy to remove at one sample per pixel. They make a colouring change a replay
+**within a session**; committing a gigabyte so that survives a clone is the wrong trade. The
+regeneration command is in `.gitignore` beside them.
+
+## 12. Reproducing any of this
 
 Every table above comes from a committed example. Raw output for all of them is in
 [`results/output/`](results/output/), the acceptance-gate and cross-check output is in

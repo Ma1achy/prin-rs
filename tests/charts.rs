@@ -775,11 +775,7 @@ fn the_canonicaliser_and_scale_gauge_are_no_ops_on_the_latent_chart() {
 /// looking like a tidy-up. Pinned so that fails here instead.
 #[test]
 fn the_shape_pl_preset_basis_is_not_orthonormalised() {
-    let (z0, q1, q2) = (
-        Latent::default(),
-        [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0],
-        [0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0],
-    );
+    let Chart::Latent { z0, q1, q2 } = Chart::preset_shape_pl() else { panic!() };
     let dot = |x: &[f64; 8], y: &[f64; 8]| (0..8).map(|k| x[k] * y[k]).sum::<f64>();
     assert!((dot(&q1, &q1) - 2.0).abs() < 1e-15, "|q1|^2 should be 2, not 1");
     assert!((dot(&q2, &q2) - 2.0).abs() < 1e-15, "|q2|^2 should be 2, not 1");
@@ -794,30 +790,87 @@ fn the_shape_pl_preset_basis_is_not_orthonormalised() {
     assert!((dot(&o1, &o1) - 1.0).abs() < 1e-14, "latent_oblique should normalise");
 }
 
+/// **The alpha-varying direction carries `pLambda.y`, not `pLambda.x`.**
+///
+/// The GLSL preset is `q1 = e0 + e6`, `q2 = e1 + e7`, and it pairs **by slot**: in its own
+/// indexing that is `beta` with `pLambda.x` and `alpha` with `pLambda.y`. This module renumbers
+/// alpha and beta into the spec's order and must carry their momentum partners with them. The
+/// port did not, and paired alpha with `pLambda.x`.
+///
+/// `shape_pl` is the **only** preset with a cross-coupling — the other three are pure-config or
+/// pure-momentum — so it is the only one that can fail this way, and it rendered as *twisted*
+/// rather than tilted.
+///
+/// **The index assertions alone would not be a test.** They would pass on a "fix" that transposes
+/// `q1` and `q2`, and the whole finding is that transposing does not work: that gives
+/// `e_beta + e_pLy`, `e_alpha + e_pLx`, still crossed. It is a genuinely different 2-plane
+/// through the 8D space, not a reorientation of the same one. The second arm below is what makes
+/// this able to fire — it decodes the crossed form *and its transposition* and asserts both
+/// disagree with the correct plane far outside rounding.
+#[test]
+fn the_shape_pl_preset_pairs_alpha_with_p_lambda_y() {
+    let Chart::Latent { q1, q2, .. } = Chart::preset_shape_pl() else { panic!() };
+    assert_eq!(q1[0], 1.0, "q1 must vary alpha");
+    assert_eq!(q1[5], 1.0, "q1 must carry p_lambda.y");
+    assert_eq!(q1[4], 0.0, "q1 must NOT carry p_lambda.x");
+    assert_eq!(q2[1], 1.0, "q2 must vary beta");
+    assert_eq!(q2[4], 1.0, "q2 must carry p_lambda.x");
+    assert_eq!(q2[5], 0.0, "q2 must NOT carry p_lambda.y");
+
+    // The crossed form that shipped, and its transposition -- the "fix" that is not one.
+    let crossed = Chart::Latent {
+        z0: Latent::default(),
+        q1: [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0],
+        q2: [0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0],
+    };
+    let Chart::Latent { q1: c1, q2: c2, .. } = crossed else { panic!() };
+    let transposed = Chart::Latent { z0: Latent::default(), q1: c2, q2: c1 };
+
+    // Off-axis on purpose: on either axis one of the two coupled coordinates is zero and the
+    // three planes coincide, so a test sampled there could not fire.
+    let (u, v) = (0.7f64, -1.3f64);
+    let good = grid::decode_state(&Chart::preset_shape_pl(), 0, u, v);
+    for (label, other) in [("crossed", crossed), ("crossed, transposed", transposed)] {
+        let got = grid::decode_state(&other, 0, u, v);
+        let d = prin_rs::decode::max_abs_diff(&good.s, &got.s);
+        println!("shape_pl vs {label:>19} at ({u},{v}): max |dIC| = {d:.4e}");
+        assert!(
+            d > 1e-3,
+            "{label} decodes to the same slice as the correct pairing (max |dIC| = {d:e}); \
+             this test cannot fire"
+        );
+    }
+
+    // And the plane really is a plane in both cases -- so the separation above is a different
+    // 2-plane rather than a degenerate basis.
+    let dot = |x: &[f64; 8], y: &[f64; 8]| (0..8).map(|k| x[k] * y[k]).sum::<f64>();
+    assert!(dot(&q1, &q2).abs() < 1e-15 && dot(&c1, &c2).abs() < 1e-15);
+}
+
 /// The four presets in one place: each is the reference's basis under the spec's index order, and
-/// each decodes cleanly across its `[-1,1]^2` box.
+/// each decodes cleanly across its **whole** box.
+///
+/// The extent is [`Chart::default_half`] rather than a literal. It was `1.0` here and `1.0` in the
+/// gallery, two copies of a number that was wrong in both: the reference UI reads
+/// `Slice +/- 3.0e+0`, so every committed preset image was a 3x crop on the middle of the picture.
+/// Driving both from the chart means the test cannot pass on a box the render does not use.
 #[test]
 fn the_four_default_presets_decode_across_their_whole_box() {
-    let z0 = Latent::default();
     let cases: [(&str, Chart); 4] = [
-        ("shape", Chart::latent_axes(z0, 0, 1)),
-        ("prho", Chart::latent_axes(z0, 2, 3)),
-        ("plambda", Chart::latent_axes(z0, 4, 5)),
-        (
-            "shape_pl",
-            Chart::Latent {
-                z0,
-                q1: [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0],
-                q2: [0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0],
-            },
-        ),
+        ("shape", Chart::preset_shape()),
+        ("prho", Chart::preset_prho()),
+        ("plambda", Chart::preset_plambda()),
+        ("shape_pl", Chart::preset_shape_pl()),
     ];
+    let half = Chart::preset_shape().default_half();
+    assert_eq!(half, 3.0, "the preset window is the reference UI's `Slice +/- 3.0e+0`");
     for (name, chart) in cases {
         let mut distinct = std::collections::HashSet::new();
         let mut positions = std::collections::HashSet::new();
         for iu in 0..9 {
             for iv in 0..9 {
-                let (u, v) = (-1.0 + 0.25 * iu as f64, -1.0 + 0.25 * iv as f64);
+                let (u, v) =
+                    (-half + 0.25 * half * iu as f64, -half + 0.25 * half * iv as f64);
                 let ic = grid::decode_state(&chart, 0, u, v);
                 assert!(ic.is_finite(), "{name} at ({u},{v}) decoded non-finite");
                 let s: f64 = ic.m.iter().sum();

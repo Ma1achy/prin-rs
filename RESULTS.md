@@ -1659,20 +1659,64 @@ by `sqrt(1 +- eps)`. Measured over four latent points: positions `7.161e-15`, mo
 
 ### 12.3 The four presets
 
-`z0 = 0`, framed at `(0,0)` with `half = 1.0`. The reference's `z0 + (2u-1)q1 + (2v-1)q2` over
+`z0 = 0`, framed at `(0,0)` with `half = 3.0`. The reference's `z0 + (2u-1)q1 + (2v-1)q2` over
 `[0,1]^2` is reproduced exactly by that framing, because `decode_state` is `z0 + u*q1 + v*q2` and
 the slice already supplies a signed box — one fewer place for a factor of two to hide.
+
+**The window shipped at `1.0` and was wrong.** The reference UI reads `Slice +/- 3.0e+0`:
+
+```
+half = 1.0  ->  alpha in [0.446, 1.125],  beta in [0.845, 2.297]  =  46% of the azimuth
+half = 3.0  ->  alpha in [0.120, 1.451],  beta in [0.149, 2.993]  =  90% of the azimuth
+```
+
+So every first-cut preset image was a 3x zoom on the middle of the picture. In the GLSL the
+fractal core is a small disk surrounded by large smooth regions; at `half = 1.0` it fills the
+frame. Same structure, wrong crop — which is exactly why the port read as *similar but not the
+same*. The number now comes from `Chart::default_half()`, which is chart-aware: a `BodyPlane`
+coordinate is a body position in Burrau units and a `Latent` coordinate is a sigmoid pre-image, and
+**one shared default silently meant two different things**, which is how this got through. The
+`_h1` rows of §12.4 are the crop control — same chart, same basis, one number changed.
 
 | case | GLSL id | `q1` | `q2` |
 |---|---|---|---|
 | `preset_shape` | `shape` | `e_alpha` | `e_beta` |
 | `preset_prho` | `prho` | `e2` | `e3` |
 | `preset_plambda` | `plambda` | `e4` | `e5` |
-| `preset_shape_pl` | `shape_pl` | `e_alpha + e4` | `e_beta + e5` |
+| `preset_shape_pl` | `shape_pl` | `e_alpha + e_pLambda_y` | `e_beta + e_pLambda_x` |
+
+**`shape_pl` pairs by GLSL SLOT, and the first cut got it wrong.** The reference is
+`q1 = e0 + e6`, `q2 = e1 + e7`; in *its* indexing (`z0 = beta`, `z1 = alpha`,
+`z6/z7 = pLambda.x/y`) that pairs **beta with `pLambda.x`** and **alpha with `pLambda.y`**. This
+port renumbers alpha and beta into the spec's order and must carry their momentum partners with
+them. It did not, and paired alpha with `pLambda.x` — so the *pair assignment* transposes and each
+pair stays intact.
+
+**No transposition repairs it.** Swapping `q1` and `q2` gives `e_beta + e_pLy`,
+`e_alpha + e_pLx` — still crossed. It is a genuinely different 2-plane through the 8D space, not a
+reorientation of the same one, which is why it rendered as **twisted** rather than tilted: the
+coupling sets how momentum co-varies with configuration across the slice, and the two pairings
+give different shears. Measured at `(u,v) = (0.7,-1.3)`, `max |dIC|` against the correct plane:
+
+```
+shape_pl vs             crossed at (0.7,-1.3): max |dIC| = 5.4483e0
+shape_pl vs crossed, transposed at (0.7,-1.3): max |dIC| = 1.2042e0
+```
+
+Both far outside rounding, which is what makes
+`tests/charts.rs::the_shape_pl_preset_pairs_alpha_with_p_lambda_y` able to fire. An index
+assertion alone would have passed on the transposition, and the whole finding is that transposing
+does not work.
+
+`shape_pl` is the **only** preset with a cross-coupling — the other three are pure-config or
+pure-momentum — so it is the only one that can fail this way. That consistency is itself evidence
+the diagnosis is right.
 
 `preset_shape_pl` is constructed directly and **not** through `latent_oblique`: the reference's
 basis is un-normalised (each direction has norm `sqrt 2`) and Gram–Schmidt would quietly render a
 different slice while looking like a tidy-up. `tests/charts.rs` pins the norm so that fails loudly.
+All four bases are built by `Chart::preset_*` rather than written at each call site: the `shape_pl`
+literal appeared in three places and was wrong in all three.
 
 These sit **beside** the existing `latent_*` rows, not in place of them. Those are deliberately at
 an off-origin `z0` so no sigmoid rests at its symmetry point; the presets are at the origin for the
@@ -1695,66 +1739,191 @@ decode gives `ensemble_spread` exactly zero, which reads as *perfectly resolved*
 descent, so the two are worth being able to tell apart: the guard has to measure what the chart
 actually moves.
 
-### 12.4 The gallery, regenerated
+**The consequence is that those two are a control.** Every pixel of `prho` and `plambda` starts at
+the *same triangle*, so `spread_shape` at `t = 0` is identically zero across the whole slice. Any
+structure in them is purely momentum-driven — which makes them the pair that separates
+configuration effects from momentum effects, and it is why `preset_shape` (a configuration sweep)
+and `preset_shape_pl` (a mixed basis) can be read against them at all.
 
-All 17 cases at 1024², budget 40000, `tau = 1e-4`, `alpha_hi = 0.2`, `N = 8`, `E+1 = 8`, `t = 13`,
-f64, screen floor on. The constants of §12.1 changed the decode for **9 of the 13** pre-existing
-cases; `burrau_nu_k` is the exception, since it builds masses from `nu` directly and never touches
-`z`. Everything regenerated rather than marked stale.
+### 12.4 The gallery, regenerated — and three corrections, one of them to this section
 
-| case | chart | quads | leaves | screen | alpha med | alpha idec | ramp span |
-|---|---|---|---|---|---|---|---|
-| `body_plane` | body_plane | 549 | 412 | 0 | 0.1402 | 1.1203 | 196.2 |
-| `plane_00deg` | plane | 549 | 412 | 0 | 0.1402 | 1.1203 | 196.2 |
-| `shape_sphere` | shape | 1293 | 970 | 0 | 0.1905 | 0.9709 | 2107.6 |
-| `latent_shape` | latent | 5461 | 4096 | 0 | 1.0013 | 0.0383 | 5.5 |
-| `latent_inner_p` | latent | 5397 | 4048 | 0 | 1.0091 | 0.1170 | 18.5 |
-| `latent_outer_p` | latent | 5041 | 3781 | 0 | 1.0046 | 0.3119 | 28.9 |
-| `latent_mass` | latent | 5461 | 4096 | 0 | 0.9979 | 0.0413 | 3.8 |
-| `latent_mixed` | latent | 5117 | 3838 | 0 | 1.0001 | 0.0696 | 21.1 |
-| `latent_oblique_a` | latent | 5421 | 4066 | 0 | 1.0026 | 0.0745 | 5.8 |
-| `latent_oblique_b` | latent | 4697 | 3523 | 0 | 1.0024 | 0.2446 | 4.0 |
-| `burrau_nu_k` | burrau | 4753 | 3565 | 0 | 1.0038 | 0.0788 | 6.0 |
-| `invariant_lz_k` | invariant | 5429 | 4072 | 0 | 1.0001 | 0.0835 | 9.2 |
-| `mass_simplex` | mass_simplex | 5461 | 4096 | 0 | 1.0010 | 0.1319 | 5.2 |
-| **`preset_shape`** | latent | **769** | **577** | 0 | **0.6285** | **3.0724** | **10008.9** |
-| `preset_prho` | latent | 4357 | 3268 | 0 | 1.0153 | 0.1198 | 19.7 |
-| `preset_plambda` | latent | 4493 | 3370 | 0 | 0.9983 | 0.2893 | 14.7 |
-| `preset_shape_pl` | latent | 3965 | 2974 | 0 | 0.9965 | 0.2344 | 18.5 |
+All 26 cases at 1024², budget 40000, `tau = 1e-4`, `alpha_hi = 0.2`, `N = 8`, `E+1 = 8`, `t = 13`,
+f64, screen floor on. Thirteen pre-existing instances, the four presets at the corrected window,
+their four `_h1` crop controls, and five `latent_*_h3` extent controls.
 
-The control holds: `plane_00deg` against `body_plane`, `max |dIC| = 0e0`, asserted.
+The control holds: `plane_00deg` against `body_plane`, `max |dIC| = 0e0`, asserted inside the run.
+The thirteen pre-existing rows reproduce their committed values exactly; their `.prnq` dumps differ
+from the committed ones in `wall_seconds` and in no other field.
 
-**`preset_shape` is the only chart family instance that is not tame.** The standing result was that
-the chart families sit at `alpha` 0.99–1.01 where they are centred and so do not exercise the
-criterion where it is hard. Twelve of the thirteen rows above restate it. `preset_shape` does not:
-577 leaves against a **complete** 4096, an `alpha` interdecile of 3.07 against 0.04, and a
-lightness window spanning four decades against half of one.
+| case | half | quads | leaves | alpha med | alpha idec | ramp span |
+|---|---|---|---|---|---|---|
+| `body_plane` | 0.05 | 549 | 412 | 0.1402 | 1.1203 | 196.2 |
+| `plane_00deg` | 0.05 | 549 | 412 | 0.1402 | 1.1203 | 196.2 |
+| `shape_sphere` | 0.05 | 1293 | 970 | 0.1905 | 0.9709 | 2107.6 |
+| `latent_shape` | 1.5 | 5461 | 4096 | 1.0013 | 0.0383 | 5.5 |
+| `latent_inner_p` | 1.5 | 5397 | 4048 | 1.0091 | 0.1170 | 18.5 |
+| `latent_outer_p` | 1.5 | 5041 | 3781 | 1.0046 | 0.3119 | 28.9 |
+| `latent_mass` | 1.5 | 5461 | 4096 | 0.9979 | 0.0413 | 3.8 |
+| `latent_mixed` | 1.5 | 5117 | 3838 | 1.0001 | 0.0696 | 21.1 |
+| `latent_oblique_a` | 1.5 | 5421 | 4066 | 1.0026 | 0.0745 | 5.8 |
+| `latent_oblique_b` | 1.5 | 4697 | 3523 | 1.0024 | 0.2446 | 4.0 |
+| `burrau_nu_k` | 0.45 | 4753 | 3565 | 1.0038 | 0.0788 | 6.0 |
+| `invariant_lz_k` | 0.45 | 5429 | 4072 | 1.0001 | 0.0835 | 9.2 |
+| `mass_simplex` | 0.45 | 5461 | 4096 | 1.0010 | 0.1319 | 5.2 |
+| **`preset_shape`** | **3.0** | **21** | **16** | **1.2685** | **13.4654** | **18966.6** |
+| `preset_prho` | 3.0 | 3593 | 2695 | 1.0001 | 0.7106 | 33.2 |
+| `preset_plambda` | 3.0 | 3361 | 2521 | 0.9929 | 0.9491 | 44.7 |
+| `preset_shape_pl` | 3.0 | 1729 | 1297 | 1.0311 | 0.5315 | 89.0 |
+| `preset_shape_h1` | 1.0 | 769 | 577 | 0.6285 | 3.0724 | 10008.9 |
+| `preset_prho_h1` | 1.0 | 4357 | 3268 | 1.0153 | 0.1198 | 19.7 |
+| `preset_plambda_h1` | 1.0 | 4493 | 3370 | 0.9983 | 0.2893 | 14.7 |
+| `preset_shape_pl_h1` | 1.0 | 4645 | 3484 | 0.9882 | 0.3613 | 13.3 |
+| `latent_shape_h3` | 3.0 | 5269 | 3952 | 0.9989 | 0.5933 | 38.5 |
+| `latent_inner_p_h3` | 3.0 | 3821 | 2866 | 1.0067 | 0.1618 | 77.2 |
+| `latent_outer_p_h3` | 3.0 | 3877 | 2908 | 1.0023 | 0.6853 | 71.8 |
+| `latent_mass_h3` | 3.0 | 4953 | 3715 | 0.9966 | 0.1216 | 18.7 |
+| `latent_mixed_h3` | 3.0 | 4953 | 3715 | 0.9994 | 0.2110 | 66.8 |
 
-**The cause is which coordinates the slice varies, not the base point.** `preset_shape` and
-`preset_prho` share `z0 = 0` exactly and differ by a factor of 5.7 in leaf count. `preset_shape`
-sweeps `(alpha, beta)` — the configuration coordinates — and passes through collision-adjacent
-shapes; `preset_prho` holds the configuration fixed and varies only the initial momenta (§12.3).
-`preset_shape_pl` mixes the two and lands with the momentum slices, so the configuration sweep does
-not dominate a mixed basis.
+#### 12.4a The previous section's headline was a fact about the crop
 
-Corroborated independently by the undetermined fraction, counted on the uniform renders:
+**The committed `preset_shape` row is reproduced exactly by `preset_shape_h1`** — 769 quads, 577
+leaves, `alpha` med 0.6285, interdecile 3.0724, ramp span 10008.9, every figure identical. Same for
+`preset_prho_h1` (4357/3268, 1.0153, 0.1198, 19.7) and `preset_plambda_h1` (4493/3370, 0.9983,
+0.2893, 14.7). Three of the four committed preset rows were measured at `half = 1.0` and the
+controls reproduce them to the digit.
 
-| | `DEBUG_NAN` pixels of 1048576 | | distinct colours |
+So the claim **"`preset_shape` is the only chart family instance that is not tame"** does not
+survive its own window. What replaces it is worse and more useful — see 12.4c.
+
+#### 12.4b The `shape_pl` basis and the crop, separated
+
+`preset_shape_pl` changed twice, so the `_h1` twin is what tells the two apart. It carries the
+**corrected** basis at the **old** window, which isolates each cause to one comparison:
+
+| | half | basis | leaves | alpha idec |
+|---|---|---|---|---|
+| committed | 1.0 | crossed | 2974 | 0.2344 |
+| `preset_shape_pl_h1` | 1.0 | correct | 3484 | 0.3613 |
+| `preset_shape_pl` | 3.0 | correct | 1297 | 0.5315 |
+
+The basis alone, at a fixed window: **+17.2%** on leaves (2974 -> 3484). The window alone, at a
+fixed basis: **2.69x** the other way (3484 -> 1297). Both real, and neither would have been
+separable from the other without the control.
+
+#### 12.4c **The trees are set by a camera veto, not by the criterion** — and the table said `crit`
+
+This is the largest fact about the gallery and it was invisible in every previous version of this
+table. `chart_gallery` printed a `bound` column reading `crit` unless the *budget* was exhausted.
+It never asked what actually stopped the descent. The `.prnq` dumps carry `decision` per quad and
+always did; read back, they say:
+
+| case | leaves | veto % | floor % | keep % |
+|---|---|---|---|---|
+| `latent_shape`, `latent_mass`, `mass_simplex` | 4096 | **100.0** | 0.0 | 0.0 |
+| `latent_oblique_a` | 4066 | 100.0 | 0.0 | 0.0 |
+| `invariant_lz_k` | 4072 | 99.8 | 0.2 | 0.0 |
+| `preset_shape_pl_h1` | 3484 | 99.4 | 0.5 | 0.1 |
+| `preset_prho` | 2695 | 98.1 | 1.9 | 0.0 |
+| `preset_shape_pl` | 1297 | 96.8 | 2.5 | 0.6 |
+| `preset_plambda` | 2521 | 95.8 | 4.2 | 0.0 |
+| `shape_sphere` | 970 | 79.2 | 18.1 | 2.7 |
+| `preset_shape_h1` | 577 | 77.6 | 12.8 | 9.5 |
+| `body_plane`, `plane_00deg` | 412 | 61.2 | 37.4 | 1.5 |
+| **`preset_shape`** | **16** | **0.0** | **50.0** | **50.0** |
+
+The veto is `Decision::MaxRelDepth` — `Camera::veto`, a cap at `camera_depth + max_rel_depth`
+levels. **On 23 of 26 charts it stops 95% or more of the leaves.** On three of them it stops
+*every* leaf, and every leaf sits at one depth: those are complete capped trees, and their leaf
+counts are facts about the cap in exactly the way a budget-bound row's is a fact about the budget.
+
+This reframes §11.6's standing result. *"The chart families sit at `alpha` 0.99–1.01 and do not
+exercise the criterion"* is true, and now has a mechanism it never stated: **the criterion decides
+under 1% of leaves on those rows.** The `alpha` near 1.0 describes quads a cap forced, not quads
+the criterion chose. Same lesson as §8's screen floor, at a second stop condition, and it went
+unnoticed for the same reason — nothing printed which one fired.
+
+The `bound` column now reports `VETO n%` or `crit n%`. The full breakdown is
+`results/output/gallery_table.txt`, re-derived from the dumps by `examples/gallery_table.rs`
+rather than by a three-hour re-run for a label.
+
+#### 12.4d At the corrected window, `preset_shape` is where the criterion fails outright
+
+`preset_shape` is the **only** case in the set whose tree is entirely its own: 0% veto, 8 leaves
+stopped by `Floor` (spread below `tau`) and 8 by `Keep` (`alpha` says refinement does not pay).
+Sixteen leaves at depth 2, against a complete 4096.
+
+It is not stopping on a featureless field. Its ramp span is **18966.6** — over four decades of
+lightness range, the widest in the set — and its `alpha` interdecile is **13.47** against 0.04–0.99
+for the tame rows. Widening the window brings in the large smooth surroundings that the GLSL shows
+around the fractal core; their spread falls below `tau`, `Agg::Median` over each quad's `N x N`
+footprints reads the quad as resolved, and the core — now a small disk inside a level-2 quad — gets
+no refinement at all.
+
+That is §5's *"median under-refines thin structure — blind to a filament crossing a quad"* at full
+strength, on a chart with a named physical configuration at its centre. **The wrong window was
+hiding it behind a plausible-looking 577-leaf tree.**
+
+#### 12.4e The tameness result survives the extent axis
+
+§11.6 and §12.3 held that a chart's tameness is set by which coordinates it varies, not by where it
+is centred. The `latent_*_h3` twins give it an axis it had never been tested against, since every
+`latent_*` row was measured at `half = 1.5`. It holds: all five stay at `alpha` med 0.9966–1.0067
+across a 2x change in extent, and their veto fractions stay at 99.0–99.9%. Extent moves leaf counts
+(`latent_inner_p` 4048 -> 2866) and it does not move tameness.
+
+The one chart where extent matters enormously is the configuration sweep, and it matters by
+breaking the criterion rather than by changing a distribution:
+
+| | wide (3.0) | narrow (1.0) | ratio |
 |---|---|---|---|
-| `preset_shape` | 12966 | **1.237%** | 249637 |
-| `preset_prho` | 76 | 0.007% | 127320 |
-| `preset_plambda` | 73 | 0.007% | 130182 |
-| `preset_shape_pl` | 69 | 0.007% | 139524 |
+| `preset_shape` | 16 | 577 | **36x** |
+| `preset_prho` | 2695 | 3268 | 1.21x |
+| `preset_plambda` | 2521 | 3370 | 1.34x |
 
-`preset_shape` carries **177x** the undetermined pixels of the other three. Those are visible as
-magenta rather than passing as physics, which is what the reserved null exists for.
+#### 12.4f The refinement-mechanism test is readable on 2 charts of 26
 
-**This does not settle anything about the criterion, and should not be read as doing so.** It says
-there is now a slice on which the criterion has something to discriminate — which twelve of the
-other thirteen do not provide. Whether it discriminates *well* there is an `error(B)` measurement
-that has not been run, and the standing rule against reading a gallery as a beauty contest applies
-with more force now that the renders have structure in them.
+The proposal was that refinement chases non-convergence rather than structure: terminated regions
+are absorbing, so nearby copies share an outcome, `spread_event` collapses to zero and the quad
+reads *resolved*, while still-running regions keep diverging and hold high spread forever. That
+predicts leaf depth **anti-correlated** with `terminated_fraction`, and both are already in the
+`PRNQ` dump — one plot per chart and no extra integration.
 
+**Before reading any correlation, count the distinct values.** There are three ways for this pair
+to be uninformative and the Spearman alone cannot tell them apart:
+
+- **x constant** — every leaf at one depth, so there is no depth axis. `preset_shape` (16 leaves,
+  all at level 2), and the three complete capped trees.
+- **y constant** — `terminated_fraction` takes exactly one value. Ten charts, all at 1.000.
+- **y saturated** — one value holds over 90% of leaves, so the correlation is read off the thin
+  remainder. Twelve charts.
+
+That leaves **two readable charts**, and they disagree:
+
+| | tf values | modal % | mean escape | spearman | per-depth medians |
+|---|---|---|---|---|---|
+| `shape_sphere` | 52 | 75.5 | 0.0993 | **-0.2245** | 0.766, 0.484, 0.078, 0.000, 0.000 |
+| `preset_shape_h1` | 18 | 76.9 | 0.7053 | **+0.3756** | 0.812, 0.875, 0.984, 1.000, 1.000 |
+
+`shape_sphere` matches the prediction and matches it more strongly than its Spearman suggests —
+the medians fall by four steps while the rank correlation is diluted, because 908 of its 970 leaves
+sit at the two deepest levels and their interdecile spans the full `[0,1]`. **Read the per-depth
+medians, not the pooled correlation**; the depth distribution is far too unbalanced for one number.
+
+`preset_shape_h1` runs the other way. Its `terminated_fraction` is climbing to 1.000 with depth and
+its deepest levels sit at `1.000 [0.984, 1.000]`, which is close enough to saturation that it is
+listed as readable on a 76.9% modal share and should be read with that in mind.
+
+**So the mechanism is neither established nor refuted.** One chart for, one against, and 24 on
+which the test cannot fire. What the run does establish is *why* it cannot fire: on 22 of 26 charts
+`escape_fraction` is 0.9894–1.0000 — at `t = 13` on these charts essentially everything has escaped,
+so `terminated_fraction` has no range to correlate against.
+
+That is also a scope note on a standing result. **"The escape arm contributes nothing at `t = 13`"
+is about Burrau's near-field body plane and does not generalise.** On the latent charts the escape
+fraction is ~1.0. `preset_shape` is the counter-example within the latent family: escape 0.0547
+with `terminated_fraction` median 0.984, which is to say its terminations are **collisions** — its
+event histogram is dominated by `collision d0=361886, d1=234807, d2=234812`. Carrying
+`terminated_fraction` and `escape_fraction` separately is what makes that legible.
 
 ## 13. Reproducing any of this
 

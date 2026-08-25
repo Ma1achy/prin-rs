@@ -185,6 +185,27 @@ impl Chart {
         }
     }
 
+    /// The natural box half-width for this chart family.
+    ///
+    /// **Not one number.** A `BodyPlane` coordinate is a body position in Burrau units; a
+    /// `Latent` coordinate is a sigmoid pre-image. `0.05` of one is nothing like `0.05` of the
+    /// other, and a single shared default therefore *silently means two different things*. That
+    /// is exactly how the four GLSL presets shipped at a 3x crop: the reference UI reads
+    /// `Slice +/- 3.0e+0` and the port rendered `half = 1.0`, which spans 46% of the azimuth
+    /// against 90%.
+    ///
+    /// `0.45` for the `Domain::Unit` charts is the value already in use at centre `(0.5, 0.5)`;
+    /// it is recorded here rather than changed.
+    pub fn default_half(&self) -> f64 {
+        match self {
+            Chart::BodyPlane | Chart::Plane { .. } | Chart::Shape { .. } => 0.05,
+            Chart::Latent { .. } => 3.0,
+            Chart::BurrauFamily { .. } | Chart::Invariant { .. } | Chart::MassSimplex { .. } => {
+                0.45
+            }
+        }
+    }
+
     /// The coordinate region this chart is defined on.
     pub fn domain(&self) -> Domain {
         match self {
@@ -315,6 +336,66 @@ impl Chart {
             *x /= n2;
         }
         Chart::Latent { z0, q1, q2 }
+    }
+
+    // ---- The GLSL reference's four default slices ---------------------------------------
+    //
+    // `Ma1achy/principia-ii`, `src/state.ts:71-76`. Constructed here rather than at each call
+    // site because the basis was wrong in one of them and the literal appeared three times: the
+    // gallery and two tests. A correction has to land once.
+    //
+    // All four sit at `z0 = 0`, which decodes to the equilateral Lagrange configuration -- a
+    // named physical state at the centre of every one of these images. Their natural extent is
+    // [`Chart::default_half`], `3.0`, from the reference UI's `Slice +/- 3.0e+0`.
+
+    /// `shape`: the two configuration coordinates.
+    pub fn preset_shape() -> Chart {
+        Chart::latent_axes(decoder::Latent::default(), 0, 1)
+    }
+
+    /// `prho`: the inner momentum pair. A constant-**configuration** slice -- positions in this
+    /// decode do not depend on the momentum coordinates at all, so every pixel is the same
+    /// triangle released with a different initial velocity, and `spread_shape` at `t = 0` is
+    /// identically zero across the whole slice. Any structure in it is purely momentum-driven,
+    /// which makes it the control that separates configuration effects from momentum effects.
+    pub fn preset_prho() -> Chart {
+        Chart::latent_axes(decoder::Latent::default(), 2, 3)
+    }
+
+    /// `plambda`: the outer momentum pair. Constant-configuration, exactly as [`Self::preset_prho`].
+    pub fn preset_plambda() -> Chart {
+        Chart::latent_axes(decoder::Latent::default(), 4, 5)
+    }
+
+    /// `shape_pl`: **the only preset with a cross-coupling**, and the only one that can be got
+    /// wrong in this particular way.
+    ///
+    /// Constructed directly and **not** through [`Chart::latent_oblique`]: the reference's basis
+    /// is un-normalised (each direction has norm `sqrt 2`) and Gram-Schmidt would quietly render
+    /// a different slice while looking like a tidy-up. `tests/charts.rs` pins the norm.
+    ///
+    /// **The pairing is by GLSL SLOT.** The reference is `q1 = e0 + e6`, `q2 = e1 + e7`, and in
+    /// *its* indexing (`z0 = beta`, `z1 = alpha`, `z6/z7 = pLambda.x/y`) that pairs beta with
+    /// `pLambda.x` and alpha with `pLambda.y`. This module renumbers alpha and beta into the
+    /// spec's order, and **must carry their momentum partners with them** -- so the *pair
+    /// assignment* transposes and each pair stays intact:
+    ///
+    /// ```text
+    ///   q1 (horizontal) = e_alpha + e_pLambda_y = e0 + e5      // the GLSL's q2
+    ///   q2 (vertical)   = e_beta  + e_pLambda_x = e1 + e4      // the GLSL's q1
+    /// ```
+    ///
+    /// Pairing alpha with `pLambda.x` instead is a **genuinely different 2-plane** through the 8D
+    /// space, not a reorientation of the same one, and transposing `q1`/`q2` does not recover it
+    /// -- that gives `e_beta + e_pLy`, `e_alpha + e_pLx`, still crossed. It renders as *twisted*
+    /// rather than tilted, because the coupling sets how momentum co-varies with configuration
+    /// across the slice and the two pairings give different shears.
+    pub fn preset_shape_pl() -> Chart {
+        Chart::Latent {
+            z0: decoder::Latent::default(),
+            q1: [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0],
+            q2: [0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0],
+        }
     }
 }
 

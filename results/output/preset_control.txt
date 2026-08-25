@@ -1,0 +1,42 @@
+    Finished `release` profile [optimized] target(s) in 0.12s
+     Running `target/release/examples/preset_control /private/tmp/claude-501/-Users-malachy-src-principia-rs-test/77fd5b21-a1a2-44de-a17d-df20f380c718/scratchpad/preset_control 384`
+preset control, 384^2, one sample per pixel, E+1 = 8, t = 13, f64.
+Colour modes: bivariate/spread_shape (shipping) and event_class/viridis (the mode the
+reference panel renders). Comparing ACROSS modes is not a comparison.
+
+                            case   half  distinct    nan px classes   event classes
+             shape_pl_correct_h3    3.0    147449         5      10   tightest (0,1)=90, tightest (0,2)=65, tightest (1,2)=65, terminated: escape d0=21195, terminated: escape d1=21194, terminated: escape d2=86446, terminated: escape d3=946, terminated: collision d0=17388, terminated: collision d1=31, terminated: collision d2=31
+             shape_pl_crossed_h3    3.0    147453         3      10   tightest (0,1)=126, tightest (0,2)=69, tightest (1,2)=55, terminated: escape d0=3171, terminated: escape d1=19343, terminated: escape d2=104913, terminated: escape d3=2189, terminated: collision d0=17348, terminated: collision d1=114, terminated: collision d2=125
+  shape_pl_crossed_transposed_h3    3.0    147455         0      10   tightest (0,1)=126, tightest (0,2)=69, tightest (1,2)=55, terminated: escape d0=3171, terminated: escape d1=19345, terminated: escape d2=104913, terminated: escape d3=2189, terminated: collision d0=17348, terminated: collision d1=114, terminated: collision d2=126
+             shape_pl_correct_h1    1.0    147453         1      10   tightest (0,1)=816, tightest (0,2)=558, tightest (1,2)=558, terminated: escape d0=35690, terminated: escape d1=35689, terminated: escape d2=72410, terminated: escape d3=166, terminated: collision d0=970, terminated: collision d1=299, terminated: collision d2=299
+                shape_correct_h3    3.0    147162       154      11   tightest (0,1)=4596, tightest (0,2)=6405, tightest (1,2)=6405, terminated: escape d0=3770, terminated: escape d1=3763, terminated: escape d2=3309, terminated: escape d3=1764, terminated: collision d0=51074, terminated: collision d1=33103, terminated: collision d2=33107, terminated: collision d3=6
+                shape_correct_h1    1.0    145655       946      11   tightest (0,1)=7537, tightest (0,2)=6602, tightest (1,2)=6599, terminated: escape d0=14711, terminated: escape d1=14737, terminated: escape d2=15575, terminated: escape d3=8932, terminated: collision d0=22528, terminated: collision d1=24615, terminated: collision d2=24613, terminated: collision d3=61
+
+Mirror symmetry about the horizontal midline (fraction of pixels equal to their
+vertical reflection). **This does NOT discriminate the three planes** -- it inverts,
+scoring the crossed plane above the correct one. Exact pixel equality is the wrong
+instrument for a chaotic field. Printed so the eyeball inference is refuted in the
+output rather than made silently; nothing is asserted on it.
+              shape_pl_correct_h3_spread  0.0539
+               shape_pl_correct_h3_event  0.7112
+              shape_pl_crossed_h3_spread  0.0053
+               shape_pl_crossed_h3_event  0.8007
+   shape_pl_crossed_transposed_h3_spread  0.0003
+    shape_pl_crossed_transposed_h3_event  0.5071
+              shape_pl_correct_h1_spread  0.0783
+               shape_pl_correct_h1_event  0.5043
+                 shape_correct_h3_spread  0.1686
+                  shape_correct_h3_event  0.4118
+                 shape_correct_h1_spread  0.0205
+                  shape_correct_h1_event  0.3689
+
+  [spread] shape_pl: correct vs crossed                  146993 px differ  ( 99.69%)
+  [spread] shape_pl: correct vs crossed-transposed       147365 px differ  ( 99.94%)
+  [spread] shape_pl: half 3.0 vs 1.0                     147448 px differ  ( 99.99%)
+  [spread] shape:    half 3.0 vs 1.0                     146702 px differ  ( 99.49%)
+  [ event] shape_pl: correct vs crossed                   44112 px differ  ( 29.92%)
+  [ event] shape_pl: correct vs crossed-transposed        55358 px differ  ( 37.54%)
+  [ event] shape_pl: half 3.0 vs 1.0                      69455 px differ  ( 47.10%)
+  [ event] shape:    half 3.0 vs 1.0                      80429 px differ  ( 54.54%)
+
+Wrote 12 images to /private/tmp/claude-501/-Users-malachy-src-principia-rs-test/77fd5b21-a1a2-44de-a17d-df20f380c718/scratchpad/preset_control/

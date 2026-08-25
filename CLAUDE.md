@@ -516,6 +516,78 @@ A mixed basis (`preset_shape_pl`) lands with the momentum slices, so the configu
 not dominate one. Moving a base point to find chaos is tuning; changing which coordinates the plane
 spans is not.
 
+**A default that spans two coordinate systems silently means two different things.**
+`half = 0.05` is a body position in Burrau units on `BodyPlane` and a sigmoid pre-image on
+`Latent`. One shared default shipped every GLSL preset at `half = 1.0` against the reference UI's
+`Slice +/- 3.0e+0` — a **3x crop**, `alpha in [0.446,1.125]` against `[0.120,1.451]`, 46% of the
+azimuth against 90%. The structure was right and the window was wrong, which reads as
+*similar but not the same* and sends you looking in the physics. `Chart::default_half()` is the
+one table now. And the crop control is the `_h1` twin: same chart, same basis, one number changed.
+
+**Comparing across colour modes is how a rendering choice gets mistaken for a physics bug.**
+The GLSL image first compared against was a **continuous** field; the reference's own WebGPU panel
+reads `Colour mode: Event class, Palette: viridis` — **discrete** — and that one looks far closer.
+A continuous field and a categorical map cannot look alike even when both are correct. Render
+prin-rs under a mode matched to the reference (`Colouring::EventClass`, `<case>_event.png`), and
+state the mode of every committed image. Its alphabet is **fixed at 27 slots, not data-derived**,
+so the same class is the same colour in two slices — which makes adjacent ordinals close in colour
+by construction, so the legend and the per-class histogram are the instrument, not the image.
+
+**A basis that pairs coordinates pairs them BY SLOT, and renumbering must carry the partner.**
+The GLSL's `shape_pl` is `q1 = e0 + e6`, `q2 = e1 + e7` — in its indexing, `beta` with
+`pLambda.x` and `alpha` with `pLambda.y`. This port renumbers alpha and beta into the spec's order
+and the first cut did **not** carry their momentum partners across. **No transposition of
+`q1`/`q2` repairs it**: that gives `e_beta + e_pLy`, `e_alpha + e_pLx`, still crossed. It is a
+genuinely different 2-plane through the 8D space, not a reorientation, which is why it rendered as
+*twisted* rather than tilted — the coupling sets how momentum co-varies with configuration across
+the slice. Measured `max |dIC|` against the correct plane: **5.4483** crossed, **1.2042**
+transposed. An index assertion alone would have passed on the transposition, so the test carries
+both as negative controls. `shape_pl` is the **only** preset with a cross-coupling, which is why it
+was the only one that looked wrong in this particular way — that consistency is itself evidence.
+
+**A tree can be set by a CAMERA VETO while the table calls it criterion-bound.**
+`chart_gallery`'s `bound` column read `crit` unless the *budget* was exhausted and never asked what
+actually stopped the descent. Measured from the `.prnq` dumps, which carried `decision` all along:
+**`Decision::MaxRelDepth` stops 95%+ of leaves on 23 of 26 charts**, and 100% on three, where every
+leaf sits at one depth — complete capped trees whose leaf counts are facts about the cap. This is
+the mechanism behind the standing "the chart families do not exercise the criterion": the criterion
+decides **under 1% of leaves** there, and the `alpha` near 1.0 describes quads a cap forced. Same
+lesson as the screen floor, at a second stop condition, unnoticed for the same reason — nothing
+printed which one fired. Never quote a leaf count without the stop-reason breakdown.
+
+**`preset_shape` at the corrected window is where the criterion fails outright — 16 leaves.**
+0% veto, 8 `Floor` and 8 `Keep`, depth 2, against a complete 4096 — the only case in the set whose
+tree is entirely its own decisions. And not on a featureless field: ramp span **18966.6**, four
+decades, the widest in the set, `alpha` interdecile **13.47** against 0.04-0.99 for the tame rows.
+The wide window admits the smooth surroundings, their spread falls below `tau`, `Agg::Median` reads
+the quad resolved, and the fractal core sits unrefined inside a level-2 quad. That is
+"median under-refines thin structure" at full strength, and `half = 1.0` hid it behind a
+plausible-looking 577-leaf tree.
+
+**"The escape arm contributes nothing at `t = 13`" is about Burrau's near-field and does not
+generalise.** On the latent charts `escape_fraction` is **0.9894-1.0000** — essentially everything
+escapes. `preset_shape` is the counter-example inside that family: escape **0.0547** with
+`terminated_fraction` median 0.984, so its terminations are collisions (event histogram dominated
+by `collision d0=361886`). Carrying `terminated_fraction` and `escape_fraction` separately is what
+makes the difference legible.
+
+**A finding read off a wireframe is a finding about an appearance. Test the cause — then check the
+test can fire.** "Refinement goes to smooth regions" was read off a wireframe at the wrong window.
+The mechanism (terminated regions are absorbing, so copies agree, `spread_event` collapses and the
+quad reads resolved) predicts leaf depth **anti-correlated** with `terminated_fraction`. Measured on
+26 charts, it is **readable on 2**: three distinct failure modes that a Spearman cannot tell apart —
+**x constant** (all leaves at one depth), **y constant** (`terminated_fraction` takes one value, ten
+charts), **y saturated** (modal share >90%, twelve charts). The two readable charts **disagree**:
+`shape_sphere` -0.2245 with medians 0.766 -> 0.000, `preset_shape_h1` +0.3756 with medians
+0.812 -> 1.000. Neither established nor refuted. And **read the per-depth medians, not the pooled
+correlation** — `shape_sphere` puts 908 of 970 leaves at the two deepest levels, so one number over
+that design understates a four-step fall.
+
+**`preset_prho` and `preset_plambda` are a control, not just a curiosity.**
+Every pixel of both is the *same triangle* at a different initial velocity, so `spread_shape` at
+`t = 0` is identically zero across the whole slice. Any structure in them is purely
+momentum-driven — which makes the pair what separates configuration effects from momentum effects.
+
 **A distinctness check keyed on the wrong quantity reads as a collapsed decode.**
 Positions in the latent decode do not depend on the momentum coordinates at all, so the `prho` and
 `plambda` presets are constant-**configuration** slices: every pixel is the same triangle released

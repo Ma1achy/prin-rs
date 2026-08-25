@@ -520,3 +520,118 @@ fn oklab_round_trips_and_matches_ottosson() {
     assert!((w[0] - 1.0).abs() < 1e-4, "white is not L=1: {w:?}");
     assert!(w[1].abs() < 1e-4 && w[2].abs() < 1e-4, "white is not neutral: {w:?}");
 }
+
+// ---- The event-class colouring, matched to the reference's WebGPU panel -------------------
+//
+// It exists because comparing a continuous field against a categorical map is how a rendering
+// choice gets mistaken for a physics bug, and that is most of what went wrong with the GLSL
+// preset port. The reference's panel reads `Colour mode: Event class, Palette: viridis`; the
+// smooth rainbow image the port was first compared against was a *different mode of the same
+// reference*. These tests pin the properties that make the two images comparable at all.
+
+/// **The alphabet is fixed and its two arms are disjoint.**
+///
+/// A data-derived alphabet would give the same class a different colour in two slices, and two
+/// images that cannot be compared are the fault this whole colouring exists to remove.
+/// `event_class_at` returns a pair index `0..2` or `TERMINAL_TAG + packed`; the gap between them
+/// is not part of either arm, and a byte landing in it is a bug rather than a class.
+#[test]
+fn the_event_class_alphabet_is_fixed_disjoint_and_gap_free() {
+    use prin_rs::ensemble::stats::TERMINAL_TAG;
+    use prin_rs::output::png::{event_class_ordinal, N_EVENT_CLASSES};
+
+    let mut seen = std::collections::HashSet::new();
+    for c in 0u8..3 {
+        let k = event_class_ordinal(c).expect("pair indices are classes");
+        assert!(seen.insert(k), "ordinal {k} is claimed twice");
+    }
+    for d in 0u8..24 {
+        let k = event_class_ordinal(TERMINAL_TAG + d).expect("terminal classes are classes");
+        assert!(seen.insert(k), "ordinal {k} is claimed twice");
+    }
+    assert_eq!(seen.len(), N_EVENT_CLASSES, "the alphabet has holes or overlaps");
+    assert_eq!(seen.iter().copied().max(), Some(N_EVENT_CLASSES - 1), "ordinals are not dense");
+
+    // The gap. `TERMINAL_TAG` is 8 and the pair arm ends at 2, so 3..7 belong to neither and must
+    // not quietly become a colour.
+    for c in 3u8..TERMINAL_TAG {
+        assert_eq!(event_class_ordinal(c), None, "byte {c} sits in the gap and was given a class");
+    }
+    assert_eq!(event_class_ordinal(255), None, "a byte past the alphabet was given a class");
+}
+
+/// **No colourmap entry may collide with the reserved undetermined colour.**
+///
+/// `DEBUG_NAN` means "this was drawn and has no value", and it is only legible if nothing else in
+/// the image can produce it. Viridis never reaches it — its maximum red is 253 — but that is a
+/// property of the table rather than of the design, so it is asserted where a later table swap
+/// would trip over it.
+#[test]
+fn viridis_never_produces_the_reserved_undetermined_colour() {
+    use prin_rs::output::viridis::viridis;
+    for i in 0..=1000 {
+        let c = viridis(i as f64 / 1000.0);
+        assert_ne!(c, DEBUG_NAN, "viridis hits DEBUG_NAN at t = {}", i as f64 / 1000.0);
+        assert_ne!(c, BACKGROUND, "viridis hits BACKGROUND at t = {}", i as f64 / 1000.0);
+    }
+    // The endpoints are matplotlib's, and they are what says the table was transcribed rather
+    // than approximated.
+    assert_eq!(viridis(0.0), [68, 1, 84]);
+    assert_eq!(viridis(1.0), [253, 231, 37]);
+    // Out-of-range and non-finite are clamped, never cast into a u8 as garbage.
+    assert_eq!(viridis(-5.0), viridis(0.0));
+    assert_eq!(viridis(5.0), viridis(1.0));
+    assert_eq!(viridis(f64::NAN), viridis(0.0));
+}
+
+/// **An undetermined pixel takes the reserved colour and never a class colour**, whatever its
+/// event-class byte says — and the histogram counts it as undetermined rather than as a class.
+///
+/// The three ways a pixel can have no value are a non-finite copy, a failed simulation and a
+/// failed decode. `DecodeFailed` previously fell to a catch-all grey in `outcome_rgb`, where a
+/// pixel whose IC could not be formed read as ordinary data; this asserts the same slip cannot
+/// happen in the new path.
+#[test]
+fn an_undetermined_pixel_never_takes_a_class_colour() {
+    use prin_rs::output::png::{event_class_histogram, event_class_rgb};
+
+    let mut ok = healthy([1.0, 0.0, 0.0], 1e-3);
+    ok.state = State::Collision as u8;
+    ok.event_class = 1;
+    assert_ne!(event_class_rgb(&ok), DEBUG_NAN, "a healthy pixel must get a class colour");
+
+    for (label, mut p) in [
+        ("non-finite copy", {
+            let mut q = ok.clone();
+            q.n_nonfinite = 1;
+            q
+        }),
+        ("sim failed", {
+            let mut q = ok.clone();
+            q.state = State::SimFailed as u8;
+            q
+        }),
+        ("decode failed", {
+            let mut q = ok.clone();
+            q.state = State::DecodeFailed as u8;
+            q
+        }),
+        ("byte in the alphabet gap", {
+            let mut q = ok.clone();
+            q.event_class = 5;
+            q
+        }),
+    ] {
+        assert_eq!(event_class_rgb(&p), DEBUG_NAN, "{label} was painted as a class");
+        p.d_min_true = 0.0;
+        let (rows, undet) = event_class_histogram(std::slice::from_ref(&p));
+        assert_eq!(undet, 1, "{label} was counted as a class in the histogram");
+        assert_eq!(rows.iter().map(|&(_, n)| n).sum::<usize>(), 0, "{label} also counted twice");
+    }
+
+    // And the histogram covers the whole alphabet, so a class that never fires reads as a zero
+    // rather than being absent -- which is the difference between "did not happen" and "not
+    // measured".
+    let (rows, _) = event_class_histogram(&[ok]);
+    assert_eq!(rows.len(), prin_rs::output::png::N_EVENT_CLASSES);
+}

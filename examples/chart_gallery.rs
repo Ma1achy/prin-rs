@@ -115,6 +115,9 @@ fn main() {
     // `BodyPlane` at (1,3) -- while `slice_gallery`'s oblique planes carry the configuration in
     // `origin` and are centred at zero. Centring the first at (0,0) sampled a box three units
     // away and gave 29 quads against 549. The control caught it; the fix is to stop inferring.
+    // The latent chart's own natural half-width -- the reference UI's `Slice +/- 3.0e+0`, and
+    // the one number that was wrong in every committed preset image.
+    let ph = Chart::preset_shape().default_half();
     let cases: Vec<(&str, Chart, f64, f64, f64)> = vec![
         ("body_plane", Chart::BodyPlane, 1.0, 3.0, 0.05),
         ("plane_00deg", Chart::plane_for_body(0), 1.0, 3.0, 0.05),
@@ -165,38 +168,58 @@ fn main() {
         ),
         // ---- The GLSL reference's four default presets ----------------------------------
         //
-        // `Ma1achy/principia-ii`, `src/state.ts:71-76`. These are the slices the reference ships
-        // with, and they are **new cases beside** the `latent_*` rows above rather than
-        // replacements: those sit at an off-origin `z0` deliberately, so no sigmoid rests at its
-        // symmetry point. These sit at `z0 = 0` for the opposite reason — that point decodes to
-        // the **equilateral Lagrange configuration**, which is what makes the picture something a
+        // `Ma1achy/principia-ii`, `src/state.ts:71-76`, with the bases built by
+        // `Chart::preset_*` rather than written out here -- the `shape_pl` literal appeared in
+        // three places and was wrong in all three, so a correction has to land once.
+        //
+        // These are **new cases beside** the `latent_*` rows above rather than replacements:
+        // those sit at an off-origin `z0` deliberately, so no sigmoid rests at its symmetry
+        // point. These sit at `z0 = 0` for the opposite reason -- that point decodes to the
+        // **equilateral Lagrange configuration**, which is what makes the picture something a
         // person can recognise rather than a field to be tabulated.
         //
-        // `half = 1.0` at centre `(0,0)` reproduces the reference's `z0 + (2u-1)*q1 + (2v-1)*q2`
+        // **The window is 3.0, from the reference UI's `Slice +/- 3.0e+0`.** It shipped at 1.0,
+        // which is a 3x crop on the middle of the picture:
+        //
+        //     half = 1.0  ->  alpha in [0.446, 1.125], beta in [0.845, 2.297]  =  46% of azimuth
+        //     half = 3.0  ->  alpha in [0.120, 1.451], beta in [0.149, 2.993]  =  90% of azimuth
+        //
+        // In the GLSL the fractal core is a small disk inside large smooth regions; at half = 1.0
+        // it fills the frame. Same structure, wrong crop -- which is exactly why the port read as
+        // "similar but not the same". The number comes from `Chart::default_half()` and not from
+        // a literal here, because one shared default silently meant two different things and that
+        // is how this got through.
+        //
+        // Centre `(0,0)` with that half reproduces the reference's `z0 + (2u-1)*q1 + (2v-1)*q2`
         // over `(u,v) in [0,1]^2` exactly: `decode_state` is `z0 + u*q1 + v*q2` and the slice
         // already supplies the signed box, so the factor of two lives in the camera and not in a
         // second place where it could hide.
         //
-        // The image is **transposed relative to the GLSL** — its `shape` preset is `q1=e0, q2=e1`,
-        // which in its own indexing is `beta x alpha`, and this module uses the spec's
-        // `(z_alpha, z_beta)` order. See `decoder.rs`'s module header.
-        ("preset_shape", Chart::latent_axes(Latent::default(), 0, 1), 0.0, 0.0, 1.0),
-        ("preset_prho", Chart::latent_axes(Latent::default(), 2, 3), 0.0, 0.0, 1.0),
-        ("preset_plambda", Chart::latent_axes(Latent::default(), 4, 5), 0.0, 0.0, 1.0),
-        (
-            // Constructed directly, **not** through `latent_oblique`: the reference's basis is
-            // un-normalised (each has norm sqrt(2)) and Gram-Schmidt would silently render a
-            // different slice. `tests/charts.rs` pins the norm so a later tidy-up fails loudly.
-            "preset_shape_pl",
-            Chart::Latent {
-                z0: Latent::default(),
-                q1: [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0],
-                q2: [0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0],
-            },
-            0.0,
-            0.0,
-            1.0,
-        ),
+        // The images are **transposed relative to the GLSL** -- it puts `beta` at index 0 and
+        // this module uses the spec's `(z_alpha, z_beta)` order. See `decoder.rs`'s module
+        // header. That is faithfulness, not a bug.
+        ("preset_shape", Chart::preset_shape(), 0.0, 0.0, ph),
+        ("preset_prho", Chart::preset_prho(), 0.0, 0.0, ph),
+        ("preset_plambda", Chart::preset_plambda(), 0.0, 0.0, ph),
+        ("preset_shape_pl", Chart::preset_shape_pl(), 0.0, 0.0, ph),
+        // **The crop control.** The same four charts, the same bases, one number changed. A
+        // plausible explanation for why the port looked wrong becomes a demonstrated one only
+        // if the narrow window reproduces the old picture and the wide one does not -- and
+        // these are the rows that say so.
+        ("preset_shape_h1", Chart::preset_shape(), 0.0, 0.0, 1.0),
+        ("preset_prho_h1", Chart::preset_prho(), 0.0, 0.0, 1.0),
+        ("preset_plambda_h1", Chart::preset_plambda(), 0.0, 0.0, 1.0),
+        ("preset_shape_pl_h1", Chart::preset_shape_pl(), 0.0, 0.0, 1.0),
+        // **The extent control on the pre-existing latent rows.** §12.4's standing result is
+        // that a chart's tameness is set by WHICH COORDINATES it varies, not by where it is
+        // centred. Those rows were all measured at `half = 1.5`, so the claim has never been
+        // tested against extent. These twins give it a second axis to survive; if it turns out
+        // to be extent-conditional that is a more interesting result than the original.
+        ("latent_shape_h3", Chart::latent_axes(z0, 0, 1), 0.0, 0.0, ph),
+        ("latent_inner_p_h3", Chart::latent_axes(z0, 2, 3), 0.0, 0.0, ph),
+        ("latent_outer_p_h3", Chart::latent_axes(z0, 4, 5), 0.0, 0.0, ph),
+        ("latent_mass_h3", Chart::latent_axes(z0, 6, 7), 0.0, 0.0, ph),
+        ("latent_mixed_h3", Chart::latent_axes(z0, 0, 4), 0.0, 0.0, ph),
     ];
 
     println!(
@@ -209,7 +232,7 @@ fn main() {
         ens.t_max
     );
     println!(
-        "{:>18} {:>14} {:>6} {:>7} {:>7} {:>6} {:>7} {:>9} {:>10} {:>10} {:>9} {:>6}",
+        "{:>18} {:>14} {:>6} {:>7} {:>7} {:>6} {:>7} {:>9} {:>10} {:>10} {:>9} {:>9}",
         "case", "chart", "domain", "quads", "leaves", "depth", "screen", "distinct", "alpha med",
         "alpha idec", "ramp span", "bound"
     );
@@ -260,7 +283,7 @@ fn main() {
         let rgb = move |p: &PixelOut| colour::rgb(p, Scalar::ShapeSpread, &sites, lo, hi);
 
         println!(
-            "{:>18} {:>14} {:>6} {:>7} {:>7} {:>6} {:>7} {:>9} {:>10.4} {:>10.4} {:>9.3} {:>6}",
+            "{:>18} {:>14} {:>6} {:>7} {:>7} {:>6} {:>7} {:>9} {:>10.4} {:>10.4} {:>9.3} {:>9}",
             name,
             chart.name(),
             if chart.domain() == Domain::Unit { "unit" } else { "free" },
@@ -272,10 +295,106 @@ fn main() {
             amed,
             aidec,
             hi / lo.max(f64::MIN_POSITIVE),
-            // Whether the descent stopped because the CRITERION was satisfied or because the
-            // BUDGET ran out. A budget-bound row's leaf count is a fact about the budget.
-            if t.nodes.len() + 4 > budget { "BUDGET" } else { "crit" }
+            // **What actually stopped the descent.** This read `crit` unless the BUDGET ran
+            // out, which is wrong and was hiding the largest fact about this table: on most
+            // charts the tree is set by `Decision::MaxRelDepth`, a CAMERA VETO, and the leaf
+            // count is a fact about the cap rather than about the criterion. A row stopped by a
+            // veto has not exercised the criterion at all, and its `alpha` describes quads the
+            // cap forced rather than quads the criterion chose. Same lesson as the screen floor.
+            {
+                let code_of = |d: Decision| {
+                    leaves.iter().filter(|&&i| t.nodes[i].decision == d).count()
+                };
+                let (cap, floor_n, keep) = (
+                    code_of(Decision::MaxRelDepth) + code_of(Decision::ScreenFloor),
+                    code_of(Decision::Floor),
+                    code_of(Decision::Keep),
+                );
+                let n = leaves.len().max(1);
+                if t.nodes.len() + 4 > budget {
+                    "BUDGET".to_string()
+                } else if 100 * cap / n >= 50 {
+                    format!("VETO {}%", 100 * cap / n)
+                } else {
+                    format!("crit {}%", 100 * (floor_n + keep) / n)
+                }
+            }
         );
+
+        // ---- The mechanism test: leaf depth against `terminated_fraction` ------------------
+        //
+        // The finding that refinement goes to smooth regions and ignores the filaments was read
+        // off a **wireframe at the wrong window**. A wireframe is an appearance; this tests the
+        // proposed *cause* directly, and it either shows or it does not.
+        //
+        // The mechanism: terminated regions are absorbing, so nearby copies share an outcome,
+        // `spread_event` collapses to zero and the criterion sees a resolved quad. Still-running
+        // regions keep diverging and hold high spread forever. If that is what drives the tree,
+        // leaf depth should be **anti-correlated** with `terminated_fraction` -- refinement
+        // chasing non-convergence rather than structure.
+        //
+        // Both quantities are already in the `PRNQ` dump, so this costs a plot and no
+        // integration. Read the per-depth median and interdecile, never the variance: the
+        // standing rule on `alpha` (excess kurtosis 110) is about this same family of per-quad
+        // statistics, and a mean here would be a statement about the tail.
+        {
+            let pts: Vec<(f64, f64)> = leaves
+                .iter()
+                .map(|&i| (t.nodes[i].level as f64, t.nodes[i].red.terminated_fraction))
+                .collect();
+            let (xs, ys): (Vec<f64>, Vec<f64>) = pts.iter().cloned().unzip();
+            let rho = stats::spearman(&xs, &ys);
+            let mut med: Vec<(f64, f64)> = Vec::new();
+            let mut rows: Vec<String> = Vec::new();
+            for lv in 0..=depth {
+                let v: Vec<f64> = pts
+                    .iter()
+                    .filter(|&&(x, y)| x as u32 == lv && y.is_finite())
+                    .map(|&(_, y)| y)
+                    .collect();
+                if v.is_empty() {
+                    continue;
+                }
+                let (p10, m, p90, _) = stats::interdecile(&v);
+                med.push((lv as f64, m));
+                rows.push(format!("L{lv}:n={} med={m:.3} [{p10:.3},{p90:.3}]", v.len()));
+            }
+            // `escape_fraction` separately, because `t_end` termination is NOT escape and
+            // conflating them contradicts a standing result while appearing to agree with it.
+            let esc: f64 = leaves
+                .iter()
+                .map(|&i| t.nodes[i].red.escape_fraction)
+                .sum::<f64>()
+                / leaves.len().max(1) as f64;
+            println!(
+                "{:>18}  depth~terminated_fraction: spearman = {rho:+.4}, mean escape_fraction = \
+                 {esc:.4}\n{:>20}{}",
+                "",
+                "",
+                rows.join("  ")
+            );
+            let sc = prin_rs::output::plot::Scatter {
+                title: format!("{name}: leaf depth against terminated_fraction"),
+                x_label: "leaf depth".into(),
+                y_label: "terminated_fraction".into(),
+                notes: vec![
+                    format!(
+                        "{} leaves, spearman(depth, terminated) = {rho:+.4}, \
+                         mean escape_fraction = {esc:.4}",
+                        leaves.len()
+                    ),
+                    "Anti-correlation is the prediction: the criterion chases non-convergence, \
+                     not structure. Terminated regions are absorbing, so copies agree, \
+                     spread_event collapses and the quad reads resolved."
+                        .into(),
+                    "Orange is the per-depth MEDIAN. Read the cloud's spread, not a variance."
+                        .into(),
+                ],
+                points: pts,
+                overlay: med,
+            };
+            let _ = sc.save(&format!("results/charts/{name}_termdepth"));
+        }
 
         let stem = format!("results/charts/{name}");
         let img = render_leaves(&t, &st.pixels, &cam, res, &leaves, &rgb);
@@ -320,6 +439,40 @@ fn main() {
             }
             let _ =
                 adaptive::save_rect(&format!("{stem}_uniform_outcome.png"), ures, ures, &obuf);
+
+            // **The event-class panel, on viridis** -- the mode the reference's WebGPU panel
+            // renders (`Colour mode: Event class, Palette: viridis`). A reference comparison
+            // has to be made under a matched mode: a continuous field and a categorical map
+            // cannot look alike even when both are correct, and comparing across modes is how a
+            // rendering choice gets mistaken for a physics bug. That is most of what went wrong
+            // with this port.
+            //
+            // The outcome panel above **stays as the control**. The pair says whether a feature
+            // is in the class definition or in the physics, and the two classes differ: the
+            // event class is the currently-tightest pair joined with the terminal outcome and
+            // is defined at every playhead, where the outcome label at t = 13 is saturated.
+            let mut ebuf = Vec::with_capacity(upx.len() * 3);
+            for p in &upx {
+                ebuf.extend_from_slice(&png::event_class_rgb(p));
+            }
+            let _ = adaptive::save_rect(&format!("{stem}_uniform_event.png"), ures, ures, &ebuf);
+
+            // The histogram, before the image. 27 slots on one ramp means adjacent classes are
+            // close in colour by construction, so the legend and the counts are the instrument.
+            // A class that never fires is a fact about the slice and reads as a zero here.
+            let (rows, undet) = png::event_class_histogram(&upx);
+            let live: Vec<String> = rows
+                .iter()
+                .filter(|&&(_, n)| n > 0)
+                .map(|&(c, n)| format!("{}={n}", png::event_class_name(c)))
+                .collect();
+            println!(
+                "{:>18}  event classes ({} of {} fire, {undet} undetermined): {}",
+                "",
+                live.len(),
+                png::N_EVENT_CLASSES,
+                if live.is_empty() { "none".into() } else { live.join(", ") }
+            );
         }
 
         // The outcome control on the ADAPTIVE tree, so the pair says whether a feature is in the
@@ -329,6 +482,12 @@ fn main() {
             &t, &st.pixels, &cam, res, adaptive::TexelMode::Adaptive, png::outcome_rgb,
         );
         let _ = adaptive::save(&format!("{stem}_outcome.png"), res, &oimg);
+
+        // The same matched-mode panel on the adaptive tree.
+        let (eimg, _) = adaptive::render(
+            &t, &st.pixels, &cam, res, adaptive::TexelMode::Adaptive, png::event_class_rgb,
+        );
+        let _ = adaptive::save(&format!("{stem}_event.png"), res, &eimg);
 
         if let Ok(f) = std::fs::File::create(format!("{stem}.prnq")) {
             let mut w = std::io::BufWriter::new(f);

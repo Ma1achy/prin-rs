@@ -17,7 +17,8 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
-            slice: grid::region("near-field", 64, 64, 0.05).unwrap(),
+            slice: grid::region("near-field", 64, 64, grid::Chart::BodyPlane.default_half())
+                .unwrap(),
             ens: EnsembleCfg::default(),
             precision: Precision::F64,
             out: "out".into(),
@@ -31,7 +32,7 @@ prin — uniform-resolution three-body initial-condition kernel
 
   --region <name>     one of BRIEF §2.2's regions (default near-field)
   --size <n>          grid is n x n (default 64)
-  --half <x>          box half-width (default 0.05)
+  --half <x>          box half-width (default: the chart's own, 0.05 for the body plane)
   --t-max <t>         playhead (default 13)
   --n-sync <n>        sync boundaries (default 32)
   --eta <x>           timestep parameter (default 0.01)
@@ -57,13 +58,16 @@ pub fn parse(args: &[String]) -> Result<Config, String> {
         args.get(i + 1).cloned().ok_or_else(|| format!("{} needs a value", args[i]))
     };
     let mut size = 64usize;
-    let mut half = 0.05f64;
+    // No literal here. `half` means something different in every chart family -- a body
+    // position in Burrau units on the body plane, a sigmoid pre-image on the latent chart -- and
+    // a single shared default silently meant both. See `Chart::default_half`.
+    let mut half: Option<f64> = None;
     let mut i = 1;
     while i < args.len() {
         match args[i].as_str() {
             "--region" => { c.region = get(i)?; i += 1; }
             "--size" => { size = get(i)?.parse().map_err(|e| format!("{e}"))?; i += 1; }
-            "--half" => { half = get(i)?.parse().map_err(|e| format!("{e}"))?; i += 1; }
+            "--half" => { half = Some(get(i)?.parse().map_err(|e| format!("{e}"))?); i += 1; }
             "--t-max" => { c.ens.t_max = get(i)?.parse().map_err(|e| format!("{e}"))?; i += 1; }
             "--n-sync" => { c.ens.n_sync = get(i)?.parse().map_err(|e| format!("{e}"))?; i += 1; }
             "--eta" => { c.ens.eta = get(i)?.parse().map_err(|e| format!("{e}"))?; i += 1; }
@@ -98,6 +102,9 @@ pub fn parse(args: &[String]) -> Result<Config, String> {
         }
         i += 1;
     }
+    // `grid::region` only ever builds a `BodyPlane` slice, so the fallback is 0.05 today and
+    // this changes no `prin` behaviour. The point is that the number now has one home.
+    let half = half.unwrap_or_else(|| grid::Chart::BodyPlane.default_half());
     c.slice = grid::region(&c.region, size, size, half)
         .ok_or_else(|| format!("unknown region: {}\n\n{USAGE}", c.region))?;
     Ok(c)

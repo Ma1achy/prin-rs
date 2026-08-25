@@ -41,6 +41,106 @@ pub fn outcome_rgb(p: &PixelOut) -> [u8; 3] {
     ]
 }
 
+/// The number of event classes in the alphabet: three tightest-pair identities, then every
+/// `(state, detail)` a terminated copy can carry, offset past them by
+/// [`crate::ensemble::stats::TERMINAL_TAG`].
+///
+/// `pack()` is `(state << 2) | detail` with six states and four details, so the terminal arm is
+/// 24 wide. **Fixed, not derived from the data**: a data-dependent alphabet would give the same
+/// class a different colour in two slices, and two images that cannot be compared are the fault
+/// this whole colouring exists to remove.
+pub const N_EVENT_CLASSES: usize = 3 + 24;
+
+/// The dense ordinal of an event class, or `None` if the byte is outside the alphabet.
+///
+/// The two alphabets are deliberately disjoint in [`crate::ensemble::stats::event_class_at`] --
+/// pair indices `0..2`, terminal classes `TERMINAL_TAG..` -- and the gap between them is *not*
+/// part of either. A byte landing in it is a bug, and returns `None` so it paints as
+/// undetermined rather than as a plausible class.
+pub fn event_class_ordinal(c: u8) -> Option<usize> {
+    const TAG: u8 = crate::ensemble::stats::TERMINAL_TAG;
+    if c < 3 {
+        Some(c as usize)
+    } else if c >= TAG && ((c - TAG) as usize) < N_EVENT_CLASSES - 3 {
+        Some(3 + (c - TAG) as usize)
+    } else {
+        None
+    }
+}
+
+/// A human-readable name for an event class, for the legend.
+pub fn event_class_name(c: u8) -> String {
+    const TAG: u8 = crate::ensemble::stats::TERMINAL_TAG;
+    const PAIRS: [&str; 3] = ["tightest (0,1)", "tightest (0,2)", "tightest (1,2)"];
+    if let Some(n) = PAIRS.get(c as usize) {
+        return (*n).to_string();
+    }
+    match crate::outcome::Outcome::unpack(c.wrapping_sub(TAG)) {
+        Some(o) if c >= TAG => format!("terminated: {} d{}", o.state.name(), o.detail),
+        _ => format!("invalid ({c})"),
+    }
+}
+
+/// **Colour by event class, on viridis** — the categorical mode the `Ma1achy/principia-ii`
+/// WebGPU panel renders, and the one a reference comparison must be made under.
+///
+/// The class is the identity of the **currently tightest pair**, joined with the terminal
+/// `(state, detail)` once a copy has terminated — [`crate::ensemble::stats::event_class_at`].
+/// That is the quantity `spread_event` is built on, and it is defined at every playhead, unlike
+/// the terminal outcome which is terminal-grain and reads pure under lockstep.
+///
+/// Undetermined takes [`crate::output::colour::DEBUG_NAN`] and **never a colourmap entry**: a
+/// pixel with no value must be visibly null rather than plausibly a class.
+///
+/// Adjacent ordinals are close in colour by construction — 27 slots on one ramp — so **the
+/// legend and the per-class histogram are the instrument, not the image**. Both are printed
+/// beside every render.
+pub fn event_class_rgb(p: &PixelOut) -> [u8; 3] {
+    if p.n_nonfinite > 0 {
+        return crate::output::colour::DEBUG_NAN;
+    }
+    match State::from_bits(p.state) {
+        Some(State::SimFailed) | Some(State::DecodeFailed) | None => {
+            return crate::output::colour::DEBUG_NAN
+        }
+        _ => {}
+    }
+    match event_class_ordinal(p.event_class) {
+        Some(k) => {
+            crate::output::viridis::viridis(k as f64 / (N_EVENT_CLASSES - 1) as f64)
+        }
+        None => crate::output::colour::DEBUG_NAN,
+    }
+}
+
+/// Per-class pixel counts over the alphabet, in ordinal order, plus the undetermined count.
+///
+/// Printed before any event-class image. **A class that never fires is a fact about the slice**
+/// and reads as a zero here; without the histogram an image with three colours in it and one
+/// with twenty are indistinguishable at a glance.
+pub fn event_class_histogram(px: &[PixelOut]) -> (Vec<(u8, usize)>, usize) {
+    let mut counts = vec![0usize; N_EVENT_CLASSES];
+    let mut undetermined = 0usize;
+    for p in px {
+        let bad = p.n_nonfinite > 0
+            || matches!(
+                State::from_bits(p.state),
+                Some(State::SimFailed) | Some(State::DecodeFailed) | None
+            );
+        match (bad, event_class_ordinal(p.event_class)) {
+            (false, Some(k)) => counts[k] += 1,
+            _ => undetermined += 1,
+        }
+    }
+    const TAG: u8 = crate::ensemble::stats::TERMINAL_TAG;
+    let rows = counts
+        .iter()
+        .enumerate()
+        .map(|(k, &n)| (if k < 3 { k as u8 } else { TAG + (k - 3) as u8 }, n))
+        .collect();
+    (rows, undetermined)
+}
+
 /// Perceptually monotone ramp for a value in `[0, 1]`. Not a scientific colourmap; it is
 /// only here to make structure visible at a glance.
 fn ramp(x: f64) -> [u8; 3] {

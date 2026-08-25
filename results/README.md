@@ -92,6 +92,7 @@ rows = [struct.unpack_from(f"<{nf}d", d, off + i*nf*8) for i in range(n)]
 | `output/threshold_diagnosis.txt` | **where `tau` sits in the distribution it is meant to cut**, re-derived from all 69 committed `.prnq` dumps: the percentile ladder, the mask saturation, the two-sided failure, and which gate stopped each criterion-bound tree |
 | `output/sched_sweep.txt` | `tau` x `alpha_hi`, no camera. Ladder `1e-8 … 1e-1`: **both** low rungs are labelled degenerate controls, for *different* regions — `1e-8` is the only rung below `far`'s bulk |
 | `output/sweep_screen.txt` | the same sweep under the screen floor, with the `tau` span taken over the whole ladder rather than between two named rungs |
+| `output/balanced_march.txt` | **§3.2's acceptance test**: depth variance and per-quad churn against `t`, balanced against the uniform control. Carries the median leaf spread per row, which is what shows the treadmill premise to be wrong in sign |
 | `output/hot_rule_sweep.txt` | the hot rule swept per region — mask saturation and component counts under `abs` against `q[0.50/0.75/0.90]`, with a constant leaf count asserted as the control |
 
 ## The scheduler
@@ -313,6 +314,18 @@ It carries `err_sum` — this quad's summed OKLab distance to the reference were
 That is a **constant of the quad**, because quads are disjoint, which is what makes the replay
 exact and the greedy priority queue static. It also carries **every criterion's scalar** whatever
 the run ranked on, so criteria can be compared offline without re-integrating.
+
+### The balanced march — `march_var_<region>.png`, `march_churn_<region>.png`
+
+Depth variance and per-quad churn against the playhead, one pair per region, from
+`examples/balanced_march.rs`. **Read them together.** A flat variance curve alone cannot
+distinguish a balanced tree from a *frozen* one — frozen is variance-flat and churn-zero. The
+dashed `uniform` series is the control: criterion off, split to the veto, and it must sit in the
+figure's zero band at every `t`. If it does not, it was budget-bound rather than veto-bound and
+proves nothing.
+
+Churn is over quads present at **both** playheads; the captured output prints the shared count and
+flags it when small.
 
 ### Pan frames — `pan_<region>_NN.png`, `pan_<region>_animated.png`
 

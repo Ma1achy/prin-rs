@@ -19,7 +19,7 @@ use crate::ensemble::pixel::{evaluate, EnsembleCfg, PixelOut};
 use crate::grid::Chart;
 use crate::ensemble::stats;
 use crate::physics::shape;
-use crate::quad::{quantile, Agg, Criterion, Decision, QuadReduction, QuadTree};
+use crate::quad::{quantile, Agg, Criterion, Decision, QuadReduction, QuadTree, StructureMode};
 use crate::spatial::{self, HotRule, Layout};
 use crate::render::Precision;
 use crate::rng::SplitMix64;
@@ -83,6 +83,39 @@ impl Order {
     }
 }
 
+/// The two modes, which are **one mechanism at different budgets** (§3.1).
+///
+/// The reframe that matters: *the screen floor stops things; the criterion decides what gets
+/// attention first.* The criterion was never a stop condition.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Mode {
+    /// Every quad that passes the guards splits, to the veto. The criterion is **off**, and this
+    /// is the control that must degenerate to uniform depth — without it, a balanced mode that
+    /// was merely frozen would look the same in a depth-variance plot.
+    Uniform,
+    /// The same descent, frontier **ranked**, top `k` per round gets budget. The criterion is a
+    /// **priority ordering**, never a threshold, so it cannot land above or below the
+    /// distribution the way a fixed `tau` does.
+    #[default]
+    Balanced,
+}
+
+impl Mode {
+    pub fn name(self) -> &'static str {
+        match self {
+            Mode::Uniform => "uniform",
+            Mode::Balanced => "balanced",
+        }
+    }
+    pub fn parse(s: &str) -> Option<Mode> {
+        Some(match s {
+            "uniform" => Mode::Uniform,
+            "balanced" => Mode::Balanced,
+            _ => return None,
+        })
+    }
+}
+
 #[derive(Clone, Copy, Debug)]
 pub struct SchedCfg {
     /// `N`, samples per quad axis. The quality/compute driver: `N²(E+1)` trajectories per quad.
@@ -123,6 +156,17 @@ pub struct SchedCfg {
     /// Which signal the split decision reads. Every criterion is computed and dumped whatever
     /// this is set to, so criteria can be compared offline without re-integrating.
     pub criterion: Criterion,
+    /// Whether the spatial-structure term enters the signal, and how. §2.2.
+    pub structure: StructureMode,
+    /// Uniform or balanced. See [`Mode`].
+    pub mode: Mode,
+    /// **Balanced mode's budget**: the fraction of the split-eligible frontier refined per round.
+    ///
+    /// `1.0` reproduces the unranked descent exactly, which is what keeps every prior run
+    /// reproducible. It has **no recommended value** — it is swept, and the sweep is the result.
+    /// Picking one because a tree looked right is the constant-tuning defect in its most tempting
+    /// form, and this is the knob most exposed to it.
+    pub k_frac: f64,
     /// The chart every quad decodes through. One tree, one chart.
     pub chart: Chart,
     /// Retain each quad's `N²` footprints for the adaptive render. Not a cache — the run is
@@ -148,6 +192,9 @@ impl Default for SchedCfg {
             order: Order::Spread,
             agg: Agg::Median,
             criterion: Criterion::Within,
+            structure: StructureMode::Off,
+            mode: Mode::Balanced,
+            k_frac: 1.0,
             chart: Chart::BodyPlane,
             keep_pixels: false,
             seed: 0,
@@ -541,6 +588,24 @@ pub fn descend(
 
         // ---- order, then split ---------------------------------------------------------
         order_queue(&mut want, &tree, cfg);
+
+        // **The frontier is ranked and the top `k` gets budget.** This is where the criterion
+        // stops being a threshold and becomes a priority: a quad that falls down the ranking is
+        // simply not spent on, which is the demotion §3.1 asks for -- no merging, no eviction.
+        //
+        // `k_frac = 1.0` refines the whole eligible frontier, reproducing the unranked descent
+        // exactly, so every prior run stays byte-identical. Deferred quads are **`Keep`, not
+        // `BudgetExhausted`**: they were not refused for want of budget, they were outranked, and
+        // conflating the two would hide the mechanism inside the stop-reason column that exists
+        // to expose it.
+        if cfg.k_frac < 1.0 && !want.is_empty() {
+            let k = ((want.len() as f64 * cfg.k_frac).ceil() as usize).clamp(1, want.len());
+            for &i in want.iter().skip(k) {
+                tree.nodes[i].decision = Decision::Keep;
+            }
+            want.truncate(k);
+        }
+
         let room = cfg.budget.saturating_sub(st.quads_computed) / 4;
         if want.len() > room {
             for &i in want.iter().skip(room) {
@@ -604,7 +669,14 @@ pub fn decide(tree: &QuadTree, i: usize, cfg: &SchedCfg) -> Decision {
         return Decision::Collapsed;
     }
 
-    let spread = q.red.signal(cfg.criterion, cfg.agg);
+    // **Uniform mode turns the criterion off entirely.** Not "sets a permissive threshold" --
+    // off. It is the control for §3.2's depth-variance test and must be able to reach the veto
+    // on every branch, or the test is comparing two criteria rather than criterion against none.
+    if cfg.mode == Mode::Uniform {
+        return Decision::Split;
+    }
+
+    let spread = q.red.signal_with(cfg.criterion, cfg.agg, cfg.structure);
     if !(spread > cfg.tau_display) {
         return Decision::Keep;
     }
@@ -632,19 +704,24 @@ fn alpha_branch(alpha: Option<f64>, cfg: &SchedCfg) -> Decision {
     }
 }
 
+/// The quantity the queue orders by.
+///
+/// **This used to read `red.spread(agg)` and ignore `cfg.criterion` entirely.** Every
+/// `--order spread` run in the corpus therefore ordered by the within arm whatever its header
+/// said, so those orderings were measured on a different quantity than they claimed. Fixed here,
+/// and recorded rather than quietly corrected: it means a prior `order` result compared the
+/// *budget-truncation point* under one signal while the header named another.
+pub fn priority(tree: &QuadTree, i: usize, cfg: &SchedCfg) -> f64 {
+    let q = &tree.nodes[i];
+    let v = q.red.signal_with(cfg.criterion, cfg.agg, cfg.structure);
+    match cfg.order {
+        Order::SpreadArea => v * q.half.powi(2),
+        _ => v,
+    }
+}
+
 fn order_queue(want: &mut [usize], tree: &QuadTree, cfg: &SchedCfg) {
     match cfg.order {
-        Order::Spread => want.sort_by(|&a, &b| {
-            tree.nodes[b]
-                .red
-                .spread(cfg.agg)
-                .partial_cmp(&tree.nodes[a].red.spread(cfg.agg))
-                .unwrap_or(std::cmp::Ordering::Equal)
-        }),
-        Order::SpreadArea => want.sort_by(|&a, &b| {
-            let w = |i: usize| tree.nodes[i].red.spread(cfg.agg) * tree.nodes[i].half.powi(2);
-            w(b).partial_cmp(&w(a)).unwrap_or(std::cmp::Ordering::Equal)
-        }),
         Order::Shuffled => {
             let mut rng = SplitMix64::new(cfg.seed ^ 0x5EED_C0DE_5EED_C0DE);
             for j in (1..want.len()).rev() {
@@ -652,5 +729,17 @@ fn order_queue(want: &mut [usize], tree: &QuadTree, cfg: &SchedCfg) {
                 want.swap(j, k);
             }
         }
+        // Descending priority. NaN sorts LAST rather than blocking: a signal that declines to
+        // score must not outrank one that did, and must not stop the ones that did from being
+        // ordered among themselves.
+        _ => want.sort_by(|&a, &b| {
+            let (pa, pb) = (priority(tree, a, cfg), priority(tree, b, cfg));
+            match (pa.is_nan(), pb.is_nan()) {
+                (true, true) => a.cmp(&b),
+                (true, false) => std::cmp::Ordering::Greater,
+                (false, true) => std::cmp::Ordering::Less,
+                _ => pb.partial_cmp(&pa).unwrap_or(std::cmp::Ordering::Equal),
+            }
+        }),
     }
 }

@@ -137,7 +137,7 @@ pub fn write<W: Write>(
 
     let header = format!(
         "region={} body={} n_samples_per_axis={} n_copies={} budget={} bootstrap_levels={}\n\
-         tau_display={} hot_rule={} alpha_hi={} alpha_lo={} sib_tau={} policy={} order={} agg={} criterion={} max_level={:?}\n\
+         tau_display={} hot_rule={} structure={} mode={} k_frac={} alpha_hi={} alpha_lo={} sib_tau={} policy={} order={} agg={} criterion={} max_level={:?}\n\
          t_max={} eta={} n_sync={} r_coll_frac={} lc_stable={} jitter_scheme={:?} precision={}\n\
          chart={} decode_path={} camera={:?}\n\
          chart_params={}\n\
@@ -145,7 +145,8 @@ pub fn write<W: Write>(
          trajectories_per_quad={} sibling_edge_overlap_frac={:.6}\n\
          fields={}\n",
         region, tree.body, tree.n, ens.n_extra + 1, cfg.budget, cfg.bootstrap_levels,
-        cfg.tau_display, cfg.hot_rule.name(), cfg.alpha_hi, cfg.alpha_lo, cfg.sib_tau,
+        cfg.tau_display, cfg.hot_rule.name(), cfg.structure.name(), cfg.mode.name(),
+        cfg.k_frac, cfg.alpha_hi, cfg.alpha_lo, cfg.sib_tau,
         cfg.policy.name(), cfg.order.name(), cfg.agg.name(), cfg.criterion.name(), cfg.max_level,
         ens.t_max, ens.eta, ens.n_sync, ens.r_coll_frac, ens.lc_stable, ens.jitter_scheme,
         precision,

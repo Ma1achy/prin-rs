@@ -675,6 +675,48 @@ reporting whichever pair happened to straddle the bulk in one region even when p
 max/min over the whole ladder at the `alpha_hi` where the knob is live. Same defect as
 `pan_sequence`'s hardcoded viewport, at a different site.
 
+**THE TREADMILL DOES NOT HAPPEN; THE OPPOSITE DOES.** The standing argument for rank was that
+"spread grows with `t` everywhere", so any fixed threshold must eventually fire on every quad.
+Measured on a fixed tree across `t in {4..20}`: near-field's median leaf spread **peaks at
+`t = 10` and then falls 81x**, ending below `tau = 1e-4`; `deep interior` falls **31x
+monotonically** and is under `tau` from `t = 13`. The mechanism is already on record one level
+down -- **terminal states are absorbing**, so as termination saturates the copies share an outcome
+and the disagreement collapses. At large `t` a fixed `tau` fires **nowhere**, the spread gate keeps
+everything and the tree **shrinks**: near-field 256 -> 40 leaves, `keep` 0 -> 20. This
+*strengthens* the case for rank -- a rise-then-collapse has no correct fixed value at either end
+and no monotone schedule that tracks it, where a monotone rise at least would.
+
+**`order_queue` never read `cfg.criterion`.** It sorted on `red.spread(agg)`, so every
+`--order spread` run in the corpus ordered by the within arm whatever its header said. It
+reproduces the corpus exactly only because every committed run has `criterion=within` and
+`signal(Within, agg)` *is* `spread(agg)`. Fixed, asserted, and recorded rather than quietly
+corrected -- a prior `order` result compared the budget-truncation point under one signal while
+naming another.
+
+**A deferred quad is `Keep`, not `BudgetExhausted`.** Under `k_frac < 1` a quad that falls down
+the ranking was outranked, not refused for want of budget. Conflating them would hide the ranking
+inside the stop-reason column that exists to expose it.
+
+**A control that is budget-bound is not a control.** `Mode::Uniform` proves the depth-variance test
+discriminates only if the **veto** stops it -- then it reads exactly 0.0000 at every `t`. At a
+viewport where the budget runs out first it reads 0.18 and proves nothing. Print
+`budget_exhausted` per row. Related: the first cut of the mode test ran at `t = 2`, where
+near-field is tame enough that the criterion floors nothing, so **both** arms hit the veto at 256
+leaves and variance 0 -- and it read as "balanced degenerated".
+
+**Churn must be read over SHARED quads, and the count printed.** A quad present at one playhead
+and not the other has not changed its decision; counting it folds the tree's size change into a
+statistic about its stability. Near-field at `t = 16` shares 14 quads, so its churn of 0.4286 is
+6 of 14 -- thin, and labelled thin.
+
+**The structure term needs THREE factors and a test found the third.** Connectedness x thinness
+scored a **single isolated hot cell at 1.0**: it is trivially the largest component, and
+`perimeter_ratio == 4` saturates thinness. Maximum structure, for one cell. **Extent**
+(`largest_component / N`) is the graded form of `looks_like_boundary`'s `largest >= N/2`. Measured:
+fully hot 0.0000, filament 1.0000, checkerboard 0.0039, isolated cell 0.1250 — each factor catches
+a case the other two score at maximum. `NaN` on an empty mask, never 0, because `far`'s mask is
+empty on every leaf.
+
 ---
 
 ## SMOKE TEST

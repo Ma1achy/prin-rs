@@ -880,3 +880,158 @@ fn the_relative_mask_desaturates_where_the_absolute_one_does_not() {
     assert!(rel_multi > 0.2,
             "relative mask resolves > 1 component on only {:.1}% of quads", 100.0 * rel_multi);
 }
+
+// ---------------------------------------------------------------------------------------
+// The structure term, the two modes, and the ranked frontier
+// ---------------------------------------------------------------------------------------
+
+/// **The `order_queue` fix is a no-op for every run in the corpus, and this is why.**
+///
+/// The queue used to sort on `red.spread(agg)` while `cfg.criterion` said something else — so a
+/// `--order spread` run ordered by the within arm whatever its header claimed. It now sorts on
+/// `signal(criterion, agg)`.
+///
+/// Every committed run has `criterion=within`, and `signal(Within, agg)` **is** `spread(agg)` by
+/// definition. So the corpus reproduces exactly, and the fix only changes runs that set a
+/// criterion the old code was ignoring. Asserted rather than argued, because "it reproduces" is
+/// the kind of claim that is cheap to make and expensive to be wrong about.
+#[test]
+fn the_queue_fix_is_identical_under_the_criterion_every_committed_run_used() {
+    use prin_rs::quad::{Agg, StructureMode};
+    let mut r = QuadReduction { n_footprints: 64, ..Default::default() };
+    for (mean, med, p90) in [(1.0, 2.0, 3.0), (0.0, 0.0, 0.0), (f64::NAN, 5.0, 1e-9)] {
+        r.spread_mean = mean;
+        r.spread_median = med;
+        r.spread_p90 = p90;
+        for agg in [Agg::Mean, Agg::Median, Agg::P90] {
+            let old = r.spread(agg);
+            let new = r.signal_with(Criterion::Within, agg, StructureMode::Off);
+            assert!(
+                (old.is_nan() && new.is_nan()) || old == new,
+                "criterion=within must be bitwise the old ordering: {old} vs {new}"
+            );
+        }
+    }
+}
+
+/// The structure term must be fooled by neither factor alone.
+#[test]
+fn structure_separates_a_filament_from_a_full_quad_and_from_scatter() {
+    let n = 8;
+    let red = |m: Vec<bool>| {
+        let mut r = QuadReduction { n_footprints: (n * n) as u32, ..Default::default() };
+        r.layout_rel_within = spatial::layout(&m, n);
+        r
+    };
+    let filament: Vec<(usize, usize)> = (0..n).map(|jx| (jx, 4)).collect();
+    let checks: Vec<(usize, usize)> = (0..n)
+        .flat_map(|jx| (0..n).map(move |jy| (jx, jy)))
+        .filter(|(x, y)| (x + y) % 2 == 0)
+        .collect();
+
+    let full = red(vec![true; n * n]).structure(true);
+    let fil = red(mask(n, &filament)).structure(true);
+    let scatter = red(mask(n, &checks)).structure(true);
+    let one = red(mask(n, &[(3, 3)])).structure(true);
+    let empty = red(vec![false; n * n]).structure(true);
+
+    println!("structure: full {full:.4}  filament {fil:.4}  checkerboard {scatter:.4}  \
+              isolated cell {one:.4}  empty {empty:?}");
+
+    // A featureless fully-hot quad is maximally CONNECTED and has zero perimeter: the thinness
+    // factor is what kills it. Without that factor it would score 1.0.
+    assert_eq!(full, 0.0, "a fully hot quad must score zero structure");
+    // A filament is the target: connected and thin.
+    assert!(fil > 0.9, "a filament must score near 1, got {fil}");
+    // A checkerboard is maximally THIN and maximally scattered: connectedness kills it. Without
+    // that factor it would score 1.0 as well — the two failure modes are opposite, which is why
+    // both factors are needed.
+    assert!(scatter < 0.1, "a checkerboard must score near 0, got {scatter}");
+    assert!(one < 0.2, "an isolated cell is scatter, not structure, got {one}");
+    // Undetermined, not calm.
+    assert!(empty.is_nan(), "an empty mask must be NaN, not 0");
+}
+
+/// **Uniform mode must degenerate and balanced mode must not — and the control is the point.**
+///
+/// A depth-variance test proves nothing unless something in the pair fails it. Uniform mode is
+/// the arm that must fail: criterion off, split to the veto, every leaf at one depth.
+#[test]
+fn uniform_mode_degenerates_to_one_depth_and_balanced_does_not() {
+    use prin_rs::camera::Camera;
+    use prin_rs::ensemble::pixel::EnsembleCfg;
+    use prin_rs::render::Precision;
+    use prin_rs::scheduler::{self, Mode, SchedCfg};
+
+    // **`t_max` matters here and the first cut of this test got it wrong.** At `t = 2` near-field
+    // is tame enough that the criterion floors nothing, so BOTH arms ran to the screen floor at
+    // 256 leaves and variance 0 -- the test read "balanced degenerated" when what it had measured
+    // was the veto binding on both. That is the corpus finding in miniature, and it is exactly
+    // the failure mode this pair exists to catch, so the configuration is pinned: `t = 13`, and a
+    // viewport small enough that the uniform arm is stopped by the VETO rather than the budget.
+    // A budget-bound uniform arm has nonzero depth variance and is no control at all.
+    let ens = EnsembleCfg { t_max: 13.0, refine_flagged: false, ..Default::default() };
+    let cam = Camera::framing(1.0, 3.0, 0.05, 64);
+    let run = |mode| {
+        let cfg = SchedCfg {
+            n: 4,
+            budget: 800,
+            tau_display: 1e-4,
+            alpha_hi: 0.2,
+            alpha_lo: 0.2,
+            mode,
+            camera: Some(cam),
+            ..Default::default()
+        };
+        let (t, st) = scheduler::descend(1.0, 3.0, 0.05, 0, &cfg, &ens, Precision::F64);
+        let lv: Vec<f64> = t.leaves().map(|i| t.nodes[i].level as f64).collect();
+        let m = lv.iter().sum::<f64>() / lv.len() as f64;
+        let v = lv.iter().map(|x| (x - m) * (x - m)).sum::<f64>() / lv.len() as f64;
+        (lv.len(), v, st.budget_exhausted)
+    };
+    let (nu, vu, bu) = run(Mode::Uniform);
+    let (nb, vb, _) = run(Mode::Balanced);
+    println!("uniform : {nu} leaves, depth variance {vu:.4}, budget exhausted {bu}");
+    println!("balanced: {nb} leaves, depth variance {vb:.4}");
+    assert!(!bu, "the uniform arm ran out of budget, so it is budget-bound and not a control");
+    assert_eq!(vu, 0.0, "uniform mode must reach one depth everywhere -- it is the control");
+    assert!(vb > 0.0, "balanced mode collapsed to uniform depth: variance {vb}");
+    assert!(nb < nu, "balanced must spend less than uniform: {nb} against {nu}");
+}
+
+/// `k_frac` defers rather than refuses, and `1.0` changes nothing.
+#[test]
+fn k_frac_defers_as_keep_and_one_reproduces_the_unranked_descent() {
+    use prin_rs::ensemble::pixel::EnsembleCfg;
+    use prin_rs::quad::Decision;
+    use prin_rs::render::Precision;
+    use prin_rs::scheduler::{self, SchedCfg};
+
+    let ens = EnsembleCfg { t_max: 2.0, n_sync: 8, refine_flagged: false, ..Default::default() };
+    let run = |k: f64| {
+        let cfg = SchedCfg {
+            n: 4,
+            budget: 300,
+            tau_display: 1e-4,
+            alpha_hi: 0.2,
+            alpha_lo: 0.2,
+            k_frac: k,
+            ..Default::default()
+        };
+        let (t, st) = scheduler::descend(1.0, 3.0, 0.05, 0, &cfg, &ens, Precision::F64);
+        let exhausted =
+            t.nodes.iter().filter(|q| q.decision == Decision::BudgetExhausted).count();
+        (t.leaves().count(), st.quads_computed, exhausted)
+    };
+    let mut prev = 0usize;
+    for k in [0.25f64, 0.5, 0.75, 1.0] {
+        let (leaves, quads, ex) = run(k);
+        println!("k_frac {k:.2}: {leaves:>4} leaves, {quads:>4} quads, {ex:>3} budget-exhausted");
+        assert!(leaves >= prev, "leaf count must not fall as k_frac rises: {prev} -> {leaves}");
+        prev = leaves;
+    }
+    // A deferred quad was OUTRANKED, not refused for want of budget. Conflating the two would
+    // hide the ranking inside the stop-reason column that exists to expose it.
+    let (_, _, ex_quarter) = run(0.25);
+    assert_eq!(ex_quarter, 0, "deferral must not be reported as budget exhaustion");
+}

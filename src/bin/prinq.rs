@@ -15,9 +15,9 @@ use std::io::BufWriter;
 use prin_rs::ensemble::pixel::EnsembleCfg;
 use prin_rs::grid;
 use prin_rs::output::{png, tree as treeout};
-use prin_rs::quad::Agg;
+use prin_rs::quad::{Agg, StructureMode};
 use prin_rs::render::{self, Precision};
-use prin_rs::scheduler::{self, Order, Policy, SchedCfg};
+use prin_rs::scheduler::{self, Mode, Order, Policy, SchedCfg};
 use prin_rs::spatial::HotRule;
 
 const USAGE: &str = "\
@@ -41,6 +41,13 @@ prinq — minimal refinement scheduler for prin-rs
   --alpha-band <f>      set alpha_lo = f * alpha_hi; give it AFTER --alpha-hi. Without it,
                         raising alpha_hi alone leaves a zero-width keep band
   --sib-tau <x>         floor above this sibling range, sibling policy (default 0.5)
+  --structure <m>       off | replace | multiply (default off). Whether the spatial-structure
+                        term enters the signal. `multiply` is uncertain AND structured
+  --mode <m>            uniform | balanced (default balanced). `uniform` turns the criterion
+                        OFF and splits to the veto -- the control, not a permissive threshold
+  --k-frac <f>          balanced mode's budget: fraction of the eligible frontier refined per
+                        round (default 1.0, which reproduces the unranked descent exactly).
+                        No recommended value -- sweep it
   --policy <p>          alpha | sibling (default alpha)
   --order <o>           spread | spread-area | shuffled (default spread)
   --agg <a>             mean | median | p90 (default median)
@@ -102,6 +109,11 @@ fn main() {
             }
             "--alpha-lo" => { cfg.alpha_lo = get(i).parse().unwrap(); i += 1; }
             "--sib-tau" => { cfg.sib_tau = get(i).parse().unwrap(); i += 1; }
+            "--structure" => {
+                cfg.structure = StructureMode::parse(&get(i)).expect("structure"); i += 1;
+            }
+            "--mode" => { cfg.mode = Mode::parse(&get(i)).expect("mode"); i += 1; }
+            "--k-frac" => { cfg.k_frac = get(i).parse().unwrap(); i += 1; }
             "--policy" => { cfg.policy = Policy::parse(&get(i)).expect("policy"); i += 1; }
             "--order" => { cfg.order = Order::parse(&get(i)).expect("order"); i += 1; }
             "--agg" => { cfg.agg = Agg::parse(&get(i)).expect("agg"); i += 1; }

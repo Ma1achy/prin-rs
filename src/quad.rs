@@ -221,6 +221,62 @@ impl QuadReduction {
         }
     }
 
+    /// **How much this quad looks like a BOUNDARY rather than a uniform sea**, in `[0, 1]`.
+    ///
+    /// The §1 diagnosis: `ensemble_spread` measures *uncertainty*, and a uniformly chaotic quad
+    /// and a filament are both uncertain. Only one of them repays refining. This is the term
+    /// that separates them, and it is two factors because either alone is fooled:
+    ///
+    /// - **connectedness**, `largest_component / n_hot`. Scattered hot footprints are chaos;
+    ///   one run of them is a structure. Without this a checkerboard scores maximum thinness.
+    /// - **thinness**, `perimeter_ratio / 2`, clamped at 1. A one-cell-wide filament reads
+    ///   exactly `2.0` under the internal-edges convention, a compact blob `~4/sqrt(A)`, and a
+    ///   featureless fully-hot quad exactly **0**. Without this a fully-hot quad scores maximum
+    ///   connectedness.
+    /// - **extent**, `largest_component / N`. **This third factor was not anticipated; the test
+    ///   found it.** A single isolated hot cell is trivially connected (it *is* the largest
+    ///   component) and maximally thin (`perimeter_ratio == 4`), so the first two factors scored
+    ///   it **1.0** — maximum structure, for one cell. A boundary crossing a quad spans it;
+    ///   `Layout::looks_like_boundary` already encodes that as `largest_component >= N/2`, and
+    ///   this is the graded form. An isolated cell now reads `1/N`.
+    ///
+    /// Read it on the **relative** mask: on the absolute one `n_hot == N^2` in 98.8% of committed
+    /// leaves, so `perimeter_ratio` is 0 and this is identically zero — a term that cannot fire.
+    ///
+    /// `NaN` when nothing is hot, following `perimeter_ratio`'s own convention. **Not 0**: an
+    /// empty mask is "not determined", and `far` is the case that makes the difference — its
+    /// absolute mask is empty on every leaf, and a 0 there would read as "no structure found"
+    /// rather than "not measured".
+    pub fn structure(&self, relative: bool) -> f64 {
+        let l = if relative { self.layout_rel_within } else { self.layout_within };
+        if l.n_hot == 0 {
+            return f64::NAN;
+        }
+        let connected = l.largest_component as f64 / l.n_hot as f64;
+        let thin = (l.perimeter_ratio / 2.0).clamp(0.0, 1.0);
+        let extent = (l.largest_component as f64 / self.n_side().max(1) as f64).clamp(0.0, 1.0);
+        connected * thin * extent
+    }
+
+    /// The scalar a decision reads once [`StructureMode`] is applied.
+    ///
+    /// **`Multiply` is "uncertain AND structured"**, which floors the uniform sea by
+    /// construction; `Replace` says structure is the whole answer. The recommendation on record
+    /// is multiply, and the recommendation does not decide — `error(B)` does.
+    ///
+    /// A `NaN` structure term propagates rather than being coerced to 0 or 1. Under `Multiply`
+    /// that demotes an undetermined quad to the bottom of any ranking, which is the wrong
+    /// standing for "could not be measured" and is why the mode is a measured choice rather than
+    /// an obvious one. It is stated here so it is read off the code rather than discovered.
+    pub fn signal_with(&self, criterion: Criterion, agg: Agg, mode: StructureMode) -> f64 {
+        let base = self.signal(criterion, agg);
+        match mode {
+            StructureMode::Off => base,
+            StructureMode::Replace => self.structure(true),
+            StructureMode::Multiply => base * self.structure(true),
+        }
+    }
+
     /// `N`, recovered from the footprint count. The reduction does not carry the grid width
     /// separately, and every quad is square by construction (`Quad::slice` builds `n x n`).
     pub fn n_side(&self) -> usize {
@@ -236,6 +292,42 @@ impl QuadReduction {
     pub fn between_collapsed(&self) -> bool {
         self.n_distinct_ic < self.n_footprints
     }
+}
+
+/// Whether the spatial-structure term enters the decision, and how.
+///
+/// §2.2's open question, implemented as both variants because it is the sort of thing this
+/// project has settled by measurement rather than argument.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum StructureMode {
+    /// The signal alone. Today's behaviour, and the control.
+    #[default]
+    Off,
+    /// Structure is the whole answer.
+    Replace,
+    /// *Uncertain **and** structured.* Keeps the determinacy question `ensemble_spread` answers
+    /// while adding the structure question it cannot.
+    Multiply,
+}
+
+impl StructureMode {
+    pub fn name(self) -> &'static str {
+        match self {
+            StructureMode::Off => "off",
+            StructureMode::Replace => "replace",
+            StructureMode::Multiply => "multiply",
+        }
+    }
+    pub fn parse(s: &str) -> Option<StructureMode> {
+        Some(match s {
+            "off" => StructureMode::Off,
+            "replace" => StructureMode::Replace,
+            "multiply" => StructureMode::Multiply,
+            _ => return None,
+        })
+    }
+    pub const ALL: [StructureMode; 3] =
+        [StructureMode::Off, StructureMode::Replace, StructureMode::Multiply];
 }
 
 /// Which signal a split decision reads.

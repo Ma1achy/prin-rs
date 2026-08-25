@@ -2139,6 +2139,101 @@ stops at 48 still reads every v2 field correctly. Both readers in this project p
 line by name and are unaffected. `.qcache` moves to PRQC v2 with the matching `sig_layout_rel`,
 `sig_grad_rms` and their contrasts.
 
+## 15. Rank, the two modes, and a premise that is wrong in sign
+
+### 15.1 The queue never used the criterion it was configured with
+
+`order_queue` sorted on `red.spread(agg)` and never read `cfg.criterion`. So every
+`--order spread` run in the corpus ordered by the within arm whatever its header said, and the
+budget-truncation point was decided by a different quantity than the one named. Fixed.
+
+**It reproduces the corpus exactly**, and the reason is worth stating rather than asserting: every
+committed run has `criterion=within`, and `signal(Within, agg)` *is* `spread(agg)` by definition.
+The fix only changes runs that set a criterion the old code was ignoring. `tests/criterion.rs`
+asserts the equality over the aggregations and over degenerate inputs.
+
+### 15.2 The two modes are one mechanism
+
+`Mode::Uniform` turns the criterion **off** — not "sets a permissive threshold", off — and splits
+to the veto. `Mode::Balanced` ranks the frontier and gives the top `k_frac` its budget. A quad
+that falls down the ranking is simply not spent on: the demotion §3.1 asks for, with no merging
+and no eviction.
+
+`k_frac = 1.0` refines the whole eligible frontier and reproduces the unranked descent exactly.
+Deferred quads are marked **`Keep`, not `BudgetExhausted`** — they were outranked, not refused for
+want of budget, and conflating them would hide the ranking inside the stop-reason column that
+exists to expose it. Measured at `N = 4`, budget 300: `k_frac` 0.25 / 0.50 / 0.75 / 1.00 gives
+13 / 46 / 121 / 223 leaves, with zero budget-exhausted below 1.0.
+
+### 15.3 Balanced mode passes, and the control fails as it must
+
+`examples/balanced_march.rs`, playhead `t ∈ {4, 6, 8, 10, 13, 16, 20}`, `n_sync` scaled with
+`t_max`, viewport 64² so the uniform arm is stopped by the **veto** rather than the budget — a
+budget-bound control is no control.
+
+| | near-field | `deep interior` |
+|---|---|---|
+| balanced, depth variance | 0.004 – 0.574, no trend to zero | 0.402 – 0.740 |
+| **uniform, depth variance** | **0.0000 at every `t`** | **0.0000 at every `t`** |
+| balanced, churn | 0.000 – 0.429 | 0.000 – 0.194 |
+
+The control is pinned at exactly zero across the whole march, which is what makes the balanced
+row mean anything.
+
+**Churn is reported over the SHARED quads only**, and flagged when that set is small. A quad
+present at one playhead and not the other has not "changed decision", and counting it would fold
+the tree's size change into a statistic about its stability. Near-field at `t = 16` shares only
+14 quads, so its 0.4286 is 6 of 14 — printed as thin rather than quoted as a rate.
+
+### 15.4 The treadmill does not happen. The opposite does.
+
+§3's argument for rank is that *"spread grows with `t` everywhere"*, so any fixed threshold must
+eventually fire on every quad and balanced mode must degenerate to uniform depth.
+
+**Measured on the uniform arm** — a fixed tree, so this is the field and not the tree — the median
+leaf spread does not grow:
+
+| `t` | 4 | 6 | 8 | 10 | 13 | 16 | 20 |
+|---|---|---|---|---|---|---|---|
+| near-field | 1.62e-3 | 6.02e-4 | 1.98e-3 | **6.56e-3** | 1.87e-3 | 9.93e-5 | **8.09e-5** |
+| `deep interior` | 1.63e-3 | 1.68e-4 | 1.45e-4 | 1.45e-4 | 5.36e-5 | 5.36e-5 | **5.31e-5** |
+
+Near-field **peaks at `t = 10` and then falls 81×**, ending *below* `tau = 1e-4`. `deep interior`
+falls **31× monotonically** and is below `tau` from `t = 13` on.
+
+The mechanism is already on record one level down: **terminal states are absorbing.** As
+termination saturates, copies share an outcome, `spread_event` collapses and `spread_shape` over
+terminated trajectories stops growing. So at large `t` a fixed `tau` fires **nowhere**, the spread
+gate keeps everything, and the tree **shrinks** — near-field 256 → 40 leaves, with the `keep`
+count going 0 → 20 and `ScreenFloor` 164 → 12. That is the *upper-side* failure of §14.2 arriving
+on the time axis.
+
+**This strengthens the case for rank rather than weakening it.** The treadmill argument was that
+no fixed `tau` can survive a monotone rise; the measured behaviour is a rise *and then a
+collapse*, which is worse for a fixed threshold — there is no value that is correct at both ends,
+and no monotone schedule that would track it either. A ranking is invariant to the whole curve.
+
+### 15.5 The structure term needed a third factor, and a test found it
+
+`QuadReduction::structure` is connectedness × thinness × extent, on the relative mask. The first
+two were designed; the third was not.
+
+| mask | structure |
+|---|---|
+| fully hot | **0.0000** — maximally connected, zero perimeter; thinness kills it |
+| one-cell filament | **1.0000** — the target |
+| checkerboard | **0.0039** — maximally thin, maximally scattered; connectedness kills it |
+| single isolated cell | **0.1250** |
+
+The isolated cell scored **1.0** on the first two factors alone: it *is* the largest component, so
+connectedness is trivially 1, and `perimeter_ratio == 4` so thinness saturates. Maximum structure,
+for one cell. **Extent** — `largest_component / N` — is the graded form of what
+`Layout::looks_like_boundary` already encoded as `largest_component >= N/2`. Each of the three
+factors catches a case the other two score at maximum.
+
+`structure` is `NaN` on an empty mask, not 0. `far`'s absolute mask is empty on every leaf
+(§14.6), and a 0 there would read as "no structure found" rather than "not measured".
+
 ## 13. Reproducing any of this
 
 Every table above comes from a committed example. Raw output for all of them is in
@@ -2199,3 +2294,4 @@ Every table above comes from a committed example. Raw output for all of them is 
 | §12 the decoder and preset gates | `cargo test --release --test charts -- --nocapture` |
 | §14 the threshold diagnosis | `cargo run --release --example threshold_diagnosis` |
 | §14.5-14.6 the hot rule swept | `cargo run --release --example hot_rule_sweep` |
+| §15.3-15.4 the balanced march | `cargo run --release --example balanced_march` |

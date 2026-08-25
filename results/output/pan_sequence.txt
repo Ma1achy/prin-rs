@@ -1,19 +1,21 @@
-pan across near-field, 9 steps, budget 2000, viewport 512^2.
+    Finished `release` profile [optimized] target(s) in 0.13s
+     Running `target/release/examples/pan_sequence 9 20000 1024`
+pan across near-field, 9 steps, budget 20000, viewport 1024^2.
 Camera::veto does not read cx/cy, so panning changes NO scheduling decision here.
 `covers` is a predicate the scheduler never consults; nothing is evicted.
 
  step    cam cx   quads in view       new would-cache%  recompute%   floored
-    0   0.95000     549     263       549         0.0%      100.0%       252
-    1   0.96250     549     353         0       100.0%      100.0%       252
-    2   0.97500     549     453         0       100.0%      100.0%       252
-    3   0.98750     549     483         0       100.0%      100.0%       252
-    4   1.00000     549     549         0       100.0%      100.0%       252
-    5   1.01250     549     535         0       100.0%      100.0%       252
-    6   1.02500     549     467         0       100.0%      100.0%       252
-    7   1.03750     549     411         0       100.0%      100.0%       252
-    8   1.05000     549     323         0       100.0%      100.0%       252
+    0   0.95000    1125     487      1125         0.0%      100.0%       576
+    1   0.96250    1125     725         0       100.0%      100.0%       576
+    2   0.97500    1125     893         0       100.0%      100.0%       576
+    3   0.98750    1125     933         0       100.0%      100.0%       576
+    4   1.00000    1125    1125         0       100.0%      100.0%       576
+    5   1.01250    1125    1099         0       100.0%      100.0%       576
+    6   1.02500    1125     971         0       100.0%      100.0%       576
+    7   1.03750    1125     895         0       100.0%      100.0%       576
+    8   1.05000    1125     687         0       100.0%      100.0%       576
 
-4392 quads recomputed after having been seen before.
+9000 quads recomputed after having been seen before.
 0 came back with a DIFFERENT reduction. 0 with a different decision.
 
 Zero payload mismatches is the property a cache would need: a recomputed reduction

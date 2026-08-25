@@ -1,0 +1,9 @@
+    Finished `release` profile [optimized] target(s) in 0.06s
+     Running `target/release/examples/chart_gallery 40000 1e-4 0.2 1024`
+budget 40000, tau=1e-4, alpha_hi=0.2, N=8, E+1=8, t=13, f64, 1024^2, screen floor ON.
+Colouring: hue = shape sphere by vMF site-blend, lightness = spread_shape on a log ramp
+over each chart's own p1-p99. The window is printed because a false-colour image without
+its scale is decoration.
+
+              case          chart domain   quads  leaves  depth  screen  distinct  alpha med alpha idec ramp span  bound
+        body_plane     body_plane   free     549     412      6       0     23159     0.1402     1.1203   196.212   crit

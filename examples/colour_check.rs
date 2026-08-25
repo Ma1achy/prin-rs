@@ -43,7 +43,7 @@ fn arg<T: std::str::FromStr>(i: usize, d: T) -> T {
 }
 
 fn main() {
-    let res: usize = arg(1, 256);
+    let res: usize = arg(1, 1024);
     let t_max: f64 = arg(2, 13.0);
 
     let base = EnsembleCfg::default();

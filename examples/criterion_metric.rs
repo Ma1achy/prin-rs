@@ -157,10 +157,33 @@ fn main() {
             cache.ramp.0,
             cache.ramp.1,
             cache.ramp.1 / cache.ramp.0.max(f64::MIN_POSITIVE),
-            if cache.ramp.1 / cache.ramp.0.max(f64::MIN_POSITIVE) < 2.0 {
-                "  <-- AUTO-RANGED OVER NOISE: the ramp is normalised to this region's own p1-p99, so a field with no dynamic range is stretched to full scale and error(B) becomes nonzero for a region with nothing in it. Read the span before the curve."
-            } else {
-                ""
+            // Two arms, because the ratio alone is not enough. `far` reads a span of x8 -- above
+            // any sensible ratio threshold -- over a window of (1.3e-9, 1.1e-8). `spread_shape`
+            // is a mean chord distance on the unit sphere and is dimensionless, so a p99 of 1e-8
+            // means the copies agree to eight digits: the field is at the level of the
+            // integrator's own arithmetic, not of the physics.
+            //
+            // The absolute arm compares against a MEASURED floor rather than a chosen constant:
+            // the region's own median energy drift. A field whose whole range sits within two
+            // orders of that is not distinguishable from integration noise.
+            {
+                let mut d: Vec<f64> = cache
+                    .quads
+                    .values()
+                    .map(|q| q.red.worst_energy_drift)
+                    .filter(|x| x.is_finite() && *x > 0.0)
+                    .collect();
+                let floor = if d.is_empty() {
+                    0.0
+                } else {
+                    100.0 * prin_rs::stats::quantile(&mut d, 0.5)
+                };
+                if cache.ramp.1 / cache.ramp.0.max(f64::MIN_POSITIVE) < 2.0 || cache.ramp.1 < floor
+                {
+                    "  <-- AUTO-RANGED OVER NOISE: the ramp is normalised to this region's own p1-p99, so a field with no dynamic range -- or one whose whole range sits at the integrator's own arithmetic floor -- is stretched to full scale and error(B) becomes nonzero for a region with nothing in it. Read this before the curve."
+                } else {
+                    ""
+                }
             }
         );
 
@@ -466,22 +489,28 @@ fn main() {
                 1,
                 2,
             );
-            // Every frame also as an ordinary PNG, so nothing here depends on APNG support.
-            for (i, fr) in frames.iter().enumerate() {
-                let _ = prin_rs::output::adaptive::save_rect(
-                    &format!("results/criterion/budget_{stem0}_t{t_max}_{i:02}.png"),
-                    res * 2,
-                    res,
-                    fr,
-                );
-            }
-            for (i, fr) in wire_frames.iter().enumerate() {
-                let _ = prin_rs::output::adaptive::save_rect(
-                    &format!("results/criterion/budget_{stem0}_t{t_max}_wire_{i:02}.png"),
-                    res * 2,
-                    res,
-                    fr,
-                );
+            // Three representative frames as ordinary PNGs -- first, middle and last -- so
+            // nothing here depends on APNG support. Not all of them: at 1024^2 the side-by-side
+            // is 2048x1024 and thirteen of them per region per horizon came to 154 MB of
+            // duplicated content, since the animation already carries every frame.
+            let picks = [0usize, frames.len() / 2, frames.len().saturating_sub(1)];
+            for &i in picks.iter() {
+                if let Some(fr) = frames.get(i) {
+                    let _ = prin_rs::output::adaptive::save_rect(
+                        &format!("results/criterion/budget_{stem0}_t{t_max}_{i:02}.png"),
+                        res * 2,
+                        res,
+                        fr,
+                    );
+                }
+                if let Some(fr) = wire_frames.get(i) {
+                    let _ = prin_rs::output::adaptive::save_rect(
+                        &format!("results/criterion/budget_{stem0}_t{t_max}_wire_{i:02}.png"),
+                        res * 2,
+                        res,
+                        fr,
+                    );
+                }
             }
             println!(
                 "  {} animation frames (oracle | within/median) at true texel sizes",

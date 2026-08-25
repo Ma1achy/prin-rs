@@ -11,4 +11,5 @@ pub mod fcache;
 pub mod oklab;
 pub mod ssaa;
 pub mod tree;
+pub mod viridis;
 pub mod wire;

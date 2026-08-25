@@ -358,3 +358,133 @@ impl Figure {
         Ok(())
     }
 }
+
+/// A **linear-axis scatter**, for a per-quad relationship rather than an `error(B)` curve.
+///
+/// [`Figure`] is a log-y line plot with a zero band: the right instrument for a budget curve and
+/// the wrong one here, where `x` is a small integer leaf depth and `y` is a fraction in `[0,1]`.
+/// Bending it would have produced a picture that looked like the other figures and meant
+/// something else.
+///
+/// Points are drawn small and semi-transparent so density reads: at a dozen distinct `x` values
+/// and thousands of quads, opaque markers would stack into a solid bar and hide the very
+/// distribution the plot exists to show. `overlay` is drawn on top as a heavy line — the
+/// per-depth median, which is what the eye should follow.
+pub struct Scatter {
+    pub title: String,
+    pub x_label: String,
+    pub y_label: String,
+    pub notes: Vec<String>,
+    pub points: Vec<(f64, f64)>,
+    /// Drawn heavy on top of the cloud. The per-`x` median, normally.
+    pub overlay: Vec<(f64, f64)>,
+}
+
+impl Scatter {
+    pub fn save(&self, stem: &str) -> Result<(), Box<dyn Error>> {
+        let (w, h) = (1400u32, 800u32);
+        if let Some(dir) = std::path::Path::new(stem).parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        // Same route as `Figure::save`, and for the same reason: plotters' `image` feature
+        // would pull the whole `image` crate to encode a PNG this repo already has an encoder
+        // for. Draw into a buffer, hand it to the one writer every image here goes through.
+        let mut buf = vec![0u8; (w as usize) * (h as usize) * 3];
+        {
+            let root = BitMapBackend::with_buffer(&mut buf, (w, h)).into_drawing_area();
+            self.render(root)?;
+        }
+        crate::output::adaptive::save_rect(&format!("{stem}.png"), w as usize, h as usize, &buf)?;
+        let svg_path = format!("{stem}.svg");
+        let root = SVGBackend::new(&svg_path, (w, h)).into_drawing_area();
+        self.render(root)?;
+        Ok(())
+    }
+
+    fn render<DB: DrawingBackend>(&self, root: DrawingArea<DB, Shift>) -> Result<(), Box<dyn Error>>
+    where
+        DB::ErrorType: 'static,
+    {
+        root.fill(&BG)?;
+        let head_h = 26 + 18 * self.notes.len() as i32;
+        let (head, body) = root.split_vertically(head_h as u32);
+        head.draw_text(&self.title, &("sans-serif", 20).into_font().color(&FG), (14, 4))?;
+        for (i, note) in self.notes.iter().enumerate() {
+            head.draw_text(
+                note,
+                &("sans-serif", 13).into_font().color(&AXIS),
+                (14, 26 + 18 * i as i32),
+            )?;
+        }
+
+        // Non-finite points are DROPPED and counted, never clamped -- a clamped NaN would sit
+        // on an axis edge and read as data.
+        let live: Vec<(f64, f64)> =
+            self.points.iter().filter(|p| p.0.is_finite() && p.1.is_finite()).cloned().collect();
+        let dropped = self.points.len() - live.len();
+        if live.is_empty() {
+            body.draw_text(
+                "no finite points",
+                &("sans-serif", 16).into_font().color(&FG),
+                (20, 20),
+            )?;
+            root.present()?;
+            return Ok(());
+        }
+        let (mut x0, mut x1) = (f64::INFINITY, f64::NEG_INFINITY);
+        let (mut y0, mut y1) = (f64::INFINITY, f64::NEG_INFINITY);
+        for &(x, y) in &live {
+            x0 = x0.min(x);
+            x1 = x1.max(x);
+            y0 = y0.min(y);
+            y1 = y1.max(y);
+        }
+        let px = 0.5_f64.max((x1 - x0) * 0.04);
+        let py = 0.02_f64.max((y1 - y0) * 0.04);
+
+        let mut chart = ChartBuilder::on(&body)
+            .margin(16)
+            .x_label_area_size(46)
+            .y_label_area_size(72)
+            .build_cartesian_2d(x0 - px..x1 + px, y0 - py..y1 + py)?;
+        chart
+            .configure_mesh()
+            // Leaf depth is a count. A default float formatter printed `4` as `4.0` and the
+            // ladder read as a continuous quantity, which is the same slip `Figure` already
+            // carries a formatter for.
+            .x_label_formatter(&|v: &f64| format!("{}", v.round() as i64))
+            .x_desc(self.x_label.clone())
+            .y_desc(self.y_label.clone())
+            .label_style(("sans-serif", 13).into_font().color(&AXIS))
+            .axis_style(AXIS)
+            .bold_line_style(GRID)
+            .light_line_style(BG)
+            .draw()?;
+
+        let dot = RGBAColor(120, 170, 230, 0.16);
+        chart.draw_series(
+            live.iter().map(|&(x, y)| Circle::new((x, y), 2, ShapeStyle::from(&dot).filled())),
+        )?;
+        if !self.overlay.is_empty() {
+            let c = RGBColor(240, 170, 70);
+            chart.draw_series(LineSeries::new(
+                self.overlay.iter().cloned(),
+                ShapeStyle::from(&c).stroke_width(3),
+            ))?;
+            chart.draw_series(
+                self.overlay
+                    .iter()
+                    .map(|&(x, y)| Circle::new((x, y), 5, ShapeStyle::from(&c).filled())),
+            )?;
+        }
+        if dropped > 0 {
+            body.draw_text(
+                &format!("{dropped} non-finite points dropped"),
+                &("sans-serif", 13).into_font().color(&AXIS),
+                (24, 24),
+            )?;
+        }
+        root.present()?;
+        Ok(())
+    }
+}

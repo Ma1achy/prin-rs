@@ -71,6 +71,11 @@ pub enum Colouring {
     /// Hue from the shape sphere by vMF site-blend, lightness from a scalar. The production
     /// scheme. See [`crate::output::colour`].
     Bivariate(crate::output::colour::Scalar),
+    /// **The event class on viridis** — the categorical mode the reference's WebGPU panel
+    /// renders, and the one a reference comparison must be made under. Reads the ensemble
+    /// (the class is joined with each copy's terminal outcome), so the brief's
+    /// reference-resolution caveat applies to it and not to [`Colouring::Outcome`].
+    EventClass,
 }
 
 impl Colouring {
@@ -78,6 +83,7 @@ impl Colouring {
         match self {
             Colouring::Outcome => "outcome".into(),
             Colouring::Bivariate(l) => format!("bivariate/{}", l.name()),
+            Colouring::EventClass => "event_class/viridis".into(),
         }
     }
 }
@@ -427,7 +433,7 @@ fn repaint(c: &mut Cache, px_of: &HashMap<Key, Vec<PixelOut>>) {
     // change the colour of another and `err_sum` would stop being a constant of the quad --
     // which is the property the greedy replay rests on.
     let ramp = match c.colouring {
-        Colouring::Outcome => (0.0, 1.0),
+        Colouring::Outcome | Colouring::EventClass => (0.0, 1.0),
         Colouring::Bivariate(sc) => {
             let all_px: Vec<PixelOut> = px_of.values().flat_map(|v| v.iter().cloned()).collect();
             crate::output::colour::range(&all_px, sc)
@@ -439,6 +445,9 @@ fn repaint(c: &mut Cache, px_of: &HashMap<Key, Vec<PixelOut>>) {
     for (k, px) in px_of {
         let rgb: Vec<[u8; 3]> = match colouring {
             Colouring::Outcome => px.iter().map(outcome_rgb).collect(),
+            Colouring::EventClass => {
+                px.iter().map(crate::output::png::event_class_rgb).collect()
+            }
             Colouring::Bivariate(sc) => px
                 .iter()
                 .map(|p| crate::output::colour::rgb(p, sc, &sites, ramp.0, ramp.1))

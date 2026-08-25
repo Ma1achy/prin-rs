@@ -86,6 +86,9 @@ rows = [struct.unpack_from(f"<{nf}d", d, off + i*nf*8) for i in range(n)]
 | `output/worst_pixels.txt` | the damaged tail, and MAD against max deviation |
 | `output/bench_deriv.txt` | `deriv` throughput, extrapolated to 1024²×8 |
 | `output/render-*.txt` | the 256² renders, one per region |
+| `output/chart_gallery.txt` | the 26-case gallery run: per-case row, event-class histogram, and the depth~`terminated_fraction` lines |
+| `output/gallery_table.txt` | **what actually stopped each descent**, re-derived from the `.prnq` dumps — and whether the mechanism test can be read at all |
+| `output/preset_control.txt` | the negative control on the preset fix: correct basis against crossed and against its transposition, and `half = 3.0` against `1.0` |
 
 ## The scheduler
 
@@ -311,18 +314,64 @@ not, which is why the version moved.
 
 ## `charts/` — every chart family, from `examples/chart_gallery.rs`
 
-Seventeen chart instances, all at **1024²**, budget 40000 so every descent stops on the
-criterion rather than the cap. Thirteen across the reference's five families, plus the four
-`preset_*` slices ported from the GLSL reference. Per chart:
+Twenty-six chart instances, all at **1024²**, budget 40000 so every descent stops on the
+criterion rather than the cap. Thirteen across the reference's five families, the four `preset_*`
+slices ported from the GLSL reference, their four `_h1` crop controls, and five `latent_*_h3`
+extent controls. Per chart:
 
-| file | what it answers |
-|---|---|
-| `<case>.png` | **what is displayed** — adaptive render, texels at true per-quad sizes |
-| `<case>_wire.png` | **where the tree cut** — the same image with leaf boundaries, graded by level |
-| `<case>_uniform.png` | **what the chart looks like** — one sample per pixel, no tree at all |
-| `<case>_outcome.png`, `<case>_uniform_outcome.png` | the categorical control |
-| `<case>_levels.png`, `<case>_levels_wire.png` | **how the tree got there** — one descent truncated at each depth |
-| `<case>.prnq` | the quad dump, with `chart_params` carrying the full basis |
+| file | colour mode | what it answers |
+|---|---|---|
+| `<case>.png` | bivariate/spread_shape | **what is displayed** — adaptive render, texels at true per-quad sizes |
+| `<case>_wire.png` | bivariate/spread_shape | **where the tree cut** — the same image with leaf boundaries, graded by level |
+| `<case>_uniform.png` | bivariate/spread_shape | **what the chart looks like** — one sample per pixel, no tree at all |
+| `<case>_outcome.png`, `<case>_uniform_outcome.png` | outcome | the categorical control — `(state, detail)`, saturated at `t = 13` |
+| `<case>_event.png`, `<case>_uniform_event.png` | event_class/viridis | **the matched-reference mode** — see below |
+| `<case>_levels.png`, `<case>_levels_wire.png` | bivariate/spread_shape | **how the tree got there** — one descent truncated at each depth |
+| `<case>_termdepth.png` | — | leaf depth against `terminated_fraction`, the mechanism test |
+| `<case>.prnq` | — | the quad dump, with `chart_params` carrying the full basis |
+
+**Every reference comparison renders prin-rs under a colour mode matched to the reference.** A
+continuous field and a categorical map cannot look alike even when both are correct, and comparing
+across modes is how a rendering choice gets mistaken for a physics bug — which is most of what went
+wrong with the preset port. The `Ma1achy/principia-ii` WebGPU panel reads
+`Colour mode: Event class, Palette: viridis`; `<case>_event.png` is that mode, and the smooth
+rainbow image it was first compared against was a *different* mode of the same reference.
+
+**The mode is recorded here and in the filename, not in the `.prnq` header.** `PRNQ` carries no
+colouring field — `Colouring` is headered in `PRQC` (`.qcache`), which is the format the `error(B)`
+machinery reads. So `Colouring::EventClass` is what makes the categorical mode available to a
+criterion comparison, and the gallery's own panels are identified by their `_event` suffix and by
+the table above. Do not go looking for a colour mode in a `.prnq`.
+
+The event class is the identity of the **currently tightest pair**, joined with the terminal
+`(state, detail)` once a copy has terminated — defined at every playhead, where the outcome label
+at `t = 13` is saturated. The alphabet is fixed at 27 slots, not derived from the data, so the same
+class is the same colour in two slices; adjacent ordinals are therefore close in colour by
+construction and **the legend and per-class histogram in `output/chart_gallery.txt` are the
+instrument, not the image**. A class that never fires reads there as a zero.
+
+`<case>_termdepth.png` tests the *cause* of a tree rather than its appearance. The proposed
+mechanism is that terminated regions are absorbing — nearby copies share an outcome, `spread_event`
+collapses to zero and the quad reads resolved — while still-running regions keep diverging and hold
+high spread forever. If that drives the tree, leaf depth is **anti-correlated** with
+`terminated_fraction`. The Spearman and the per-depth median and interdecile are printed beside
+each row.
+
+**Read the per-depth medians, not the Spearman.** The pooled rank correlation understates the
+effect, because the depth distribution is dominated by the two deepest levels and their
+interdecile spans the whole range. `shape_sphere` reads `spearman = -0.2245` while its medians
+run `0.766 -> 0.484 -> 0.078 -> 0.000 -> 0.000` across levels 2 to 6, with 908 of its 970 leaves
+at levels 5 and 6. One number over an unbalanced design is the weaker instrument here.
+
+**And a near-zero correlation can mean the field has no range rather than no effect.**
+`body_plane` and `plane_00deg` at `t = 13` have `terminated_fraction` median `0.000` at *every*
+depth with `escape_fraction = 0.0000` — nothing terminates, so their `spearman = -0.2114` is a
+correlation against an almost-all-zero field and says nothing about the mechanism. Check the
+medians and `escape_fraction` before reading any row's correlation. This is the same shape as the
+standing rule that a difference can be small because both sides are right or because both are
+dead. This exists because the "refinement goes to smooth regions" finding was originally read
+off a wireframe **at the wrong window**; a wireframe is an appearance, and both quantities were
+already in the `PRNQ` dump, so the test costs a plot and no integration.
 
 **Read all three of the first three, never one alone.** The adaptive render is a picture of the
 *scheduler*: near-field's `alpha` median is 0.14 against `alpha_hi = 0.2`, so the criterion says
@@ -337,18 +386,49 @@ it is one refinement seen at several playheads rather than several unrelated tre
 ### The four `preset_*` slices
 
 `preset_shape`, `preset_prho`, `preset_plambda`, `preset_shape_pl` — the default slices of
-`Ma1achy/principia-ii` (`src/state.ts:71-76`), at `z0 = 0` framed at `(0,0)` with `half = 1.0`.
+`Ma1achy/principia-ii` (`src/state.ts:71-76`), at `z0 = 0` framed at `(0,0)` with `half = 3.0`.
 They exist to give the instrument something **recognisable** to be judged against: `z0 = 0` decodes
 to the equilateral Lagrange configuration, so the centre of every one of these four images is a
 named physical state rather than a point on a ramp.
 
-Three things to know before reading them, all in RESULTS §12:
+**The window is 3.0, from the reference UI's `Slice +/- 3.0e+0`, and it shipped at 1.0.**
+
+```
+half = 1.0  ->  alpha in [0.446, 1.125],  beta in [0.845, 2.297]  =  46% of the azimuth
+half = 3.0  ->  alpha in [0.120, 1.451],  beta in [0.149, 2.993]  =  90% of the azimuth
+```
+
+Every first-cut preset image was therefore a 3x zoom on the middle: in the GLSL the fractal core is
+a small disk inside large smooth regions, and at `half = 1.0` it fills the frame. The number is
+`Chart::default_half()` now and not a literal — it is **chart-aware**, because `0.05` of a body
+position in Burrau units is nothing like `0.05` of a sigmoid pre-image, and one shared default
+silently meaning two different things is how this got through.
+
+`preset_*_h1` are the **crop control**: same chart, same basis, one number changed. They are what
+turns "the crop explains it" from a plausible account into a demonstrated one.
+
+**`preset_shape_pl_h1` is not a reproduction of the previously committed image.** That one was at
+`half = 1.0` *and* on the crossed basis; this one is at `half = 1.0` on the corrected basis. The
+control varies one thing at a time on purpose, so the crop and the pairing are never confounded —
+if you want the old picture back, it is in git history, not in this directory.
+
+`latent_*_h3` are the **extent control** on the pre-existing rows, which were all measured at
+`half = 1.5`. RESULTS §12.4's standing result is that a chart's tameness is set by *which
+coordinates it varies*, not by where it is centred; those rows never tested it against extent.
+
+Four things to know before reading any of them, all in RESULTS §12:
 
 - The images are **transposed relative to the GLSL**. It puts `beta` at index 0; the spec names the
   chart `(z_alpha, z_beta)` and this port follows the spec.
+- `preset_shape_pl` pairs **by GLSL slot**: `alpha` with `pLambda.y`, `beta` with `pLambda.x`. The
+  first cut crossed them, and **no transposition of `q1`/`q2` repairs it** — it is a different
+  2-plane through the 8D space, which is why it rendered as twisted rather than tilted. It is the
+  only preset with a cross-coupling and so the only one that could fail this way.
 - `preset_prho` and `preset_plambda` are constant-**configuration** slices. Positions do not depend
-  on the momentum coordinates, so every pixel is the same triangle at a different initial velocity.
-  The picture is entirely about what that one configuration *does*, not about a family of shapes.
+  on the momentum coordinates, so every pixel is the same triangle at a different initial velocity,
+  and `spread_shape` at `t = 0` is identically zero across both. That makes them the control that
+  **separates configuration effects from momentum effects**: any structure in them is purely
+  momentum-driven.
 - The `latent_*` rows are a different base point on purpose — off-origin so no sigmoid rests at
   its symmetry point. The presets are at the origin for the opposite reason. Compare within a
   chart, never across.

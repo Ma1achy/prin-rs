@@ -7,3 +7,4 @@ its scale is decoration.
 
               case          chart domain   quads  leaves  depth  screen  distinct  alpha med alpha idec ramp span  bound
         body_plane     body_plane   free     549     412      6       0     23159     0.1402     1.1203   196.212   crit
+       plane_00deg          plane   free     549     412      6       0     23159     0.1402     1.1203   196.212   crit

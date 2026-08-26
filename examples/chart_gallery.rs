@@ -70,17 +70,28 @@ fn render_leaves(
     leaves: &[usize],
     rgb: &dyn Fn(&PixelOut) -> [u8; 3],
 ) -> Vec<u8> {
-    // `adaptive::render` walks the tree's own leaves. To draw a truncated tree, build a shadow
-    // tree whose leaf set is the truncated one -- cheaper and less error-prone than duplicating
-    // the rasteriser, and it keeps the one endpoint-inclusive overhang rule in one place.
-    let mut shadow = t.clone();
+    // A shadow tree whose leaf set is the truncated one keeps the endpoint-inclusive overhang
+    // rule in `adaptive::render` rather than duplicating the rasteriser here.
+    //
+    // **But the shadow tree is not enough, and for a while it was all this did.**
+    // `adaptive::render` draws every node that has samples, coarsest first -- the
+    // coarse-ancestor fill -- so the quads *outside* the truncated set still carried their
+    // samples and painted last. Every frame of every ladder came out as the finished image:
+    // measured, frame 0 and frame 1 of a 49-frame animation were **byte-identical**.
+    //
+    // Emptying the sample list for a node outside the set is what restricts the frame, and it
+    // leaves the fill working for the ancestors that are inside it.
     let keep: std::collections::HashSet<usize> = leaves.iter().cloned().collect();
+    let masked: Vec<Vec<PixelOut>> = (0..pixels.len())
+        .map(|i| if keep.contains(&i) { pixels[i].clone() } else { Vec::new() })
+        .collect();
+    let mut shadow = t.clone();
     for i in 0..shadow.nodes.len() {
         if keep.contains(&i) {
             shadow.nodes[i].children = None;
         }
     }
-    adaptive::render(&shadow, pixels, cam, res, adaptive::TexelMode::Adaptive, |p| rgb(p)).0
+    adaptive::render(&shadow, &masked, cam, res, adaptive::TexelMode::Adaptive, |p| rgb(p)).0
 }
 
 fn main() {
@@ -380,14 +391,18 @@ fn main() {
         // re-integrated, so it costs nothing but the raster.
         let ares = res;
         let acam = Camera::framing(cx, cy, half, ares);
-        let aboxes = wire::boxes_from_tree(&t, &acam, ares);
+
         let mut ladder: Vec<Vec<u8>> = Vec::new();
         let mut wladder: Vec<Vec<u8>> = Vec::new();
         for cap in 0..=depth {
             let lv = leaves_capped(&t, cap);
             let f = render_leaves(&t, &st.pixels, &acam, ares, &lv, &rgb);
             let mut wf = f.clone();
-            let b: Vec<wire::Box2> = aboxes.iter().cloned().filter(|b| b.level <= cap).collect();
+            // From the capped leaf set, not from a level filter over the finished tree's boxes.
+            // Filtering by level keeps every deep quad whose level happens to be <= cap while
+            // dropping nothing that the cap actually removed, so the wire drifted out of step
+            // with the colour frame beside it.
+            let b = wire::boxes_from_leaves(&t, &acam, ares, &lv);
             wire::draw(&mut wf, ares, ares, &b, cap.max(1));
             ladder.push(f);
             wladder.push(wf);

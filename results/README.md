@@ -516,6 +516,34 @@ only by changing the **criterion**, which acts through the ranking rather than t
 
 ## `glsl/` — the four reference slices, refining
 
+> **Every animation in this repository before this commit was a still image repeated N frames.**
+> Two independent faults, both mine, both caught only when someone watched one:
+>
+> 1. **Colour frames.** `adaptive::render` draws every node that carries samples, coarsest first
+>    — the coarse-ancestor fill. A "shadow tree" with a truncated leaf set therefore restricts
+>    nothing: the quads outside the cap still carry their samples and paint last. Measured: frame
+>    0 and frame 1 of a 49-frame APNG were **byte-identical**, and so was every other pair.
+> 2. **Wireframes.** `wire::boxes_from_tree` walks `tree.leaves()`, which is every node whose
+>    `children` is `None`. On a truncated view of a *finished* tree that is the finished tree, so
+>    the outlines never moved either — a separate fault that survived the first fix.
+>
+> Both are the same mistake: **a truncated view of a completed tree must name its own leaf set
+> rather than infer one from `children`.** Fixed by masking the samples and by
+> `wire::boxes_from_leaves`, with `tests/colour.rs::a_truncated_render_differs_from_the_full_one`
+> asserting frames differ *and* that the unmasked control collapses to one repeated frame.
+>
+> Every generator now prints a **duplicate-frame count for colour and wire separately** and says
+> so on stdout if an animation is a still. `glsl/` is regenerated; `animated/` and `refinement/`
+> are **not**, and are stills.
+
+**GIF as well as APNG.** The APNG is the lossless record — 24-bit, no palette. **GitHub's blob
+viewer does not animate APNG**, and neither do many image viewers, so the `.gif` beside it is the
+one that actually moves. GIF is 256 colours, quantised with a single palette computed across all
+frames: per-frame palettes make flat regions shimmer as the quantiser changes its mind about a
+colour that did not change, which reads as motion in exactly the still areas the eye uses to judge
+that something else moved.
+
+
 **Four animations, one per GLSL preset**, from `examples/glsl_refinement.rs`. The reference's own
 default slices (`Ma1achy/principia-ii`, `src/state.ts:71-76`) at `z0 = 0` — the equilateral
 Lagrange configuration — over the reference UI's `Slice +/- 3.0e+0` window.

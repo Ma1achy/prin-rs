@@ -21,6 +21,10 @@ pub struct EnsembleCfg {
     pub seed: u64,
     pub t_max: f64,
     pub n_sync: usize,
+    /// Escape-test stride inside the RK4 loop; `0` is the reference's boundary-only cadence.
+    /// See [`crate::integrate::az::AzOpts::escape_every`] -- this is the knob that decides
+    /// whether `t_end` carries 32 distinct values across a chart or RK4-step resolution.
+    pub escape_every: usize,
     pub eta: f64,
     pub max_steps: usize,
     pub ref_policy: RefPolicy,
@@ -112,6 +116,7 @@ impl Default for EnsembleCfg {
             seed: 0,
             t_max: 13.0,
             n_sync: 32,
+            escape_every: 0,
             eta: 0.01,
             max_steps: 30_000,
             ref_policy: RefPolicy::PerCopy,
@@ -411,6 +416,7 @@ pub fn evaluate_at<T: Real>(slice: &Slice, idx: usize, cfg: &EnsembleCfg, eta_v:
         lc_stable: cfg.lc_stable,
         r_coll_frac: T::lit(cfg.r_coll_frac),
         stop_on_event: cfg.stop_on_event,
+        escape_every: cfg.escape_every,
     };
 
     // The nominal copy first: its reference-body choices are what the shared policy hands to

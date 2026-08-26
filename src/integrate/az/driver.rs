@@ -93,6 +93,28 @@ pub struct AzOpts<'a, T> {
     /// `t_max` and the event is recorded but not acted on — which is what the reference does,
     /// and what keeps every copy's continuous fields evaluated at a common playhead.
     pub stop_on_event: bool,
+    /// How often the **escape** test runs inside the RK4 loop, in steps. `0` is the
+    /// reference's cadence: boundaries only.
+    ///
+    /// **This is the one place `t_end` is quantised, and it is a rendering defect as well as a
+    /// measurement one.** Collision is sampled inside the loop (`tc = t + s.t`) and carries
+    /// RK4-step resolution; escape is sampled only where the state is already Cartesian and
+    /// every trajectory shares a playhead, which is what the reference does. So with
+    /// `n_sync = 32` at `t_max = 13`, an escape-terminated `t_end` takes **32 possible values
+    /// across a whole chart**, and any field derived from it renders those steps as concentric
+    /// contour bands.
+    ///
+    /// That matters exactly where escape terminates. On Burrau's near-field at `t = 13` the
+    /// escape arm is silent and every termination is a collision, so `t_end` there is already
+    /// continuous. On the latent charts `escape_fraction` runs 0.9894-1.0000, so essentially
+    /// every `t_end` is a boundary time. **The prediction is that the banding appears on the
+    /// second set and not the first**, and it is measured rather than argued.
+    ///
+    /// **Default `0`, and it must stay there.** Turning this on changes results: the
+    /// cross-check against `reference/tb_az.py` and the horizon table were both measured at
+    /// the coarse cadence, and the reference has no finer one to compare against. This is a
+    /// spec change behind a flag, not a tidy-up.
+    pub escape_every: usize,
     /// Record the shape vector at every sync boundary, for the temporal accumulators (§5).
     ///
     /// Off by default: `n_sync` triples per copy is ~70x the size of a `PixelOut`, and it is
@@ -108,6 +130,7 @@ impl<T: Real> Default for AzOpts<'_, T> {
             lc_stable: true,
             r_coll_frac: T::zero(),
             stop_on_event: true,
+            escape_every: 0,
             keep_boundary_shapes: false,
         }
     }
@@ -154,6 +177,7 @@ pub fn integrate_az_lc<T: Real>(
             lc_stable,
             r_coll_frac: T::zero(),
             stop_on_event: false,
+            escape_every: 0,
             keep_boundary_shapes: false,
         },
     )
@@ -283,6 +307,24 @@ pub fn integrate_az_opts<T: Real>(
                     let tc = t + s.t;
                     events.collision = Some((mask, tc));
                     t_end.get_or_insert(tc);
+                    if opts.stop_on_event {
+                        break;
+                    }
+                }
+            }
+
+            // The escape test at RK4-step resolution, when asked for. Off by default: this is
+            // the reference's cadence and changing it changes results. `to_cartesian` per
+            // tested step is the cost, which is why it is strided rather than unconditional.
+            if opts.escape_every > 0
+                && events.escape.is_none()
+                && steps % opts.escape_every == 0
+            {
+                let c = sys.to_cartesian(&s);
+                if let Some(b) = crate::outcome::escape_candidate(&c, m) {
+                    let te = t + s.t;
+                    events.escape = Some((b, te));
+                    t_end.get_or_insert(te);
                     if opts.stop_on_event {
                         break;
                     }

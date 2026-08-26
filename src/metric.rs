@@ -667,9 +667,37 @@ pub fn replay(cache: &Cache, rank: Rank, budget: usize) -> Vec<Point> {
 
 /// As [`replay`], also returning the final leaf set so the tree can be drawn.
 pub fn replay_with_leaves(cache: &Cache, rank: Rank, budget: usize) -> (Vec<Point>, Vec<Key>) {
+    replay_ordered(cache, Order::Ranked(rank), budget)
+}
+
+/// What the replay ranks by: one of the enumerated [`Rank`]s, or an arbitrary per-quad score.
+///
+/// The second exists so a **fitted** signal -- a logistic combination of many reduction fields,
+/// which cannot be a `Rank` variant because `Rank` is `Copy` and carries no weights -- goes
+/// through the *same* argmax, the same non-finite convention and the same level-first tie-break
+/// as every criterion it is being compared against. A separate loop would have made the fitted
+/// row incomparable to the rows above it while looking like a fair comparison.
+enum Order<'a> {
+    Ranked(Rank),
+    Scored(&'a HashMap<Key, f64>),
+}
+
+/// Replay an arbitrary per-quad score, for a signal that is not a [`Rank`].
+///
+/// A quad absent from the map scores `-inf`, the same convention a non-finite signal gets:
+/// **undetermined never wins, and never blocks.**
+pub fn replay_scored(
+    cache: &Cache,
+    score: &HashMap<Key, f64>,
+    budget: usize,
+) -> (Vec<Point>, Vec<Key>) {
+    replay_ordered(cache, Order::Scored(score), budget)
+}
+
+fn replay_ordered(cache: &Cache, order: Order, budget: usize) -> (Vec<Point>, Vec<Key>) {
     let mut leaves: Vec<Key> = vec![(0, 0, 0)];
-    let mut rng = match rank {
-        Rank::Random(s) => Some(SplitMix64::new(s)),
+    let mut rng = match order {
+        Order::Ranked(Rank::Random(s)) => Some(SplitMix64::new(s)),
         _ => None,
     };
     let mut spent = 1usize;
@@ -681,8 +709,8 @@ pub fn replay_with_leaves(cache: &Cache, rank: Rank, budget: usize) -> (Vec<Poin
         if cand.is_empty() || spent + 4 > budget {
             break;
         }
-        let pick = match rank {
-            Rank::Random(_) => {
+        let pick = match order {
+            Order::Ranked(Rank::Random(_)) => {
                 let r = rng.as_mut().unwrap().next_u64() as usize;
                 cand[r % cand.len()]
             }
@@ -694,7 +722,10 @@ pub fn replay_with_leaves(cache: &Cache, rank: Rank, budget: usize) -> (Vec<Poin
                 // is NaN on 97.1% of near-field). "Undetermined never wins" is the intended
                 // semantics; "undetermined blocks everything" was the bug.
                 let score = |i: usize| -> f64 {
-                    let v = raw_score(cache, leaves[i], rank);
+                    let v = match order {
+                        Order::Ranked(r) => raw_score(cache, leaves[i], r),
+                        Order::Scored(m) => m.get(&leaves[i]).copied().unwrap_or(f64::NAN),
+                    };
                     if v.is_finite() {
                         v
                     } else {
@@ -961,6 +992,35 @@ impl Dp {
             }
         }
         out
+    }
+
+    /// The optimum's **decision** for every quad it decided: `true` = split, `false` = keep.
+    ///
+    /// This is the ground-truth label the whole signal audit is scored against, and its
+    /// population matters as much as its values. A quad that is **not in the optimal tree was
+    /// never decided** -- the optimum never reached it -- so it is absent from the map rather
+    /// than labelled `false`. Treating an undecided quad as a `keep` would invent a label, and it
+    /// would invent tens of thousands of them: at `s = 383` the tree holds ~1500 nodes of 21845.
+    ///
+    /// So `internal -> true`, `leaf -> false`, `absent -> not in the map`. **Report the
+    /// population size with any statistic taken over it.**
+    pub fn labels(&self, splits: usize) -> HashMap<Key, bool> {
+        let leaves = self.leaves(splits);
+        let mut m: HashMap<Key, bool> = HashMap::with_capacity(leaves.len() * 2);
+        for k in &leaves {
+            m.insert(*k, false);
+            // Every strict ancestor of a leaf is an internal node of the same tree. Walking up
+            // from the leaves reaches exactly the internal set and nothing else, because the
+            // leaves tile the root.
+            let (mut l, mut ix, mut iy) = *k;
+            while l > 0 {
+                l -= 1;
+                ix /= 2;
+                iy /= 2;
+                m.insert((l, ix, iy), true);
+            }
+        }
+        m
     }
 
     /// Total pixels, so a caller can check a leaf set tiles the root without reaching for `Cache`.

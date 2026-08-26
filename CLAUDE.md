@@ -965,6 +965,75 @@ smooth field looks like -- `uniform - dp` is a rounding epsilon of either sign, 
 **-0.6786** on `far` from a denominator of `-1.55e-15`. It reads as "the criterion is 68% worse" and
 means "the two are identical to machine precision". Print the identity.
 
+**`t_end` IS QUANTISED WHERE ESCAPE TERMINATES, AND IT RENDERS AS CONCENTRIC CONTOUR BANDS.**
+Collision is sampled inside the RK4 loop (`tc = t + s.t`) and carries step resolution; **escape is
+sampled only at sync boundaries**, the reference's cadence. So `t_end` takes `n_sync` values across
+a whole chart wherever escape is the terminating event, and every derived field draws those steps.
+Measured at `escape_every` 0 -> 1: `preset_plambda` **16 -> 2623** distinct with **99.52% -> 0.26%**
+landing exactly on a boundary; `preset_shape_pl_h1` **41 -> 2316**. **`near-field` is bitwise
+unaffected at every stride** -- its escape arm is silent at `t = 13` and it terminates by collision,
+so there is nothing to quantise. The mechanism predicts which images band, which is what makes it a
+mechanism. `AzOpts::escape_every` defaults to `0`; turning it on is a **spec change**, because the
+cross-check and the horizon table were both measured coarse.
+
+**A COUNT CAPPED BELOW ITS OWN DECISION THRESHOLD CANNOT DECIDE ANYTHING.** The proposed test for
+that artefact was *"recount `frac_hot_between`: 45 -> thousands means quantisation, 45 -> 45 means
+Wada"*. But `frac_hot_between` is `frac_above_tau_between`, a fraction over `N^2` footprints, so at
+`N = 8` it has **at most 65 distinct values by construction** -- the corpus's own `31 / 65 / 64` is
+that ceiling showing. It would have reported "Wada" under either hypothesis. **Check a statistic's
+arithmetic range against the threshold before using it as a test.** The count that can fire is
+`t_end` itself, which is unbounded and is the quantity actually being quantised. Measured anyway,
+`frac_hot_between` moves the *wrong way* -- more saturated under the finer cadence, 31 -> 12
+distinct with modal 41.2% -> **83.5%** -- so the saturation is not quantisation.
+
+**"ON A BOUNDARY" CONFLATES QUANTISED WITH FINISHED.** `near-field` reads **97.85%** of `t_end`
+landing on a sync boundary while being completely clean, because 97.8% of its footprints are
+*Bounded* and sit at `t_end = t_max = 13`, itself a multiple of the sync interval. The horizon is a
+boundary time. **Read the delta across cadences, never the level.**
+
+**THE CADENCE'S REAL EFFECT IS AN OUTCOME RE-LABELLING, NOT A RESOLUTION GAIN.** `deep interior`'s
+`t_end` was already continuous (2983 -> 3303, 1.1x) but its terminal class moves **escape
+0.0945 -> 0.5494, collision 0.8965 -> 0.4482** -- half the region. Under `stop_on_event` a genuine
+early escape is not *noticed* until the next boundary; the run keeps integrating, dips below
+`r_coll`, and a collision wrongly wins precedence. A different defect from the one the banding
+pointed at, found by the same measurement.
+
+**AND THE `d_min` DISCRIMINATOR SAYS IT IS A FIX, NOT SPURIOUS FIRING.** Testing escape inside the
+RK4 loop also asks it *during* a close encounter, where a pair's instantaneous two-body energy can
+read positive transiently -- which would re-label the footprints with the **smallest** separations.
+The re-labelled ones have the **largest**: escaped `d_min` p50 **1.063e-3 -> 4.419e-3** and p10
+1.891e-4 -> 1.164e-3, while collided p10 rises 2.734e-4 -> 7.016e-4. Tightest approaches stay
+collisions; marginal ones just under `r_coll` become escapes. It converges between strides 4 and 1.
+**Not tested:** whether a fired escape persists to the following boundary.
+
+**THE BANDING IS A COLOURING ARTEFACT; THE CRISP EDGES ARE NOT.** Under outcome-class colouring
+(`preset_shape_pl_h1_uniform_outcome.png`, already committed) the arcs vanish entirely while the
+straight edges survive and sharpen -- including a genuinely **circular** boundary around the
+central fan. Outcome-class boundaries are real regime structure. A circle plus radiating wedges is
+**polar structure in the chart plane**: a radius threshold and an angle threshold, with saturation
+the candidate. Stated and stopped there -- two image diagnoses on this project were settled by one
+targeted measurement each, and speculating past the render is how the earlier ones went wrong.
+
+**`level` NEARLY SOLVES THE DP-LABEL TASK, SO EVERY CORRELATION AGAINST IT MUST BE BLOCKED.** The
+optimum splits shallow quads and keeps deep ones, so `level` scores **|rho| = 0.993** against the
+label pooled and every signal tracking cell width inherits it. Blocked within a level,
+`spread_median` **flips sign**: pooled +0.225 -> +0.488 across the budget ladder, blocked
+**-0.173, -0.098, -0.134, -0.257**. Same confound and same repair as `rho(depth, spread)`. A
+logistic fit shows it too -- held-out AUC **0.88 -> 0.37** when `level` and `cell_width` are
+removed, so a fit carrying them is a depth model wearing 55 names.
+
+**THE DP's LABELS ARE MONOTONE IN BUDGET, so a fixed ordering is not structurally excluded.**
+Measured on `near-field` at `B = 169, 681, 2729, 10921`: **`1 -> 0` flips are exactly zero** at
+every rung, with 91 / 241 / 1049 flips all `0 -> 1`. The optimum never un-splits, so its split sets
+are strictly nested -- and nested sets are precisely what a single fixed priority order produces as
+prefixes. The per-level `captured` result is **not** a symptom of budget-dependent labels. The
+shared population is the whole smaller tree, not a thin slice.
+
+**A QUAD OUTSIDE THE OPTIMAL TREE WAS NEVER DECIDED.** `Dp::labels` maps internal -> split,
+leaf -> keep, and **absent -> absent**. Labelling an unreached quad `keep` invents tens of thousands
+of labels: at `B = 2729` the tree holds 2729 nodes of 21845. Report the population with any
+statistic taken over it.
+
 ---
 
 ## SMOKE TEST

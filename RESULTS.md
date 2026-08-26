@@ -3007,6 +3007,117 @@ reference  greedy_lookahead_1    greedy on immediate delta-error -- NEITHER OPTI
 ceiling    dp_optimal            exact minimum over all tree-shaped leaf sets; asserted, not trusted
 ```
 
+
+---
+
+## 21. The concentric banding is a sync-cadence artefact, and it does not reach the near-field
+
+Every committed latent chart carries fine dotted arcs across its smooth regions -- most clearly
+`preset_plambda_uniform.png`, where they cover the whole field with spacing that widens outward.
+That is the signature of contours of a smooth function at uniform value intervals, and it is a
+**rendering** defect as well as the **measurement** defect already on record.
+
+### 21.1 The mechanism, read out of the driver rather than guessed
+
+**Collision is sampled inside the RK4 loop** (`driver.rs`, `tc = t + s.t`) and carries step
+resolution. **Escape is sampled only at sync boundaries**, where the state is already Cartesian
+and every trajectory shares a playhead -- the reference's cadence, transcribed. So `t_end` is
+quantised to `n_sync` values **exactly where escape is the terminating event**, and is continuous
+where collision is.
+
+That predicts which images band, which is what makes it a mechanism rather than a story.
+
+### 21.2 The decisive count, at `escape_every` 0 against 1
+
+| target | escape frac | `t_end` distinct | on a sync boundary |
+|---|---|---|---|
+| `preset_plambda` | 0.9938 | **16 -> 2623** (164x) | **99.52% -> 0.26%** |
+| `preset_shape_pl_h1` | 0.9721 | **41 -> 2316** (56x) | **98.60% -> 3.09%** |
+| `deep interior` | 0.0945 | 2983 -> 3303 (1.1x) | 10.35% -> 3.25% |
+| `near-field` | 0.0002 | **86 -> 86** | unchanged at every stride |
+
+A quantised `t_end` does not merely take few values: **its values ARE the boundary times**, and
+99.52% of `preset_plambda`'s land on one. That is the artefact demonstrated rather than inferred.
+
+**`near-field` is bitwise unaffected.** `t_end`, `spread_event`, `spread_shape`,
+`frac_hot_between`, `term_grad` and `within` are identical to the digit across strides
+`0, 32, 4, 1`. Its escape arm is silent at `t = 13` and every termination is a collision, so
+there is nothing for the cadence to quantise -- and the §20 and signal-audit results measured
+there stand.
+
+**One defect in the statistic itself, stated rather than corrected away.** `near-field` reads
+97.85% "on a sync boundary" while being completely clean, because 97.8% of its footprints are
+*Bounded* and sit at `t_end = t_max = 13`, which is itself a multiple of the sync interval. The
+counter conflates "quantised by escape" with "reached the horizon". **Read the delta column, not
+the level.**
+
+### 21.3 The test originally proposed could not have fired
+
+*"Recount `frac_hot_between`'s distinct values: 45 -> thousands means quantisation, 45 -> 45 means
+Wada."* But `frac_hot_between` is `frac_above_tau_between`, a fraction over the quad's `N^2`
+footprints, so at `N = 8` it can take **at most 65 distinct values by construction**. Its 45 is 45
+of an arithmetic ceiling, and §16's own `31 / 65 / 64` is that ceiling showing. `45 -> thousands`
+was unreachable under either hypothesis, so the test would have reported "it is Wada" whatever was
+true upstream.
+
+Measured anyway, and it moves the *wrong way*: under the finer cadence `frac_hot_between` gets
+**more** saturated, not less -- `deep interior` 31 -> 12 distinct with the modal share 41.2% ->
+**83.5%**, and the latent charts stay at 1-2 distinct. **The saturation is not quantisation.**
+
+### 21.4 The real contamination is an outcome RE-LABELLING, and it is larger
+
+`deep interior`'s `t_end` was already continuous. What the cadence changes there is the terminal
+class: **escape 0.0945 -> 0.5494, collision 0.8965 -> 0.4482.** Half the region.
+
+Under `stop_on_event`, a genuine early escape is not *noticed* until the next boundary; the run
+keeps integrating, dips below `r_coll`, and a collision wrongly wins precedence. The finer test
+corrects a **precedence error**, not a resolution one -- a different defect from the one the
+banding pointed at, found by the same measurement.
+
+### 21.5 Fix or bug: the `d_min` discriminator
+
+Firing `escape_candidate` inside the RK4 loop also asks it *during* a close encounter, where a
+pair's instantaneous two-body energy can read positive transiently. If that were happening, the
+newly-escaping footprints would carry **small** `d_min`. They carry large ones:
+
+| stride | escape frac | escaped `d_min` p10 / p50 | collided `d_min` p10 / p50 |
+|---|---|---|---|
+| 0 | 0.0945 | 1.891e-4 / 1.063e-3 | 2.734e-4 / 8.099e-4 |
+| 32 | 0.2153 | 3.642e-4 / 1.336e-3 | 5.254e-4 / 8.457e-4 |
+| 4 | 0.4423 | 1.148e-3 / 4.339e-3 | 6.773e-4 / 8.606e-4 |
+| 1 | 0.5494 | 1.164e-3 / 4.419e-3 | 7.016e-4 / 8.540e-4 |
+
+The re-labelled population is the one with the **largest** separations; the tightest approaches
+stay collisions and the marginal ones just under `r_coll` become escapes. Spurious mid-encounter
+firing has the opposite sign. It also converges between strides 4 and 1. **Not directly tested:**
+whether a fired escape persists to the following boundary.
+
+### 21.6 The second diagnostic: the crisp edges are real, the banding is not
+
+`preset_shape_pl_h1_uniform_outcome.png` is already committed. Under outcome-class colouring the
+**banding vanishes entirely** -- consistent with it being a continuous-field artefact -- while the
+**crisp polygonal edges survive and sharpen**: straight lines meeting at points, and a genuinely
+*circular* boundary around the central fan. Those are outcome-class boundaries, so they are real
+regime structure and not a colouring artefact.
+
+A circle plus radiating wedges is **polar structure in the chart plane**: a radius threshold and an
+angle threshold. Saturation is the candidate that would produce it. **Stated and stopped there** --
+two image diagnoses on this project have already been settled by one targeted measurement, and
+speculating past the render is how the earlier ones went wrong.
+
+### 21.7 It is a spec change, and the default stays at the reference cadence
+
+`AzOpts::escape_every` defaults to **0**, the reference's boundary-only cadence, so nothing already
+measured has moved -- `cargo test --release` is 215 passed / 0 failed with the Python cross-check
+green. Turning it on changes results, and the cross-check and the horizon table were both measured
+coarse, so it is a spec change behind a flag rather than a tidy-up.
+
+`tests/outcome_encoding.rs` asserts **both** arms, because a flag that does nothing passes as
+easily as one that works: at the reference cadence an escape time must land exactly on a sync
+boundary, and at the fine cadence some escaping trajectory's `t_end` must actually move off it.
+It also fails if no trajectory in the test escaped at all -- Burrau's near-field could not have
+exercised this, and a test whose subject never executes is decoration.
+
 ---
 
 ## 13. Reproducing any of this
@@ -3104,5 +3215,7 @@ Every table above comes from a committed example. Raw output for all of them is 
 | §18.3 stage 2, structure x criterion | `cargo run --release --example criterion_sweep -- 2 40000 0.2 1024 1e-4 0.25` |
 | §18.2 stage 3, alpha | `cargo run --release --example criterion_sweep -- 3 40000 0.2 1024 1e-4 0.25` |
 | §20 the ceiling, uniform, and the audit | `cargo run --release --example oracle_audit -- 7 8 1e-4 13 all` |
+| §21 the sync-cadence artefact | `cargo run --release --example sync_artefact -- 3 8 13 1` |
+| the signal audit against the DP labels | `cargo run --release --example signal_audit -- 7 8 1e-4 13 <scratch>` (~2 h; it enables the FTLE march, which is ~2.5x a plain build. **Point it at a scratch root**) |
 | §20.6 firing the bound assert cheaply | `cargo run --release --example criterion_metric -- 4 8 1e-4 13 /tmp/scratch` |
 | §20.1 the bound over every ranking | `cargo test --release --test criterion no_ranking_beats -- --nocapture` |

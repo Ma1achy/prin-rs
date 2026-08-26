@@ -378,7 +378,7 @@ fn the_metric_is_exact_at_the_full_tree_and_the_greedy_replay_is_monotone() {
     assert_eq!(cache.error_of(&deepest), 0.0);
 
     let full = ((1usize << (2 * (levels + 1))) - 1) / 3;
-    let pts = metric::replay(&cache, Rank::GreedyOracle, full);
+    let pts = metric::replay(&cache, Rank::GreedyLookahead1, full);
 
     // Monotone non-increasing. A rise here is a bug in the priority queue, not a finding.
     for w in pts.windows(2) {
@@ -397,7 +397,7 @@ fn the_metric_is_exact_at_the_full_tree_and_the_greedy_replay_is_monotone() {
         assert_eq!(p.leaves, 1 + 3 * j);
     }
 
-    // **There is deliberately no assertion that greedy_oracle dominates every criterion.**
+    // **There is deliberately no assertion that greedy_lookahead_1 dominates every criterion.**
     // Greedy is not a bound on a sequential tree problem: a quad whose own split gains little
     // may unlock children with large gains two levels down, and greedy declines it. Such a test
     // would fire on correct behaviour. What IS asserted is that greedy never does worse than
@@ -1201,4 +1201,111 @@ fn uniform_mode_ignores_k_frac_and_balanced_does_not() {
     println!("balanced: {:>4} leaves at k=1, {:>4} at k=0.25", bu.len(), br.len());
     assert_eq!(uu, ur, "k_frac truncated the uniform arm, so it is not a control");
     assert_ne!(bu, br, "k_frac reached nothing at all, so the first assertion is vacuous");
+}
+
+/// **The bound the table was pretending to have.** `greedy_lookahead_1` is greedy on immediate
+/// `Δerror` and has been measured *below the random band* on `far`, so it bounds nothing. The tree
+/// DP is the exact minimum over all tree-shaped leaf sets at a given budget, and *no ranking may
+/// beat it* — an assertion with a real failure mode, unlike the accounting identity
+/// `error_of(leaves) == err_sum(root) - Σ gains`, which telescopes from the definitions of
+/// `error_of` and `gain` and holds for any values whatsoever.
+#[test]
+fn no_ranking_beats_the_exact_tree_optimum() {
+    use prin_rs::ensemble::pixel::EnsembleCfg;
+    use prin_rs::grid::Chart;
+    use prin_rs::metric::{self, Rank};
+    use prin_rs::quad::{Agg, Criterion, StructureMode};
+
+    let (levels, n) = (2u32, 2usize);
+    let res = (1usize << levels) * n;
+    let ens =
+        EnsembleCfg { n_extra: 1, t_max: 2.0, n_sync: 4, refine_flagged: false, ..Default::default() };
+    let cache = metric::build(
+        "deep interior", 0.0, 0.0, 0.05, 0, Chart::BodyPlane, levels, n, res, 1e-4, &ens,
+        metric::Colouring::Outcome,
+    );
+
+    let full = ((1usize << (2 * (levels + 1))) - 1) / 3;
+    let max_splits = (full - 1) / 4;
+    let dp = cache.dp_optimal(max_splits);
+
+    // **Both ends pinned.** This is what catches a `dp_optimal` that is trivially loose -- one
+    // returning zeros, or `-inf`, would satisfy "no ranking beats it" vacuously and pass every
+    // other assertion here.
+    assert_eq!(
+        dp.curve[0],
+        cache.error_of(&[(0, 0, 0)]),
+        "the DP at zero splits must be exactly the root drawn alone"
+    );
+    assert_eq!(dp.curve[max_splits], 0.0, "the DP at the full tree must reach the reference");
+
+    // The ceiling is a ceiling: monotone non-increasing in budget by construction of the
+    // prefix-min, so a rise is a bug in the merge rather than a finding.
+    for s in 1..=max_splits {
+        assert!(dp.curve[s] <= dp.curve[s - 1] + 1e-15);
+    }
+
+    let budgets: Vec<usize> = (0..=max_splits).map(|s| 1 + 4 * s).collect();
+
+    let mut ranks: Vec<Rank> = vec![
+        Rank::GreedyLookahead1,
+        Rank::GreedyLookahead1PerCost,
+        Rank::StructureOnly,
+        Rank::Random(1),
+        Rank::Random(7),
+        Rank::Random(1234),
+    ];
+    for c in Criterion::ALL {
+        for a in [Agg::Mean, Agg::Median, Agg::P90] {
+            ranks.push(Rank::Signal(c, a));
+            ranks.push(Rank::Contrast(c, a));
+            ranks.push(Rank::Structured(StructureMode::Multiply, c, a));
+        }
+    }
+
+    // The assertion. Every ranking, every budget on the ladder.
+    let mut strict_somewhere = false;
+    for r in &ranks {
+        let pts = metric::replay(&cache, *r, full);
+        let curve = metric::curve_at(&pts, &budgets);
+        for (&b, &e) in budgets.iter().zip(&curve) {
+            let d = dp.at_budget(b);
+            assert!(
+                e >= d - 1e-12,
+                "{} beat the exact optimum at B = {b}: {e} < {d}. The optimum is a bound over \
+                 ALL tree-shaped leaf sets, so this is a harness bug and every error(B) number \
+                 in the corpus is suspect until it is fixed.",
+                r.name()
+            );
+            if e > d + 1e-12 {
+                strict_somewhere = true;
+            }
+        }
+    }
+    // **Strict somewhere, but deliberately not "strictly below greedy".** On a 21-quad tree
+    // greedy can genuinely be optimal, so pinning the strictness to greedy specifically would
+    // fail for the wrong reason. Requiring it against the whole rank set keeps the guard --
+    // a DP that merely copied the best replay would not clear it -- without the flake.
+    assert!(strict_somewhere, "the DP never improved on any ranking; it is not an optimum");
+
+    // The recovered leaf set must be a tree: `1 + 3s` leaves, all distinct, tiling the root
+    // exactly. `Cache::error_of` over a set with a hole is an average over the hole, so a leaf
+    // set that does not tile scores something other than what it claims.
+    for s in 0..=max_splits {
+        let lv = dp.leaves(s);
+        assert_eq!(lv.len(), 1 + 3 * s, "dp.leaves({s}) is not a tree");
+        let mut u = lv.clone();
+        u.sort_unstable();
+        u.dedup();
+        assert_eq!(u.len(), lv.len(), "dp.leaves({s}) repeats a quad");
+        let area: usize = lv.iter().map(|k| { let sp = res >> k.0; sp * sp }).sum();
+        assert_eq!(area, res * res, "dp.leaves({s}) does not tile the root");
+        // And it realises the value the curve claims.
+        assert!(
+            (cache.error_of(&lv) - dp.raw[s]).abs() < 1e-12,
+            "dp.leaves({s}) scores {} against a claimed {}",
+            cache.error_of(&lv),
+            dp.raw[s]
+        );
+    }
 }

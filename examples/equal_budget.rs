@@ -12,7 +12,7 @@
 //! tree displays. Three things are scored at the SAME leaf count `B`:
 //!
 //! - **the ranked descent's own leaf set**, at whatever `B` it settled on;
-//! - **`greedy_oracle`** at that `B` -- a strong reference and deliberately not a ceiling, since
+//! - **`greedy_lookahead_1`** at that `B` -- a strong reference and deliberately not a ceiling, since
 //!   a criterion beating it indicates lookahead value rather than a bug;
 //! - **`random` over several seeds**, read as a band. A single random trace is a draw.
 //!
@@ -71,8 +71,13 @@ fn targets() -> Vec<Target> {
 /// the cache's root box and the whole comparison is void.
 fn key_of(c: &metric::Cache, cx: f64, cy: f64, level: u32) -> Option<Key> {
     let h = c.half / (1u64 << level) as f64;
-    let ix = ((cx - (c.cx - c.half)) / (2.0 * h)).round() as i64;
-    let iy = ((cy - (c.cy - c.half)) / (2.0 * h)).round() as i64;
+    // **The half-cell.** A cell centre sits at `(2i+1)h` from the low edge, so dividing by the
+    // cell width `2h` gives `i + 0.5` and `.round()` of that lands on `i + 1` -- every quad
+    // mapped to its right/upper neighbour, and at the boundary off the grid entirely. Subtract
+    // the half before rounding. The reconstruction check below is what caught it: without it
+    // this would have scored a coherent-looking leaf set belonging to a shifted tree.
+    let ix = ((cx - (c.cx - c.half)) / (2.0 * h) - 0.5).round() as i64;
+    let iy = ((cy - (c.cy - c.half)) / (2.0 * h) - 0.5).round() as i64;
     let lim = 1i64 << level;
     // `.round()` lands on the cell index only if the centre really is at `(2i+1)h`; a half-cell
     // offset would round to a neighbour silently, so the reconstruction is checked back.
@@ -121,6 +126,13 @@ fn main() {
         ks.dedup();
         for k in ks {
             let cfg = SchedCfg {
+                // **Capped at the reference's own depth, and that is a property of the
+                // measurement rather than of the scheduler.** `Cache::error_of` is defined over a
+                // leaf set that TILES the root; a leaf deeper than the cache has no entry, the
+                // set does not tile, and the number would be an average over a hole. Measured
+                // without the cap at `levels = 5`: 170 of 223 leaves at `k = 1` fall outside, and
+                // the run correctly scored nothing rather than quietly dropping them.
+                max_level: Some(levels),
                 n, budget: 40000, tau_display: 1e-4, alpha_hi: 0.2, alpha_lo: 0.2,
                 criterion: Criterion::Within, agg: Agg::Median, mode: Mode::Balanced, k_frac: k,
                 camera: Some(Camera::framing(t.cx, t.cy, t.half, res)), chart: t.chart,
@@ -150,7 +162,7 @@ fn main() {
             let b = keys.len();
             let e = cache.error_of(&keys);
 
-            let g = *metric::curve_at(&metric::replay(&cache, Rank::GreedyOracle, b + 1), &[b])
+            let g = *metric::curve_at(&metric::replay(&cache, Rank::GreedyLookahead1, b + 1), &[b])
                 .first().unwrap_or(&f64::NAN);
             let mut rs: Vec<f64> = (0..seeds)
                 .map(|s| *metric::curve_at(&metric::replay(&cache, Rank::Random(s), b + 1), &[b])

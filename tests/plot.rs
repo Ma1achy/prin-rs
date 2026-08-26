@@ -42,7 +42,7 @@ fn an_exact_zero_is_located_and_is_not_confused_with_a_small_value() {
 fn a_set_of_series_that_are_all_zero_is_detected() {
     // `far` had error(root) = 0.00000, so all 17 series were exactly zero at every budget. The
     // figure drew one flat line; 15 series were completely overdrawn, including the white
-    // greedy_oracle control.
+    // greedy_lookahead_1 control.
     let z: Vec<Series> = (0..5).map(|i| s(&format!("c{i}"), &[0.0, 0.0, 0.0])).collect();
     assert!(all_zero(&z));
 

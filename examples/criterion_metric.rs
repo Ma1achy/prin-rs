@@ -10,7 +10,7 @@
 //! # The two controls, without which the metric says nothing
 //!
 //! - **random** — several seeds, reported as a band. A single random trace is a draw.
-//! - **greedy_oracle** — greedy on immediate `Δerror`. **A strong reference, not a ceiling.**
+//! - **greedy_lookahead_1** — greedy on immediate `Δerror`. **A strong reference, not a ceiling.**
 //!   Greedy is optimal only when gains are independent and immediately available; here a quad
 //!   whose own split gains little may unlock children with large gains two levels down, and
 //!   greedy declines it. **A criterion beating it indicates lookahead value, not an error.**
@@ -255,7 +255,7 @@ fn main() {
 
         let mut rows: Vec<(String, Vec<f64>)> = Vec::new();
         let runs: Vec<Rank> = vec![
-            Rank::GreedyOracle,
+            Rank::GreedyLookahead1,
             Rank::Signal(Criterion::Within, Agg::Median),
             Rank::Signal(Criterion::Within, Agg::Mean),
             Rank::Signal(Criterion::Within, Agg::P90),
@@ -269,7 +269,7 @@ fn main() {
             Rank::Signal(Criterion::FirstDivergence, Agg::Median),
             Rank::Contrast(Criterion::Within, Agg::Median),
             Rank::Contrast(Criterion::Between, Agg::Median),
-            Rank::GreedyOraclePerCost,
+            Rank::GreedyLookahead1PerCost,
             Rank::Random(1),
             Rank::Random(2),
             Rank::Random(3),
@@ -281,11 +281,44 @@ fn main() {
             rows.push((r.name(), metric::curve_at(&pts, &budgets)));
         }
 
+        // ---- the ceiling ----
+        //
+        // The exact minimum over ALL tree-shaped leaf sets at each budget. `greedy_lookahead_1`
+        // was read as a bound for two PRs and is not one -- it sits BELOW the random band on
+        // `far`. Printed first so every row beneath is read against it, and asserted rather than
+        // trusted: a row below the ceiling is a harness bug.
+        let dp = cache.dp_optimal((full - 1) / 4);
+        println!(
+            "  dp_optimal: {} splits in {:.2}s; prefix-min binds at {} split counts \
+             (where it binds, a split made the image WORSE)",
+            dp.max_splits,
+            dp.elapsed_s,
+            dp.prefix_min_binds.len()
+        );
+
         print!("{:>22}", "B =");
         for b in &budgets {
             print!(" {b:>9}");
         }
         println!();
+        {
+            let mut worst = f64::INFINITY;
+            for (_, curve) in &rows {
+                for (&b, &e) in budgets.iter().zip(curve) {
+                    worst = worst.min(e - dp.at_budget(b));
+                }
+            }
+            assert!(
+                worst >= -1e-9,
+                "a ranking beat the exact tree optimum by {worst:e} -- the harness is wrong and \
+                 every error(B) number in this table is suspect"
+            );
+            print!("{:>22}", "dp_optimal");
+            for b in &budgets {
+                print!(" {:>9.5}", dp.at_budget(*b));
+            }
+            println!("   <- CEILING (worst margin {worst:+.1e})");
+        }
         for (name, curve) in &rows {
             if name.starts_with("random") {
                 continue;
@@ -342,7 +375,7 @@ fn main() {
             let mut ser: Vec<Series> = Vec::new();
             for (i, (name, curve)) in live.iter().enumerate() {
                 let control = name.starts_with("random") || name.starts_with("greedy");
-                let rgb = if name.starts_with("greedy_oracle") && !name.contains("cost") {
+                let rgb = if name.starts_with("greedy_lookahead_1") && !name.contains("cost") {
                     (255, 255, 255)
                 } else if name.starts_with("random") {
                     (150, 150, 160)
@@ -371,9 +404,10 @@ fn main() {
                      fully-refined tree at one sample per pixel, and at the screen floor \
                      sub-pixel structure is sampled arbitrarily."
                         .into(),
-                    "greedy_oracle is a strong reference, NOT a ceiling. A criterion beating it \
-                     indicates lookahead value, not a bug: on a tree, gains are neither \
-                     independent nor immediately available."
+                    "THREE ROLES: floor = random band (several seeds); reference = \
+                     greedy_lookahead_1, greedy on immediate delta-error, neither optimal nor a \
+                     bound; ceiling = dp_optimal, the exact minimum over all tree-shaped leaf \
+                     sets. Greedy has been measured BELOW the random band on far."
                         .into(),
                     "A label reading (k/n) means n-k points were non-finite and were DROPPED. \
                      A high NaN fraction is a property to read, not a defect: term_grad is NaN \
@@ -410,7 +444,7 @@ fn main() {
         );
         let mid = full / 8;
         for r in [
-            Rank::GreedyOracle,
+            Rank::GreedyLookahead1,
             Rank::Signal(Criterion::Within, Agg::Median),
             Rank::Signal(Criterion::Between, Agg::Median),
             Rank::Signal(Criterion::FracHotBetween, Agg::Median),
@@ -444,7 +478,7 @@ fn main() {
             let mut wire_frames: Vec<Vec<u8>> = Vec::new();
             let mut b = 5usize;
             while b <= full {
-                let la = cache.leaves_at(Rank::GreedyOracle, b);
+                let la = cache.leaves_at(Rank::GreedyLookahead1, b);
                 let lc = cache.leaves_at(Rank::Signal(Criterion::Within, Agg::Median), b);
                 let mut fr =
                     prin_rs::output::apng::side_by_side(&cache.render(&la), &cache.render(&lc), res, res);
@@ -460,7 +494,7 @@ fn main() {
                 wire_frames.push(fw);
                 b = (b * 2 + 1).min(full).max(b + 1);
                 if b == full {
-                    let la = cache.leaves_at(Rank::GreedyOracle, full);
+                    let la = cache.leaves_at(Rank::GreedyLookahead1, full);
                     let lc = cache.leaves_at(Rank::Signal(Criterion::Within, Agg::Median), full);
                     let mut fr = prin_rs::output::apng::side_by_side(
                         &cache.render(&la), &cache.render(&lc), res, res);
@@ -522,12 +556,21 @@ fn main() {
     }
 
     println!(
-        "Read the oracle-to-random gap FIRST, per region. If greedy_oracle and the random band\n\
+        "Read the oracle-to-random gap FIRST, per region. If greedy_lookahead_1 and the random band\n\
          overlap, the metric does not discriminate there and nothing below it is readable.\n\
          \n\
-         `greedy_oracle` is a reference, not a bound: greedy declines a low-gain split that\n\
-         unlocks large gains two levels down, so a criterion beating it at some budget indicates\n\
-         LOOKAHEAD VALUE and is not a bug. There is no assertion anywhere that it dominates.\n\
+         THE TABLE HAS THREE ROLES AND THEY ARE NOT INTERCHANGEABLE.\n\
+           floor      random lo/hi          several seeds, read as a band, never one trace\n\
+           reference  greedy_lookahead_1    greedy on immediate delta-error -- NEITHER OPTIMAL\n\
+                                            NOR A BOUND. Measured BELOW the random band on\n\
+                                            `far`: 0.54760 against 0.48550-0.52047 at B = 1535.\n\
+           ceiling    dp_optimal            the exact minimum over ALL tree-shaped leaf sets.\n\
+                                            No row may sit below it; one that does is a harness\n\
+                                            bug, and it is asserted, not trusted.\n\
+         \n\
+         A criterion beating `greedy_lookahead_1` indicates LOOKAHEAD VALUE and is not a bug:\n\
+         greedy declines a low-gain split that unlocks large gains two levels down. There is no\n\
+         assertion anywhere that it dominates, and there must not be.\n\
          \n\
          `nan%` is how much of the region a signal declines to score. A signal that is NaN\n\
          nearly everywhere is not ranking; NaN never wins a comparison, so its curve is the\n\

@@ -23,7 +23,7 @@
 //! on several of these curves. The figure is split: a log panel above, and below a rule, a
 //! **zero band** in which each series that reaches zero gets its own row. Rows rather than one
 //! shared line because `curve_far_t13.png` had all 17 series at exactly zero at every budget,
-//! **15 of them completely overdrawn** — including the white `greedy_oracle` — so the figure
+//! **15 of them completely overdrawn** — including the white `greedy_lookahead_1` — so the figure
 //! showed one flat line and looked like a plot of one criterion.
 //!
 //! # 3. A figure that cannot distinguish its inputs says so

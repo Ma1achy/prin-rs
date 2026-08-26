@@ -5,7 +5,7 @@
 //! Some quads are far more expensive than others: close encounters take more substeps. Ranking
 //! by `spread / compute_cost` spends a budget better **if costs vary widely**. So the cost
 //! distribution is reported first: if it is narrow, the idea is moot and stops here. `Rank`
-//! carries a `GreedyOraclePerCost` variant so the ceiling can be read per unit cost too.
+//! carries a `GreedyLookahead1PerCost` variant so the ceiling can be read per unit cost too.
 //!
 //! # Anisotropic splitting
 //!
@@ -73,7 +73,7 @@ fn main() {
         // Does cost-weighting change the ceiling? If the cost distribution is narrow this is
         // the same curve twice.
         let budgets = [21usize, 85, 341, full];
-        for r in [Rank::GreedyOracle, Rank::GreedyOraclePerCost] {
+        for r in [Rank::GreedyLookahead1, Rank::GreedyLookahead1PerCost] {
             let pts = metric::replay(&cache, r, full);
             print!("{:>24}", r.name());
             for e in metric::curve_at(&pts, &budgets) {
@@ -120,7 +120,7 @@ fn main() {
     println!(
         "Cost-aware priority is worth building only if the cost distribution is WIDE. Read\n\
          p99/p50, not the mean: a long tail with a tight bulk buys nothing for the typical quad,\n\
-         which is what a scheduler decides about. If greedy_oracle and greedy_oracle/cost give\n\
+         which is what a scheduler decides about. If greedy_lookahead_1 and greedy_lookahead_1/cost give\n\
          the same curve, cost-weighting has nothing to move.\n\
          \n\
          Anisotropy: a high `all four keep` fraction means an isotropic split is mostly wasted\n\

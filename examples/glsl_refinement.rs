@@ -54,6 +54,19 @@ fn main() {
     let alpha_hi: f64 = arg(3, 0.2);
     let res: usize = arg(4, 1024);
     let frames_wanted: usize = arg(5, 72);
+    // **The configuration the sweep found, not the defaults.** `k_frac` is what makes the
+    // criterion a priority ordering rather than a gate; at 1.0 the ranking takes the whole
+    // frontier and changes nothing, which is the defect that made every dump in PR #18 a
+    // pre-fix run. RESULTS.md §18: at `k = 0.25` near-field's depth variance doubles and its
+    // veto share falls 61% -> 13%.
+    let k_frac: f64 = arg(6, 0.25);
+    // `grad_rms` is the criterion that unlocks `preset_shape` -- the only one of these four
+    // that `within` cannot move at ANY tau, k_frac or alpha, including a gate-off control.
+    // Measured: 16 leaves at one level under `within`, 31 at five under `grad_rms`.
+    let crit = match std::env::args().nth(7).as_deref() {
+        Some(c) => Criterion::parse(c).expect("criterion"),
+        None => Criterion::GradRms,
+    };
 
     let ens = EnsembleCfg { refine_flagged: false, ..Default::default() };
     let dir = "results/glsl";
@@ -70,6 +83,12 @@ fn main() {
     println!("the four GLSL preset slices, refining. {res}^2, half {half}, budget {budget}, \
               tau={tau:.0e}, alpha_hi={alpha_hi}, N=8, E+1={}, t={}, f64",
              ens.n_extra + 1, ens.t_max);
+    println!("criterion={}, k_frac={k_frac}, mode=balanced -- the ranked frontier, which is the \
+              mechanism.", crit.name());
+    if k_frac >= 1.0 {
+        println!("WARNING: k_frac = 1 takes the top 100% of the frontier, so the ranking runs and");
+        println!("changes nothing. That is the PRE-FIX configuration, not the new system.");
+    }
     println!("{:>10} {:>7} {:>7} {:>6} {:>7} {:>8}", "case", "quads", "leaves", "depth", "frames",
              "wall s");
 
@@ -84,9 +103,9 @@ fn main() {
             // The criterion measured best in §16, and the whole frontier each round so the tree
             // fills out rather than being thinned by a partial budget -- this is a picture of
             // refinement, not of the demotion mechanism.
-            criterion: Criterion::FracHotBetween,
+            criterion: crit,
             mode: Mode::Balanced,
-            k_frac: 1.0,
+            k_frac,
             camera: Some(cam),
             keep_pixels: true,
             chart,

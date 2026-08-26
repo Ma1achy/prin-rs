@@ -669,11 +669,28 @@ pub fn descend(
         // conflating the two would hide the mechanism inside the stop-reason column that exists
         // to expose it.
         if cfg.k_frac < 1.0 && !want.is_empty() {
-            let k = ((want.len() as f64 * cfg.k_frac).ceil() as usize).clamp(1, want.len());
-            for &i in want.iter().skip(k) {
+            // **The bootstrap is never truncated, and leaving it truncatable was a bug.**
+            //
+            // Levels below `bootstrap_levels` split *unconditionally*, because level 0 has no
+            // parent and therefore no `alpha`: there is no signal to rank them by. Ranking them
+            // anyway ranks on a quantity that does not exist yet, and demoting one to `Keep`
+            // stops the tree ever reaching the depth where the criterion can decide anything.
+            //
+            // Measured before the fix: at every `k_frac < 1`, `near-field`, `deep interior` and
+            // `preset_shape` returned **byte-identical** leaf counts and depth variances --
+            // 16/1/0.000, 10/2/0.160, 7/2/0.245. Three unrelated charts agreeing to the digit is
+            // never physics; it was `k_frac` eating the bootstrap, which is chart-independent
+            // arithmetic. The `split` column said so too: rows read `split = 2` and `split = 3`
+            // where the bootstrap alone requires 5.
+            let (boot, rest): (Vec<usize>, Vec<usize>) =
+                want.iter().partition(|&&i| tree.nodes[i].level < cfg.bootstrap_levels);
+            let k = ((rest.len() as f64 * cfg.k_frac).ceil() as usize).min(rest.len());
+            // `min`, not `clamp(1, ..)`: with an empty `rest` there is nothing to take, and
+            // forcing one would reintroduce a split the ranking declined.
+            for &i in rest.iter().skip(k) {
                 tree.nodes[i].decision = Decision::Keep;
             }
-            want.truncate(k);
+            want = boot.into_iter().chain(rest.into_iter().take(k)).collect();
         }
 
         let room = cfg.budget.saturating_sub(st.quads_computed) / 4;

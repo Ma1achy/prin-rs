@@ -2714,13 +2714,143 @@ collision-adjacent shapes. A non-finite copy is a **measurement outcome** and is
 `DecodeFailed` would have been the chart handing back something that is not a three-body state, and
 there are none.
 
-## 20. The oracle was not a ceiling, and now there is one
+## 20. The allocation is inverted, and the baseline was never random
 
-`greedy_oracle` was read as an upper reference in every table since §10. It is not one. On `far`
-at `B = 1535` it read **0.54760** against a random band of **0.48550-0.52047** and every criterion
-at **0.36557** -- the worst strategy in the table, under a name that says it cannot be. It is
-renamed **`greedy_lookahead_1`** throughout the code; the numbers already recorded above keep the
-old name, because renaming them would rewrite the record of what was measured.
+### 20.1 The strongest number in this run is a histogram, not an error
+
+`near-field` at `B = 1535`, leaf levels as `level:count`:
+
+| | histogram |
+|---|---|
+| `dp_optimal` (the exact optimum) | `3:2 4:71 5:589 6:472 7:16` |
+| `within/median` | `1:2 3:22 4:11 5:29 6:102 7:984` |
+
+The error cell reads `0.14956` against `0.10664` -- somewhat behind, about 55% of the achievable
+improvement forfeited. **The histogram says it is doing the opposite thing.** The optimum puts
+nothing below level 3 and only **16** leaves at level 7; `within/median` leaves **2 leaves at
+level 1** -- a quarter of the image at one texel each -- and drives **984** to the bottom. Its
+allocation is not merely worse than the optimum, it is *inverted*.
+
+No error cell showed that, and no error cell could: `error(B)` is one scalar per budget and the
+failure is in the shape of the spend. **Read the leaf histogram beside every curve.** This is the
+argument for changing the default criterion, and it is far stronger than any error digit.
+
+### 20.2 And the honest baseline is breadth-first, not random
+
+Every table in §10 through §19 read *beats random* as though random were the thing to beat. It is
+not. **`Rank::Uniform` -- refine the shallowest quad available -- is a far stronger baseline, and
+against it most of the corpus's conclusions change sign.**
+
+`error(B)`, the best criterion against uniform, at each budget:
+
+| region | B where a criterion beats uniform | by how much |
+|---|---|---|
+| `far` | **never** | uniform *is* the optimum; every criterion ties it or loses by `1e-5` |
+| `near-field` | only `B >= 6143`, and only `term_grad/median` | `0.08439` against `0.08480`; `0.05255` against `0.05282` |
+| `deep interior` | `B >= 767` for `frac_hot_between`, decisively at `B >= 6143` | `0.04035` against `0.04813` at `B = 6143` |
+
+`frac_hot_between/median` -- the best criterion measured on this project -- **never beats uniform
+in `near-field` at any budget**, at `0.11148` against `0.10984` at `B = 1535`. It was well clear of
+the random band there. The random band was the wrong bar.
+
+This is not a defect in the criterion so much as a missing row: on a field whose spread tracks cell
+width, ranking by spread *is* breadth-first (§20.7), so a criterion can be far above random and
+still buy nothing over refining uniformly. The comparison that decides anything is
+**criterion against uniform**, and it is now in the table.
+
+### 20.3 The gap rises with structure, and that is the result
+
+Share of *achievable* improvement the best row leaves on the table, `(row - dp)/(root - dp)`, at
+`B = 1535`:
+
+| region | gap | what varies there |
+|---|---|---|
+| `far` | **0.0002** | nothing -- the field is one smooth gradient |
+| `near-field` | **0.0336** | structure is **localised** |
+| `deep interior` | **0.0999** | structure **everywhere** |
+
+**A criterion can only earn its keep where structure is localised.** Where nothing varies there is
+nothing to rank; where everything varies, the budget has to go everywhere and breadth-first is
+close to right again. The headroom lives in between.
+
+Which makes `far` degenerating **correct behaviour, not a defect**. It is the control that shows
+what a featureless field looks like, and every criterion matching the optimum there is the right
+answer -- not a region where the criteria mysteriously tie.
+
+### 20.4 The gap is a curve, and a single budget hides its shape
+
+`(row - dp)/(root - dp)` for the best row at every budget:
+
+| region | 11 | 47 | 191 | 383 | 767 | 1535 | 3071 | 6143 | 12287 |
+|---|---|---|---|---|---|---|---|---|---|
+| `far` | 0.9001 | 1.0000 | 0.3294 | 0.0664 | 0.0216 | 0.0002 | 0.0013 | 0.0001 | 0.0007 |
+| `near-field` | 0.0699 | 0.0744 | 0.0563 | 0.0250 | 0.0451 | 0.0336 | 0.0781 | **0.1106** | **0.1241** |
+| `deep interior` | 0.1659 | 0.1352 | 0.0631 | 0.0772 | 0.1212 | 0.0999 | 0.1259 | 0.1157 | 0.0899 |
+
+And greedy's, for the same budgets:
+
+| region | 11 | 47 | 191 | 383 | 767 | 1535 | 3071 | 6143 | 12287 |
+|---|---|---|---|---|---|---|---|---|---|
+| `far` | 0.0002 | 0.3886 | 0.4201 | 0.5881 | 0.7623 | **0.7693** | 0.6744 | 0.5755 | 0.3147 |
+| `near-field` | 0.0000 | 0.0000 | -0.0000 | 0.0000 | 0.0004 | 0.0004 | 0.0011 | 0.0038 | 0.0046 |
+| `deep interior` | 0.0000 | 0.0000 | 0.0047 | 0.0045 | 0.0168 | 0.0301 | 0.0459 | 0.0752 | 0.0939 |
+
+**The shape is region-dependent and the widening is a `near-field` phenomenon.** There the gap is
+noisy through `B = 1535` and then rises steadily to **0.1241** -- the criterion is adequate at the
+first few hundred splits and progressively worse at the later ones, which fits the inverted
+histogram exactly: the failure is **late-stage allocation**. In `deep interior` the gap peaks at
+`B = 3071` and *falls* to 0.0899; in `far` it collapses to zero by `B = 1535` and stays there. Any
+one budget quoted alone would have supported a different story in each region.
+
+`far`'s greedy row is worth reading on its own: **1.0000 at `B = 23`** -- greedy at that budget is
+exactly as good as not refining at all -- rising again to 0.7693 at `B = 1535`. It is the only row
+anywhere in the corpus that stays bad as the budget grows.
+
+### 20.5 Criterion against uniform, per level
+
+Read at the budgets where uniform **completes a level exactly**, `B_d = 1 + 4(4^d - 1)/3`. At any
+other budget uniform sits mid-level and the comparison would be scoring where its partial row
+happened to stop. `captured = (uniform - row)/(uniform - dp)`: **1.0 is the optimum, 0.0 is no
+better than breadth-first, negative is worse than doing nothing clever.**
+
+| level | B | `far` | `near-field` | `deep interior` |
+|---|---|---|---|---|
+| 2 | 21 | 0.0000 | `uni==dp` | **-9.38** |
+| 3 | 85 | 0.0000 | 0.0000 | **-1.97** |
+| 4 | 341 | 0.0000 | **-0.2988** | **-0.4497** |
+| 5 | 1365 | `uni==dp` | **-0.7210** | -0.0394 |
+| 6 | 5461 | `uni==dp` | 0.0019 | **+0.5296** |
+
+**The gap is not flat across levels; it rises monotonically with depth**, and crosses zero only at
+the deepest discretionary level, and only in `deep interior`. Shallow splits the criterion chooses
+are actively worse than taking them in raster order.
+
+That is the shape a depth-dependent strategy would exploit -- and **the same table is the argument
+against adding one.** The crossing is at level 6 in `deep interior`, not reached at all in
+`near-field`, and undefined in `far`. A depth parameter would have to be tuned per region, which is
+the tunable-constant defect this project has been bitten by four times, and it is the same argument
+that killed a fixed `tau`: a constant cannot land inside a distribution that moves between regions.
+
+Two caveats, because the cell is generous to the criteria as printed. The `best criterion` column is
+picked **per level in hindsight** -- `grad_rms` at level 6 in `deep interior`, `term_grad` at level
+6 in `near-field`, `frac_hot_between` everywhere else -- so it is an oracle over criteria and still
+loses to breadth-first below level 6. And where `uniform == dp` to machine precision the ratio has a
+denominator at the arithmetic floor and describes nothing; it prints as `uni==dp` rather than as a
+number, which is the difference between "both sides are right" and "both sides are dead".
+
+### 20.6 The bound that can fail, and it holds
+
+`Cache::dp_optimal` is the exact minimum over **all** tree-shaped leaf sets at a given budget, by
+tree DP: `f_k(0) = err_sum(k)`, `f_k(s) = min over s0+s1+s2+s3 = s-1 of sum_i f_ci(si)`. Budget and
+splits are locked to `replay`'s own accounting, `B = 1 + 4s`. *No ranking may beat it* -- an
+assertion with a real failure mode, and `tests/criterion.rs` runs it over every `Rank` at every
+budget.
+
+`greedy_oracle` was read as an upper reference in every table since §10 and is not one. On `far` at
+`B = 1535` it reads **0.54760** against a random band of **0.48550-0.52047** and every criterion at
+**0.36557** -- the worst strategy in the table, under a name that says it cannot be. It is renamed
+**`greedy_lookahead_1`** throughout the code; the numbers already recorded above keep the old name,
+because renaming them would rewrite the record of what was measured.
 
 Two invariants were proposed to find the fault and **neither could have fired.** `Cache::error_of`
 is a sum of `err_sum` over the leaf set and `Cache::gain` is parent-minus-children, so splitting
@@ -2730,45 +2860,30 @@ any values `err_sum` happens to hold -- random numbers included. And a choice ch
 `replay_with_leaves`'s own argmax over a pure, static `gain`. Both report PASS. *A test that cannot
 fail is indistinguishable from a test that passes*, at the level of the metric this time.
 
-### 20.1 The bound that can fail
-
-`Cache::dp_optimal` is the exact minimum over **all** tree-shaped leaf sets at a given budget, by
-tree DP: `f_k(0) = err_sum(k)`, `f_k(s) = min over s0+s1+s2+s3 = s-1 of sum_i f_ci(si)`. Budget and
-splits are locked to `replay`'s own accounting, `B = 1 + 4s`. *No ranking may beat it* -- an
-assertion with a real failure mode, and `tests/criterion.rs` runs it over every `Rank` at every
-budget.
-
 **It reads at the complete tree, uncapped, in centiseconds.** The naive `O(quads x B^2)` reading is
 wrong twice: the 4-way merge is three successive 2-way convolutions (`O(cap^2)`, not `O(cap^4)`),
 and each node's split cap is bounded by its own subtree, so only the top two levels ever see the
-full budget. Measured at `levels = 7`, 21845 quads, 5461 splits: **0.01-0.03 s**, against 296-1487 s
-to build the cache. No cap is needed and none is applied.
+full budget. Measured at `levels = 7`, 21845 quads, 5461 splits: **0.01 s**, against 349-1117 s to
+build the cache. No cap is needed and none is applied. **Keep the ceiling in every `error(B)` table
+permanently** -- at that price it converts "beats random" into "captures 95% of the achievable
+improvement", which is a claim with a denominator.
 
 **The bound holds everywhere.** Worst margin `row - dp` over every ranking and every budget:
 `+0.000e0` (`far`), `-1.388e-16` (`near-field`), `-1.388e-17` (`deep interior`) -- summation order,
 not violations. **The replay is sound and no `error(B)` number in the corpus is suspect.**
 
-### 20.2 What the ceiling says, per region
+`criterion_metric` now computes the ceiling and **asserts** it. That assertion has been executed at
+scale -- `4 8 1e-4 13` over all three regions, worst margins `-1.4e-17`, `-5.6e-17`, `+0.0e0` --
+because an assert that has never run is the kind of gap that survives indefinitely. It writes to a
+scratch root, which is now an **argument** rather than a hardcoded `results/`: a reduced-`levels`
+validation pass would otherwise overwrite the committed 512^2 artefacts with a small raster, and a
+small raster reads as a rendering fault rather than a stale file.
 
-`error(B)` at `B = 1535`, and the share of *achievable* improvement each row leaves on the table,
-`(row - dp)/(root - dp)`:
+The committed `results/output/criterion_metric.txt` **predates both the ceiling row and the uniform
+row**; it is unchanged, and §20 is where they are recorded until that table is next regenerated for
+its own reasons. `results/output/oracle_audit.txt` carries every number in this section.
 
-| region | `dp_optimal` | `greedy_lookahead_1` | greedy gap | best criterion | best gap |
-|---|---|---|---|---|---|
-| `far` | **0.36555** | 0.54760 | **0.7693** | `frac_hot_within` 0.36561 | **0.0002** |
-| `near-field` | **0.10664** | 0.10668 | **0.0004** | `frac_hot_between` 0.11148 | **0.0508** |
-| `deep interior` | **0.05996** | 0.06263 | **0.0301** | `frac_hot_between` 0.06856 | **0.0971** |
-
-Greedy is **near-optimal in both structured regions** and catastrophic only in `far`. The anomaly
-is confined to the smooth region, and it is genuine myopia -- not a metric fault.
-
-**The headroom for a learned criterion is 5-16%, and it is in the structured regions.** In
-`near-field` the best criterion leaves 5.1% at `B = 1535` and **16.3% at `B = 12287`**; in
-`deep interior`, 9.7% and 3.1%. That is the figure a lookahead criterion has to beat, and it is
-measurable for the first time -- against greedy it read *negative*, which is why the question was
-unanswerable by inspection.
-
-### 20.3 Why greedy fails on `far`: `err_sum` is flat until level 3
+### 20.7 Why greedy fails on `far`: `err_sum` is flat until level 3
 
 Per pixel, normalised by the root's, median over quads at each level:
 
@@ -2794,9 +2909,47 @@ failure.
 everywhere and greedy has no barrier to decline. **The same statistic explains both the failure and
 its absence**, which is what makes it the mechanism rather than a story.
 
-### 20.4 The leaf histograms, which the error curve could not show
+### 20.8 `far` is a smooth field, not an amplified noise floor
 
-Leaf levels at `B = 1535`, as `level:count`:
+`criterion_metric`'s AUTO-RANGED OVER NOISE guard did not fire on `far`, and `far` being
+auto-ranged noise is a standing finding (§11). If the ramp were stretching a `x8` span of noise
+across the full colour range, then the flat `err_sum` above would be **noise failing to resolve**
+rather than physics being absent -- and the level-2 barrier would be a property of the metric on a
+noise-dominated region rather than of the field. `far` is now load-bearing in §20.3, so it matters
+which.
+
+**It is a field.** Lag-1 neighbour correlation of the ramped scalar, by level:
+
+| level | `far` | `near-field` | `deep interior` |
+|---|---|---|---|
+| 1 | 0.9434 | 0.3536 | -0.3332 |
+| 2 | 0.9923 | 0.8392 | -0.0514 |
+| 3 | 0.9984 | 0.8316 | 0.4781 |
+| 4 | 0.9996 | -0.0253 | 0.7746 |
+| 5 | 0.9999 | 0.6352 | 0.9054 |
+| 6 | **1.0000** | 0.7652 | 0.9432 |
+
+`far` is maximally coherent at every level. And its p1/p99 **halve exactly** with each level --
+`8.453e-8, 4.211e-8, 2.105e-8, 1.051e-8, 5.255e-9, 2.627e-9, 1.314e-9`, a ratio of 2.000 -- which
+is `spread ~ g*w` measured directly rather than argued. That is a real gradient of tiny magnitude,
+not an amplified noise floor. **No conclusion from this run changes, and `far` stands as the
+smooth-field control.**
+
+It also says why the guard could not have fired. Both existing arms read **amplitude**, and
+amplitude cannot separate a small real signal from noise. Worse, the absolute arm's floor is the
+region's own median energy drift -- `4.478e-11` on `far`, so the floor is `4.478e-9` against a
+`ramp.1` of `1.064e-8`. **The floor falls with the field it is meant to bound**: a ratio in
+disguise, in a region tame enough that both go to zero together. A **third arm** now reads lag-1
+coherence at level 3 and fires below `rho = 0.5`; `far` reads 0.9984 there and correctly does not
+trip it.
+
+The standing finding that inter-level spread ratios run `1.19-1.62, falling to 1.048` was measured
+in a chaotic region and named 2.000 as the proportional control value. `far` reads exactly 2.000.
+The two are consistent, and this is the control the earlier measurement was missing.
+
+### 20.9 The leaf histograms in full
+
+Leaf levels at `B = 1535`:
 
 | | `far` | `near-field` | `deep interior` |
 |---|---|---|---|
@@ -2804,40 +2957,37 @@ Leaf levels at `B = 1535`, as `level:count`:
 | `greedy_lookahead_1` | `2:14 5:48 6:64 7:1024` | `3:3 4:70 5:577 6:468 7:32` | `2:1 3:18 4:93 5:134 6:584 7:320` |
 | `within/median` | `5:982 6:168` | `1:2 3:22 4:11 5:29 6:102 7:984` | `1:3 2:1 3:3 4:3 5:41 6:119 7:980` |
 | `frac_hot_between` | `5:982 6:168` | `3:2 4:14 5:870 6:264` | `1:1 2:4 3:10 4:15 5:40 6:984 7:96` |
-| `random[1]` | `2:1 3:15 4:101 5:210 6:291 7:532` | (same, seed-shared) | (same) |
+| `random[1]` | `2:1 3:15 4:101 5:210 6:291 7:532` | (same seed, same tree shape) | (same) |
 
 On `far`, greedy leaves **14 quads at level 2** -- most of the image -- while driving 1024 leaves
 to the bottom. That is the uniform dark corner, counted.
 
-On `near-field` the histogram indicts `within/median` in a way no error cell did: **2 leaves left
-at level 1** and 984 driven to level 7, against an optimum that puts nothing below level 3 and only
-16 at level 7. It is not merely losing; its allocation is inverted.
-
-### 20.5 On a smooth field, ranking by spread IS breadth-first
+### 20.10 On a smooth field, ranking by spread IS breadth-first
 
 `far`'s thirteen non-greedy rows agree to five digits at every budget -- `within/median` on
 **21845 distinct values** and `frac_hot_between` on **1**. They are not thirteen criteria
 independently agreeing; they are **one allocation reached by two routes**, and the histogram proves
-it rather than the digits: all three rows produce the *identical* leaf set `5:982 6:168`.
+it rather than the digits: all three rows produce the *identical* leaf set `5:982 6:168`, which is
+also `dp_optimal`'s and also `uniform`'s.
 
 The routes are different. A quad of width `w` over a gradient `g` has internal variation `~ g*w`,
-so **spread tracks cell size** and argmax-on-spread picks the shallowest quad. A constant signal has
-no argmax at all and falls through to the tie-break, which is lexicographic on `(level, ix, iy)` --
-**level first**, so also shallowest. Both are breadth-first, and on a smooth field breadth-first is
-within `2e-5` of exactly optimal.
+so **spread tracks cell size** -- measured in §20.8 at a ratio of exactly 2.000 per level -- and
+argmax-on-spread picks the shallowest quad. A constant signal has no argmax at all and falls
+through to the tie-break, which is lexicographic on `(level, ix, iy)` -- **level first**, so also
+shallowest. Both are breadth-first, and on a smooth field breadth-first is within `2e-5` of exactly
+optimal.
 
-**So `far` degenerating is correct behaviour, not a defect.** A criterion can only differ from
-breadth-first where the field is *not* smooth, and smoothness is exactly where there is nothing to
-find. `far`'s role is the control that shows what a featureless field looks like -- not a region
-where the criterion mysteriously ties.
+**So the criterion already self-adapts.** Where there is nothing to discriminate, the ranking
+degenerates to uniform *on its own*. That is a property worth protecting rather than overriding,
+and it is the second reason not to bolt a depth parameter onto it.
 
-### 20.6 A split can make the image worse, and the prefix-min is why
+### 20.11 A split can make the image worse, and the prefix-min is why
 
 `f_root(s)` is the best tree at **exactly** `s` splits; the ceiling at budget `B` is
 `min over s <= (B-1)/4` of it, because a replay may stop early and because more splits only help if
 every gain is non-negative. They are not. **The root's own gain on `far` is `-3.022e-7`** -- its
 `err_sum` per pixel is `1.00000` against level 1's median `1.00067` -- so the prefix-min binds at
-`s = 1`, measured.
+`s = 1`, measured, and nowhere else in any region.
 
 This is the hypothesis that a parent's `N x N` sample grid and its children's are **different
 approximation families**, confirmed directly. On a smooth field one 8x8 grid over the whole box is
@@ -2845,29 +2995,212 @@ marginally better than four 8x8 grids over quarters. Negative gains elsewhere: `
 `near-field` 14, `deep interior` **102**. Reading `f_root(S)` instead of the prefix-min would have
 quoted a ceiling above its own achievable minimum.
 
-### 20.7 Three roles, stated on the table's face
+### 20.12 Four roles, stated on the table's face
 
 The table had a floor and a reference and was read as though it had a ceiling. It now says which is
-which, in the header and the figure legend:
+which, and it has gained the row that was missing:
 
 ```
 floor      random lo/hi          several seeds, read as a band, never one trace
+BASELINE   uniform               breadth-first -- the bar a criterion must actually clear
 reference  greedy_lookahead_1    greedy on immediate delta-error -- NEITHER OPTIMAL NOR A BOUND
 ceiling    dp_optimal            exact minimum over all tree-shaped leaf sets; asserted, not trusted
 ```
 
-`criterion_metric` now computes and prints `dp_optimal` and **asserts** no row falls below it, so
-the failure mode that took two PRs to notice cannot recur silently. The committed
-`results/output/criterion_metric.txt` predates that row; it is unchanged, and this section is where
-the ceiling is recorded until that table is next regenerated for its own reasons.
 
-### 20.8 One thing found in passing and not chased
+---
 
-`criterion_metric.rs`'s AUTO-RANGED OVER NOISE guard did **not** fire on `far`: span `x8.097` clears
-the `< 2.0` ratio arm and `ramp.1 = 1.064e-8` clears the absolute arm against `100x` the region's
-median energy drift. But `far` being auto-ranged noise is a standing finding (§11), and the guard
-exists to say so. A guard that does not fire where the recorded answer says it should is worth its
-own look; it is flagged rather than folded into this one.
+## 21. The concentric banding is a sync-cadence artefact, and it does not reach the near-field
+
+Every committed latent chart carries fine dotted arcs across its smooth regions -- most clearly
+`preset_plambda_uniform.png`, where they cover the whole field with spacing that widens outward.
+That is the signature of contours of a smooth function at uniform value intervals, and it is a
+**rendering** defect as well as the **measurement** defect already on record.
+
+### 21.1 The mechanism, read out of the driver rather than guessed
+
+**Collision is sampled inside the RK4 loop** (`driver.rs`, `tc = t + s.t`) and carries step
+resolution. **Escape is sampled only at sync boundaries**, where the state is already Cartesian
+and every trajectory shares a playhead -- the reference's cadence, transcribed. So `t_end` is
+quantised to `n_sync` values **exactly where escape is the terminating event**, and is continuous
+where collision is.
+
+That predicts which images band, which is what makes it a mechanism rather than a story.
+
+### 21.2 The decisive count, at `escape_every` 0 against 1
+
+| target | escape frac | `t_end` distinct | on a sync boundary |
+|---|---|---|---|
+| `preset_plambda` | 0.9938 | **16 -> 2623** (164x) | **99.52% -> 0.26%** |
+| `preset_shape_pl_h1` | 0.9721 | **41 -> 2316** (56x) | **98.60% -> 3.09%** |
+| `deep interior` | 0.0945 | 2983 -> 3303 (1.1x) | 10.35% -> 3.25% |
+| `near-field` | 0.0002 | **86 -> 86** | unchanged at every stride |
+
+A quantised `t_end` does not merely take few values: **its values ARE the boundary times**, and
+99.52% of `preset_plambda`'s land on one. That is the artefact demonstrated rather than inferred.
+
+**`near-field` is bitwise unaffected.** `t_end`, `spread_event`, `spread_shape`,
+`frac_hot_between`, `term_grad` and `within` are identical to the digit across strides
+`0, 32, 4, 1`. Its escape arm is silent at `t = 13` and every termination is a collision, so
+there is nothing for the cadence to quantise -- and the §20 and signal-audit results measured
+there stand.
+
+**One defect in the statistic itself, stated rather than corrected away.** `near-field` reads
+97.85% "on a sync boundary" while being completely clean, because 97.8% of its footprints are
+*Bounded* and sit at `t_end = t_max = 13`, which is itself a multiple of the sync interval. The
+counter conflates "quantised by escape" with "reached the horizon". **Read the delta column, not
+the level.**
+
+### 21.3 The test originally proposed could not have fired
+
+*"Recount `frac_hot_between`'s distinct values: 45 -> thousands means quantisation, 45 -> 45 means
+Wada."* But `frac_hot_between` is `frac_above_tau_between`, a fraction over the quad's `N^2`
+footprints, so at `N = 8` it can take **at most 65 distinct values by construction**. Its 45 is 45
+of an arithmetic ceiling, and §16's own `31 / 65 / 64` is that ceiling showing. `45 -> thousands`
+was unreachable under either hypothesis, so the test would have reported "it is Wada" whatever was
+true upstream.
+
+Measured anyway, and it moves the *wrong way*: under the finer cadence `frac_hot_between` gets
+**more** saturated, not less -- `deep interior` 31 -> 12 distinct with the modal share 41.2% ->
+**83.5%**, and the latent charts stay at 1-2 distinct. **The saturation is not quantisation.**
+
+### 21.4 The real contamination is an outcome RE-LABELLING, and it is larger
+
+`deep interior`'s `t_end` was already continuous. What the cadence changes there is the terminal
+class: **escape 0.0945 -> 0.5494, collision 0.8965 -> 0.4482.** Half the region.
+
+Under `stop_on_event`, a genuine early escape is not *noticed* until the next boundary; the run
+keeps integrating, dips below `r_coll`, and a collision wrongly wins precedence. The finer test
+corrects a **precedence error**, not a resolution one -- a different defect from the one the
+banding pointed at, found by the same measurement.
+
+### 21.5 The `d_min` discriminator was CONFOUNDED, and its answer was wrong
+
+The first reading of whether a finer cadence is a fix or spurious mid-encounter firing used
+`d_min_true` by terminal state: the re-labelled footprints carried **larger** separations
+(escaped p50 `1.063e-3 -> 4.419e-3`), which was taken as evidence against firing during an
+encounter.
+
+**It is evidence of the truncation it was supposed to test.** `d_min_true` is a minimum over the
+whole run, and a run stopped early by a spurious escape never reaches its close approach -- so its
+`d_min` is larger *because* it terminated early. The statistic was confounded by the very effect
+it was measuring. A direct test was needed and gives the opposite answer.
+
+### 21.6 The escapes the finer stride adds are 100% transient
+
+`escape_candidate` is relative energy `> 0` and receding, which during a close encounter is
+transiently true. The test: take the trajectories that escape at `escape_every = 1` and **not** at
+the reference cadence, and ask whether they are still unbound at later sync boundaries.
+
+| region | escape only at stride 1 | still unbound at +1 / +2 / +3 / +4 / +8 boundaries |
+|---|---|---|
+| `deep interior` | **895** of 2304 | **0.000 / 0.000 / 0.000 / 0.000 / 0.000** |
+| `near-field` | 1 | 0.000 at every window |
+| `preset_plambda` | **0** | -- nothing to test |
+
+Every one of the 895 has re-bound. Latching them took `deep interior`'s escape fraction from
+0.0947 to **0.5494**, and all of that was invented. The `0.0945 -> 0.2153 -> 0.4423 -> 0.5494`
+sequence was not converging -- its largest *relative* step was at the finest stride, which is the
+wrong shape for a resolved quantity.
+
+**And `preset_plambda` adds zero.** Where escape genuinely terminates, the finer stride changes no
+labels at all and only sharpens the time. That split is what makes the guard safe.
+
+**The first window sweep was confounded too, by this file's own instrument.** It re-ran to
+`t_e + w` with `n_sync` rescaled per window, so every window was a different discretisation, and
+it produced `0.162, 0.219, 0.011, 0.083, 0.335` -- read as "the escape condition flickers". It does
+not. `AzOut::escape_flags` records candidacy at every boundary of **one** run at **one** step size,
+and the answer is a flat zero. *`n_sync` fixed while `t_max` varies compares different
+discretisations* -- this was the same defect inverted, in a diagnostic written to catch defects.
+
+### 21.7 The guard, and what it turns the stride into
+
+`AzOpts::escape_confirm` (default **on**) holds an **in-loop** escape provisional until the next
+sync boundary and commits it only if the condition still holds -- with the **first crossing** as
+the time, because the guard decides whether the event was real, not when it happened. Boundary
+detections are the reference's own arm and are untouched. With `escape_every = 0` the guard is
+inert, so nothing already measured moves.
+
+Escape fraction across strides `0, 32, 4, 1`, guarded:
+
+| region | 0 | 32 | 4 | 1 | `t_end` distinct, 0 -> 1 |
+|---|---|---|---|---|---|
+| `deep interior` | 0.0947 | 0.1268 | **0.1564** | **0.1564** | 2982 -> 3281 |
+| `preset_shape_pl_h1` | 0.9721 | 0.9721 | 0.9721 | 0.9721 | **41 -> 2314** |
+| `preset_plambda` | 0.9938 | 0.9956 | 0.9956 | 0.9956 | **16 -> 2099** |
+| `near-field` | 0.0002 | 0.0002 | 0.0002 | 0.0002 | 86 -> 86 |
+
+**`preset_shape_pl_h1`'s labels are now stride-invariant while its `t_end` resolution improves
+56x.** That is what a pure resolution gain looks like. `deep interior` converges at stride 4 and
+4 -> 1 moves nothing, which is the convergence the unguarded sequence never showed.
+
+**So the stride is a COST knob, not a correctness one** -- a coarse stride only delays detection,
+it no longer changes which event wins or how many there are. That is the property that makes the
+default safe to choose on cost grounds.
+
+`deep interior`'s residual `0.0947 -> 0.1564` is the precedence repair arriving: those are escapes
+that genuinely occurred mid-interval and persisted, but were pre-empted by a collision that fired
+first under the coarse cadence. It is the same order as the directly counted precedence population
+(5.21% of all trajectories), which is corroboration rather than a second effect.
+
+### 21.8 Fix 1 measured alone: nearly inert in production, large on the reference path
+
+`classify` used to rank collision above escape unconditionally, **discarding both times**, and
+justified it as *"collision is sampled continuously, so it is the earliest thing that can fire"*.
+Continuous sampling makes it the earliest **detected**, not the earliest **occurring**. Deciding by
+`min(t)` -- with `t_end` set the same way, so the state and its time cannot disagree -- removes the
+dependence on when each arm happens to be sampled.
+
+Measured with the cadence untouched, it moves **one footprint of 5440**. Under `stop_on_event` the
+loop breaks on the first *detected* event, so only one is ever recorded and `min(t)` has nothing to
+compare. Its subject lives on the reference path, where both arms accumulate:
+
+| region | fired both arms | escaped FIRST, labelled `collision` | median lead |
+|---|---|---|---|
+| `preset_plambda` | 996 | **990** (99.4%; **42.97% of all**) | 2.6201 = 6.45 intervals |
+| `deep interior` | 1219 | 120 (9.8%; 5.21% of all) | 0.5084 = 1.25 intervals |
+| `near-field` | 0 | 0 | -- |
+
+**The ordering guarantee that makes the stride safe comes from sampling both arms at the same
+cadence, not from `min(t)`.** `min(t)` is what stops the state and `t_end` disagreeing, and it is
+what the reference path needed.
+
+### 21.9 A spec change behind flags, with both defaults chosen from measurement
+
+`AzOpts::escape_every` defaults to **0**, the reference's boundary-only cadence, and
+`escape_confirm` defaults to **on** but is inert at that stride, so nothing already measured has
+moved -- `cargo test --release` is **213 passed / 0 failed** with the Python cross-check green. Turning it on changes results, and the cross-check and the horizon table were both measured
+coarse, so it is a spec change behind a flag rather than a tidy-up.
+
+`tests/outcome_encoding.rs` asserts **both** arms, because a flag that does nothing passes as
+easily as one that works: at the reference cadence an escape time must land exactly on a sync
+boundary, and at the fine cadence some escaping trajectory's `t_end` must actually move off it.
+It also fails if no trajectory in the test escaped at all -- Burrau's near-field could not have
+exercised this, and a test whose subject never executes is decoration.
+
+The guard carries **two** arms for the same reason. It must **cut** the escape count in
+`deep interior`, where the transients are; it must **not** cut it on `preset_plambda`, where escape
+genuinely terminates and the finer stride adds none. A guard that rejects everything passes the
+first arm exactly as well as a correct one, and only the second tells them apart.
+
+**Bisection within the firing interval is not implemented, and the counts say it is not needed at
+these strides.** The stride alone takes `preset_shape_pl_h1` from 41 distinct `t_end` values to
+2314 and drops the on-boundary fraction from 98.60% to 1.43% -- the step is already RK4-sized. The
+confirming test is a render at 1024², which has not been run; the count evidence is not a
+substitute for it and is not quoted as one.
+### 21.10 The second diagnostic: the crisp edges are real, the banding is not
+
+`preset_shape_pl_h1_uniform_outcome.png` is already committed. Under outcome-class colouring the
+**banding vanishes entirely** -- consistent with it being a continuous-field artefact -- while the
+**crisp polygonal edges survive and sharpen**: straight lines meeting at points, and a genuinely
+*circular* boundary around the central fan. Those are outcome-class boundaries, so they are real
+regime structure and not a colouring artefact.
+
+A circle plus radiating wedges is **polar structure in the chart plane**: a radius threshold and an
+angle threshold. Saturation is the candidate that would produce it. **Stated and stopped there** --
+two image diagnoses on this project have already been settled by one targeted measurement, and
+speculating past the render is how the earlier ones went wrong.
+
 
 ---
 
@@ -2938,7 +3271,8 @@ Every table above comes from a committed example. Raw output for all of them is 
 | the NumPy cross-check | `cargo test --release --test xcheck -- --ignored --nocapture` |
 | the horizon table | `python3 tools/xcheck/horizon.py [--lc-unstable]` |
 | §10.1 between vs within | `cargo run --release --example between_vs_within -- 2000 1e-4 0.2 512` |
-| §10.2-10.4 the metric | `cargo run --release --example criterion_metric -- 6 8 1e-4 13` |
+| §10.2-10.4 the metric | `cargo run --release --example criterion_metric -- 6 8 1e-4 13` (a fifth argument sets the output root; it defaults to `results` and any **validation** run must override it) |
+
 | §10.3 at a longer horizon | `cargo run --release --example criterion_metric -- 6 8 1e-4 20` |
 | §10.5 sibling noise | `cargo run --release --example sibling_noise -- 5 3` |
 | §10.6 the FTLE cross-check | `cargo test --release --test xcheck -- --ignored ftle --nocapture` |
@@ -2964,5 +3298,9 @@ Every table above comes from a committed example. Raw output for all of them is 
 | §19.5 the undetermined-footprint census | `cargo run --release --example nan_probe -- 128` |
 | §18.3 stage 2, structure x criterion | `cargo run --release --example criterion_sweep -- 2 40000 0.2 1024 1e-4 0.25` |
 | §18.2 stage 3, alpha | `cargo run --release --example criterion_sweep -- 3 40000 0.2 1024 1e-4 0.25` |
-| §20 the ceiling, and the oracle audit | `cargo run --release --example oracle_audit -- 7 8 1e-4 13 all` |
+| §20 the ceiling, uniform, and the audit | `cargo run --release --example oracle_audit -- 7 8 1e-4 13 all` |
+| §21 the sync-cadence artefact | `cargo run --release --example sync_artefact -- 3 8 13 1 0` (unguarded) and `... 3 8 13 1 1` (guarded) |
+| §21.6 persistence and precedence | `cargo run --release --example escape_persistence -- 48 13 32` |
+| the signal audit against the DP labels | `cargo run --release --example signal_audit -- 7 8 1e-4 13 <scratch>` (~2 h; it enables the FTLE march, which is ~2.5x a plain build. **Point it at a scratch root**) |
+| §20.6 firing the bound assert cheaply | `cargo run --release --example criterion_metric -- 4 8 1e-4 13 /tmp/scratch` |
 | §20.1 the bound over every ranking | `cargo test --release --test criterion no_ranking_beats -- --nocapture` |

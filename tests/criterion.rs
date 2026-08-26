@@ -1248,6 +1248,7 @@ fn no_ranking_beats_the_exact_tree_optimum() {
     let budgets: Vec<usize> = (0..=max_splits).map(|s| 1 + 4 * s).collect();
 
     let mut ranks: Vec<Rank> = vec![
+        Rank::Uniform,
         Rank::GreedyLookahead1,
         Rank::GreedyLookahead1PerCost,
         Rank::StructureOnly,
@@ -1308,4 +1309,193 @@ fn no_ranking_beats_the_exact_tree_optimum() {
             dp.raw[s]
         );
     }
+}
+
+
+/// `Rank::Uniform` must actually be breadth-first, and the test has to be able to fail.
+///
+/// **This is the baseline every table in the corpus was missing**, so it is worth asserting
+/// rather than assuming: at the budgets where a complete tree exists,
+/// `B_d = 1 + 4(4^d - 1)/3`, every leaf must sit at level `d` exactly. A ranking that merely
+/// *tended* shallow would pass a depth-variance check and fail this.
+///
+/// The negative control is in the same test: a signal-ranked replay at the same budget must NOT
+/// produce a single-level tree, or the assertion above is measuring the budget rather than the
+/// ranking.
+#[test]
+fn uniform_is_breadth_first_and_a_signal_ranking_is_not() {
+    use prin_rs::ensemble::pixel::EnsembleCfg;
+    use prin_rs::metric::Rank;
+    let ens = EnsembleCfg {
+        n_extra: 1,
+        t_max: 2.0,
+        n_sync: 4,
+        refine_flagged: false,
+        ..Default::default()
+    };
+    // **`levels = 3`, and the negative control is why.** On a 2-level tree every level-complete
+    // budget is degenerate: `B = 5` is one split from the root, which is a complete level-1 tree
+    // whatever the ranking says, and `B = 21` is the whole tree. The control below fired on
+    // exactly that and it was right to -- the assertion could not have discriminated there.
+    let cache = prin_rs::metric::build(
+        "deep interior", 0.0, 0.0, 0.05, 0, prin_rs::grid::Chart::BodyPlane, 3, 2, 16, 1e-4, &ens,
+        prin_rs::metric::Colouring::Outcome,
+    );
+    let mut saw_multi_level = false;
+    for d in 1..=3u32 {
+        let b = 1 + 4 * (((1usize << (2 * d)) - 1) / 3);
+        let leaves = cache.leaves_at(Rank::Uniform, b);
+        assert_eq!(
+            leaves.len(),
+            1usize << (2 * d),
+            "uniform at B={b} must be the complete tree at level {d}"
+        );
+        assert!(
+            leaves.iter().all(|k| k.0 == d),
+            "uniform at B={b} left leaves off level {d}: {leaves:?}"
+        );
+        // `d = 1` is one split from the root and `d = levels` is the whole tree: both are
+        // single-level under any ranking, so only the interior rungs can carry the control.
+        if d > 1 && d < 3 {
+            let sig = cache.leaves_at(
+                Rank::Signal(prin_rs::quad::Criterion::Within, prin_rs::quad::Agg::Median),
+                b,
+            );
+            if sig.iter().any(|k| k.0 != d) {
+                saw_multi_level = true;
+            }
+        }
+    }
+    assert!(
+        saw_multi_level,
+        "a signal ranking produced a single-level tree at every budget too, so the uniform \
+         assertion above is measuring the budget and not the ranking"
+    );
+}
+
+
+/// The DP's labels must describe the DP's own tree, and the check has to be able to fail.
+///
+/// `Dp::labels` is the ground truth the whole signal audit is scored against, so a silent error
+/// in it would not produce a wrong answer -- it would produce a confident one. Four assertions,
+/// and the last is the one with teeth:
+///
+/// - the tree at `s` splits has `1 + 4s` nodes and `1 + 3s` leaves;
+/// - every internal node has all four children in the map;
+/// - the leaves tile the root;
+/// - **the labels actually differ between two budgets.** Without that the stability statistic in
+///   `signal_audit` would be measuring the budget rather than the labels, and would read as
+///   perfect stability -- which is exactly what the smoke pass produced at `levels = 3`, where
+///   the ladder collapsed to one rung.
+#[test]
+fn dp_labels_describe_the_optimal_tree_and_move_with_budget() {
+    use prin_rs::ensemble::pixel::EnsembleCfg;
+    use prin_rs::grid::Chart;
+    use prin_rs::metric::{self, Key};
+
+    let (levels, n) = (3u32, 2usize);
+    let res = (1usize << levels) * n;
+    let ens = EnsembleCfg {
+        n_extra: 1,
+        t_max: 2.0,
+        n_sync: 4,
+        refine_flagged: false,
+        ..Default::default()
+    };
+    let cache = metric::build(
+        "deep interior", 0.0, 0.0, 0.05, 0, Chart::BodyPlane, levels, n, res, 1e-4, &ens,
+        metric::Colouring::Outcome,
+    );
+    let full = ((1usize << (2 * (levels + 1))) - 1) / 3;
+    let max_splits = (full - 1) / 4;
+    let dp = cache.dp_optimal(max_splits);
+
+    let mut seen: Vec<std::collections::HashMap<Key, bool>> = Vec::new();
+    for s in [1usize, 5, 21, max_splits] {
+        let m = dp.labels(s);
+        let leaves = m.values().filter(|v| !**v).count();
+        let internal = m.len() - leaves;
+        assert_eq!(m.len(), 1 + 4 * s, "tree at {s} splits must hold 1 + 4s nodes");
+        assert_eq!(leaves, 1 + 3 * s, "tree at {s} splits must hold 1 + 3s leaves");
+        assert_eq!(internal, s, "exactly one internal node per split");
+        for (k, v) in &m {
+            if *v {
+                for c in prin_rs::metric::Cache::children(*k) {
+                    assert!(m.contains_key(&c), "internal {k:?} is missing child {c:?}");
+                }
+            }
+        }
+        // The leaves tile the root, so the label set covers the image and nothing twice.
+        let area: usize = m
+            .iter()
+            .filter(|(_, v)| !**v)
+            .map(|(k, _)| {
+                let span = res >> k.0;
+                span * span
+            })
+            .sum();
+        assert_eq!(area, res * res, "leaves at {s} splits do not tile the root");
+        seen.push(m);
+    }
+
+    // **The negative control.** Some quad present in both trees must carry a different label,
+    // or the stability statistic built on this cannot fire.
+    let (a, b) = (&seen[0], &seen[seen.len() - 1]);
+    let moved = b.iter().filter(|(k, v)| a.get(k).is_some_and(|p| p != *v)).count();
+    assert!(
+        moved > 0,
+        "no quad shared between the two budgets changed its label, so a stability statistic \
+         over these would report perfect stability without ever testing it"
+    );
+}
+
+/// `replay_scored` must be the same replay as `replay`, or the fitted row is not comparable to
+/// the criterion rows it is printed against.
+///
+/// Handed a criterion's own per-quad scores it has to reproduce that criterion's leaf set
+/// **bitwise** -- same argmax, same non-finite convention, same level-first tie-break. Checked on
+/// a criterion that is NaN over part of the region (`term_grad`), because the non-finite
+/// convention is where the two could diverge and still look right on a well-behaved signal.
+#[test]
+fn replay_scored_reproduces_a_rank_exactly() {
+    use prin_rs::ensemble::pixel::EnsembleCfg;
+    use prin_rs::grid::Chart;
+    use prin_rs::metric::{self, Key, Rank};
+    use prin_rs::quad::{Agg, Criterion};
+
+    let (levels, n) = (3u32, 2usize);
+    let res = (1usize << levels) * n;
+    let ens = EnsembleCfg {
+        n_extra: 1,
+        t_max: 2.0,
+        n_sync: 4,
+        refine_flagged: false,
+        ..Default::default()
+    };
+    let cache = metric::build(
+        "deep interior", 0.0, 0.0, 0.05, 0, Chart::BodyPlane, levels, n, res, 1e-4, &ens,
+        metric::Colouring::Outcome,
+    );
+    let full = ((1usize << (2 * (levels + 1))) - 1) / 3;
+
+    let mut any_nan = false;
+    for c in [Criterion::Within, Criterion::FracHotBetween, Criterion::TerminationGradient] {
+        let rank = Rank::Signal(c, Agg::Median);
+        let scores: std::collections::HashMap<Key, f64> = cache
+            .quads
+            .keys()
+            .map(|k| (*k, metric::score(&cache, *k, rank)))
+            .collect();
+        any_nan |= scores.values().any(|v| !v.is_finite());
+        for b in [5usize, 21, 85, full] {
+            let a = cache.leaves_at(rank, b);
+            let (_, d) = metric::replay_scored(&cache, &scores, b);
+            assert_eq!(a, d, "replay_scored diverged from {} at B={b}", rank.name());
+        }
+    }
+    assert!(
+        any_nan,
+        "none of the criteria tested scored a non-finite value, so the non-finite convention -- \
+         the one place the two replays could diverge -- was never exercised"
+    );
 }

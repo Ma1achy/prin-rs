@@ -69,6 +69,21 @@ pub struct AzOut<T> {
     /// or it silently reads short. `stats::event_class_at` already does, with `tight.get(k)`
     /// and a terminal fallback.
     pub boundary_shapes: Vec<[T; 3]>,
+    /// Whether the **escape condition holds** at each completed sync boundary.
+    ///
+    /// Not "has escaped": the instantaneous candidacy, sampled on the same cadence as
+    /// [`Self::tight`]. It exists because the escape condition turned out **not to be
+    /// absorbing**: `escape_candidate` is relative energy `> 0` and receding, and in a
+    /// collision-rich region a pair can be transiently unbound and then re-bind. Measured in
+    /// `deep interior`, **885 of 895** trajectories that escape only under an in-loop test are
+    /// re-bound one sync interval later.
+    ///
+    /// A persistence guard therefore cannot be written against a single later instant, and this
+    /// is the record it has to be written against instead -- one integration, one
+    /// discretisation, the whole history. Reading persistence by re-running to `t_e + w` with
+    /// `n_sync` rescaled makes every window a different discretisation, which is the same defect
+    /// as holding `n_sync` fixed while `t_max` varies.
+    pub escape_flags: Vec<bool>,
     /// Time of the first terminating event, or the time reached if none fired. Distinct from
     /// `t` only when `stop_on_event` is off, where the run continues past the event.
     pub t_end: T,
@@ -93,6 +108,49 @@ pub struct AzOpts<'a, T> {
     /// `t_max` and the event is recorded but not acted on — which is what the reference does,
     /// and what keeps every copy's continuous fields evaluated at a common playhead.
     pub stop_on_event: bool,
+    /// How often the **escape** test runs inside the RK4 loop, in steps. `0` is the
+    /// reference's cadence: boundaries only.
+    ///
+    /// **This is the one place `t_end` is quantised, and it is a rendering defect as well as a
+    /// measurement one.** Collision is sampled inside the loop (`tc = t + s.t`) and carries
+    /// RK4-step resolution; escape is sampled only where the state is already Cartesian and
+    /// every trajectory shares a playhead, which is what the reference does. So with
+    /// `n_sync = 32` at `t_max = 13`, an escape-terminated `t_end` takes **32 possible values
+    /// across a whole chart**, and any field derived from it renders those steps as concentric
+    /// contour bands.
+    ///
+    /// That matters exactly where escape terminates. On Burrau's near-field at `t = 13` the
+    /// escape arm is silent and every termination is a collision, so `t_end` there is already
+    /// continuous. On the latent charts `escape_fraction` runs 0.9894-1.0000, so essentially
+    /// every `t_end` is a boundary time. **The prediction is that the banding appears on the
+    /// second set and not the first**, and it is measured rather than argued.
+    ///
+    /// **Default `0`, and it must stay there.** Turning this on changes results: the
+    /// cross-check against `reference/tb_az.py` and the horizon table were both measured at
+    /// the coarse cadence, and the reference has no finer one to compare against. This is a
+    /// spec change behind a flag, not a tidy-up.
+    pub escape_every: usize,
+    /// Require an **in-loop** escape detection to still hold at the next sync boundary before
+    /// it is accepted as terminal.
+    ///
+    /// **Measured, and it is not a precaution — without it the in-loop test is simply wrong in a
+    /// collision-rich region.** `escape_candidate` is relative energy `> 0` and receding, and
+    /// during a close encounter that is transiently true. In `deep interior`, of the 895
+    /// trajectories that escape under `escape_every = 1` and not at the reference cadence,
+    /// **0.000 are still unbound one boundary later** — and 0.000 at +2, +3, +4 and +8. All 895
+    /// are transients, and latching them took the escape fraction from 0.0945 to 0.5494.
+    ///
+    /// It applies to in-loop detections **only**. Boundary detections are the reference's own
+    /// arm and are left exactly as they are; on the latent charts, where escape genuinely
+    /// terminates, the finer stride adds **zero** new escapes, so there is nothing there for a
+    /// guard to catch and nothing for it to break.
+    ///
+    /// The committed time is the **first crossing**, not the confirmation — the guard decides
+    /// whether the event is real, not when it happened.
+    ///
+    /// Same shape as `spread_event_latched`'s `LATCH_RUN`, which exists for this reason on a
+    /// different field; the convention is reused rather than a new one invented.
+    pub escape_confirm: bool,
     /// Record the shape vector at every sync boundary, for the temporal accumulators (§5).
     ///
     /// Off by default: `n_sync` triples per copy is ~70x the size of a `PixelOut`, and it is
@@ -108,6 +166,8 @@ impl<T: Real> Default for AzOpts<'_, T> {
             lc_stable: true,
             r_coll_frac: T::zero(),
             stop_on_event: true,
+            escape_every: 0,
+            escape_confirm: true,
             keep_boundary_shapes: false,
         }
     }
@@ -154,6 +214,8 @@ pub fn integrate_az_lc<T: Real>(
             lc_stable,
             r_coll_frac: T::zero(),
             stop_on_event: false,
+            escape_every: 0,
+            escape_confirm: true,
             keep_boundary_shapes: false,
         },
     )
@@ -181,6 +243,7 @@ pub fn integrate_az_opts<T: Real>(
     let mut prev_ref: Option<usize> = None;
     let mut refs = Vec::with_capacity(n_sync);
     let mut tight = Vec::with_capacity(n_sync);
+    let mut escape_flags = Vec::with_capacity(n_sync);
     let mut tie_ratio = Vec::with_capacity(n_sync);
     let mut boundary_shapes: Vec<[T; 3]> =
         Vec::with_capacity(if opts.keep_boundary_shapes { n_sync } else { 0 });
@@ -189,6 +252,8 @@ pub fn integrate_az_opts<T: Real>(
     let mut budget_exhausted = false;
     let mut events = Events::default();
     let mut t_end: Option<T> = None;
+    // An in-loop escape awaiting confirmation at the next boundary. See `AzOpts::escape_confirm`.
+    let mut pending_escape: Option<(u8, T)> = None;
 
     // Canonical and fixed at t=0: a fraction of *this* trajectory's initial hyperradius,
     // evaluated once, before anything moves. Never recomputed from the instantaneous
@@ -289,6 +354,32 @@ pub fn integrate_az_opts<T: Real>(
                 }
             }
 
+            // The escape test at RK4-step resolution, when asked for. Off by default: this is
+            // the reference's cadence and changing it changes results. `to_cartesian` per
+            // tested step is the cost, which is why it is strided rather than unconditional.
+            if opts.escape_every > 0
+                && events.escape.is_none()
+                && pending_escape.is_none()
+                && steps % opts.escape_every == 0
+            {
+                let c = sys.to_cartesian(&s);
+                if let Some(b) = crate::outcome::escape_candidate(&c, m) {
+                    let te = t + s.t;
+                    if opts.escape_confirm {
+                        // Provisional. Do NOT break: the trajectory has to reach the next
+                        // boundary for the condition to be re-tested, and breaking here is
+                        // what turned 895 transients into terminal escapes.
+                        pending_escape = Some((b, te));
+                    } else {
+                        events.escape = Some((b, te));
+                        t_end.get_or_insert(te);
+                        if opts.stop_on_event {
+                            break;
+                        }
+                    }
+                }
+            }
+
             let g = gamma_residual(&sys, &s, e);
             if g.is_finite() && g > gamma_max {
                 gamma_max = g;
@@ -310,6 +401,22 @@ pub fn integrate_az_opts<T: Real>(
             let mut d = crate::physics::newton::pair_dists(&cart.r);
             d.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
             tie_ratio.push(d[1] / d[0].max(T::TINY));
+        }
+
+        // Instantaneous candidacy at this boundary, recorded whether or not it has already
+        // fired — this is the history a persistence guard reads, and it must not stop being
+        // written once `events.escape` is set.
+        let candidate_now = crate::outcome::escape_candidate(&cart, m);
+        escape_flags.push(candidate_now.is_some());
+
+        // Confirm or discard a provisional in-loop escape. The committed time is the FIRST
+        // crossing, not this boundary: the guard decides whether the event was real, not when
+        // it happened.
+        if let Some((b, te)) = pending_escape.take() {
+            if candidate_now.is_some() {
+                events.escape = Some((b, te));
+                t_end.get_or_insert(te);
+            }
         }
 
         // The escape test runs at the sync boundary, where the state is Cartesian and every
@@ -340,12 +447,23 @@ pub fn integrate_az_opts<T: Real>(
         refs,
         tight,
         tie_ratio,
+        escape_flags,
         boundary_shapes,
         steps: total_steps,
         finite,
         budget_exhausted,
         events,
-        t_end: t_end.unwrap_or(t),
+        // **The EARLIEST recorded event, not the first one inserted.** `get_or_insert` gave
+        // whichever arm happened to be sampled first, which is the same ordering error
+        // `classify` carried: escape is tested only where the state is Cartesian, so a
+        // collision detected mid-interval could take `t_end` from an escape that preceded it.
+        // Taking the min makes `t_end` agree with the state `classify` returns by construction.
+        t_end: match (events.collision, events.escape) {
+            (Some((_, a)), Some((_, b))) => a.min(b),
+            (Some((_, a)), None) => a,
+            (None, Some((_, b))) => b,
+            (None, None) => t_end.unwrap_or(t),
+        },
     }
 }
 

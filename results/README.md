@@ -92,6 +92,10 @@ rows = [struct.unpack_from(f"<{nf}d", d, off + i*nf*8) for i in range(n)]
 | `output/threshold_diagnosis.txt` | **where `tau` sits in the distribution it is meant to cut**, re-derived from all 69 committed `.prnq` dumps: the percentile ladder, the mask saturation, the two-sided failure, and which gate stopped each criterion-bound tree |
 | `output/sched_sweep.txt` | `tau` x `alpha_hi`, no camera. Ladder `1e-8 … 1e-1`: **both** low rungs are labelled degenerate controls, for *different* regions — `1e-8` is the only rung below `far`'s bulk |
 | `output/sweep_screen.txt` | the same sweep under the screen floor, with the `tau` span taken over the whole ladder rather than between two named rungs |
+| `output/escape_persistence.txt` | **§21.6/21.8**: do the escapes an in-loop test adds PERSIST, and how large was the precedence bug? Candidacy at +1..+8 sync boundaries over one discretisation, plus the count of trajectories that escaped first and were labelled `collision` by the old fixed order |
+| `output/sync_artefact_guarded.txt` | **§21.7**: the same sweep with `escape_confirm` on -- labels stride-invariant on the charts, `deep interior` converging at stride 4. The delta against `sync_artefact.txt` is the guard |
+| `output/sync_artefact.txt` | **§21**: is the concentric banding on the latent charts a sync-cadence artefact? `t_end` distinct values and the fraction landing exactly on a sync boundary, at four escape-test strides, over two Burrau regions and two latent charts -- plus the `d_min` split by terminal state that says whether a finer cadence is a fix or spurious mid-encounter firing |
+| `output/oracle_audit.txt` | **§20**: the exact `dp_optimal` ceiling, the `uniform` (breadth-first) baseline, the criterion-to-uniform gap per level, gain and `err_sum` by level, leaf histograms, and the lag-1 coherence that says whether a region's colour field is smooth or amplified noise. Read the four roles at the top: floor `random`, **baseline `uniform`**, reference `greedy_lookahead_1`, ceiling `dp_optimal` |
 | `output/structure_metric.txt` | **§2.2 settled**: `error(B)` for `off` / `multiply` / `replace` on three targets, with `structure_only` and the threshold-free `grad_rms` as controls. Read the oracle-to-random separation first, then `off` against `multiply` on the *same arm* |
 | `output/balanced_march.txt` | **§3.2's acceptance test**: depth variance and per-quad churn against `t`, balanced against the uniform control. Carries the median leaf spread per row, which is what shows the treadmill premise to be wrong in sign |
 | `output/hot_rule_sweep.txt` | the hot rule swept per region — mask saturation and component counts under `abs` against `q[0.50/0.75/0.90]`, with a constant leaf count asserted as the control |
@@ -744,7 +748,10 @@ If an image looks blurry, **measure its pixel dimensions first**. Wireframe line
 integer pixel `set` calls and adaptive texels are nearest-neighbour, so neither can be soft in the
 file — softness is always a viewer upscaling a small raster. That diagnosis cost a round trip in
 this build, after a `criterion_metric -- 3 8` validation run was allowed to overwrite committed
-512² artefacts with 128×64 ones.
+512² artefacts with 128×64 ones. `criterion_metric` now takes the output root as its **fifth
+argument** (default `results`), so a reduced-`levels` validation pass — the one that exists to fire
+the `dp_optimal` bound assertion cheaply — writes to scratch. An output path that cannot be
+redirected is the same defect as an argument hardcoded past.
 
 ### Regenerating the top-level region images and raw dumps
 

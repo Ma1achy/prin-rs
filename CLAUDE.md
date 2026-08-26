@@ -908,7 +908,173 @@ level histogram says how. `within/median` in `near-field` at `B = 1535` leaves *
 level 7 -- its allocation is *inverted*, not merely worse. No error cell showed that, and the
 headroom it implies is real: the best criterion leaves **5.1% at `B = 1535` and 16.3% at
 `B = 12287`** of achievable improvement in `near-field`. Against greedy that figure read
-*negative*, which is why the question was unanswerable by inspection.
+*negative*, which is why the question was unanswerable by inspection. **This is the strongest
+finding in that run and the strongest argument for changing the default -- stronger than any error
+digit.** Those percentages are `frac_hot_between` against `dp`; with `Rank::Uniform` in the table the
+best *row* forfeits 3.4% and 12.4% at the same budgets, and it is uniform.
+
+**"BEATS RANDOM" IS THE WRONG BAR; THE BASELINE IS BREADTH-FIRST.** `Rank::Uniform` was missing from
+every table in the corpus, and against it most of the standing comparisons change sign.
+`frac_hot_between/median` -- the best criterion measured on this project -- **never beats uniform in
+`near-field` at any budget** (`0.11148` against `0.10984` at `B = 1535`), while sitting well clear of
+the random band. In `far` uniform **is** the exact optimum. Only `deep interior` at `B >= 6143` shows
+a criterion decisively ahead (`0.04035` against `0.04813`). Random is a floor no strategy should be
+below; it is not the thing a criterion has to beat.
+
+**THE HEADROOM RISES WITH STRUCTURE, AND A CRITERION ONLY EARNS ITS KEEP WHERE STRUCTURE IS
+LOCALISED.** Share of achievable improvement the best row forfeits at `B = 1535`: `far` **0.0002**
+(nothing varies), `near-field` **0.0336** (structure localised), `deep interior` **0.0999**
+(structure everywhere). Where nothing varies there is nothing to rank; where everything varies the
+budget must go everywhere and breadth-first is right again. So `far` degenerating is **correct
+behaviour** -- it is the control that shows what a featureless field looks like, not a region where
+the criteria mysteriously tie.
+
+**QUOTE THE GAP AS A CURVE; ONE BUDGET SUPPORTS A DIFFERENT STORY IN EVERY REGION.** `near-field`
+rises `0.0336 -> 0.1106 -> 0.1241` over `B = 1535, 6143, 12287` -- the criterion is adequate early
+and progressively worse late, which fits the inverted histogram: the failure is **late-stage
+allocation**. `deep interior` peaks at `B = 3071` and falls; `far` collapses to zero by `B = 1535`.
+Same statistic, three shapes.
+
+**THE CRITERION-TO-UNIFORM GAP RISES WITH DEPTH -- AND THAT IS THE ARGUMENT AGAINST A DEPTH
+PARAMETER, NOT FOR ONE.** `captured = (uniform - row)/(uniform - dp)` by level in `deep interior`:
+**-9.38, -1.97, -0.45, -0.04, +0.53** at levels 2-6. Shallow splits the criterion chooses are
+actively worse than raster order. But the crossing sits at level 6 there, is **never reached** in
+`near-field`, and is undefined in `far` -- so any fixed depth is a tunable constant that must be
+retuned per region, the same defect that killed a fixed `tau`. And the ranking **already
+self-adapts**: on a flat signal it ties, ties fall to a level-first tie-break, and that *is*
+breadth-first. Protect that property rather than overriding it.
+
+**AMPLITUDE CANNOT TELL A SMALL REAL SIGNAL FROM NOISE; COHERENCE CAN.** The AUTO-RANGED OVER NOISE
+guard's two arms both read amplitude, and its absolute arm compares against the region's own median
+energy drift -- so in a tame region the floor falls with the field it is meant to bound, a ratio in
+disguise. `far` cleared it at `ramp.1 = 1.064e-8` against a floor of `4.478e-9`. The discriminator
+is **spatial coherence**: lag-1 neighbour correlation of the ramped scalar reads **0.9434 -> 1.0000**
+across levels on `far`, and its p1/p99 halve **exactly** (ratio 2.000) per level -- `spread ~ g*w`
+measured, a real gradient of tiny magnitude. `far` is a smooth field, not an amplified noise floor,
+and the level-2 `err_sum` barrier is a property of the field. A third guard arm now reads coherence.
+
+**AN OUTPUT ROOT IS AN ARGUMENT, NOT A CONSTANT.** `criterion_metric` wrote to a hardcoded
+`results/`, so the reduced-`levels` validation pass that exists to fire the `dp_optimal` assert would
+overwrite the committed 512^2 artefacts with a small raster -- the failure already on record, at a
+second site. The root is now argument five, defaulting to `results`. **And an assert that has never
+run is a gap that survives indefinitely**: the bound assertion was executed at scale, worst margins
+`-1.4e-17`, `-5.6e-17`, `+0.0e0` across three regions.
+
+**A DEGENERATE DENOMINATOR IS THE FINDING, NOT A RATIO.** Where uniform *is* the optimum -- what a
+smooth field looks like -- `uniform - dp` is a rounding epsilon of either sign, and `captured` printed
+**-0.6786** on `far` from a denominator of `-1.55e-15`. It reads as "the criterion is 68% worse" and
+means "the two are identical to machine precision". Print the identity.
+
+**`t_end` IS QUANTISED WHERE ESCAPE TERMINATES, AND IT RENDERS AS CONCENTRIC CONTOUR BANDS.**
+Collision is sampled inside the RK4 loop (`tc = t + s.t`) and carries step resolution; **escape is
+sampled only at sync boundaries**, the reference's cadence. So `t_end` takes `n_sync` values across
+a whole chart wherever escape is the terminating event, and every derived field draws those steps.
+Measured at `escape_every` 0 -> 1: `preset_plambda` **16 -> 2623** distinct with **99.52% -> 0.26%**
+landing exactly on a boundary; `preset_shape_pl_h1` **41 -> 2316**. **`near-field` is bitwise
+unaffected at every stride** -- its escape arm is silent at `t = 13` and it terminates by collision,
+so there is nothing to quantise. The mechanism predicts which images band, which is what makes it a
+mechanism. `AzOpts::escape_every` defaults to `0`; turning it on is a **spec change**, because the
+cross-check and the horizon table were both measured coarse.
+
+**A COUNT CAPPED BELOW ITS OWN DECISION THRESHOLD CANNOT DECIDE ANYTHING.** The proposed test for
+that artefact was *"recount `frac_hot_between`: 45 -> thousands means quantisation, 45 -> 45 means
+Wada"*. But `frac_hot_between` is `frac_above_tau_between`, a fraction over `N^2` footprints, so at
+`N = 8` it has **at most 65 distinct values by construction** -- the corpus's own `31 / 65 / 64` is
+that ceiling showing. It would have reported "Wada" under either hypothesis. **Check a statistic's
+arithmetic range against the threshold before using it as a test.** The count that can fire is
+`t_end` itself, which is unbounded and is the quantity actually being quantised. Measured anyway,
+`frac_hot_between` moves the *wrong way* -- more saturated under the finer cadence, 31 -> 12
+distinct with modal 41.2% -> **83.5%** -- so the saturation is not quantisation.
+
+**"ON A BOUNDARY" CONFLATES QUANTISED WITH FINISHED.** `near-field` reads **97.85%** of `t_end`
+landing on a sync boundary while being completely clean, because 97.8% of its footprints are
+*Bounded* and sit at `t_end = t_max = 13`, itself a multiple of the sync interval. The horizon is a
+boundary time. **Read the delta across cadences, never the level.**
+
+**THE CADENCE'S REAL EFFECT IS AN OUTCOME RE-LABELLING, NOT A RESOLUTION GAIN.** `deep interior`'s
+`t_end` was already continuous (2983 -> 3303, 1.1x) but its terminal class moves **escape
+0.0945 -> 0.5494, collision 0.8965 -> 0.4482** -- half the region. Under `stop_on_event` a genuine
+early escape is not *noticed* until the next boundary; the run keeps integrating, dips below
+`r_coll`, and a collision wrongly wins precedence. A different defect from the one the banding
+pointed at, found by the same measurement.
+
+**AND THE `d_min` DISCRIMINATOR SAYS IT IS A FIX, NOT SPURIOUS FIRING.** Testing escape inside the
+RK4 loop also asks it *during* a close encounter, where a pair's instantaneous two-body energy can
+read positive transiently -- which would re-label the footprints with the **smallest** separations.
+The re-labelled ones have the **largest**: escaped `d_min` p50 **1.063e-3 -> 4.419e-3** and p10
+1.891e-4 -> 1.164e-3, while collided p10 rises 2.734e-4 -> 7.016e-4. Tightest approaches stay
+collisions; marginal ones just under `r_coll` become escapes. It converges between strides 4 and 1.
+**Not tested:** whether a fired escape persists to the following boundary.
+
+**THE BANDING IS A COLOURING ARTEFACT; THE CRISP EDGES ARE NOT.** Under outcome-class colouring
+(`preset_shape_pl_h1_uniform_outcome.png`, already committed) the arcs vanish entirely while the
+straight edges survive and sharpen -- including a genuinely **circular** boundary around the
+central fan. Outcome-class boundaries are real regime structure. A circle plus radiating wedges is
+**polar structure in the chart plane**: a radius threshold and an angle threshold, with saturation
+the candidate. Stated and stopped there -- two image diagnoses on this project were settled by one
+targeted measurement each, and speculating past the render is how the earlier ones went wrong.
+
+**`level` NEARLY SOLVES THE DP-LABEL TASK, SO EVERY CORRELATION AGAINST IT MUST BE BLOCKED.** The
+optimum splits shallow quads and keeps deep ones, so `level` scores **|rho| = 0.993** against the
+label pooled and every signal tracking cell width inherits it. Blocked within a level,
+`spread_median` **flips sign**: pooled +0.225 -> +0.488 across the budget ladder, blocked
+**-0.173, -0.098, -0.134, -0.257**. Same confound and same repair as `rho(depth, spread)`. A
+logistic fit shows it too -- held-out AUC **0.88 -> 0.37** when `level` and `cell_width` are
+removed, so a fit carrying them is a depth model wearing 55 names.
+
+**THE DP's LABELS ARE MONOTONE IN BUDGET, so a fixed ordering is not structurally excluded.**
+Measured on `near-field` at `B = 169, 681, 2729, 10921`: **`1 -> 0` flips are exactly zero** at
+every rung, with 91 / 241 / 1049 flips all `0 -> 1`. The optimum never un-splits, so its split sets
+are strictly nested -- and nested sets are precisely what a single fixed priority order produces as
+prefixes. The per-level `captured` result is **not** a symptom of budget-dependent labels. The
+shared population is the whole smaller tree, not a thin slice.
+
+**A QUAD OUTSIDE THE OPTIMAL TREE WAS NEVER DECIDED.** `Dp::labels` maps internal -> split,
+leaf -> keep, and **absent -> absent**. Labelling an unreached quad `keep` invents tens of thousands
+of labels: at `B = 2729` the tree holds 2729 nodes of 21845. Report the population with any
+statistic taken over it.
+
+**THE ESCAPE CONDITION IS NOT ABSORBING, AND A FINER TEST LATCHES TRANSIENTS.** `escape_candidate`
+is relative energy `> 0` and receding, which during a close encounter is transiently true. Of the
+**895** `deep interior` trajectories that escape under an in-loop test and not at the reference
+cadence, **0.000 are still unbound one boundary later** -- and 0.000 at +2, +3, +4 and +8. All 895
+are transients, and latching them took the escape fraction from 0.0947 to **0.5494**. Where escape
+genuinely terminates (`preset_plambda`) the finer stride adds **zero** new escapes and only sharpens
+the time. `AzOpts::escape_confirm` holds an in-loop detection provisional until the next boundary
+and commits the **first crossing** time; guarded, `deep interior` reads 0.1564 and converges at
+stride 4, and `preset_shape_pl_h1`'s labels are **stride-invariant** while its `t_end` resolution
+improves 56x. **That makes the stride a COST knob, not a correctness one.**
+
+**A `d_min` READ OVER THE WHOLE RUN CANNOT TEST WHETHER THE RUN STOPPED TOO EARLY.** The first
+attempt at fix-or-bug compared `d_min_true` by terminal state and found the re-labelled footprints
+carried *larger* separations (p50 `1.063e-3 -> 4.419e-3`), read as "not mid-encounter firing". But a
+run stopped early by a spurious escape never reaches its close approach, so its `d_min` is larger
+**because** it terminated early. The statistic was confounded by the effect it was measuring, and
+its answer was the opposite of the truth. **Test the mechanism directly; a summary statistic over a
+truncated run inherits the truncation.**
+
+**AND THE FIRST PERSISTENCE SWEEP WAS CONFOUNDED THE SAME WAY.** It re-ran to `t_e + w` with
+`n_sync` rescaled per window, so every window was a different discretisation, and produced
+`0.162, 0.219, 0.011, 0.083, 0.335` -- read as "the condition flickers". Recording candidacy at
+every boundary of **one** run at **one** step size (`AzOut::escape_flags`) gives a flat zero.
+*`n_sync` fixed while `t_max` varies compares different discretisations* is the standing form; this
+was its inverse, inside a diagnostic written to catch exactly this.
+
+**"COLLISION IS SAMPLED CONTINUOUSLY SO IT FIRES FIRST" CONFUSES DETECTED WITH OCCURRED.**
+`classify` ranked collision above escape unconditionally and **discarded both times**. Collision is
+sampled inside the RK4 loop and escape only where the state is Cartesian, so an escape at `t = 5.0`
+noticed at `t = 5.28` lost to a collision at `t = 5.1`. Deciding by `min(t)`, with `t_end` set the
+same way so state and time cannot disagree, removes the dependence on *when each arm is sampled*.
+Measured alone it moves **one footprint of 5440** in production, because `stop_on_event` breaks on
+the first *detected* event so only one is ever recorded. On the reference path it is large:
+`preset_plambda` **990 of 996** trajectories that fired both arms escaped first and were labelled
+collision -- **42.97% of the whole slice** -- median lead 6.45 sync intervals. **The ordering
+guarantee comes from sampling both arms at the same cadence; `min(t)` is what stops the state and
+the time disagreeing.**
+
+**A GUARD NEEDS THE ARM THAT SAYS IT DID NOT CUT TOO MUCH.** `escape_confirm`'s test asserts it
+**reduces** the escape count in `deep interior` *and* leaves `preset_plambda`'s **unchanged**. A
+guard that rejects everything passes the first arm exactly as well as a correct one.
 
 ---
 

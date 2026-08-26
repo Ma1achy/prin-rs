@@ -56,6 +56,28 @@ fn arg<T: std::str::FromStr>(i: usize, d: T) -> T {
 const SHIPPING: metric::Colouring =
     metric::Colouring::Bivariate(prin_rs::output::colour::Scalar::ShapeSpread);
 
+/// Pearson `r` over paired samples. `NaN` on fewer than two pairs or a degenerate arm -- a
+/// constant field has no correlation, and saying so beats reporting 0.
+fn pearson(a: &[f64], b: &[f64]) -> f64 {
+    let n = a.len() as f64;
+    if a.len() < 2 {
+        return f64::NAN;
+    }
+    let (ma, mb) = (a.iter().sum::<f64>() / n, b.iter().sum::<f64>() / n);
+    let mut sxy = 0.0;
+    let mut sxx = 0.0;
+    let mut syy = 0.0;
+    for (x, y) in a.iter().zip(b) {
+        sxy += (x - ma) * (y - mb);
+        sxx += (x - ma) * (x - ma);
+        syy += (y - mb) * (y - mb);
+    }
+    if sxx <= 0.0 || syy <= 0.0 {
+        return f64::NAN;
+    }
+    sxy / (sxx * syy).sqrt()
+}
+
 fn q(v: &mut Vec<f64>, p: f64) -> f64 {
     if v.is_empty() { f64::NAN } else { prin_rs::stats::quantile(v, p) }
 }
@@ -160,6 +182,7 @@ fn main() {
 
         // ---- the curves ----
         let runs: Vec<Rank> = vec![
+            Rank::Uniform,
             Rank::GreedyLookahead1,
             Rank::GreedyLookahead1PerCost,
             Rank::Signal(Criterion::Within, Agg::Median),
@@ -364,6 +387,145 @@ fn main() {
                 q(&mut e, 0.1),
                 q(&mut e, 0.9)
             );
+        }
+
+        // ---- CRITERION VS UNIFORM, PER LEVEL ----
+        //
+        // "Beats random" says nothing where the optimum IS breadth-first, and on a smooth field
+        // it is. The measurement that matters is criterion vs **uniform**, and it is read per
+        // level rather than aggregated: if a criterion only beats breadth-first below some
+        // depth, that is evidence for a depth-dependent strategy with the depth MEASURED. If the
+        // gap is flat across levels, the rank formulation is already self-adapting and nothing
+        // needs adding.
+        //
+        // Evaluated at the budgets where uniform **exactly completes** a level,
+        // `B_d = 1 + 4*(4^d - 1)/3`. At any other budget uniform sits mid-level and the
+        // comparison would be scoring where its partial row happened to stop.
+        //
+        // `captured` = `(uniform - row) / (uniform - dp)`: the share of the improvement available
+        // over breadth-first that the criterion takes. 1.0 is the optimum, 0.0 is no better than
+        // refining uniformly, negative is worse than doing nothing clever.
+        {
+            let uni = rows.iter().find(|r| r.0 == "uniform").expect("uniform row");
+            println!(
+                "\n  criterion vs UNIFORM, per level -- at the budgets where uniform completes a\n\
+                 \x20 level exactly. captured = (uniform - row)/(uniform - dp); 1.0 = optimum,\n\
+                 \x20 0.0 = no better than breadth-first, <0 = worse:"
+            );
+            println!(
+                "{:>7} {:>9} {:>10} {:>10} {:>10} {:>26} {:>10}",
+                "level", "B", "uniform", "dp", "uni-dp", "best criterion", "captured"
+            );
+            for d in 1..=levels {
+                let s_d = ((1usize << (2 * d)) - 1) / 3;
+                let b_d = 1 + 4 * s_d;
+                if b_d > full {
+                    break;
+                }
+                // The printed ladder need not contain `b_d`, so replay each row at it directly.
+                let u = cache.error_of(&cache.leaves_at(Rank::Uniform, b_d));
+                let dpv = dp.at_budget(b_d);
+                let mut bestc = (f64::INFINITY, String::new());
+                for (nm, _, _) in &rows {
+                    if nm.starts_with("random")
+                        || nm.starts_with("greedy_lookahead_1")
+                        || nm == "uniform"
+                    {
+                        continue;
+                    }
+                    let r = *runs.iter().find(|r| &r.name() == nm).unwrap();
+                    let e = cache.error_of(&cache.leaves_at(r, b_d));
+                    if e < bestc.0 {
+                        bestc = (e, nm.clone());
+                    }
+                }
+                // **A denominator at the arithmetic floor is the finding, not a ratio.** Where
+                // uniform IS the optimum -- which is what a smooth field looks like -- `u - dpv`
+                // is a rounding epsilon and can be either sign, so the quotient reads as a large
+                // positive or negative number describing nothing. Print the identity instead.
+                let denom = u - dpv;
+                let cap = if denom.abs() <= 1e-12 * u.abs().max(f64::MIN_POSITIVE) {
+                    "uni==dp".to_string()
+                } else {
+                    format!("{:.4}", (u - bestc.0) / denom)
+                };
+                println!(
+                    "{d:>7} {b_d:>9} {u:>10.5} {dpv:>10.5} {denom:>10.2e} {:>26} {cap:>10}",
+                    format!("{} {:.5}", bestc.1, bestc.0)
+                );
+            }
+            let _ = uni;
+        }
+
+        // ---- IS THE FIELD SMOOTH, OR IS IT AMPLIFIED NOISE? ----
+        //
+        // The lightness ramp is each region's own p1-p99, so a field with no dynamic range has
+        // its NOISE stretched to full scale. `criterion_metric`'s guard did not fire on `far`,
+        // and `far` being auto-ranged noise is a standing finding -- so it matters whether
+        // `far`'s flat `err_sum` is physics being absent or noise failing to resolve.
+        //
+        // **Energy drift is the wrong floor to compare against**, and that is why the absolute
+        // arm cleared: a tame region has a tiny drift AND a tiny spread, so the floor falls with
+        // the field it is meant to bound and the arm is a ratio in disguise.
+        //
+        // The discriminator that is not: **spatial coherence**. Noise is incoherent between
+        // neighbouring quads; a smooth field is coherent by definition. Lag-1 neighbour
+        // correlation of the ramped scalar, per level.
+        {
+            let mut d: Vec<f64> = cache
+                .quads
+                .values()
+                .map(|q| q.red.worst_energy_drift)
+                .filter(|x| x.is_finite() && *x > 0.0)
+                .collect();
+            let drift = q(&mut d, 0.5);
+            println!(
+                "\n  ramp window (p1,p99) = ({:.3e}, {:.3e}), span x{:.3}; median energy drift \
+                 {:.3e}, guard floor 100x = {:.3e}",
+                cache.ramp.0,
+                cache.ramp.1,
+                cache.ramp.1 / cache.ramp.0.max(f64::MIN_POSITIVE),
+                drift,
+                100.0 * drift
+            );
+            println!(
+                "  lag-1 neighbour correlation of the ramped scalar (spread_shape median), by \
+                 level.\n\x20 ~0 is incoherent = noise; ~1 is a smooth field the ramp is \
+                 magnifying:"
+            );
+            println!("{:>7} {:>8} {:>12} {:>12} {:>12}", "level", "quads", "rho(lag-1)", "p1", "p99");
+            for l in 1..=levels {
+                let w = 1u32 << l;
+                let f = |ix: u32, iy: u32| -> f64 {
+                    cache.get((l, ix, iy)).red.signal(Criterion::Within, Agg::Median)
+                };
+                let mut v: Vec<f64> = Vec::new();
+                let (mut a, mut b): (Vec<f64>, Vec<f64>) = (Vec::new(), Vec::new());
+                for iy in 0..w {
+                    for ix in 0..w {
+                        let x = f(ix, iy);
+                        if x.is_finite() {
+                            v.push(x);
+                        }
+                        for (jx, jy) in [(ix + 1, iy), (ix, iy + 1)] {
+                            if jx < w && jy < w {
+                                let (y, z) = (x, f(jx, jy));
+                                if y.is_finite() && z.is_finite() {
+                                    a.push(y);
+                                    b.push(z);
+                                }
+                            }
+                        }
+                    }
+                }
+                let rho = pearson(&a, &b);
+                println!(
+                    "{l:>7} {:>8} {rho:>12.4} {:>12.3e} {:>12.3e}",
+                    v.len(),
+                    q(&mut v.clone(), 0.01),
+                    q(&mut v, 0.99)
+                );
+            }
         }
 
         // ---- who spends the budget where ----

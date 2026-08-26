@@ -186,7 +186,7 @@ fn main() {
     const NEW: Criterion = Criterion::FracHotBetween;
     const OLD: Criterion = Criterion::Within;
     const K_STEPS: [f64; 4] = [0.25, 0.5, 0.75, 1.0];
-    const K_MAIN: f64 = 0.5;
+    const K_MAIN: f64 = prin_rs::scheduler::K_FRAC_RANKED;
 
     println!("refinement animations. budget {budget}, tau={tau:.0e}, alpha_hi={alpha_hi}, \
               N=8, E+1={}, t={}, f64, {res}^2",

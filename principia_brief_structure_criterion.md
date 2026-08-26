@@ -494,6 +494,21 @@ and — if it exists — the `error(B)` curve are the results; the picture is a 
 > replay **as an ordering and never against `tau`** (`tests/criterion.rs:408` enforces it), and
 > `error = 0` means *matches this sampling*, not *correct*.
 
+> **ADDED after the fact — the mechanism shipped disabled twice, and the second time it was the
+> default.** §3's rank was built and `SchedCfg::default().k_frac` stayed at `1.0`, which takes the
+> top 100% of the ranked frontier: the priority is computed, the queue sorted, and everything in it
+> refined anyway. So all 69 committed dumps and every render made from them are the uniform-mode
+> control. The fix is a guard rather than a convention —
+> `scheduler::assert_not_uniform_in_disguise` refuses a `results/` path from the degenerate cell.
+>
+> **And the obvious diagnostic for "where did the budget go" is confounded twice.**
+> `rho(depth, spread)` against the leaf's own spread reads `-0.817 -> +0.821` across the `k_frac`
+> change, but refining a quad *reduces* the spread of the pieces it becomes. Against the parent's
+> spread it is negative at every `k`, because `ensemble_spread` carries a cell-width scale term.
+> Only the **level-blocked** form — among the quads at level `L`, did the split ones have the
+> higher spread — is readable: `-0.295 -> +0.265`, a third the magnitude, same sign change.
+> See RESULTS §19.2.
+
 **Report negative and messy results.** Every PR in this project has corrected something stated with
 more confidence than it deserved. If structure-preference does not fix `deep interior`, that is the
 headline.

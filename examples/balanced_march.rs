@@ -14,7 +14,14 @@
 //! present at both playheads whose `Decision` changed. Frozen reads variance-flat and
 //! churn-zero; balanced reads variance-flat and churn-nonzero.
 //!
-//! # The control
+//! # The control, and why the first run of this was not one
+//!
+//! `k_frac` was left at its old default of `1.0`, which takes the top 100% of the ranked
+//! frontier. The rank truncation -- the whole mechanism this figure exists to accept -- never
+//! engaged, so the balanced arm was uniform mode with the `tau` and `alpha` gates still applied.
+//! **The treatment and the control were nearly the same tree, and the test could not
+//! discriminate.** It now defaults to [`scheduler::K_FRAC_RANKED`] and prints `k_frac` in its
+//! header; `1.0` is available as the labelled degenerate setting and reproduces the old figure.
 //!
 //! `Mode::Uniform` runs in the same figure. It has the criterion **off** and must degenerate --
 //! that is what proves the test discriminates rather than merely producing a line. If the uniform
@@ -53,10 +60,21 @@ fn main() {
     let n: usize = arg(2, 4);
     let tau: f64 = arg(3, 1e-4);
     let viewport: usize = arg(4, 64);
+    let k_frac: f64 = arg(5, scheduler::K_FRAC_RANKED);
+    let ranked = k_frac < scheduler::K_FRAC_UNRANKED;
+    // The old figures are the BEFORE and are not overwritten. `k_frac = 1` still lands in
+    // `results/criterion`, which is where they were made.
+    let odir = if ranked { "results/criterion_ranked" } else { "results/criterion" };
+    let _ = std::fs::create_dir_all(odir);
     let ts = [4.0f64, 6.0, 8.0, 10.0, 13.0, 16.0, 20.0];
     let base = EnsembleCfg::default();
 
-    println!("balanced march. budget {budget}, N={n}, E+1=8, tau={tau:.0e}, viewport {viewport}²");
+    println!("balanced march. budget {budget}, N={n}, E+1=8, tau={tau:.0e}, viewport {viewport}², k_frac={k_frac}");
+    if !ranked {
+        println!("k_frac = 1 takes the top 100% of the frontier: the rank truncation never");
+        println!("engages and the BALANCED arm is uniform mode with the gates on. This row set is");
+        println!("the labelled degenerate control, not an acceptance run.");
+    }
     println!("n_sync scales with t_max, or the rows are different discretisations.");
     println!();
 
@@ -91,6 +109,9 @@ fn main() {
                     alpha_hi: 0.2,
                     alpha_lo: 0.2,
                     mode,
+                    // Uniform ignores `k_frac` -- it returns `Split` unconditionally and never
+                    // reaches the truncation -- so the control stays a control at any setting.
+                    k_frac,
                     camera: Some(cam),
                     ..Default::default()
                 };
@@ -195,7 +216,7 @@ fn main() {
             y_lo: 1e-3,
             y_hi: 1.0,
         }
-        .save(&format!("results/criterion/march_var_{stem}"))
+        .save(&format!("{odir}/march_var_{stem}"))
         .unwrap();
 
         Figure {
@@ -213,7 +234,7 @@ fn main() {
             y_lo: 1e-3,
             y_hi: 1.0,
         }
-        .save(&format!("results/criterion/march_churn_{stem}"))
+        .save(&format!("{odir}/march_churn_{stem}"))
         .unwrap();
     }
 

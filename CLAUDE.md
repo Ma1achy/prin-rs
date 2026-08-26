@@ -784,6 +784,54 @@ saturates on **98.8%** of chart leaves and **87.1%** corpus-wide. The conclusion
 scope, which is exactly why the mislabelling was survivable and had to be caught by arithmetic
 rather than by a wrong answer. **State the scope with every figure.**
 
+**THE MECHANISM SHIPPED DISABLED TWICE, AND THE SECOND TIME IT WAS THE DEFAULT.** `k_frac = 1.0`
+takes the top 100% of the ranked frontier: `Mode::Balanced` computes the priority, sorts the queue,
+and refines all of it. The ranking runs and changes nothing. It was `SchedCfg::default()` through
+PR #21, so all 69 dumps in `results/charts`, `results/criterion` and `results/vertical` are the
+uniform-mode control with new columns attached, and so was every render made from them. The default
+is now `K_FRAC_RANKED = 0.25` and `K_FRAC_UNRANKED = 1.0` is named and kept. **A configuration that
+silently reproduces the old behaviour needs a guard, not a convention** —
+`scheduler::assert_not_uniform_in_disguise` refuses a `results/` path from the degenerate cell, and
+its test asserts all four cells because a guard that always fires passes just as easily as one that
+never does.
+
+**The uniform arm was being truncated by the knob it exists to isolate.** `decide` short-circuits
+`Mode::Uniform` to `Split` — the criterion is *off*, not permissive — but the rank truncation in
+`descend` ran afterwards and demoted the outranked quads to `Keep` anyway. Measured: near-field at
+`t = 4` gave **40 leaves and depth variance 0.6900 under both arms, to four digits**, budget never
+exhausted. Two arms agreeing to the digit is the same tell as three unrelated charts agreeing.
+Exempted, and with it the §5 acceptance test discriminates for the first time: uniform reads
+**256 leaves, variance exactly 0.0000, all 256 stopped by the veto**, balanced 0.23–0.69 with churn
+0.08–0.53.
+
+**`rho(depth, spread)` is confounded TWICE and both obvious repairs leave one.** Against the leaf's
+own spread it reads `-0.817` at `k = 1` and `+0.821` at `k = 0.25` — but refining a quad *reduces*
+the spread of the pieces it becomes. Substituting the **parent's** spread removes that arm and
+leaves the scale term: `ensemble_spread` is over copies jittered within the cell, the cell halves
+each level, and the measured inter-level ratio is 1.19–1.62 — so it comes out **negative at every
+`k`, including the ranked ones where the ranking demonstrably works**. The form with neither
+confound is **blocked by level**: among the quads at level `L`, did the ones that got split have the
+higher spread? Measured near-field at `tau = 1e-4`: **-0.295, -0.028, +0.265, +0.137, +0.108** at
+`k = 1, 0.5, 0.25, 0.1, 0.05`. The sign flip survives, at a third of the naive magnitude, and it is
+`NaN` on every degenerate row rather than 0 — a level with one outcome has no correlation, and
+saying so is the point.
+
+**`k_frac` has an over-sparse end, and 0.25 is where two independent statistics peak.** Near-field
+depth variance runs **1.015, 1.900, 2.053, 2.046, 1.334** across `k = 1, 0.5, 0.25, 0.1, 0.05`, and
+the tree loses a whole level at `0.05` (4 distinct levels against 5). The level-blocked `rho` peaks
+at the same rung. `tau` over a whole decade at fixed `k` moves the variance **1.900 -> 1.866**:
+`tau` is a threshold and cannot land inside a distribution whose median moves six orders between
+regions, where a rank always cuts through it.
+
+**A pixel count of a debug colour is a fact about the texel size.** `results/glsl/shape.png` carries
+1046 magenta pixels, which reads as scattered failure. The adaptive render is nearest-neighbour, so
+one footprint of a level-2 quad paints ~16x16: measured, the magenta is **3 axis-aligned blocks** in
+`shape` and **1** in `plambda` — four footprints. The census over `preset_shape` at N=64 and N=128
+gives **0.244% and 0.201%** undetermined, **zero `SimFailed` and zero `DecodeFailed`** at both, all
+of it non-finite copies and non-finite `shape_vec` (a triple collision). Stable across resolution is
+the tell that it is the chart, not the grid. It is the instrument reporting; a decode failure would
+have been the fault.
+
 ---
 
 ## SMOKE TEST

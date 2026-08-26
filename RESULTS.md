@@ -2503,6 +2503,183 @@ term propagating through the product on an empty mask, exactly as the doc commen
 `<target>__tau<t>__k<k>__struct-<s>__crit-<c>.prnq`, so a directory listing is a settings table
 and the corpus can be re-derived by parsing filenames. The header carries the settings too.
 
+## 19. The default was the control, and every headline render was made with it
+
+`SchedCfg::default().k_frac` was **1.0** through PR #21. `Mode::Balanced` at `k_frac = 1` computes
+the priority, sorts the frontier, and then refines all of it — the ranking runs and changes
+nothing. §18 said this about the 69 dumps and then left the constant where it was, so the fix
+landed in the sweep and nowhere else. Every dump in `results/charts`, `results/criterion` and
+`results/vertical` carries `k_frac=1`, and so does every image derived from them.
+
+The default is now `K_FRAC_RANKED = 0.25`, `K_FRAC_UNRANKED = 1.0` is a named constant rather than
+a bare literal, and `scheduler::assert_not_uniform_in_disguise` refuses to let an example write
+into `results/` from the degenerate cell. The old corpus is not touched: passing `1.0` reproduces
+it bitwise and still lands in its own directory. New runs land in `results/charts_ranked`,
+`results/criterion_ranked` and `results/animated_ranked`.
+
+**One correction to the diagnosis as received.** `results/glsl/` was *not* made at `k_frac = 1` —
+PR #21 (`0bc00ed`) re-rendered all sixteen files at `k_frac = 0.25, criterion = grad_rms`, taking
+`shape` from 181 leaves to 31 and `prho` from 2695 to 49. The directory holds no `.prnq`, which is
+why a parse of the dumps could not see it; it is now the one committed image set that was already
+ranked. Everything else in the diagnosis stands.
+
+### 19.1 The widened sweep — `k_frac` is the knob and `tau` is nearly inert
+
+`tau ∈ {1e-4, 1e-3, 1e-2}` × `k_frac ∈ {1, 0.5, 0.25, 0.1, 0.05}`, three targets, `structure=off`,
+`criterion=within`, budget 40000, viewport 1024², `alpha_hi = 0.2`. Near-field, where the knobs are
+live:
+
+| tau | k | quads | leaves | levels | depth var | %max | veto | rho_lvl |
+|---|---|---|---|---|---|---|---|---|
+| 1e-4 | **1.00** | 549 | 412 | 5 | **1.015** | 61% | 252 | **-0.295** |
+| 1e-4 | 0.50 | 137 | 103 | 5 | 1.900 | 35% | 36 | -0.028 |
+| 1e-4 | **0.25** | 61 | 46 | 5 | **2.053** | 17% | 8 | **+0.265** |
+| 1e-4 | 0.10 | 41 | 31 | 5 | 2.046 | 13% | 4 | +0.137 |
+| 1e-4 | 0.05 | 33 | 25 | **4** | 1.334 | 16% | 0 | +0.108 |
+| 1e-3 | 1.00 | 345 | 259 | 5 | 1.347 | 53% | 136 | -0.320 |
+| 1e-3 | 0.50 | 133 | 100 | 5 | 1.866 | 32% | 32 | -0.013 |
+| 1e-3 | 0.25 | 57 | 43 | 5 | 1.691 | 9% | 4 | +0.264 |
+| 1e-2 | any | 21 | 16 | 1 | 0.000 | 100% | 0 | NaN |
+
+A whole decade of `tau` at fixed `k = 0.5` moves depth variance **1.900 → 1.866**. `k` from 1 to
+0.25 moves it **1.015 → 2.053**. At `tau = 1e-2` every rung is `16/1/0.000` — the threshold has
+gone above the bulk and keeps everything, the upper-side failure §14 named.
+
+**There is an over-sparse end, and 0.25 is where the sweep peaks.** Depth variance falls at
+`k = 0.05` and the tree loses a whole level (4 distinct against 5). The default is the peak of the
+measured curve, not a value that made a picture look right.
+
+`deep_interior` reads `29/22/0.614` at every `k` and `preset_shape` `21/16/0.000` at every `k`, as
+§18 recorded: `k_frac` truncates the set that already decided to split, and neither produces enough
+splits per round for a fraction to bite. `alpha` is what binds those two.
+
+### 19.2 `rho(depth, spread)` is confounded twice, and the sign flip survives the form that is not
+
+The naive statistic — leaf depth against the leaf's own spread — reads **-0.817 at `k = 1` and
++0.821 at `k = 0.25`**, which looks like the ranking reversing where the budget goes. It is not
+readable: **refining a quad reduces the spread of the pieces it becomes**, so a deep leaf has a
+small spread partly *because* it was refined.
+
+Substituting the **parent's** spread removes that arm and leaves a second. `ensemble_spread` is a
+spread over copies jittered within the **cell**; the cell halves every level and the measured
+inter-level spread ratio runs 1.19–1.62 (§11). So a deep leaf's parent is a fine quad with a
+systematically smaller spread than a shallow leaf's parent, and the correlation reads the
+estimator's level-dependence. Measured, it is **negative at every `k`** — -0.419, -0.813, -0.472,
+-0.348, -0.447 — including the rungs where the ranking demonstrably works.
+
+**The form with neither confound is blocked by level.** Within one level every quad has the same
+cell width, so the spreads are comparable, and the question is asked directly: among the quads at
+level `L`, did the ones the descent split have the higher spread? Spearman of `was_split` against
+`spread`, per level, pooled by quad count. That is the `rho_lvl` column above: **-0.295 → +0.265**
+across `k = 1 → 0.25`, a third of the naive magnitude and the same sign change. It is `NaN` wherever
+a level has one outcome only, which is every degenerate row — a level nothing was split at has no
+correlation, and returning 0 there would read as "no relationship" where the truth is "one axis
+does not vary".
+
+### 19.2b The 26-chart gallery re-run: the criterion decides 1.5% of leaves before and 78% after
+
+`results/charts_ranked/`, same command as the committed gallery with `k_frac = 0.25` in place of
+`1.0`. Stop reasons read from the `decision` column of the `.prnq` dumps, not from the `bound`
+column, which has been wrong before:
+
+| corpus | charts | quads | leaves | Floor | Keep | MaxRelDepth | veto share |
+|---|---|---|---|---|---|---|---|
+| `charts/` (`k_frac = 1`) | 26 | 100,470 | 75,359 | 969 | 154 | 74,236 | **98.5%** |
+| `charts_ranked/` (`k_frac = 0.25`) | 26 | 1,922 | 1,448 | 147 | 985 | 316 | **21.8%** |
+
+**The standing result "the chart families do not exercise the criterion" was a fact about
+`k_frac = 1`, not about the charts.** `MaxRelDepth` stopped 95%+ of leaves on 23 of 26 charts and
+100% on three; at the ranked default it stops 21.8% and the criterion decides the rest. The
+`screen` column is **0 on all 26 rows**.
+
+`Keep` conflates two criterion decisions by design — the spread gate declining, and the ranking
+deferring an outranked quad — because a deferred quad is deliberately `Keep` rather than
+`BudgetExhausted`: it was outranked, not refused for want of budget, and conflating those two would
+hide the ranking inside the column that exists to expose it. The 985 is not separable further from
+the dump.
+
+**And the `_uniform*` panels are not regenerated, for a reason worth stating.** That block builds
+its own `res × res` slice and evaluates it directly — no quad, no tree, no decision enters it — so a
+ranked run reproduces `results/charts/*_uniform*.png` bit for bit while costing `res² × (E+1)`
+trajectories, 8.4M per chart at 1024 and about **95% of the run**. If that block's output moved with
+`k_frac`, something would be very wrong. The committed ones stand for both corpora.
+
+### 19.3 Selective, or merely sparse
+
+*(`examples/equal_budget.rs`; table below.)*
+
+64 leaves against 1755 is not a result on its own — under-refining everywhere produces the same
+headline. `src/metric.rs` already answers it: build the fully-refined reference once, then score
+each tree by `Cache::error_of` against `greedy_oracle` and a `random` band **at the tree's own leaf
+count**. Below the band, the small budget went to the right places. Inside or above it, the tree is
+sparse and the depth variance is a picture of under-refinement.
+
+`greedy_oracle` is a reference and deliberately not a ceiling — measured at `t = 20` in near-field
+it plateaus at 0.00048 while `first_div` reaches 0.00000, so a tree beating it indicates lookahead
+value. Nothing asserts it dominates.
+
+### 19.4 The §5 acceptance test, with a control that discriminates for the first time
+
+`balanced_march` ran at the old default, so its "balanced" arm was uniform mode with the gates
+still applied — **the treatment and the control were nearly the same tree**. Worse, the rank
+truncation in `descend` ran regardless of mode, so passing `k_frac < 1` truncated the uniform arm
+too: near-field at `t = 4` read **40 leaves and depth variance 0.6900 under both arms, to four
+digits**, with the budget never exhausted. Two arms agreeing to the digit is the same tell as three
+unrelated charts agreeing, one level up. `Mode::Uniform` is now exempt from the truncation, with a
+two-armed test — the uniform tree identical across `k_frac`, the balanced tree different — because
+a `k_frac` that reached nothing at all would pass the first assertion alone.
+
+Near-field, budget 800, `N = 4`, viewport 64², `tau = 1e-4`, `k_frac = 0.25`:
+
+| mode | t | leaves | depth var | churn | shared | screen |
+|---|---|---|---|---|---|---|
+| balanced | 4 | 40 | 0.6900 | – | 0 | 16 |
+| balanced | 8 | 31 | 0.6514 | 0.3333 | 9 | 8 |
+| balanced | 13 | 34 | 0.5744 | 0.2500 | 8 | 8 |
+| balanced | 16 | 22 | 0.2314 | 0.5263 | 19 | 0 |
+| balanced | 20 | 25 | 0.5600 | 0.0833 | 12 | 4 |
+| **uniform** | 4 | **256** | **0.0000** | – | 0 | **256** |
+| **uniform** | 8 | **256** | **0.0000** | 0.0000 | 256 | **256** |
+| **uniform** | 13 | **256** | **0.0000** | 0.0000 | 256 | **256** |
+
+`deep interior` reads the same shape: balanced 0.2496–0.6136 with churn to 0.3750, uniform
+**0.0000 at every playhead** on 256 veto-stopped leaves.
+
+The control reads **exactly 0.0000 at every playhead** and is stopped by the veto on all 256 leaves
+rather than by the budget, which is the condition that makes it a control at all. The balanced arm
+holds variance bounded away from zero **with churn nonzero** — a steady state rather than a frozen
+one, which the variance plot alone cannot distinguish. Every churn row is annotated with its shared
+count; at 8–19 shared quads these are thin and are labelled thin.
+
+### 19.5 The magenta is four footprints, not 1426 pixels
+
+`results/glsl/shape.png` carries 1046 `DEBUG_NAN` pixels and `plambda.png` 380, which reads as
+scattered failure in the region of interest. The adaptive render is **nearest-neighbour**: one
+footprint of a level-2 quad paints a texel roughly `res / (4N)` on a side, so at `res = 512, N = 8`
+a single undetermined trajectory paints ~16×16 = 256 pixels. Measured on the committed frames, the
+magenta is **3 axis-aligned blocks** (18×19, 18×18, 20×19) in `shape` and **1** (20×19) in
+`plambda`. Four footprints. **A pixel count of a debug colour is a fact about the texel size.**
+
+`colour::rgb` has four exits to `DEBUG_NAN` and they are different findings. The census
+(`examples/nan_probe.rs`, uniform grid, `t = 13`, f64):
+
+| chart | samples | non-finite copy | SimFailed | DecodeFailed | non-finite shape | total |
+|---|---|---|---|---|---|---|
+| `preset_shape` | 4096 | 4 | 0 | 0 | 6 | 0.244% |
+| `preset_shape` | 16384 | 12 | 0 | 0 | 21 | **0.201%** |
+| `preset_plambda` | 16384 | 0 | 0 | 0 | 0 | 0.000% |
+| `preset_prho` | 16384 | 0 | 0 | 0 | 0 | 0.000% |
+| `preset_shape_pl` | 16384 | 1 | 0 | 0 | 0 | 0.006% |
+
+**Zero decode failures and zero sim failures at both resolutions.** All of it is non-finite copies
+and non-finite `shape_vec` — a triple collision — and the rate is stable across a 4× change in
+sampling, which is the tell that it is a property of the chart rather than of the grid.
+`preset_shape` is the one chart in this set whose terminations are collisions (escape fraction
+0.0547 against 0.9894–1.0000 for the momentum slices), so it is the one that passes through
+collision-adjacent shapes. A non-finite copy is a **measurement outcome** and is never discarded; a
+`DecodeFailed` would have been the chart handing back something that is not a three-body state, and
+there are none.
+
 ## 13. Reproducing any of this
 
 **Two of these commands were wrong, and only running them found it.** The `pan_sequence` line said
@@ -2516,6 +2693,14 @@ project's own standing lesson arriving through its documentation.
 A sample of eleven dumps had already reported "reproduces bitwise". Checking all sixty-nine is what
 caught it. **Verify a regeneration over the whole corpus, not a sample**, and diff the `decision`
 column specifically — it is the one that moves when a parameter is wrong while the tree is not.
+
+**And the default under them moved, which is a second way a documented command can be wrong.**
+`SchedCfg::default().k_frac` was `1.0` when every artefact below `§18` was made and is now `0.25`.
+So **every command in this table that does not name `k_frac` produces a different tree than the one
+it reproduced before** — a ranked one rather than the uniform-mode control. That is the intended
+direction and it is stated rather than quietly absorbed: where the committed artefact is the
+*before*, the command carries `1.0` explicitly (see the `chart_gallery` and `balanced_march` rows).
+Everywhere else the table now names the ranked run.
 
 Every table above comes from a committed example. Raw output for all of them is in
 [`results/output/`](results/output/), the acceptance-gate and cross-check output is in
@@ -2571,16 +2756,20 @@ Every table above comes from a committed example. Raw output for all of them is 
 | §10.9 the two costings | `cargo run --release --example cost_and_anisotropy -- 5 8` |
 | the criterion gates | `cargo test --release --test criterion -- --nocapture` |
 | §10.9 the slice gallery | `cargo run --release --example slice_gallery -- 40000 1e-4 0.2 1024` |
-| §12 the chart gallery, all 26 cases | `cargo run --release --example chart_gallery -- 40000 1e-4 0.2 1024` |
+| §12 the chart gallery as committed (k_frac = 1, the uniform-mode control) | `cargo run --release --example chart_gallery -- 40000 1e-4 0.2 1024 1.0` |
+| §19 the chart gallery at the ranked default | `cargo run --release --example chart_gallery -- 40000 1e-4 0.2 1024 0.25` |
 | §12 the decoder and preset gates | `cargo test --release --test charts -- --nocapture` |
 | §14 the threshold diagnosis | `cargo run --release --example threshold_diagnosis` |
 | §14.5-14.6 the hot rule swept | `cargo run --release --example hot_rule_sweep` |
-| §15.3-15.4 the balanced march | `cargo run --release --example balanced_march` |
+| §15.3-15.4 the balanced march as committed (k_frac = 1, no truncation) | `cargo run --release --example balanced_march -- 800 4 1e-4 64 1.0` |
+| §19.4 the balanced march at the ranked default | `cargo run --release --example balanced_march -- 800 4 1e-4 64` |
 | §16 structure modes by error(B) | `cargo run --release --example structure_metric -- 6 8 1e-4 13` |
 | §17 the slippy-map gates | `cargo test --release --test slippy -- --nocapture` |
 | the refinement animations | `cargo run --release --example refinement_animation -- 40000 1e-4 0.2 512` |
 | the four GLSL slices refining | `cargo run --release --example glsl_refinement -- 40000 1e-4 0.2 512 40` |
 | §18.0 the wiring check | `cargo run --release --example criterion_sweep -- 0` |
-| §18.1 stage 1, tau x k_frac | `cargo run --release --example criterion_sweep -- 1` |
+| §18.1 stage 1, tau x k_frac (widened in §19.1) | `cargo run --release --example criterion_sweep -- 1` |
+| §19.3 selective or sparse, by error(B) | `cargo run --release --example equal_budget -- 6 8 5` |
+| §19.5 the undetermined-footprint census | `cargo run --release --example nan_probe -- 128` |
 | §18.3 stage 2, structure x criterion | `cargo run --release --example criterion_sweep -- 2 40000 0.2 1024 1e-4 0.25` |
 | §18.2 stage 3, alpha | `cargo run --release --example criterion_sweep -- 3 40000 0.2 1024 1e-4 0.25` |

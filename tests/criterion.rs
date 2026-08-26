@@ -840,11 +840,19 @@ fn the_relative_mask_desaturates_where_the_absolute_one_does_not() {
     let ens = EnsembleCfg { t_max: 2.0, n_sync: 8, refine_flagged: false, ..Default::default() };
     // `tau_display = 1e-4` is the value every committed run used, and the one measured to sit at
     // the 0.4th percentile of the spread distribution. Reproducing it is the point.
+    //
+    // **And so is `k_frac = K_FRAC_UNRANKED`, which is no longer the default.** The claim under
+    // test is about the population of quads the whole corpus was measured on, and the control arm
+    // needs the absolute mask *saturated* to have any teeth. The ranked descent desaturates it by
+    // refining the saturated quads away -- measured, the control falls from 96%+ to **69.8%** at
+    // the new default, which fails as it should rather than silently weakening the comparison.
+    // That is a finding about the ranking, not a reason to loosen the bound.
     let cfg = SchedCfg {
         n: N,
         budget: 80,
         tau_display: 1e-4,
         hot_rule: HotRule::Quantile(0.5),
+        k_frac: scheduler::K_FRAC_UNRANKED,
         ..Default::default()
     };
     let (t, st) = scheduler::descend(1.0, 3.0, 0.05, 0, &cfg, &ens, Precision::F64);
@@ -1080,4 +1088,117 @@ fn k_frac_never_truncates_the_bootstrap() {
         assert!(splits >= 5, "k_frac {k} left only {splits} splits; the bootstrap needs 5");
         assert_eq!(shallow_leaves, 0, "k_frac {k} left {shallow_leaves} un-split bootstrap quads");
     }
+}
+
+/// **The default must be the ranked frontier, and the constant alone would not prove it.**
+///
+/// `k_frac = 1.0` was the silent default through PR #21: `Mode::Balanced` computes the priority,
+/// sorts the queue, and then refines all of it, so the ranking runs and changes nothing. Every
+/// dump in `results/charts`, `results/criterion` and `results/vertical` carries it.
+///
+/// Asserting the constant is decoration on its own -- a `k_frac` that never reached `descend`
+/// would pass it. So the test also runs both settings and requires the trees to **differ**, which
+/// is the wiring check the sweep had to make by hand.
+#[test]
+fn the_default_is_the_ranked_frontier_and_it_reaches_the_tree() {
+    use prin_rs::camera::Camera;
+    use prin_rs::ensemble::pixel::EnsembleCfg;
+    use prin_rs::quad::Decision as _D;
+    use prin_rs::render::Precision;
+    use prin_rs::scheduler::{self, SchedCfg};
+    let _ = std::mem::size_of::<_D>();
+    assert_eq!(SchedCfg::default().k_frac, scheduler::K_FRAC_RANKED);
+    assert!(scheduler::K_FRAC_RANKED < scheduler::K_FRAC_UNRANKED,
+            "the default is the uniform-mode control");
+
+    let ens = EnsembleCfg { t_max: 13.0, refine_flagged: false, ..Default::default() };
+    let base = SchedCfg {
+        n: 4, budget: 600, tau_display: 1e-4, alpha_hi: 0.2, alpha_lo: 0.2,
+        camera: Some(Camera::framing(1.0, 3.0, 0.05, 64)), ..Default::default()
+    };
+    let run = |k: f64| {
+        let cfg = SchedCfg { k_frac: k, ..base };
+        let (t, _) = scheduler::descend(1.0, 3.0, 0.05, 0, &cfg, &ens, Precision::F64);
+        let lv: Vec<f64> = t.leaves().map(|i| t.nodes[i].level as f64).collect();
+        let m = lv.iter().sum::<f64>() / lv.len() as f64;
+        (lv.len(), lv.iter().map(|x| (x - m) * (x - m)).sum::<f64>() / lv.len() as f64)
+    };
+    let (ln, vn) = run(scheduler::K_FRAC_RANKED);
+    let (lu, vu) = run(scheduler::K_FRAC_UNRANKED);
+    println!("ranked  k={:.2}: {ln:>4} leaves, depth variance {vn:.4}", scheduler::K_FRAC_RANKED);
+    println!("control k={:.2}: {lu:>4} leaves, depth variance {vu:.4}", scheduler::K_FRAC_UNRANKED);
+    assert_ne!((ln, vn.to_bits()), (lu, vu.to_bits()),
+               "the two settings gave the same tree, so k_frac is not reaching the descent");
+}
+
+/// **The guard, with the control that says it is not always-on.**
+///
+/// A guard that fires on every call is as useless as one that never fires, and both look like a
+/// passing test. So this asserts all four cells: it fires on a `results/` path at the degenerate
+/// setting, and stays silent for a ranked setting, for a non-`results` path, and when the caller
+/// declares the unranked run to be the control it is measuring.
+#[test]
+fn the_uniform_disguise_guard_fires_only_on_the_degenerate_cell() {
+    use prin_rs::scheduler::{self, SchedCfg};
+    let unranked = SchedCfg { k_frac: scheduler::K_FRAC_UNRANKED, ..Default::default() };
+    let ranked = SchedCfg { k_frac: scheduler::K_FRAC_RANKED, ..Default::default() };
+
+    let fires = |cfg: &SchedCfg, path: &str, allow: bool| {
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            scheduler::assert_not_uniform_in_disguise(cfg, path, allow)
+        }))
+        .is_err()
+    };
+    let cells = [
+        ("unranked, results/, not allowed", fires(&unranked, "results/charts/x.png", false), true),
+        ("unranked, results/, allowed",     fires(&unranked, "results/charts/x.png", true), false),
+        ("unranked, scratch path",          fires(&unranked, "/tmp/x.png", false), false),
+        ("ranked, results/",                fires(&ranked, "results/charts/x.png", false), false),
+    ];
+    for (what, got, want) in cells {
+        println!("{:>34}: {}", what, if got { "REFUSED" } else { "written" });
+        assert_eq!(got, want, "{what}");
+    }
+}
+
+/// **Uniform mode must not be truncated by `k_frac`, or it is not a control.**
+///
+/// `decide` short-circuits uniform mode to `Split`, but the rank truncation in `descend` runs
+/// afterwards and would demote the outranked quads to `Keep` regardless -- applying a ranking to
+/// the arm defined as having none.
+///
+/// The test that catches it has two arms and needs both: the uniform tree must be **identical**
+/// across `k_frac`, and the balanced tree at the same settings must **differ**. Without the
+/// second arm a `k_frac` that reached nothing at all would pass.
+#[test]
+fn uniform_mode_ignores_k_frac_and_balanced_does_not() {
+    use prin_rs::camera::Camera;
+    use prin_rs::ensemble::pixel::EnsembleCfg;
+    use prin_rs::render::Precision;
+    use prin_rs::scheduler::{self, Mode, SchedCfg};
+
+    let ens = EnsembleCfg { t_max: 13.0, refine_flagged: false, ..Default::default() };
+    let shape = |mode: Mode, k: f64| {
+        let cfg = SchedCfg {
+            n: 4, budget: 800, tau_display: 1e-4, alpha_hi: 0.2, alpha_lo: 0.2, mode, k_frac: k,
+            camera: Some(Camera::framing(1.0, 3.0, 0.05, 64)), ..Default::default()
+        };
+        let (t, st) = scheduler::descend(1.0, 3.0, 0.05, 0, &cfg, &ens, Precision::F64);
+        assert!(!st.budget_exhausted, "budget-bound at {mode:?}/{k}: this proves nothing");
+        let mut v: Vec<(i64, i64, u32)> = t
+            .leaves()
+            .map(|i| {
+                let q = &t.nodes[i];
+                ((q.cx * 1e9) as i64, (q.cy * 1e9) as i64, q.level)
+            })
+            .collect();
+        v.sort_unstable();
+        v
+    };
+    let (uu, ur) = (shape(Mode::Uniform, 1.0), shape(Mode::Uniform, 0.25));
+    let (bu, br) = (shape(Mode::Balanced, 1.0), shape(Mode::Balanced, 0.25));
+    println!("uniform : {:>4} leaves at k=1, {:>4} at k=0.25", uu.len(), ur.len());
+    println!("balanced: {:>4} leaves at k=1, {:>4} at k=0.25", bu.len(), br.len());
+    assert_eq!(uu, ur, "k_frac truncated the uniform arm, so it is not a control");
+    assert_ne!(bu, br, "k_frac reached nothing at all, so the first assertion is vacuous");
 }

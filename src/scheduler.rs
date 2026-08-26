@@ -116,6 +116,53 @@ impl Mode {
     }
 }
 
+/// **The uniform-mode control.** `k_frac = 1.0` takes the top 100% of the split-eligible
+/// frontier, so [`Mode::Balanced`] ranks the queue and then refines all of it. The ranking runs
+/// and changes nothing.
+///
+/// It is not *identical* to [`Mode::Uniform`] — uniform returns `Split` unconditionally and
+/// bypasses the `tau` and `alpha` gates, where balanced still applies both — but the **rank
+/// truncation**, which is the mechanism the criterion work exists to add, never engages. Keep it
+/// available and keep it labelled; it was the silent default through PR #21 and every committed
+/// dump outside `results/sweep` carries it.
+pub const K_FRAC_UNRANKED: f64 = 1.0;
+
+/// **The default.** Chosen from the widened `tau x k_frac` sweep, not from a picture.
+///
+/// Measured over `near-field`, `deep interior` and `preset_shape`: `tau` moves leaf-level depth
+/// variance by essentially nothing (1.900 -> 1.866 across a decade at `k = 0.5`), while `k_frac`
+/// from 1.0 to 0.25 moves it 0.577 -> 2.109. `tau` is a threshold and cannot land inside a
+/// distribution whose median moves six orders between regions; `k_frac` is a rank and always
+/// cuts through it. See `RESULTS.md` §19 and `examples/criterion_sweep.rs`.
+pub const K_FRAC_RANKED: f64 = 0.25;
+
+/// **Refuse to write a headline artefact from the degenerate configuration.**
+///
+/// `Mode::Balanced` with [`K_FRAC_UNRANKED`] is uniform mode wearing balanced mode's name: the
+/// priority is computed, the queue is sorted, and every element of it is refined anyway. A render
+/// made that way looks exactly like a render of the ranked frontier and is not one — which has
+/// now happened twice in this project, first in PR #18 and again in every committed chart dump.
+///
+/// This is the `preset_control.rs` pattern at a second site: a configuration that silently
+/// reproduces the old behaviour needs a guard, not a convention. Call it in any example that
+/// writes under `results/`; pass `--allow-unranked` (or set `allow` yourself) only when the
+/// unranked run **is** the control being measured, as it is in `criterion_sweep`.
+pub fn assert_not_uniform_in_disguise(cfg: &SchedCfg, path: &str, allow: bool) {
+    if allow || cfg.mode != Mode::Balanced || cfg.k_frac < K_FRAC_UNRANKED {
+        return;
+    }
+    if !path.replace('\\', "/").split('/').any(|c| c == "results") {
+        return;
+    }
+    panic!(
+        "refusing to write `{path}`: mode=balanced with k_frac={} takes the top 100% of the \
+         frontier, so the ranking runs and changes nothing. That is the uniform-mode control, \
+         not a render of the ranked frontier. Set k_frac < 1 (default {K_FRAC_RANKED}), or pass \
+         the allow flag if the unranked run is deliberately the control.",
+        cfg.k_frac
+    );
+}
+
 #[derive(Clone, Copy, Debug)]
 pub struct SchedCfg {
     /// `N`, samples per quad axis. The quality/compute driver: `N²(E+1)` trajectories per quad.
@@ -162,10 +209,16 @@ pub struct SchedCfg {
     pub mode: Mode,
     /// **Balanced mode's budget**: the fraction of the split-eligible frontier refined per round.
     ///
-    /// `1.0` reproduces the unranked descent exactly, which is what keeps every prior run
-    /// reproducible. It has **no recommended value** — it is swept, and the sweep is the result.
-    /// Picking one because a tree looked right is the constant-tuning defect in its most tempting
-    /// form, and this is the knob most exposed to it.
+    /// Defaults to [`K_FRAC_RANKED`]. [`K_FRAC_UNRANKED`] (`1.0`) takes the top 100% of the
+    /// frontier, so the ranking runs and changes nothing — it is the **uniform-mode control**,
+    /// and it was the silent default through PR #21. Every dump in `results/charts`,
+    /// `results/criterion` and `results/vertical` carries it, which is why the criterion work
+    /// has no committed *after* outside `results/sweep`.
+    ///
+    /// It has **no recommended value in the sense of a tuned one** — the default is the value the
+    /// sweep supports, and the sweep is the result. Picking one because a tree looked right is
+    /// the constant-tuning defect in its most tempting form, and this is the knob most exposed to
+    /// it. See [`assert_not_uniform_in_disguise`].
     pub k_frac: f64,
     /// **Camera bias in the PRIORITY** (§4.3): rank on the visible part of a quad, not the whole
     /// quad. A quad half off-screen has structure the viewer cannot see, and ranking on it spends
@@ -211,7 +264,7 @@ impl Default for SchedCfg {
             criterion: Criterion::Within,
             structure: StructureMode::Off,
             mode: Mode::Balanced,
-            k_frac: 1.0,
+            k_frac: K_FRAC_RANKED,
             camera_bias: None,
             balance: false,
             chart: Chart::BodyPlane,
@@ -668,7 +721,16 @@ pub fn descend(
         // `BudgetExhausted`**: they were not refused for want of budget, they were outranked, and
         // conflating the two would hide the mechanism inside the stop-reason column that exists
         // to expose it.
-        if cfg.k_frac < 1.0 && !want.is_empty() {
+        // **Uniform mode is exempt, and leaving it in was a control-destroying bug.**
+        //
+        // `decide` short-circuits uniform mode to `Split` -- the criterion is *off*, not set
+        // permissive -- but the truncation below runs afterwards and would demote the outranked
+        // quads to `Keep` anyway. That applies a ranking to the arm whose whole purpose is to
+        // have none, and it read as the control mysteriously matching the treatment: measured on
+        // `balanced_march`, near-field at `t = 4` gave 40 leaves and depth variance 0.6900 under
+        // BOTH arms, to four digits, with the budget never exhausted. Two arms agreeing to the
+        // digit is the same tell as three unrelated charts agreeing, one level up.
+        if cfg.mode != Mode::Uniform && cfg.k_frac < 1.0 && !want.is_empty() {
             // **The bootstrap is never truncated, and leaving it truncatable was a bug.**
             //
             // Levels below `bootstrap_levels` split *unconditionally*, because level 0 has no

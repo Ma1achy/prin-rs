@@ -59,7 +59,7 @@ fn main() {
     // frontier and changes nothing, which is the defect that made every dump in PR #18 a
     // pre-fix run. RESULTS.md §18: at `k = 0.25` near-field's depth variance doubles and its
     // veto share falls 61% -> 13%.
-    let k_frac: f64 = arg(6, 0.25);
+    let k_frac: f64 = arg(6, scheduler::K_FRAC_RANKED);
     // `grad_rms` is the criterion that unlocks `preset_shape` -- the only one of these four
     // that `within` cannot move at ANY tau, k_frac or alpha, including a gate-off control.
     // Measured: 16 leaves at one level under `within`, 31 at five under `grad_rms`.
@@ -100,9 +100,9 @@ fn main() {
             tau_display: tau,
             alpha_hi,
             alpha_lo: alpha_hi,
-            // The criterion measured best in §16, and the whole frontier each round so the tree
-            // fills out rather than being thinned by a partial budget -- this is a picture of
-            // refinement, not of the demotion mechanism.
+            // The criterion measured best in §16, and a ranked fraction of the frontier each
+            // round: with `k_frac = 1` the ordering is computed and then everything in it is
+            // refined anyway, so the animation would show the pre-fix descent under a new name.
             criterion: crit,
             mode: Mode::Balanced,
             k_frac,
@@ -111,6 +111,7 @@ fn main() {
             chart,
             ..Default::default()
         };
+        scheduler::assert_not_uniform_in_disguise(&cfg, dir, false);
         let (t, st) = scheduler::descend(0.0, 0.0, half, 0, &cfg, &ens, Precision::F64);
 
         // Computed order: the scheduler's own, round by round.

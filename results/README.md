@@ -514,6 +514,30 @@ while cutting the veto share 61% → 13%; `alpha` is what binds `deep_interior`;
 is flat under every `tau`, every `k_frac` and every `alpha` including a gate-off control — moved
 only by changing the **criterion**, which acts through the ranking rather than the gate.
 
+## `charts_ranked/`, `criterion_ranked/`, `animated_ranked/` — the same runs at the ranked default
+
+`k_frac` defaulted to **1.0** through PR #21, which takes the top 100% of the ranked frontier: the
+priority is computed, the queue is sorted, and everything in it is refined anyway. So
+`charts/`, `criterion/` and `vertical/` are **the uniform-mode control**, and every image derived
+from them shows the pre-fix descent. They are kept exactly as they are — they are the *before* —
+and the ranked runs land beside them.
+
+| directory | command |
+|---|---|
+| `charts/` (before) | `chart_gallery -- 40000 1e-4 0.2 1024 1.0` |
+| `charts_ranked/` (after) | `chart_gallery -- 40000 1e-4 0.2 1024 0.25` |
+| `criterion/march_*` (before) | `balanced_march -- 800 4 1e-4 64 1.0` |
+| `criterion_ranked/march_*` (after) | `balanced_march -- 800 4 1e-4 64` |
+
+The `1.0` argument is now required to make the before, and `scheduler::assert_not_uniform_in_disguise`
+refuses a `results/` path at that setting unless the caller declares the unranked run to be the
+control it is measuring. A configuration that silently reproduces the old behaviour needs a guard,
+not a convention — this is the second site of the `preset_control.rs` pattern.
+
+**Read the `bound` column.** The point of the ranked runs is not that the trees are smaller; it is
+that the criterion is what stops them. `body_plane` reads `crit 82%` against a corpus where
+`ScreenFloor` or `MaxRelDepth` stopped ≥95% of leaves on 21 of 69 dumps.
+
 ## `glsl/` — the four reference slices, refining
 
 > **Every animation in this repository before this commit was a still image repeated N frames.**

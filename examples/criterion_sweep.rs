@@ -85,10 +85,17 @@ fn targets() -> Vec<Target> {
 }
 
 /// A filename that carries its own settings, so a directory listing is a settings table.
-fn stem(t: &Target, tau: f64, k: f64, st: StructureMode, cr: Criterion) -> String {
+///
+/// **`alpha_hi` was missing and stages 1 and 3 were overwriting each other.** Stage 3 sweeps
+/// `alpha_hi` at a fixed `(tau, k)`, so all six of its rows landed on the one stem stage 1 had
+/// already written, and the last writer won. Caught by re-running stage 1 over a committed corpus
+/// and diffing: the `k0.25` dumps came back with `alpha_hi=0.2 quads=29` where the committed ones
+/// read `alpha_hi=-1 quads=53`. **A self-describing name has to carry every setting that is
+/// swept**, or it describes a run that no longer exists.
+fn stem(t: &Target, tau: f64, k: f64, st: StructureMode, cr: Criterion, alpha_hi: f64) -> String {
     format!(
-        "results/sweep/{}__tau{:.0e}__k{:.2}__struct-{}__crit-{}",
-        t.name, tau, k, st.name(), cr.name()
+        "results/sweep/{}__tau{:.0e}__k{:.2}__a{:.2}__struct-{}__crit-{}",
+        t.name, tau, k, alpha_hi, st.name(), cr.name()
     )
 }
 
@@ -104,7 +111,7 @@ fn run(
     res: usize,
     ens: &EnsembleCfg,
     write: bool,
-) -> (usize, f64, f64, usize, [usize; 11], f64) {
+) -> (usize, f64, f64, usize, [usize; 11], f64, usize, f64) {
     let cfg = SchedCfg {
         budget,
         tau_display: tau,
@@ -132,6 +139,51 @@ fn run(
     levels.sort_unstable();
     levels.dedup();
 
+    // **`rho(depth, spread)` is confounded TWICE, and both obvious repairs are still confounded.**
+    //
+    // The naive form -- leaf depth against the leaf's own spread -- reads `+0.821` at `k = 0.25`
+    // and `-0.817` at `k = 1`, which looks like the ranking flipping the sign of where the budget
+    // goes. It is not readable: refining a quad *reduces* the spread of the pieces it becomes, so
+    // a deep leaf has a small spread partly because it was refined.
+    //
+    // Substituting the PARENT's spread removes that arm and leaves the second: `ensemble_spread`
+    // carries a scale term. The copies are jittered within the **cell**, the cell halves every
+    // level, and the measured median spread ratio between levels runs 1.19-1.62. So a deep leaf's
+    // parent is a fine quad with a systematically smaller spread than a shallow leaf's parent, and
+    // the correlation reads the level-dependence of the estimator rather than any decision. It
+    // comes out NEGATIVE at every `k` including the ranked ones, which would say the ranking sends
+    // budget to the calm quads at the exact settings where it demonstrably does not.
+    //
+    // **The form with neither confound is blocked by level.** Within one level every quad has the
+    // same cell width, so spreads are comparable, and the question is asked directly: among the
+    // quads at level L that the descent could have split, did the ones it DID split have the
+    // higher spread? Spearman of `was_split` against `spread`, per level, pooled by quad count.
+    // Positive means budget went to disagreement. `NaN` where a level has one outcome only --
+    // which is most of them at `k = 1`, and saying so is the point.
+    let mut num = 0.0f64;
+    let mut den = 0.0f64;
+    let mut lvl_rho: Vec<(u32, f64, usize)> = Vec::new();
+    let max_l = tree.nodes.iter().map(|q| q.level).max().unwrap_or(0);
+    for l in 0..=max_l {
+        let at: Vec<(f64, f64)> = tree
+            .nodes
+            .iter()
+            .filter(|q| q.level == l && q.red.n_footprints > 0)
+            .filter_map(|q| {
+                let sp = q.red.spread(cfg.agg);
+                sp.is_finite().then_some((if q.children.is_some() { 1.0 } else { 0.0 }, sp))
+            })
+            .collect();
+        let r = spearman(&at);
+        if r.is_finite() {
+            num += r * at.len() as f64;
+            den += at.len() as f64;
+            lvl_rho.push((l, r, at.len()));
+        }
+    }
+    let rho = if den > 0.0 { num / den } else { f64::NAN };
+    let _ = &lvl_rho;
+
     let mut dec = [0usize; 11];
     for &i in &leaves {
         let c = tree.nodes[i].decision.code() as usize;
@@ -146,33 +198,71 @@ fn run(
 
     if write {
         let _ = std::fs::create_dir_all("results/sweep");
-        if let Ok(f) = std::fs::File::create(format!("{}.prnq", stem(t, tau, k, st, cr))) {
+        if let Ok(f) = std::fs::File::create(format!("{}.prnq", stem(t, tau, k, st, cr, alpha_hi))) {
             let mut w = BufWriter::new(f);
             let _ = treeout::write(&mut w, &tree, &cfg, ens, &sst, t.name, "f64");
         }
     }
-    (leaves.len(), 100.0 * pmax, var, levels.len(), dec, wall)
+    (leaves.len(), 100.0 * pmax, var, levels.len(), dec, wall, sst.quads_computed, rho)
 }
 
 fn header() {
-    println!("{:>14} {:>8} {:>6} {:>8} {:>6} {:>7} {:>5} {:>7} {:>6} {:>6} {:>7} {:>7} {:>7}",
-             "target", "tau", "k", "struct", "crit", "leaves", "lvls", "depthvar", "%max",
-             "split", "floor", "keep", "veto");
+    println!("{:>14} {:>8} {:>6} {:>8} {:>6} {:>7} {:>7} {:>5} {:>8} {:>6} {:>6} {:>7} {:>7} {:>7} {:>8}",
+             "target", "tau", "k", "struct", "crit", "quads", "leaves", "lvls", "depthvar",
+             "%max", "split", "floor", "keep", "veto", "rho_lvl");
 }
 
 #[allow(clippy::too_many_arguments)]
 fn row(t: &Target, tau: f64, k: f64, st: StructureMode, cr: Criterion,
-       r: &(usize, f64, f64, usize, [usize; 11], f64)) {
-    let (leaves, pmax, var, lvls, dec, _) = r;
+       r: &(usize, f64, f64, usize, [usize; 11], f64, usize, f64)) {
+    let (leaves, pmax, var, lvls, dec, _, quads, rho) = r;
     let veto = dec[Decision::ScreenFloor.code() as usize] + dec[Decision::MaxRelDepth.code() as usize];
-    println!("{:>14} {:>8.0e} {:>6.2} {:>8} {:>6} {:>7} {:>5} {:>8.3} {:>5.0}% {:>6} {:>7} {:>7} {:>7}",
+    println!("{:>14} {:>8.0e} {:>6.2} {:>8} {:>6} {:>7} {:>7} {:>5} {:>8.3} {:>5.0}% {:>6} {:>7} {:>7} {:>7} {:>8.3}",
              t.name, tau, k, st.name(),
              match cr { Criterion::Within => "within", Criterion::FracHotBetween => "fhb",
                         Criterion::LayoutRel => "lrel", Criterion::GradRms => "grms", _ => cr.name() },
-             leaves, lvls, var, pmax,
+             quads, leaves, lvls, var, pmax,
              dec[Decision::Split.code() as usize],
              dec[Decision::Floor.code() as usize],
-             dec[Decision::Keep.code() as usize], veto);
+             dec[Decision::Keep.code() as usize], veto, rho);
+}
+
+/// Spearman's rho. `NaN` on fewer than three pairs or on a constant column -- a rank correlation
+/// over a constant is `0/0`, and returning zero there would read as "no relationship" where the
+/// truth is "one axis does not vary". Three of the failure modes on record are exactly that.
+fn spearman(p: &[(f64, f64)]) -> f64 {
+    if p.len() < 3 {
+        return f64::NAN;
+    }
+    let rank = |v: &[f64]| -> Vec<f64> {
+        let mut idx: Vec<usize> = (0..v.len()).collect();
+        idx.sort_by(|&a, &b| v[a].partial_cmp(&v[b]).unwrap());
+        let mut r = vec![0.0; v.len()];
+        let mut i = 0;
+        while i < idx.len() {
+            let mut j = i;
+            while j + 1 < idx.len() && v[idx[j + 1]] == v[idx[i]] {
+                j += 1;
+            }
+            let avg = (i + j) as f64 / 2.0 + 1.0;
+            for &k in &idx[i..=j] {
+                r[k] = avg;
+            }
+            i = j + 1;
+        }
+        r
+    };
+    let (xs, ys): (Vec<f64>, Vec<f64>) = p.iter().cloned().unzip();
+    let (rx, ry) = (rank(&xs), rank(&ys));
+    let n = p.len() as f64;
+    let (mx, my) = (rx.iter().sum::<f64>() / n, ry.iter().sum::<f64>() / n);
+    let cov: f64 = rx.iter().zip(&ry).map(|(a, b)| (a - mx) * (b - my)).sum();
+    let sx: f64 = rx.iter().map(|a| (a - mx) * (a - mx)).sum::<f64>().sqrt();
+    let sy: f64 = ry.iter().map(|b| (b - my) * (b - my)).sum::<f64>().sqrt();
+    if sx == 0.0 || sy == 0.0 {
+        return f64::NAN;
+    }
+    cov / (sx * sy)
 }
 
 fn main() {
@@ -183,8 +273,13 @@ fn main() {
     let ens = EnsembleCfg { refine_flagged: false, ..Default::default() };
     let tg = targets();
 
-    const TAUS: [f64; 5] = [1e-4, 3e-4, 1e-3, 3e-3, 1e-2];
-    const KS: [f64; 4] = [1.0, 0.5, 0.25, 0.1];
+    // **Widened after the first pass.** `tau` moved depth variance 1.900 -> 1.866 across a whole
+    // decade at fixed `k`, so the fine `tau` rungs were measuring the same thing repeatedly; `k`
+    // moved it 0.577 -> 2.109 over the same table, so the `k` ladder gained two rungs at the
+    // selective end. The question `k = 0.25` raises is whether the tree is SELECTIVE or merely
+    // SPARSE, and only an equal-budget comparison answers it -- stage 4.
+    const TAUS: [f64; 3] = [1e-4, 1e-3, 1e-2];
+    const KS: [f64; 5] = [1.0, 0.5, 0.25, 0.1, 0.05];
 
     println!("budget {budget}, alpha_hi={alpha_hi}, N=8, E+1={}, t={}, f64, viewport {res}^2",
              ens.n_extra + 1, ens.t_max);

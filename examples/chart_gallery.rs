@@ -37,7 +37,7 @@ use prin_rs::ensemble::pixel::{EnsembleCfg, PixelOut};
 use prin_rs::grid::{self, Domain};
 use prin_rs::output::colour::{self, Scalar};
 use prin_rs::output::{adaptive, apng, png, wire};
-use prin_rs::quad::{Agg, Decision, QuadTree};
+use prin_rs::quad::{Agg, Criterion, Decision, QuadTree};
 use prin_rs::render::Precision;
 use prin_rs::scheduler::{self, SchedCfg};
 use prin_rs::{decode, stats};
@@ -104,6 +104,21 @@ fn main() {
     let tau: f64 = arg(2, 1e-4);
     let alpha_hi: f64 = arg(3, 0.2);
     let res: usize = arg(4, 1024);
+    // **The knob that made the whole committed gallery a uniform-mode render.** `k_frac = 1`
+    // takes the top 100% of the frontier, so the ranking runs and changes nothing. It was the
+    // silent default when `results/charts` was made; it is now an argument with the swept value
+    // as its default, and passing `1.0` reproduces the old corpus bitwise and writes to the old
+    // directory. Nothing is overwritten in either direction.
+    let k_frac: f64 = arg(5, scheduler::K_FRAC_RANKED);
+    let crit = std::env::args()
+        .nth(6)
+        .map(|c| Criterion::parse(&c).expect("criterion"))
+        .unwrap_or(Criterion::Within);
+    let ranked = k_frac < scheduler::K_FRAC_UNRANKED;
+    let dir = if ranked { "results/charts_ranked" } else { "results/charts" };
+    let adir = if ranked { "results/animated_ranked" } else { "results/animated" };
+    let _ = std::fs::create_dir_all(dir);
+    let _ = std::fs::create_dir_all(adir);
 
     let ens = EnsembleCfg { refine_flagged: false, ..Default::default() };
 
@@ -149,8 +164,14 @@ fn main() {
             chart: *chart,
             camera: Some(cam),
             keep_pixels: true,
+            criterion: crit,
+            k_frac,
             ..Default::default()
         };
+        // Refuses only when this run would write a headline artefact from the uniform-mode
+        // control. `ranked` is the deliberate-control flag: at `k_frac = 1` the destination is
+        // `results/charts`, which IS the before, and the guard must not block reproducing it.
+        scheduler::assert_not_uniform_in_disguise(&cfg, dir, !ranked);
         let (t, st) = scheduler::descend(cx, cy, half, 0, &cfg, &ens, Precision::F64);
 
         let leaves: Vec<usize> = t.leaves().collect();
@@ -284,10 +305,10 @@ fn main() {
                 points: pts,
                 overlay: med,
             };
-            let _ = sc.save(&format!("results/charts/{name}_termdepth"));
+            let _ = sc.save(&format!("{dir}/{name}_termdepth"));
         }
 
-        let stem = format!("results/charts/{name}");
+        let stem = format!("{dir}/{name}");
         let img = render_leaves(&t, &st.pixels, &cam, res, &leaves, &rgb);
         let mut wimg = img.clone();
         let boxes = wire::boxes_from_tree(&t, &cam, res);
@@ -307,7 +328,15 @@ fn main() {
         // So both. `_uniform` is what the chart looks like; the adaptive one and its wire twin
         // are what the scheduler made of it. Reading either alone is how a criterion's failure
         // gets mistaken for a rendering artefact, or a rendering choice for a finding.
-        {
+        //
+        // **And it is the one block that CANNOT depend on `k_frac`.** It builds its own
+        // `res x res` slice and evaluates it directly; no quad, no tree, no decision enters it.
+        // So a ranked run reproduces `results/charts/*_uniform*.png` bit for bit -- while
+        // costing `res^2 * (E+1)` trajectories, which at 1024 is 8.4M per chart and about 95% of
+        // the run. Regenerating them under a scheduler change is paying an hour a chart to
+        // rewrite identical bytes. Skipped when the tree is ranked, and the reason is the point:
+        // if this block's output moved with `k_frac`, something would be very wrong.
+        if !ranked {
             // Full resolution: this is the sharpest artefact and the only one that shows the
             // chart rather than the tree, so it is the one worth paying for. One sample per
             // pixel, no interpolation anywhere.
@@ -410,7 +439,7 @@ fn main() {
         // **Animations live in `results/animated/`, not beside the stills.** They are the only
         // artefacts here that show *how the tree got there* rather than what it settled on, and
         // 72 of them scattered through three directories were effectively unfindable.
-        let anim = format!("results/animated/{name}");
+        let anim = format!("{adir}/{name}");
         let _ = apng::write(&format!("{anim}_levels.png"), ares, ares, &ladder, 1, 2);
         let _ = apng::write(&format!("{anim}_levels_wire.png"), ares, ares, &wladder, 1, 2);
 
@@ -445,8 +474,8 @@ fn main() {
         wire_frames.push(wimg);
     }
 
-    let _ = apng::write("results/animated/gallery.png", res, res, &frames, 1, 1);
-    let _ = apng::write("results/animated/gallery_wire.png", res, res, &wire_frames, 1, 1);
+    let _ = apng::write(&format!("{adir}/gallery.png"), res, res, &frames, 1, 1);
+    let _ = apng::write(&format!("{adir}/gallery_wire.png"), res, res, &wire_frames, 1, 1);
     println!(
         "\n{} charts: still + wire twin + outcome control + level ladder (both) + .prnq each,\n\
          plus the two gallery APNGs. Everything at {res}^2.",

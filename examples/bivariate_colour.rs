@@ -112,7 +112,7 @@ fn main() {
             }
             println!();
             for r in [
-                Rank::GreedyOracle,
+                Rank::GreedyLookahead1,
                 Rank::Signal(Criterion::Within, Agg::Median),
                 Rank::Signal(Criterion::Between, Agg::Median),
                 Rank::Signal(Criterion::FracHotBetween, Agg::Median),

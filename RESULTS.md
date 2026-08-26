@@ -2503,6 +2503,374 @@ term propagating through the product on an empty mask, exactly as the doc commen
 `<target>__tau<t>__k<k>__struct-<s>__crit-<c>.prnq`, so a directory listing is a settings table
 and the corpus can be re-derived by parsing filenames. The header carries the settings too.
 
+## 19. The default was the control, and every headline render was made with it
+
+`SchedCfg::default().k_frac` was **1.0** through PR #21. `Mode::Balanced` at `k_frac = 1` computes
+the priority, sorts the frontier, and then refines all of it — the ranking runs and changes
+nothing. §18 said this about the 69 dumps and then left the constant where it was, so the fix
+landed in the sweep and nowhere else. Every dump in `results/charts`, `results/criterion` and
+`results/vertical` carries `k_frac=1`, and so does every image derived from them.
+
+The default is now `K_FRAC_RANKED = 0.25`, `K_FRAC_UNRANKED = 1.0` is a named constant rather than
+a bare literal, and `scheduler::assert_not_uniform_in_disguise` refuses to let an example write
+into `results/` from the degenerate cell. The old corpus is not touched: passing `1.0` reproduces
+it bitwise and still lands in its own directory. New runs land in `results/charts_ranked`,
+`results/criterion_ranked` and `results/animated_ranked`.
+
+**One correction to the diagnosis as received.** `results/glsl/` was *not* made at `k_frac = 1` —
+PR #21 (`0bc00ed`) re-rendered all sixteen files at `k_frac = 0.25, criterion = grad_rms`, taking
+`shape` from 181 leaves to 31 and `prho` from 2695 to 49. The directory holds no `.prnq`, which is
+why a parse of the dumps could not see it; it is now the one committed image set that was already
+ranked. Everything else in the diagnosis stands.
+
+### 19.1 The widened sweep — `k_frac` is the knob and `tau` is nearly inert
+
+`tau ∈ {1e-4, 1e-3, 1e-2}` × `k_frac ∈ {1, 0.5, 0.25, 0.1, 0.05}`, three targets, `structure=off`,
+`criterion=within`, budget 40000, viewport 1024², `alpha_hi = 0.2`. Near-field, where the knobs are
+live:
+
+| tau | k | quads | leaves | levels | depth var | %max | veto | rho_lvl |
+|---|---|---|---|---|---|---|---|---|
+| 1e-4 | **1.00** | 549 | 412 | 5 | **1.015** | 61% | 252 | **-0.295** |
+| 1e-4 | 0.50 | 137 | 103 | 5 | 1.900 | 35% | 36 | -0.028 |
+| 1e-4 | **0.25** | 61 | 46 | 5 | **2.053** | 17% | 8 | **+0.265** |
+| 1e-4 | 0.10 | 41 | 31 | 5 | 2.046 | 13% | 4 | +0.137 |
+| 1e-4 | 0.05 | 33 | 25 | **4** | 1.334 | 16% | 0 | +0.108 |
+| 1e-3 | 1.00 | 345 | 259 | 5 | 1.347 | 53% | 136 | -0.320 |
+| 1e-3 | 0.50 | 133 | 100 | 5 | 1.866 | 32% | 32 | -0.013 |
+| 1e-3 | 0.25 | 57 | 43 | 5 | 1.691 | 9% | 4 | +0.264 |
+| 1e-2 | any | 21 | 16 | 1 | 0.000 | 100% | 0 | NaN |
+
+A whole decade of `tau` at fixed `k = 0.5` moves depth variance **1.900 → 1.866**. `k` from 1 to
+0.25 moves it **1.015 → 2.053**. At `tau = 1e-2` every rung is `16/1/0.000` — the threshold has
+gone above the bulk and keeps everything, the upper-side failure §14 named.
+
+**There is an over-sparse end, and 0.25 is where the sweep peaks.** Depth variance falls at
+`k = 0.05` and the tree loses a whole level (4 distinct against 5). The default is the peak of the
+measured curve, not a value that made a picture look right.
+
+`deep_interior` reads `29/22/0.614` at every `k` and `preset_shape` `21/16/0.000` at every `k`, as
+§18 recorded: `k_frac` truncates the set that already decided to split, and neither produces enough
+splits per round for a fraction to bite. `alpha` is what binds those two.
+
+### 19.2 `rho(depth, spread)` is confounded twice, and the sign flip survives the form that is not
+
+The naive statistic — leaf depth against the leaf's own spread — reads **-0.817 at `k = 1` and
++0.821 at `k = 0.25`**, which looks like the ranking reversing where the budget goes. It is not
+readable: **refining a quad reduces the spread of the pieces it becomes**, so a deep leaf has a
+small spread partly *because* it was refined.
+
+Substituting the **parent's** spread removes that arm and leaves a second. `ensemble_spread` is a
+spread over copies jittered within the **cell**; the cell halves every level and the measured
+inter-level spread ratio runs 1.19–1.62 (§11). So a deep leaf's parent is a fine quad with a
+systematically smaller spread than a shallow leaf's parent, and the correlation reads the
+estimator's level-dependence. Measured, it is **negative at every `k`** — -0.419, -0.813, -0.472,
+-0.348, -0.447 — including the rungs where the ranking demonstrably works.
+
+**The form with neither confound is blocked by level.** Within one level every quad has the same
+cell width, so the spreads are comparable, and the question is asked directly: among the quads at
+level `L`, did the ones the descent split have the higher spread? Spearman of `was_split` against
+`spread`, per level, pooled by quad count. That is the `rho_lvl` column above: **-0.295 → +0.265**
+across `k = 1 → 0.25`, a third of the naive magnitude and the same sign change. It is `NaN` wherever
+a level has one outcome only, which is every degenerate row — a level nothing was split at has no
+correlation, and returning 0 there would read as "no relationship" where the truth is "one axis
+does not vary".
+
+### 19.2b The 26-chart gallery re-run: the criterion decides 1.5% of leaves before and 78% after
+
+`results/charts_ranked/`, same command as the committed gallery with `k_frac = 0.25` in place of
+`1.0`. Stop reasons read from the `decision` column of the `.prnq` dumps, not from the `bound`
+column, which has been wrong before:
+
+| corpus | charts | quads | leaves | Floor | Keep | MaxRelDepth | veto share |
+|---|---|---|---|---|---|---|---|
+| `charts/` (`k_frac = 1`) | 26 | 100,470 | 75,359 | 969 | 154 | 74,236 | **98.5%** |
+| `charts_ranked/` (`k_frac = 0.25`) | 26 | 1,922 | 1,448 | 147 | 985 | 316 | **21.8%** |
+
+**The standing result "the chart families do not exercise the criterion" was a fact about
+`k_frac = 1`, not about the charts.** `MaxRelDepth` stopped 95%+ of leaves on 23 of 26 charts and
+100% on three; at the ranked default it stops 21.8% and the criterion decides the rest. The
+`screen` column is **0 on all 26 rows**.
+
+`Keep` conflates two criterion decisions by design — the spread gate declining, and the ranking
+deferring an outranked quad — because a deferred quad is deliberately `Keep` rather than
+`BudgetExhausted`: it was outranked, not refused for want of budget, and conflating those two would
+hide the ranking inside the column that exists to expose it. The 985 is not separable further from
+the dump.
+
+**And the `_uniform*` panels are not regenerated, for a reason worth stating.** That block builds
+its own `res × res` slice and evaluates it directly — no quad, no tree, no decision enters it — so a
+ranked run reproduces `results/charts/*_uniform*.png` bit for bit while costing `res² × (E+1)`
+trajectories, 8.4M per chart at 1024 and about **95% of the run**. If that block's output moved with
+`k_frac`, something would be very wrong. The committed ones stand for both corpora.
+
+### 19.3 Selective, or merely sparse
+
+64 leaves against 1755 is not a result on its own — under-refining everywhere produces the same
+headline. `src/metric.rs` already answers it: build the fully-refined reference once, then score
+each tree by `Cache::error_of` against `greedy_oracle` and a `random` band **at the tree's own leaf
+count**. Below the band, the small budget went to the right places. Inside or above it, the tree is
+sparse and the depth variance is a picture of under-refinement.
+
+`greedy_oracle` is a reference and deliberately not a ceiling — measured at `t = 20` in near-field
+it plateaus at 0.00048 while `first_div` reaches 0.00000, so a tree beating it indicates lookahead
+value. Nothing asserts it dominates.
+
+Near-field, reference tree complete to level 5, `N = 8`, `res = 256²`, `t = 13`, five random seeds:
+
+| `k_frac` | leaves `B` | tree error | `greedy@B` | `random@B` | verdict |
+|---|---|---|---|---|---|
+| 1.00 | 223 | 0.05841 | 0.05670 | 0.06301–0.07380 | **SELECTIVE** |
+| 0.50 | 76 | 0.07312 | 0.06635 | 0.07195–0.08633 | in band |
+| 0.25 | 40 | 0.07539 | 0.07117 | 0.07502–0.09083 | in band |
+| 0.10 | 28 | 0.07646 | 0.07441 | 0.07884–0.09196 | **SELECTIVE** |
+| 0.05 | 25 | 0.07667 | 0.07441 | 0.07884–0.09196 | **SELECTIVE** |
+
+**No rung is sparse.** Every ranked tree is at or below the random band at its own leaf count, and
+the gap to `greedy_oracle` is small throughout — 0.07539 against 0.07117 at `B = 40`. So the small
+tree is not under-refining everywhere; the budget it does spend goes where an ordering should send
+it.
+
+**And it is not a free lunch, which the depth-variance table alone would not say.** The tree error
+rises monotonically as `k` falls — **0.05841 → 0.07667** — because the tree is displaying less. The
+selectivity is in the *shape* of the tree (depth variance, criterion-bound stops, the level-blocked
+`rho` turning positive), bought at a real cost in displayed error, because fewer quads are computed.
+The correct reading of `k_frac` is a **budget-quality trade**, not an improvement at fixed cost.
+
+Two things this cannot say. `error = 0` would mean "matches this sampling", not "correct" — the
+reference is the complete tree at one sample per pixel, and at the floor which side of a filament a
+pixel lands on is an accident of where its sample fell. And the descent is **capped at the
+reference's own depth** (`max_level: Some(levels)`), because `Cache::error_of` is defined over a
+leaf set that *tiles* the root: a leaf deeper than the cache has no entry and the number would be an
+average over a hole. Without the cap the run correctly scored nothing — 170 of 223 leaves outside at
+`k = 1` — rather than dropping them quietly.
+
+**The mapping between the two trees is the one joint where they meet, and it was wrong.** A cell
+centre sits at `(2i+1)h` from the low edge, so dividing by the cell width `2h` gives `i + 0.5` and
+`.round()` lands on `i + 1` — every quad mapped to its right/upper neighbour. It was caught by the
+reconstruction check that verifies the recovered index reproduces the centre, not by the numbers
+looking wrong: without that check this would have scored a perfectly coherent leaf set belonging to
+a shifted tree.
+
+### 19.4 The §5 acceptance test, with a control that discriminates for the first time
+
+`balanced_march` ran at the old default, so its "balanced" arm was uniform mode with the gates
+still applied — **the treatment and the control were nearly the same tree**. Worse, the rank
+truncation in `descend` ran regardless of mode, so passing `k_frac < 1` truncated the uniform arm
+too: near-field at `t = 4` read **40 leaves and depth variance 0.6900 under both arms, to four
+digits**, with the budget never exhausted. Two arms agreeing to the digit is the same tell as three
+unrelated charts agreeing, one level up. `Mode::Uniform` is now exempt from the truncation, with a
+two-armed test — the uniform tree identical across `k_frac`, the balanced tree different — because
+a `k_frac` that reached nothing at all would pass the first assertion alone.
+
+Near-field, budget 800, `N = 4`, viewport 64², `tau = 1e-4`, `k_frac = 0.25`:
+
+| mode | t | leaves | depth var | churn | shared | screen |
+|---|---|---|---|---|---|---|
+| balanced | 4 | 40 | 0.6900 | – | 0 | 16 |
+| balanced | 8 | 31 | 0.6514 | 0.3333 | 9 | 8 |
+| balanced | 13 | 34 | 0.5744 | 0.2500 | 8 | 8 |
+| balanced | 16 | 22 | 0.2314 | 0.5263 | 19 | 0 |
+| balanced | 20 | 25 | 0.5600 | 0.0833 | 12 | 4 |
+| **uniform** | 4 | **256** | **0.0000** | – | 0 | **256** |
+| **uniform** | 8 | **256** | **0.0000** | 0.0000 | 256 | **256** |
+| **uniform** | 13 | **256** | **0.0000** | 0.0000 | 256 | **256** |
+
+`deep interior` reads the same shape: balanced 0.2496–0.6136 with churn to 0.3750, uniform
+**0.0000 at every playhead** on 256 veto-stopped leaves.
+
+The control reads **exactly 0.0000 at every playhead** and is stopped by the veto on all 256 leaves
+rather than by the budget, which is the condition that makes it a control at all. The balanced arm
+holds variance bounded away from zero **with churn nonzero** — a steady state rather than a frozen
+one, which the variance plot alone cannot distinguish. Every churn row is annotated with its shared
+count; at 8–19 shared quads these are thin and are labelled thin.
+
+### 19.5 The magenta is four footprints, not 1426 pixels
+
+`results/glsl/shape.png` carries 1046 `DEBUG_NAN` pixels and `plambda.png` 380, which reads as
+scattered failure in the region of interest. The adaptive render is **nearest-neighbour**: one
+footprint of a level-2 quad paints a texel roughly `res / (4N)` on a side, so at `res = 512, N = 8`
+a single undetermined trajectory paints ~16×16 = 256 pixels. Measured on the committed frames, the
+magenta is **3 axis-aligned blocks** (18×19, 18×18, 20×19) in `shape` and **1** (20×19) in
+`plambda`. Four footprints. **A pixel count of a debug colour is a fact about the texel size.**
+
+`colour::rgb` has four exits to `DEBUG_NAN` and they are different findings. The census
+(`examples/nan_probe.rs`, uniform grid, `t = 13`, f64):
+
+| chart | samples | non-finite copy | SimFailed | DecodeFailed | non-finite shape | total |
+|---|---|---|---|---|---|---|
+| `preset_shape` | 4096 | 4 | 0 | 0 | 6 | 0.244% |
+| `preset_shape` | 16384 | 12 | 0 | 0 | 21 | **0.201%** |
+| `preset_plambda` | 16384 | 0 | 0 | 0 | 0 | 0.000% |
+| `preset_prho` | 16384 | 0 | 0 | 0 | 0 | 0.000% |
+| `preset_shape_pl` | 16384 | 1 | 0 | 0 | 0 | 0.006% |
+
+**Zero decode failures and zero sim failures at both resolutions.** All of it is non-finite copies
+and non-finite `shape_vec` — a triple collision — and the rate is stable across a 4× change in
+sampling, which is the tell that it is a property of the chart rather than of the grid.
+`preset_shape` is the one chart in this set whose terminations are collisions (escape fraction
+0.0547 against 0.9894–1.0000 for the momentum slices), so it is the one that passes through
+collision-adjacent shapes. A non-finite copy is a **measurement outcome** and is never discarded; a
+`DecodeFailed` would have been the chart handing back something that is not a three-body state, and
+there are none.
+
+## 20. The oracle was not a ceiling, and now there is one
+
+`greedy_oracle` was read as an upper reference in every table since §10. It is not one. On `far`
+at `B = 1535` it read **0.54760** against a random band of **0.48550-0.52047** and every criterion
+at **0.36557** -- the worst strategy in the table, under a name that says it cannot be. It is
+renamed **`greedy_lookahead_1`** throughout the code; the numbers already recorded above keep the
+old name, because renaming them would rewrite the record of what was measured.
+
+Two invariants were proposed to find the fault and **neither could have fired.** `Cache::error_of`
+is a sum of `err_sum` over the leaf set and `Cache::gain` is parent-minus-children, so splitting
+`k` replaces `err_sum(k)` with `err_sum(k) - gain(k)` and the accounting identity
+`error_of(leaves) == err_sum(root) - sum(gains)` telescopes for **any** ranking, any sequence, and
+any values `err_sum` happens to hold -- random numbers included. And a choice check re-runs
+`replay_with_leaves`'s own argmax over a pure, static `gain`. Both report PASS. *A test that cannot
+fail is indistinguishable from a test that passes*, at the level of the metric this time.
+
+### 20.1 The bound that can fail
+
+`Cache::dp_optimal` is the exact minimum over **all** tree-shaped leaf sets at a given budget, by
+tree DP: `f_k(0) = err_sum(k)`, `f_k(s) = min over s0+s1+s2+s3 = s-1 of sum_i f_ci(si)`. Budget and
+splits are locked to `replay`'s own accounting, `B = 1 + 4s`. *No ranking may beat it* -- an
+assertion with a real failure mode, and `tests/criterion.rs` runs it over every `Rank` at every
+budget.
+
+**It reads at the complete tree, uncapped, in centiseconds.** The naive `O(quads x B^2)` reading is
+wrong twice: the 4-way merge is three successive 2-way convolutions (`O(cap^2)`, not `O(cap^4)`),
+and each node's split cap is bounded by its own subtree, so only the top two levels ever see the
+full budget. Measured at `levels = 7`, 21845 quads, 5461 splits: **0.01-0.03 s**, against 296-1487 s
+to build the cache. No cap is needed and none is applied.
+
+**The bound holds everywhere.** Worst margin `row - dp` over every ranking and every budget:
+`+0.000e0` (`far`), `-1.388e-16` (`near-field`), `-1.388e-17` (`deep interior`) -- summation order,
+not violations. **The replay is sound and no `error(B)` number in the corpus is suspect.**
+
+### 20.2 What the ceiling says, per region
+
+`error(B)` at `B = 1535`, and the share of *achievable* improvement each row leaves on the table,
+`(row - dp)/(root - dp)`:
+
+| region | `dp_optimal` | `greedy_lookahead_1` | greedy gap | best criterion | best gap |
+|---|---|---|---|---|---|
+| `far` | **0.36555** | 0.54760 | **0.7693** | `frac_hot_within` 0.36561 | **0.0002** |
+| `near-field` | **0.10664** | 0.10668 | **0.0004** | `frac_hot_between` 0.11148 | **0.0508** |
+| `deep interior` | **0.05996** | 0.06263 | **0.0301** | `frac_hot_between` 0.06856 | **0.0971** |
+
+Greedy is **near-optimal in both structured regions** and catastrophic only in `far`. The anomaly
+is confined to the smooth region, and it is genuine myopia -- not a metric fault.
+
+**The headroom for a learned criterion is 5-16%, and it is in the structured regions.** In
+`near-field` the best criterion leaves 5.1% at `B = 1535` and **16.3% at `B = 12287`**; in
+`deep interior`, 9.7% and 3.1%. That is the figure a lookahead criterion has to beat, and it is
+measurable for the first time -- against greedy it read *negative*, which is why the question was
+unanswerable by inspection.
+
+### 20.3 Why greedy fails on `far`: `err_sum` is flat until level 3
+
+Per pixel, normalised by the root's, median over quads at each level:
+
+| level | `far` | `near-field` | `deep interior` |
+|---|---|---|---|
+| 0 | 1.00000 | 1.00000 | 1.00000 |
+| 1 | **1.00067** | 0.94264 | 0.76073 |
+| 2 | **1.00016** | 0.81430 | 0.54474 |
+| 3 | **0.99884** | 0.77844 | 0.43228 |
+| 4 | 0.91387 | 0.69918 | 0.40615 |
+| 5 | 0.61965 | 0.59543 | 0.38210 |
+| 6 | 0.31066 | 0.46190 | 0.28214 |
+| 7 | 0.00000 | 0.00000 | 0.00000 |
+
+`far` is **flat through level 3** and its gains there are noise: `-3.022e-7` at the root,
+`6.319e-7` at level 1, `-6.425e-9` at level 2 with **13 of 16 negative** -- against `8.634e2` at
+level 3. So a level-2 split has to be paid for at zero or negative immediate gain to unlock a gain
+five orders larger beneath it, and greedy declines. Once it has opened one subtree it descends
+inside it to the bottom and never returns. That is the level-2 barrier, and it is the entire
+failure.
+
+`near-field` and `deep interior` fall gradually at every level, so gains are available immediately
+everywhere and greedy has no barrier to decline. **The same statistic explains both the failure and
+its absence**, which is what makes it the mechanism rather than a story.
+
+### 20.4 The leaf histograms, which the error curve could not show
+
+Leaf levels at `B = 1535`, as `level:count`:
+
+| | `far` | `near-field` | `deep interior` |
+|---|---|---|---|
+| `dp_optimal` | `5:982 6:168` | `3:2 4:71 5:589 6:472 7:16` | `3:15 4:99 5:200 6:724 7:112` |
+| `greedy_lookahead_1` | `2:14 5:48 6:64 7:1024` | `3:3 4:70 5:577 6:468 7:32` | `2:1 3:18 4:93 5:134 6:584 7:320` |
+| `within/median` | `5:982 6:168` | `1:2 3:22 4:11 5:29 6:102 7:984` | `1:3 2:1 3:3 4:3 5:41 6:119 7:980` |
+| `frac_hot_between` | `5:982 6:168` | `3:2 4:14 5:870 6:264` | `1:1 2:4 3:10 4:15 5:40 6:984 7:96` |
+| `random[1]` | `2:1 3:15 4:101 5:210 6:291 7:532` | (same, seed-shared) | (same) |
+
+On `far`, greedy leaves **14 quads at level 2** -- most of the image -- while driving 1024 leaves
+to the bottom. That is the uniform dark corner, counted.
+
+On `near-field` the histogram indicts `within/median` in a way no error cell did: **2 leaves left
+at level 1** and 984 driven to level 7, against an optimum that puts nothing below level 3 and only
+16 at level 7. It is not merely losing; its allocation is inverted.
+
+### 20.5 On a smooth field, ranking by spread IS breadth-first
+
+`far`'s thirteen non-greedy rows agree to five digits at every budget -- `within/median` on
+**21845 distinct values** and `frac_hot_between` on **1**. They are not thirteen criteria
+independently agreeing; they are **one allocation reached by two routes**, and the histogram proves
+it rather than the digits: all three rows produce the *identical* leaf set `5:982 6:168`.
+
+The routes are different. A quad of width `w` over a gradient `g` has internal variation `~ g*w`,
+so **spread tracks cell size** and argmax-on-spread picks the shallowest quad. A constant signal has
+no argmax at all and falls through to the tie-break, which is lexicographic on `(level, ix, iy)` --
+**level first**, so also shallowest. Both are breadth-first, and on a smooth field breadth-first is
+within `2e-5` of exactly optimal.
+
+**So `far` degenerating is correct behaviour, not a defect.** A criterion can only differ from
+breadth-first where the field is *not* smooth, and smoothness is exactly where there is nothing to
+find. `far`'s role is the control that shows what a featureless field looks like -- not a region
+where the criterion mysteriously ties.
+
+### 20.6 A split can make the image worse, and the prefix-min is why
+
+`f_root(s)` is the best tree at **exactly** `s` splits; the ceiling at budget `B` is
+`min over s <= (B-1)/4` of it, because a replay may stop early and because more splits only help if
+every gain is non-negative. They are not. **The root's own gain on `far` is `-3.022e-7`** -- its
+`err_sum` per pixel is `1.00000` against level 1's median `1.00067` -- so the prefix-min binds at
+`s = 1`, measured.
+
+This is the hypothesis that a parent's `N x N` sample grid and its children's are **different
+approximation families**, confirmed directly. On a smooth field one 8x8 grid over the whole box is
+marginally better than four 8x8 grids over quarters. Negative gains elsewhere: `far` 14 quads,
+`near-field` 14, `deep interior` **102**. Reading `f_root(S)` instead of the prefix-min would have
+quoted a ceiling above its own achievable minimum.
+
+### 20.7 Three roles, stated on the table's face
+
+The table had a floor and a reference and was read as though it had a ceiling. It now says which is
+which, in the header and the figure legend:
+
+```
+floor      random lo/hi          several seeds, read as a band, never one trace
+reference  greedy_lookahead_1    greedy on immediate delta-error -- NEITHER OPTIMAL NOR A BOUND
+ceiling    dp_optimal            exact minimum over all tree-shaped leaf sets; asserted, not trusted
+```
+
+`criterion_metric` now computes and prints `dp_optimal` and **asserts** no row falls below it, so
+the failure mode that took two PRs to notice cannot recur silently. The committed
+`results/output/criterion_metric.txt` predates that row; it is unchanged, and this section is where
+the ceiling is recorded until that table is next regenerated for its own reasons.
+
+### 20.8 One thing found in passing and not chased
+
+`criterion_metric.rs`'s AUTO-RANGED OVER NOISE guard did **not** fire on `far`: span `x8.097` clears
+the `< 2.0` ratio arm and `ramp.1 = 1.064e-8` clears the absolute arm against `100x` the region's
+median energy drift. But `far` being auto-ranged noise is a standing finding (§11), and the guard
+exists to say so. A guard that does not fire where the recorded answer says it should is worth its
+own look; it is flagged rather than folded into this one.
+
+---
+
 ## 13. Reproducing any of this
 
 **Two of these commands were wrong, and only running them found it.** The `pan_sequence` line said
@@ -2516,6 +2884,14 @@ project's own standing lesson arriving through its documentation.
 A sample of eleven dumps had already reported "reproduces bitwise". Checking all sixty-nine is what
 caught it. **Verify a regeneration over the whole corpus, not a sample**, and diff the `decision`
 column specifically — it is the one that moves when a parameter is wrong while the tree is not.
+
+**And the default under them moved, which is a second way a documented command can be wrong.**
+`SchedCfg::default().k_frac` was `1.0` when every artefact below `§18` was made and is now `0.25`.
+So **every command in this table that does not name `k_frac` produces a different tree than the one
+it reproduced before** — a ranked one rather than the uniform-mode control. That is the intended
+direction and it is stated rather than quietly absorbed: where the committed artefact is the
+*before*, the command carries `1.0` explicitly (see the `chart_gallery` and `balanced_march` rows).
+Everywhere else the table now names the ranked run.
 
 Every table above comes from a committed example. Raw output for all of them is in
 [`results/output/`](results/output/), the acceptance-gate and cross-check output is in
@@ -2571,16 +2947,22 @@ Every table above comes from a committed example. Raw output for all of them is 
 | §10.9 the two costings | `cargo run --release --example cost_and_anisotropy -- 5 8` |
 | the criterion gates | `cargo test --release --test criterion -- --nocapture` |
 | §10.9 the slice gallery | `cargo run --release --example slice_gallery -- 40000 1e-4 0.2 1024` |
-| §12 the chart gallery, all 26 cases | `cargo run --release --example chart_gallery -- 40000 1e-4 0.2 1024` |
+| §12 the chart gallery as committed (k_frac = 1, the uniform-mode control) | `cargo run --release --example chart_gallery -- 40000 1e-4 0.2 1024 1.0` |
+| §19 the chart gallery at the ranked default | `cargo run --release --example chart_gallery -- 40000 1e-4 0.2 1024 0.25` |
 | §12 the decoder and preset gates | `cargo test --release --test charts -- --nocapture` |
 | §14 the threshold diagnosis | `cargo run --release --example threshold_diagnosis` |
 | §14.5-14.6 the hot rule swept | `cargo run --release --example hot_rule_sweep` |
-| §15.3-15.4 the balanced march | `cargo run --release --example balanced_march` |
+| §15.3-15.4 the balanced march as committed (k_frac = 1, no truncation) | `cargo run --release --example balanced_march -- 800 4 1e-4 64 1.0` |
+| §19.4 the balanced march at the ranked default | `cargo run --release --example balanced_march -- 800 4 1e-4 64` |
 | §16 structure modes by error(B) | `cargo run --release --example structure_metric -- 6 8 1e-4 13` |
 | §17 the slippy-map gates | `cargo test --release --test slippy -- --nocapture` |
 | the refinement animations | `cargo run --release --example refinement_animation -- 40000 1e-4 0.2 512` |
 | the four GLSL slices refining | `cargo run --release --example glsl_refinement -- 40000 1e-4 0.2 512 40` |
 | §18.0 the wiring check | `cargo run --release --example criterion_sweep -- 0` |
-| §18.1 stage 1, tau x k_frac | `cargo run --release --example criterion_sweep -- 1` |
+| §18.1 stage 1, tau x k_frac (widened in §19.1) | `cargo run --release --example criterion_sweep -- 1` |
+| §19.3 selective or sparse, by error(B) | `cargo run --release --example equal_budget -- 6 8 5` |
+| §19.5 the undetermined-footprint census | `cargo run --release --example nan_probe -- 128` |
 | §18.3 stage 2, structure x criterion | `cargo run --release --example criterion_sweep -- 2 40000 0.2 1024 1e-4 0.25` |
 | §18.2 stage 3, alpha | `cargo run --release --example criterion_sweep -- 3 40000 0.2 1024 1e-4 0.25` |
+| §20 the ceiling, and the oracle audit | `cargo run --release --example oracle_audit -- 7 8 1e-4 13 all` |
+| §20.1 the bound over every ranking | `cargo test --release --test criterion no_ranking_beats -- --nocapture` |

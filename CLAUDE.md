@@ -784,6 +784,132 @@ saturates on **98.8%** of chart leaves and **87.1%** corpus-wide. The conclusion
 scope, which is exactly why the mislabelling was survivable and had to be caught by arithmetic
 rather than by a wrong answer. **State the scope with every figure.**
 
+**THE MECHANISM SHIPPED DISABLED TWICE, AND THE SECOND TIME IT WAS THE DEFAULT.** `k_frac = 1.0`
+takes the top 100% of the ranked frontier: `Mode::Balanced` computes the priority, sorts the queue,
+and refines all of it. The ranking runs and changes nothing. It was `SchedCfg::default()` through
+PR #21, so all 69 dumps in `results/charts`, `results/criterion` and `results/vertical` are the
+uniform-mode control with new columns attached, and so was every render made from them. The default
+is now `K_FRAC_RANKED = 0.25` and `K_FRAC_UNRANKED = 1.0` is named and kept. **A configuration that
+silently reproduces the old behaviour needs a guard, not a convention** —
+`scheduler::assert_not_uniform_in_disguise` refuses a `results/` path from the degenerate cell, and
+its test asserts all four cells because a guard that always fires passes just as easily as one that
+never does.
+
+**The uniform arm was being truncated by the knob it exists to isolate.** `decide` short-circuits
+`Mode::Uniform` to `Split` — the criterion is *off*, not permissive — but the rank truncation in
+`descend` ran afterwards and demoted the outranked quads to `Keep` anyway. Measured: near-field at
+`t = 4` gave **40 leaves and depth variance 0.6900 under both arms, to four digits**, budget never
+exhausted. Two arms agreeing to the digit is the same tell as three unrelated charts agreeing.
+Exempted, and with it the §5 acceptance test discriminates for the first time: uniform reads
+**256 leaves, variance exactly 0.0000, all 256 stopped by the veto**, balanced 0.23–0.69 with churn
+0.08–0.53.
+
+**`rho(depth, spread)` is confounded TWICE and both obvious repairs leave one.** Against the leaf's
+own spread it reads `-0.817` at `k = 1` and `+0.821` at `k = 0.25` — but refining a quad *reduces*
+the spread of the pieces it becomes. Substituting the **parent's** spread removes that arm and
+leaves the scale term: `ensemble_spread` is over copies jittered within the cell, the cell halves
+each level, and the measured inter-level ratio is 1.19–1.62 — so it comes out **negative at every
+`k`, including the ranked ones where the ranking demonstrably works**. The form with neither
+confound is **blocked by level**: among the quads at level `L`, did the ones that got split have the
+higher spread? Measured near-field at `tau = 1e-4`: **-0.295, -0.028, +0.265, +0.137, +0.108** at
+`k = 1, 0.5, 0.25, 0.1, 0.05`. The sign flip survives, at a third of the naive magnitude, and it is
+`NaN` on every degenerate row rather than 0 — a level with one outcome has no correlation, and
+saying so is the point.
+
+**`k_frac` has an over-sparse end, and 0.25 is where two independent statistics peak.** Near-field
+depth variance runs **1.015, 1.900, 2.053, 2.046, 1.334** across `k = 1, 0.5, 0.25, 0.1, 0.05`, and
+the tree loses a whole level at `0.05` (4 distinct levels against 5). The level-blocked `rho` peaks
+at the same rung. `tau` over a whole decade at fixed `k` moves the variance **1.900 -> 1.866**:
+`tau` is a threshold and cannot land inside a distribution whose median moves six orders between
+regions, where a rank always cuts through it.
+
+**`k_frac` is a BUDGET-QUALITY TRADE, not an improvement at fixed cost — and the depth-variance
+table alone does not say so.** Scored by `Cache::error_of` at each tree's own leaf count against a
+five-seed random band, near-field: **no rung is sparse** — every ranked tree is at or below the
+band, and the gap to `greedy_oracle` is small (0.07539 against 0.07117 at `B = 40`). But the tree
+error rises monotonically as `k` falls, **0.05841 -> 0.07667**, because the tree displays less. The
+selectivity is in the *shape* — depth variance, criterion-bound stops, the level-blocked `rho`
+turning positive — bought at a real cost in displayed error.
+
+**A leaf set scored against a finite reference must TILE the root, and the mapping between the two
+trees is where that breaks.** `Cache::error_of` over a set with a hole is an average over the hole.
+Two guards earn their place in `equal_budget`: the descent is capped at the reference's own depth
+(without it, 170 of 223 leaves fell outside and the run scored nothing rather than dropping them),
+and the recovered `(level, ix, iy)` is checked back against the quad centre. The second caught a
+half-cell error — a centre sits at `(2i+1)h`, so dividing by the cell width `2h` gives `i + 0.5` and
+`.round()` lands on `i + 1`, mapping every quad to its right/upper neighbour. **Without the check it
+would have scored a perfectly coherent leaf set belonging to a shifted tree.**
+
+**A self-describing filename has to carry every setting that is swept.** `criterion_sweep`'s stem
+held tau/k/struct/crit and not `alpha_hi`, so stage 3's six alpha rows all landed on the one stem
+stage 1 had written and the last writer won. Caught by re-running stage 1 over the committed corpus
+and diffing: the `k0.25` dumps came back `alpha_hi=0.2 quads=29` where the committed ones read
+`alpha_hi=-1 quads=53`. Same family as the wrong reproduction command, at the filename.
+
+**A pixel count of a debug colour is a fact about the texel size.** `results/glsl/shape.png` carries
+1046 magenta pixels, which reads as scattered failure. The adaptive render is nearest-neighbour, so
+one footprint of a level-2 quad paints ~16x16: measured, the magenta is **3 axis-aligned blocks** in
+`shape` and **1** in `plambda` — four footprints. The census over `preset_shape` at N=64 and N=128
+gives **0.244% and 0.201%** undetermined, **zero `SimFailed` and zero `DecodeFailed`** at both, all
+of it non-finite copies and non-finite `shape_vec` (a triple collision). Stable across resolution is
+the tell that it is the chart, not the grid. It is the instrument reporting; a decode failure would
+have been the fault.
+
+**`greedy_oracle` WAS NEVER A BOUND, AND THE NAME COST TWO PRs.** Renamed
+`greedy_lookahead_1`. On `far` at `B = 1535` it read **0.54760** against a random band of
+**0.48550-0.52047** and every criterion at **0.36557** -- the worst strategy in the table, under a
+name asserting it could not be. The real ceiling is `Cache::dp_optimal`, the exact minimum over all
+tree-shaped leaf sets, and **it is cheap**: 5461 splits at `levels = 7` in **0.01-0.03 s** against
+296-1487 s to build the cache. The naive `O(quads x B^2)` reading is wrong twice -- the 4-way merge
+is three 2-way convolutions, and each node's cap is bounded by its own subtree, so only the top two
+levels see the full budget. State the three roles wherever a curve is quoted: **floor** = random
+band, **reference** = `greedy_lookahead_1`, **ceiling** = `dp_optimal`.
+
+**THE ACCOUNTING IDENTITY IS A TAUTOLOGY, AND IT WAS PROPOSED AS THE FIX.**
+`error_of(leaves) == err_sum(root) - sum(gains)` telescopes directly from `error_of` being a sum of
+`err_sum` and `gain` being parent-minus-children. It holds for **any** ranking, any sequence, and
+any values `err_sum` holds -- random numbers included. So does "assert greedy picked the argmax",
+which re-runs `replay_with_leaves`'s own argmax over a pure, static `gain`. Both report PASS and
+read as clearing the metric. *A test that cannot fail is indistinguishable from a test that passes*
+applies to the **metric**, not only to the physics. The form with teeth is the exact optimum: *no
+ranking may beat it*. Measured worst margin `+0.0e0`, `-1.4e-16`, `-1.4e-17` across three regions
+-- **the replay is sound and no `error(B)` number is suspect.**
+
+**ON A SMOOTH FIELD, RANKING BY SPREAD *IS* BREADTH-FIRST — so `far` degenerating is CORRECT.**
+A quad of width `w` over a gradient `g` has variation `~ g*w`, so spread tracks cell size and
+argmax-on-spread picks the shallowest quad. A constant signal has no argmax and falls through to a
+tie-break that is lexicographic on `(level, ix, iy)` -- level first, also shallowest. Both are
+breadth-first, which on a smooth field is within **2e-5 of exactly optimal**. That is why `far`'s
+thirteen non-greedy rows agree to five digits: `within/median` on **21845** distinct values and
+`frac_hot_between` on **1** produce the **identical leaf set** `5:982 6:168`. One allocation, two
+routes -- not thirteen criteria agreeing. **A criterion can only differ from breadth-first where
+the field is not smooth, and smoothness is where there is nothing to find.** `far` is the control
+that shows what a featureless field looks like.
+
+**A LEVEL BARRIER IN `err_sum` DEFEATS GREEDY, AND THE SAME STATISTIC EXPLAINS ITS ABSENCE.**
+`far`'s `err_sum` per pixel is **flat through level 3** (1.00000, 1.00067, 1.00016, 0.99884) and its
+gains there are noise -- `-3.0e-7`, `6.3e-7`, `-6.4e-9` with **13 of 16 negative at level 2** --
+against `8.6e2` at level 3. Greedy will not pay a negative-gain split to unlock a gain five orders
+larger beneath it, so it opens one subtree and descends to the bottom inside it: **14 leaves left at
+level 2** while 1024 reach level 7. `near-field` and `deep interior` fall gradually at every level,
+have no barrier, and greedy is **near-optimal** there (gap 0.0004 and 0.0301 against `far`'s
+**0.7693**). Read `err_sum` by level before diagnosing any allocation failure.
+
+**A SPLIT CAN MAKE THE IMAGE WORSE; TAKE THE PREFIX-MIN.** A parent's `N x N` sample grid and its
+children's are **different approximation families**, not a nested refinement of one. Measured: the
+root's own gain on `far` is `-3.022e-7` -- one 8x8 grid over the whole box beats four 8x8 grids over
+quarters. Negative gains number 14 / 14 / **102** in `far` / `near-field` / `deep interior`. So the
+ceiling at budget `B` is `min over s <= (B-1)/4` of `f_root(s)`, never `f_root(S)`, and where the
+prefix-min binds is a direct measurement of negative gain.
+
+**READ THE LEAF HISTOGRAM, NOT ONLY `error(B)`.** The error cell says a criterion lost; the
+level histogram says how. `within/median` in `near-field` at `B = 1535` leaves **2 leaves at level
+1** and drives **984 to level 7**, against an optimum with nothing below level 3 and only 16 at
+level 7 -- its allocation is *inverted*, not merely worse. No error cell showed that, and the
+headroom it implies is real: the best criterion leaves **5.1% at `B = 1535` and 16.3% at
+`B = 12287`** of achievable improvement in `near-field`. Against greedy that figure read
+*negative*, which is why the question was unanswerable by inspection.
+
 ---
 
 ## SMOKE TEST

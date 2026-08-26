@@ -29,7 +29,7 @@
 //!
 //! **`error = 0` means "matches this sampling", not "correct".**
 //!
-//! **A criterion beating `greedy_oracle` indicates lookahead value, not a bug.** Greedy on
+//! **A criterion beating `greedy_lookahead_1` indicates lookahead value, not a bug.** Greedy on
 //! immediate delta-error is optimal only when gains are independent and immediately available,
 //! and on a tree they are neither. Nothing here asserts it dominates.
 
@@ -88,7 +88,7 @@ fn main() {
     targets.push(("preset_shape".into(), 0.0, 0.0, ps.default_half(), 0, ps));
 
     let runs: Vec<Rank> = vec![
-        Rank::GreedyOracle,
+        Rank::GreedyLookahead1,
         // The identity row. `multiply` is read against THIS, not against the field.
         Rank::Structured(StructureMode::Off, Criterion::Within, Agg::Median),
         Rank::Structured(StructureMode::Multiply, Criterion::Within, Agg::Median),
@@ -126,7 +126,7 @@ fn main() {
         let keys: Vec<_> = cache.quads.keys().cloned().collect();
         println!("{:>26} {:>9} {:>8} {:>7}", "ranking", "distinct", "modal%", "nan%");
         for r in &runs {
-            if matches!(r, Rank::Random(_) | Rank::GreedyOracle) {
+            if matches!(r, Rank::Random(_) | Rank::GreedyLookahead1) {
                 continue;
             }
             let vals: Vec<f64> = keys.iter().map(|&k| metric::score(&cache, k, *r)).collect();
@@ -190,7 +190,7 @@ fn main() {
         let oracle = rows[0].1[mid];
         let rlo = rnd.iter().map(|c| c[mid]).fold(f64::INFINITY, f64::min);
         println!();
-        println!("  at B = {}: greedy_oracle {oracle:.5}, best random {rlo:.5}, separation {:.5}",
+        println!("  at B = {}: greedy_lookahead_1 {oracle:.5}, best random {rlo:.5}, separation {:.5}",
                  budgets[mid], rlo - oracle);
         if rlo - oracle < 1e-4 {
             println!("  ^ THE METRIC IS NOT DISCRIMINATING HERE. No row above means anything.");
@@ -216,7 +216,7 @@ fn main() {
             series,
             notes: vec![
                 format!("colouring {} -- the criterion is scored under what ships", SHIPPING.name()),
-                "dashed: the controls. greedy_oracle is a strong reference, NOT a ceiling."
+                "dashed: the controls. greedy_lookahead_1 is a strong reference, NOT a ceiling."
                     .into(),
                 "`off` is the identity row; `multiply` must be read against it, and against \
                  `structure_only`, which has no signal in it at all."

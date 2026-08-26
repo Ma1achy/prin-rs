@@ -573,16 +573,26 @@ pub enum Rank {
     /// Uniformly random. The floor: any criterion must beat this. Run several seeds and read
     /// the band, never one trace — a single random run is a draw.
     Random(u64),
-    /// Greedy on immediate `Δerror`. **A strong reference, not a ceiling.**
+    /// Greedy on immediate `Δerror`. **Neither optimal nor a bound**, and named for what it is
+    /// after being read as a ceiling in every table for two PRs.
     ///
     /// Greedy is optimal only when gains are independent and immediately available, and here
     /// they are neither: a quad whose own split gains little may unlock children with large
     /// gains two levels down, and greedy declines it. That is the classic failure of greedy on
     /// a sequential tree problem. **A criterion beating this indicates lookahead value, not an
     /// error**, and there is deliberately no assertion anywhere that it dominates.
-    GreedyOracle,
+    ///
+    /// **It can lose to random, and to breadth-first, and has been measured doing both.** On
+    /// `far` at `B = 1535` it reads **0.54760** against a random band of **0.48550-0.52047** and
+    /// every criterion at **0.36557** — the worst strategy in the table. `far` is smooth, so a
+    /// quad's spread tracks its cell width and argmax-on-spread *is* breadth-first, which is
+    /// near-optimal there; greedy chases fluctuations in an immediate `Δerror` that is noise at
+    /// every level above the last, and concentrates the budget in a flat corner.
+    ///
+    /// The ceiling this was mistaken for is [`Cache::dp_optimal`], which is exact.
+    GreedyLookahead1,
     /// Greedy on `Δerror / cost`, where cost is the quad's measured substeps. §8.
-    GreedyOraclePerCost,
+    GreedyLookahead1PerCost,
     /// §3.3 — `max` over the four edge-neighbours of `|signal_self - signal_neighbour|`.
     ///
     /// Interesting regions are where the signal **changes**, not where it is high: a uniformly
@@ -612,8 +622,8 @@ impl Rank {
         match self {
             Rank::Signal(c, a) => format!("{}/{}", c.name(), a.name()),
             Rank::Random(s) => format!("random[{s}]"),
-            Rank::GreedyOracle => "greedy_oracle".into(),
-            Rank::GreedyOraclePerCost => "greedy_oracle/cost".into(),
+            Rank::GreedyLookahead1 => "greedy_lookahead_1".into(),
+            Rank::GreedyLookahead1PerCost => "greedy_lookahead_1/cost".into(),
             Rank::Contrast(c, a) => format!("contrast:{}/{}", c.name(), a.name()),
             Rank::Structured(m, c, a) => format!("{}x{}/{}", m.name(), c.name(), a.name()),
             Rank::StructureOnly => "structure_only".into(),
@@ -712,8 +722,8 @@ pub fn score(cache: &Cache, k: Key, rank: Rank) -> f64 {
 fn raw_score(cache: &Cache, k: Key, rank: Rank) -> f64 {
     match rank {
         Rank::Signal(c, a) => cache.get(k).red.signal(c, a),
-        Rank::GreedyOracle => cache.gain(k),
-        Rank::GreedyOraclePerCost => {
+        Rank::GreedyLookahead1 => cache.gain(k),
+        Rank::GreedyLookahead1PerCost => {
             cache.gain(k) / cache.get(k).red.total_substeps.max(1) as f64
         }
         Rank::Contrast(c, a) => cache.contrast(k, c, a),
@@ -736,4 +746,207 @@ pub fn curve_at(points: &[Point], budgets: &[usize]) -> Vec<f64> {
                 .unwrap_or(f64::NAN)
         })
         .collect()
+}
+
+// ---------------------------------------------------------------------------------------------
+// The exact optimum, by tree DP.
+// ---------------------------------------------------------------------------------------------
+
+/// The pairwise argmins of one node's 4-way merge, kept so the optimal leaf set can be recovered.
+#[derive(Clone, Debug)]
+struct Back {
+    /// `b01[t]` — the split count given to child 0 in `min_{a+b=t} f_c0[a] + f_c1[b]`.
+    b01: Vec<u32>,
+    /// `b012[t]` — the count given to the `(c0,c1)` pair in that merge against child 2.
+    b012: Vec<u32>,
+    /// `b0123[t]` — the count given to the `(c0,c1,c2)` triple in the merge against child 3.
+    b0123: Vec<u32>,
+}
+
+/// The exact minimum `error(B)` over **all** tree-shaped leaf sets — a true ceiling.
+///
+/// [`Rank::GreedyLookahead1`] is greedy on immediate `Δerror` and is neither optimal nor a bound;
+/// it has been measured *below the random band* on `far`. This is the bound that table was
+/// pretending to have, and the assertion it supports — *no ranking may beat it at any budget* —
+/// is one that can actually fail.
+///
+/// **Not a [`Rank`]**, deliberately. The DP is not a ranking, and putting it through
+/// [`replay_with_leaves`] would re-impose a greedy order on it.
+pub struct Dp {
+    /// `raw[s]` — the mean per-pixel error of the best tree using **exactly** `s` splits.
+    pub raw: Vec<f64>,
+    /// `curve[s] = min_{s' <= s} raw[s']` — the ceiling at budget `1 + 4s`.
+    ///
+    /// **Prefix-minimised rather than read off `raw[s]` directly**, because more splits only help
+    /// if every gain is non-negative and that is exactly the open question: a parent's `N x N`
+    /// sample grid and its children's are different approximation families, so a split can make
+    /// the image worse. Where the two differ, it did.
+    pub curve: Vec<f64>,
+    /// The `s` where `curve[s] < raw[s]` — a direct measurement of negative gain.
+    pub prefix_min_binds: Vec<usize>,
+    pub max_splits: usize,
+    pub elapsed_s: f64,
+    back: HashMap<Key, Back>,
+    levels: u32,
+    res: usize,
+}
+
+/// `min_{a+b=t} x[a] + y[b]`, with the chosen `a` recorded. `INFINITY` where unreachable.
+fn merge(x: &[f64], y: &[f64], cap: usize) -> (Vec<f64>, Vec<u32>) {
+    let mut v = vec![f64::INFINITY; cap + 1];
+    let mut b = vec![0u32; cap + 1];
+    for (a, &xa) in x.iter().enumerate() {
+        if !xa.is_finite() || a > cap {
+            continue;
+        }
+        for (bb, &yb) in y.iter().enumerate() {
+            let t = a + bb;
+            if t > cap {
+                break;
+            }
+            let s = xa + yb;
+            if s < v[t] {
+                v[t] = s;
+                b[t] = a as u32;
+            }
+        }
+    }
+    (v, b)
+}
+
+impl Cache {
+    /// Splits available inside the subtree rooted at level `l`, capped at `max_splits`.
+    ///
+    /// **This cap is what makes the DP affordable**, and the naive reading hides it. A 4-way merge
+    /// looks like `O(cap^4)` and is done as three successive 2-way convolutions, `O(cap^2)`; then
+    /// the per-node cap is bounded by that node's own subtree, so only the top two levels ever see
+    /// the full budget. At `levels = 7` the whole DP is ~120M f64 min-adds at the *complete* tree.
+    fn split_cap(&self, l: u32, max_splits: usize) -> usize {
+        let nodes = ((1usize << (2 * (self.levels - l + 1))) - 1) / 3;
+        max_splits.min((nodes - 1) / 4)
+    }
+
+    /// Solve the tree DP up to `max_splits`.
+    ///
+    /// `f_k(0) = err_sum(k)`; `f_k(s) = min_{s0+s1+s2+s3 = s-1} sum_i f_ci(si)` for `s >= 1`; only
+    /// `f_k(0)` exists at the deepest level. Budget and splits are locked to [`replay`]'s own
+    /// accounting: `spent` starts at 1 and each split adds 4, so `B = 1 + 4s`.
+    pub fn dp_optimal(&self, max_splits: usize) -> Dp {
+        let t0 = std::time::Instant::now();
+        let mut back: HashMap<Key, Back> = HashMap::new();
+        let mut prev: HashMap<Key, Vec<f64>> = HashMap::new();
+
+        for l in (0..=self.levels).rev() {
+            let cap = self.split_cap(l, max_splits);
+            let w = 1u32 << l;
+            let keys: Vec<Key> =
+                (0..w).flat_map(|iy| (0..w).map(move |ix| (l, ix, iy))).collect();
+
+            let done: Vec<(Key, Vec<f64>, Option<Back>)> = keys
+                .par_iter()
+                .map(|&k| {
+                    let mut f = vec![f64::INFINITY; cap + 1];
+                    f[0] = self.get(k).err_sum;
+                    if cap == 0 || l >= self.levels {
+                        return (k, f, None);
+                    }
+                    let c = Self::children(k);
+                    // Three 2-way convolutions, not one 4-way loop. Each is capped at `cap - 1`
+                    // because the split of `k` itself has already been paid for.
+                    let inner = cap - 1;
+                    let (g01, b01) = merge(&prev[&c[0]], &prev[&c[1]], inner);
+                    let (g012, b012) = merge(&g01, &prev[&c[2]], inner);
+                    let (g0123, b0123) = merge(&g012, &prev[&c[3]], inner);
+                    for s in 1..=cap {
+                        f[s] = g0123[s - 1];
+                    }
+                    (k, f, Some(Back { b01, b012, b0123 }))
+                })
+                .collect();
+
+            let mut cur: HashMap<Key, Vec<f64>> = HashMap::with_capacity(done.len());
+            for (k, f, b) in done {
+                if let Some(b) = b {
+                    back.insert(k, b);
+                }
+                cur.insert(k, f);
+            }
+            // The level below is fully consumed; drop it rather than hold the whole tree.
+            prev = cur;
+        }
+
+        let px = (self.res * self.res) as f64;
+        let raw: Vec<f64> = prev[&(0, 0, 0)].iter().map(|v| v / px).collect();
+        let mut curve = raw.clone();
+        let mut binds = Vec::new();
+        for s in 1..curve.len() {
+            if curve[s - 1] < curve[s] {
+                curve[s] = curve[s - 1];
+            }
+            if curve[s] < raw[s] {
+                binds.push(s);
+            }
+        }
+
+        Dp {
+            raw,
+            curve,
+            prefix_min_binds: binds,
+            max_splits,
+            elapsed_s: t0.elapsed().as_secs_f64(),
+            back,
+            levels: self.levels,
+            res: self.res,
+        }
+    }
+}
+
+impl Dp {
+    /// The ceiling at budget `b`, using `replay`'s accounting `b = 1 + 4s`. Saturates at
+    /// `max_splits` — a caller past that is reading a curve that was not computed, so it is
+    /// clamped and [`Dp::covers`] says where the curve honestly stops.
+    pub fn at_budget(&self, b: usize) -> f64 {
+        let s = b.saturating_sub(1) / 4;
+        self.curve[s.min(self.max_splits)]
+    }
+
+    /// Whether `at_budget(b)` is a computed value rather than the clamp. **Print this beside any
+    /// truncated curve**; a curve that stops is fine, a curve silently extrapolated is not.
+    pub fn covers(&self, b: usize) -> bool {
+        b.saturating_sub(1) / 4 <= self.max_splits
+    }
+
+    /// The optimal leaf set at exactly `splits` splits, for the level histogram.
+    ///
+    /// Walks the recorded pairwise argmins back down the tree. The allocation recovered here is
+    /// what says whether the optimum is uniform-depth or concentrated — which is the direct
+    /// answer to why greedy prefers a flat corner.
+    pub fn leaves(&self, splits: usize) -> Vec<Key> {
+        let mut out = Vec::new();
+        let mut stack = vec![((0u32, 0u32, 0u32), splits)];
+        while let Some((k, s)) = stack.pop() {
+            if s == 0 || k.0 >= self.levels {
+                out.push(k);
+                continue;
+            }
+            let b = &self.back[&k];
+            let t = s - 1;
+            let a012 = b.b0123[t] as usize;
+            let s3 = t - a012;
+            let a01 = b.b012[a012] as usize;
+            let s2 = a012 - a01;
+            let s0 = b.b01[a01] as usize;
+            let s1 = a01 - s0;
+            let c = Cache::children(k);
+            for (ci, si) in c.iter().zip([s0, s1, s2, s3]) {
+                stack.push((*ci, si));
+            }
+        }
+        out
+    }
+
+    /// Total pixels, so a caller can check a leaf set tiles the root without reaching for `Cache`.
+    pub fn res(&self) -> usize {
+        self.res
+    }
 }

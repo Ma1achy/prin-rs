@@ -486,6 +486,34 @@ Four things to know before reading any of them, all in RESULTS §12:
   its symmetry point. The presets are at the origin for the opposite reason. Compare within a
   chart, never across.
 
+## `sweep/` — the criterion actually exercised
+
+**93 dumps, one per configuration**, from `examples/criterion_sweep.rs`. Named
+`<target>__tau<t>__k<k>__struct-<s>__crit-<c>.prnq`, so a directory listing **is** a settings table
+and the corpus can be re-derived by parsing filenames.
+
+**Why it exists.** Every one of the 69 dumps elsewhere in `results/` carries
+`tau_display=1e-4  structure=off  k_frac=1  criterion=within` — the pre-fix configuration with new
+columns attached. The machinery shipped; nothing was run with it enabled. These are the "after".
+
+**Nothing here overwrites anything.** The 69 existing dumps are the only record of the pre-fix
+behaviour and are the baseline every number here is measured against.
+
+Three targets throughout: `near-field` (where every prior result was measured), `deep_interior`
+(a change that only improves near-field is tuning), and `preset_shape` (**the only chart where the
+camera veto does not bind**, so the only one where the criterion's own decisions are visible
+rather than `MaxRelDepth`'s).
+
+**Read the stop-reason breakdown, not the leaf count.** Outside `preset_shape` most leaf counts are
+largely a fact about `MaxRelDepth`. The captured tables in
+`output/criterion_sweep_{1,2,3}.txt` carry `split / floor / keep / veto` per row, plus the number
+of **distinct levels**, which is the column that says whether a tree is flat.
+
+The headline is **depth variance**, and RESULTS.md §18 has it: `k_frac` doubles it on near-field
+while cutting the veto share 61% → 13%; `alpha` is what binds `deep_interior`; and `preset_shape`
+is flat under every `tau`, every `k_frac` and every `alpha` including a gate-off control — moved
+only by changing the **criterion**, which acts through the ranking rather than the gate.
+
 ## `glsl/` — the four reference slices, refining
 
 **Four animations, one per GLSL preset**, from `examples/glsl_refinement.rs`. The reference's own

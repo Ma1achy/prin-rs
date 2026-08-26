@@ -1035,3 +1035,49 @@ fn k_frac_defers_as_keep_and_one_reproduces_the_unranked_descent() {
     let (_, _, ex_quarter) = run(0.25);
     assert_eq!(ex_quarter, 0, "deferral must not be reported as budget exhaustion");
 }
+
+/// **`k_frac` must never truncate the bootstrap, and three charts agreeing to the digit is how
+/// this was found.**
+///
+/// Levels below `bootstrap_levels` split unconditionally because level 0 has no parent and so no
+/// `alpha` — there is no signal to rank them by. Ranking them anyway ranks on a quantity that
+/// does not exist, and demoting one to `Keep` stops the tree reaching the depth where the
+/// criterion decides anything.
+///
+/// Before the fix, every `k_frac < 1` returned **identical** leaf counts and depth variances on
+/// `near-field`, `deep interior` and `preset_shape` — 16/1/0.000, 10/2/0.160, 7/2/0.245 — because
+/// the tree was being shaped by chart-independent arithmetic. The `split` column said so too:
+/// rows read 2 and 3 where the bootstrap alone requires 5.
+#[test]
+fn k_frac_never_truncates_the_bootstrap() {
+    use prin_rs::camera::Camera;
+    use prin_rs::ensemble::pixel::EnsembleCfg;
+    use prin_rs::quad::Decision;
+    use prin_rs::render::Precision;
+    use prin_rs::scheduler::{self, SchedCfg};
+
+    let ens = EnsembleCfg { t_max: 13.0, refine_flagged: false, ..Default::default() };
+    for k in [0.1f64, 0.25, 0.5, 1.0] {
+        let cfg = SchedCfg {
+            n: 4,
+            budget: 600,
+            tau_display: 1e-4,
+            alpha_hi: 0.2,
+            alpha_lo: 0.2,
+            k_frac: k,
+            bootstrap_levels: 2,
+            camera: Some(Camera::framing(1.0, 3.0, 0.05, 64)),
+            ..Default::default()
+        };
+        let (t, _) = scheduler::descend(1.0, 3.0, 0.05, 0, &cfg, &ens, Precision::F64);
+        // The bootstrap requires the root and all four of its children to split: 5 splits, and
+        // no quad below `bootstrap_levels` may be left as a leaf.
+        let splits = t.nodes.iter().filter(|q| q.decision == Decision::Split).count();
+        let shallow_leaves =
+            t.leaves().filter(|&i| t.nodes[i].level < cfg.bootstrap_levels).count();
+        println!("k_frac {k:.2}: {splits} splits, {shallow_leaves} leaves below the bootstrap, \
+                  {} leaves total", t.leaves().count());
+        assert!(splits >= 5, "k_frac {k} left only {splits} splits; the bootstrap needs 5");
+        assert_eq!(shallow_leaves, 0, "k_frac {k} left {shallow_leaves} un-split bootstrap quads");
+    }
+}

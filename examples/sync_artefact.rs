@@ -82,6 +82,11 @@ fn main() {
     let t_max: f64 = arg(3, 13.0);
     // Stride of the in-loop escape test. 1 is every RK4 step.
     let fine: usize = arg(4, 1);
+    // The persistence guard. `1` requires an in-loop escape to still hold at the next boundary
+    // before it is accepted; `0` accepts on first sight. Both arms are runnable because the
+    // difference between them IS the measurement -- unguarded, `deep interior`'s escape fraction
+    // reads 0.5494 against a guarded 0.1564, and 895 of 895 of the difference re-bind.
+    let confirm: bool = arg::<usize>(5, 1) != 0;
     let res = (1usize << levels) * n;
 
     let base = EnsembleCfg::default();
@@ -113,6 +118,7 @@ fn main() {
         "level {levels}, N={n}, res {res}^2, t={t_max}, n_sync={n_sync} \
          (boundaries {dt_sync:.6} apart)\n\
          escape_every: 0 = the reference's boundary-only cadence; {fine} = every {fine} RK4 step(s)\n\
+         escape_confirm: {confirm} -- an in-loop escape must still hold at the next boundary\n\
          \n\
          COLLISION is sampled inside the RK4 loop and is already continuous. ESCAPE is sampled\n\
          at sync boundaries. So t_end is quantised exactly where ESCAPE terminates, and the\n\
@@ -129,6 +135,7 @@ fn main() {
                 n_sync,
                 keep_boundary_shapes: true,
                 escape_every: ev,
+                escape_confirm: confirm,
                 ..Default::default()
             };
             let t0 = std::time::Instant::now();

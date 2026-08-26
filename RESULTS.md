@@ -3074,25 +3074,121 @@ keeps integrating, dips below `r_coll`, and a collision wrongly wins precedence.
 corrects a **precedence error**, not a resolution one -- a different defect from the one the
 banding pointed at, found by the same measurement.
 
-### 21.5 Fix or bug: the `d_min` discriminator
+### 21.5 The `d_min` discriminator was CONFOUNDED, and its answer was wrong
 
-Firing `escape_candidate` inside the RK4 loop also asks it *during* a close encounter, where a
-pair's instantaneous two-body energy can read positive transiently. If that were happening, the
-newly-escaping footprints would carry **small** `d_min`. They carry large ones:
+The first reading of whether a finer cadence is a fix or spurious mid-encounter firing used
+`d_min_true` by terminal state: the re-labelled footprints carried **larger** separations
+(escaped p50 `1.063e-3 -> 4.419e-3`), which was taken as evidence against firing during an
+encounter.
 
-| stride | escape frac | escaped `d_min` p10 / p50 | collided `d_min` p10 / p50 |
+**It is evidence of the truncation it was supposed to test.** `d_min_true` is a minimum over the
+whole run, and a run stopped early by a spurious escape never reaches its close approach -- so its
+`d_min` is larger *because* it terminated early. The statistic was confounded by the very effect
+it was measuring. A direct test was needed and gives the opposite answer.
+
+### 21.6 The escapes the finer stride adds are 100% transient
+
+`escape_candidate` is relative energy `> 0` and receding, which during a close encounter is
+transiently true. The test: take the trajectories that escape at `escape_every = 1` and **not** at
+the reference cadence, and ask whether they are still unbound at later sync boundaries.
+
+| region | escape only at stride 1 | still unbound at +1 / +2 / +3 / +4 / +8 boundaries |
+|---|---|---|
+| `deep interior` | **895** of 2304 | **0.000 / 0.000 / 0.000 / 0.000 / 0.000** |
+| `near-field` | 1 | 0.000 at every window |
+| `preset_plambda` | **0** | -- nothing to test |
+
+Every one of the 895 has re-bound. Latching them took `deep interior`'s escape fraction from
+0.0947 to **0.5494**, and all of that was invented. The `0.0945 -> 0.2153 -> 0.4423 -> 0.5494`
+sequence was not converging -- its largest *relative* step was at the finest stride, which is the
+wrong shape for a resolved quantity.
+
+**And `preset_plambda` adds zero.** Where escape genuinely terminates, the finer stride changes no
+labels at all and only sharpens the time. That split is what makes the guard safe.
+
+**The first window sweep was confounded too, by this file's own instrument.** It re-ran to
+`t_e + w` with `n_sync` rescaled per window, so every window was a different discretisation, and
+it produced `0.162, 0.219, 0.011, 0.083, 0.335` -- read as "the escape condition flickers". It does
+not. `AzOut::escape_flags` records candidacy at every boundary of **one** run at **one** step size,
+and the answer is a flat zero. *`n_sync` fixed while `t_max` varies compares different
+discretisations* -- this was the same defect inverted, in a diagnostic written to catch defects.
+
+### 21.7 The guard, and what it turns the stride into
+
+`AzOpts::escape_confirm` (default **on**) holds an **in-loop** escape provisional until the next
+sync boundary and commits it only if the condition still holds -- with the **first crossing** as
+the time, because the guard decides whether the event was real, not when it happened. Boundary
+detections are the reference's own arm and are untouched. With `escape_every = 0` the guard is
+inert, so nothing already measured moves.
+
+Escape fraction across strides `0, 32, 4, 1`, guarded:
+
+| region | 0 | 32 | 4 | 1 | `t_end` distinct, 0 -> 1 |
+|---|---|---|---|---|---|
+| `deep interior` | 0.0947 | 0.1268 | **0.1564** | **0.1564** | 2982 -> 3281 |
+| `preset_shape_pl_h1` | 0.9721 | 0.9721 | 0.9721 | 0.9721 | **41 -> 2314** |
+| `preset_plambda` | 0.9938 | 0.9956 | 0.9956 | 0.9956 | **16 -> 2099** |
+| `near-field` | 0.0002 | 0.0002 | 0.0002 | 0.0002 | 86 -> 86 |
+
+**`preset_shape_pl_h1`'s labels are now stride-invariant while its `t_end` resolution improves
+56x.** That is what a pure resolution gain looks like. `deep interior` converges at stride 4 and
+4 -> 1 moves nothing, which is the convergence the unguarded sequence never showed.
+
+**So the stride is a COST knob, not a correctness one** -- a coarse stride only delays detection,
+it no longer changes which event wins or how many there are. That is the property that makes the
+default safe to choose on cost grounds.
+
+`deep interior`'s residual `0.0947 -> 0.1564` is the precedence repair arriving: those are escapes
+that genuinely occurred mid-interval and persisted, but were pre-empted by a collision that fired
+first under the coarse cadence. It is the same order as the directly counted precedence population
+(5.21% of all trajectories), which is corroboration rather than a second effect.
+
+### 21.8 Fix 1 measured alone: nearly inert in production, large on the reference path
+
+`classify` used to rank collision above escape unconditionally, **discarding both times**, and
+justified it as *"collision is sampled continuously, so it is the earliest thing that can fire"*.
+Continuous sampling makes it the earliest **detected**, not the earliest **occurring**. Deciding by
+`min(t)` -- with `t_end` set the same way, so the state and its time cannot disagree -- removes the
+dependence on when each arm happens to be sampled.
+
+Measured with the cadence untouched, it moves **one footprint of 5440**. Under `stop_on_event` the
+loop breaks on the first *detected* event, so only one is ever recorded and `min(t)` has nothing to
+compare. Its subject lives on the reference path, where both arms accumulate:
+
+| region | fired both arms | escaped FIRST, labelled `collision` | median lead |
 |---|---|---|---|
-| 0 | 0.0945 | 1.891e-4 / 1.063e-3 | 2.734e-4 / 8.099e-4 |
-| 32 | 0.2153 | 3.642e-4 / 1.336e-3 | 5.254e-4 / 8.457e-4 |
-| 4 | 0.4423 | 1.148e-3 / 4.339e-3 | 6.773e-4 / 8.606e-4 |
-| 1 | 0.5494 | 1.164e-3 / 4.419e-3 | 7.016e-4 / 8.540e-4 |
+| `preset_plambda` | 996 | **990** (99.4%; **42.97% of all**) | 2.6201 = 6.45 intervals |
+| `deep interior` | 1219 | 120 (9.8%; 5.21% of all) | 0.5084 = 1.25 intervals |
+| `near-field` | 0 | 0 | -- |
 
-The re-labelled population is the one with the **largest** separations; the tightest approaches
-stay collisions and the marginal ones just under `r_coll` become escapes. Spurious mid-encounter
-firing has the opposite sign. It also converges between strides 4 and 1. **Not directly tested:**
-whether a fired escape persists to the following boundary.
+**The ordering guarantee that makes the stride safe comes from sampling both arms at the same
+cadence, not from `min(t)`.** `min(t)` is what stops the state and `t_end` disagreeing, and it is
+what the reference path needed.
 
-### 21.6 The second diagnostic: the crisp edges are real, the banding is not
+### 21.9 A spec change behind flags, with both defaults chosen from measurement
+
+`AzOpts::escape_every` defaults to **0**, the reference's boundary-only cadence, and
+`escape_confirm` defaults to **on** but is inert at that stride, so nothing already measured has
+moved -- `cargo test --release` is **213 passed / 0 failed** with the Python cross-check green. Turning it on changes results, and the cross-check and the horizon table were both measured
+coarse, so it is a spec change behind a flag rather than a tidy-up.
+
+`tests/outcome_encoding.rs` asserts **both** arms, because a flag that does nothing passes as
+easily as one that works: at the reference cadence an escape time must land exactly on a sync
+boundary, and at the fine cadence some escaping trajectory's `t_end` must actually move off it.
+It also fails if no trajectory in the test escaped at all -- Burrau's near-field could not have
+exercised this, and a test whose subject never executes is decoration.
+
+The guard carries **two** arms for the same reason. It must **cut** the escape count in
+`deep interior`, where the transients are; it must **not** cut it on `preset_plambda`, where escape
+genuinely terminates and the finer stride adds none. A guard that rejects everything passes the
+first arm exactly as well as a correct one, and only the second tells them apart.
+
+**Bisection within the firing interval is not implemented, and the counts say it is not needed at
+these strides.** The stride alone takes `preset_shape_pl_h1` from 41 distinct `t_end` values to
+2314 and drops the on-boundary fraction from 98.60% to 1.43% -- the step is already RK4-sized. The
+confirming test is a render at 1024², which has not been run; the count evidence is not a
+substitute for it and is not quoted as one.
+### 21.10 The second diagnostic: the crisp edges are real, the banding is not
 
 `preset_shape_pl_h1_uniform_outcome.png` is already committed. Under outcome-class colouring the
 **banding vanishes entirely** -- consistent with it being a continuous-field artefact -- while the
@@ -3105,18 +3201,6 @@ angle threshold. Saturation is the candidate that would produce it. **Stated and
 two image diagnoses on this project have already been settled by one targeted measurement, and
 speculating past the render is how the earlier ones went wrong.
 
-### 21.7 It is a spec change, and the default stays at the reference cadence
-
-`AzOpts::escape_every` defaults to **0**, the reference's boundary-only cadence, so nothing already
-measured has moved -- `cargo test --release` is 215 passed / 0 failed with the Python cross-check
-green. Turning it on changes results, and the cross-check and the horizon table were both measured
-coarse, so it is a spec change behind a flag rather than a tidy-up.
-
-`tests/outcome_encoding.rs` asserts **both** arms, because a flag that does nothing passes as
-easily as one that works: at the reference cadence an escape time must land exactly on a sync
-boundary, and at the fine cadence some escaping trajectory's `t_end` must actually move off it.
-It also fails if no trajectory in the test escaped at all -- Burrau's near-field could not have
-exercised this, and a test whose subject never executes is decoration.
 
 ---
 
@@ -3215,7 +3299,8 @@ Every table above comes from a committed example. Raw output for all of them is 
 | §18.3 stage 2, structure x criterion | `cargo run --release --example criterion_sweep -- 2 40000 0.2 1024 1e-4 0.25` |
 | §18.2 stage 3, alpha | `cargo run --release --example criterion_sweep -- 3 40000 0.2 1024 1e-4 0.25` |
 | §20 the ceiling, uniform, and the audit | `cargo run --release --example oracle_audit -- 7 8 1e-4 13 all` |
-| §21 the sync-cadence artefact | `cargo run --release --example sync_artefact -- 3 8 13 1` |
+| §21 the sync-cadence artefact | `cargo run --release --example sync_artefact -- 3 8 13 1 0` (unguarded) and `... 3 8 13 1 1` (guarded) |
+| §21.6 persistence and precedence | `cargo run --release --example escape_persistence -- 48 13 32` |
 | the signal audit against the DP labels | `cargo run --release --example signal_audit -- 7 8 1e-4 13 <scratch>` (~2 h; it enables the FTLE march, which is ~2.5x a plain build. **Point it at a scratch root**) |
 | §20.6 firing the bound assert cheaply | `cargo run --release --example criterion_metric -- 4 8 1e-4 13 /tmp/scratch` |
 | §20.1 the bound over every ranking | `cargo test --release --test criterion no_ranking_beats -- --nocapture` |

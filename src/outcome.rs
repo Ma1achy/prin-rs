@@ -258,8 +258,24 @@ pub struct Events<T> {
 /// BRIEF §2.4's encoding, from the events and the final state.
 ///
 /// Precedence: a non-finite trajectory outranks everything, because its final state carries
-/// no information to classify. Then collision (sampled continuously, so it is the earliest
-/// thing that can fire), then escape, then budget exhaustion, then reaching `t_max`.
+/// no information to classify. **Then whichever terminating event happened FIRST, by time.**
+/// Then budget exhaustion, then reaching `t_max`.
+///
+/// # The ordering bug this replaced
+///
+/// This used to rank collision above escape unconditionally, discarding both times, and
+/// justified it as *"collision is sampled continuously, so it is the earliest thing that can
+/// fire"*. Continuous sampling makes collision the earliest **detected**, not the earliest
+/// **occurring**. Escape is tested only where the state is Cartesian, so an escape that truly
+/// happened at `t = 5.0` may not be noticed until `t = 5.28`, and a collision at `t = 5.1` was
+/// then reported as the outcome of a trajectory that had already terminated.
+///
+/// Deciding by `min(t)` removes the dependence on *when each arm happens to be sampled* rather
+/// than reducing it. A tie goes to collision: at the same instant it is the more specific
+/// event, and the two arms cannot be separated by anything this function can see.
+///
+/// `t_end` is set the same way, in the driver, so the state and the time it is quoted with
+/// cannot disagree.
 pub fn classify<T: Real>(
     ev: &Events<T>,
     final_state: &Cart<T>,
@@ -270,14 +286,25 @@ pub fn classify<T: Real>(
     if !finite || !final_state.is_finite() {
         return Outcome::new(State::SimFailed, 0);
     }
-    if let Some((mask, _)) = ev.collision {
-        return Outcome::new(State::Collision, collision_detail(mask));
+    // Whichever fired first. `triple_ejection` sits between them as before: it is a *detail*
+    // refinement of an escape read off the final state, not a fourth event with a time.
+    match (ev.collision, ev.escape) {
+        (Some((mask, tc)), Some((_, te))) if tc <= te => {
+            return Outcome::new(State::Collision, collision_detail(mask));
+        }
+        (Some((mask, _)), None) => {
+            return Outcome::new(State::Collision, collision_detail(mask));
+        }
+        _ => {}
     }
     if triple_ejection(final_state, m) {
         return Outcome::new(State::Escape, 3);
     }
     if let Some((b, _)) = ev.escape {
         return Outcome::new(State::Escape, b);
+    }
+    if let Some((mask, _)) = ev.collision {
+        return Outcome::new(State::Collision, collision_detail(mask));
     }
     if budget_exhausted {
         return Outcome::new(State::Running, 0);

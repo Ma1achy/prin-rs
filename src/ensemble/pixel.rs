@@ -25,6 +25,10 @@ pub struct EnsembleCfg {
     /// See [`crate::integrate::az::AzOpts::escape_every`] -- this is the knob that decides
     /// whether `t_end` carries 32 distinct values across a chart or RK4-step resolution.
     pub escape_every: usize,
+    /// Require an in-loop escape to still hold at the next sync boundary. See
+    /// [`crate::integrate::az::AzOpts::escape_confirm`] — without it the in-loop test latches
+    /// transients, measured at **895 of 895** in `deep interior`.
+    pub escape_confirm: bool,
     pub eta: f64,
     pub max_steps: usize,
     pub ref_policy: RefPolicy,
@@ -117,6 +121,7 @@ impl Default for EnsembleCfg {
             t_max: 13.0,
             n_sync: 32,
             escape_every: 0,
+            escape_confirm: true,
             eta: 0.01,
             max_steps: 30_000,
             ref_policy: RefPolicy::PerCopy,
@@ -417,6 +422,7 @@ pub fn evaluate_at<T: Real>(slice: &Slice, idx: usize, cfg: &EnsembleCfg, eta_v:
         r_coll_frac: T::lit(cfg.r_coll_frac),
         stop_on_event: cfg.stop_on_event,
         escape_every: cfg.escape_every,
+        escape_confirm: cfg.escape_confirm,
     };
 
     // The nominal copy first: its reference-body choices are what the shared policy hands to

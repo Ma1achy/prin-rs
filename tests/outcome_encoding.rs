@@ -328,6 +328,9 @@ fn escape_every_moves_t_end_off_the_sync_boundary_and_is_inert_at_zero() {
         r_coll_frac: 1e-3,
         stop_on_event: true,
         escape_every: ev,
+        // Off: this test asserts the CADENCE moves `t_end`, and the guard would suppress the
+        // in-loop detections it is asserting on. The guard has its own test.
+        escape_confirm: false,
         keep_boundary_shapes: false,
     };
 
@@ -382,5 +385,85 @@ fn escape_every_moves_t_end_off_the_sync_boundary_and_is_inert_at_zero() {
         moved > 0,
         "{escaped} trajectories escaped and not one had its t_end moved by the fine cadence, \
          so the flag is inert"
+    );
+}
+
+
+/// The persistence guard must reject transients and keep genuine escapes, and BOTH arms matter.
+///
+/// **Measured basis, not a precaution.** `escape_candidate` is relative energy `> 0` and
+/// receding, which during a close encounter is transiently true. In `deep interior`, of the 895
+/// trajectories that escape under `escape_every = 1` and not at the reference cadence, **0.000
+/// are still unbound one boundary later** — and 0.000 at +2, +3, +4 and +8. Latching them took
+/// the escape fraction from 0.0947 to 0.5494.
+///
+/// So the guard must **cut** the count somewhere collisions are common, and must **not** cut it
+/// where escape genuinely terminates. A guard that rejects everything passes the first arm as
+/// easily as a correct one; the second arm is what distinguishes them.
+#[test]
+fn escape_confirm_cuts_transients_and_keeps_genuine_escapes() {
+    use prin_rs::grid::{self, Chart};
+    use prin_rs::integrate::az::{integrate_az_opts, AzOpts};
+
+    let (t_max, n_sync) = (13.0f64, 32usize);
+    let opts = |confirm: bool| AzOpts::<f64> {
+        forced_refs: None,
+        lc_stable: true,
+        r_coll_frac: 1e-3,
+        stop_on_event: true,
+        escape_every: 1,
+        escape_confirm: confirm,
+        keep_boundary_shapes: false,
+    };
+    let count = |chart: &Chart, body: usize, cx: f64, cy: f64, half: f64, confirm: bool| {
+        let n = 16usize;
+        let mut esc = 0usize;
+        for i in 0..n {
+            for j in 0..n {
+                let u = cx - half + 2.0 * half * (i as f64 + 0.5) / n as f64;
+                let v = cy - half + 2.0 * half * (j as f64 + 0.5) / n as f64;
+                let ic = grid::decode_state(chart, body, u, v);
+                let o = integrate_az_opts(
+                    ic.s, &ic.m, t_max, n_sync, 1e-2, 200_000, &opts(confirm),
+                );
+                if o.events.escape.is_some() {
+                    esc += 1;
+                }
+            }
+        }
+        esc
+    };
+
+    // Arm 1: collision-rich. The guard must cut the count.
+    let (dirty, clean) = (
+        count(&Chart::BodyPlane, 0, 0.0, 0.0, 0.05, false),
+        count(&Chart::BodyPlane, 0, 0.0, 0.0, 0.05, true),
+    );
+    assert!(
+        clean < dirty,
+        "`deep interior` unguarded {dirty} escapes, guarded {clean} -- the guard cut nothing, \
+         so either the transients are gone or it is not running"
+    );
+
+    // Arm 2: escape genuinely terminates. The guard must NOT cut the count, or it is simply
+    // rejecting escapes rather than rejecting transients.
+    let plambda = grid::gallery_cases()
+        .into_iter()
+        .find(|c| c.0 == "preset_plambda")
+        .expect("preset_plambda is in the gallery");
+    let (pd, pc) = (
+        count(&plambda.1, 0, plambda.2, plambda.3, plambda.4, false),
+        count(&plambda.1, 0, plambda.2, plambda.3, plambda.4, true),
+    );
+    assert!(
+        pd > 0,
+        "no escapes on `preset_plambda` at all, so arm 2's subject never executed"
+    );
+    assert_eq!(
+        pd, pc,
+        "the guard removed {} genuine escapes on `preset_plambda`, where escape is the \
+         terminating event and the finer stride adds none -- it is rejecting escapes, not \
+         transients",
+        pd - pc
     );
 }

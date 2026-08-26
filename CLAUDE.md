@@ -1034,6 +1034,48 @@ leaf -> keep, and **absent -> absent**. Labelling an unreached quad `keep` inven
 of labels: at `B = 2729` the tree holds 2729 nodes of 21845. Report the population with any
 statistic taken over it.
 
+**THE ESCAPE CONDITION IS NOT ABSORBING, AND A FINER TEST LATCHES TRANSIENTS.** `escape_candidate`
+is relative energy `> 0` and receding, which during a close encounter is transiently true. Of the
+**895** `deep interior` trajectories that escape under an in-loop test and not at the reference
+cadence, **0.000 are still unbound one boundary later** -- and 0.000 at +2, +3, +4 and +8. All 895
+are transients, and latching them took the escape fraction from 0.0947 to **0.5494**. Where escape
+genuinely terminates (`preset_plambda`) the finer stride adds **zero** new escapes and only sharpens
+the time. `AzOpts::escape_confirm` holds an in-loop detection provisional until the next boundary
+and commits the **first crossing** time; guarded, `deep interior` reads 0.1564 and converges at
+stride 4, and `preset_shape_pl_h1`'s labels are **stride-invariant** while its `t_end` resolution
+improves 56x. **That makes the stride a COST knob, not a correctness one.**
+
+**A `d_min` READ OVER THE WHOLE RUN CANNOT TEST WHETHER THE RUN STOPPED TOO EARLY.** The first
+attempt at fix-or-bug compared `d_min_true` by terminal state and found the re-labelled footprints
+carried *larger* separations (p50 `1.063e-3 -> 4.419e-3`), read as "not mid-encounter firing". But a
+run stopped early by a spurious escape never reaches its close approach, so its `d_min` is larger
+**because** it terminated early. The statistic was confounded by the effect it was measuring, and
+its answer was the opposite of the truth. **Test the mechanism directly; a summary statistic over a
+truncated run inherits the truncation.**
+
+**AND THE FIRST PERSISTENCE SWEEP WAS CONFOUNDED THE SAME WAY.** It re-ran to `t_e + w` with
+`n_sync` rescaled per window, so every window was a different discretisation, and produced
+`0.162, 0.219, 0.011, 0.083, 0.335` -- read as "the condition flickers". Recording candidacy at
+every boundary of **one** run at **one** step size (`AzOut::escape_flags`) gives a flat zero.
+*`n_sync` fixed while `t_max` varies compares different discretisations* is the standing form; this
+was its inverse, inside a diagnostic written to catch exactly this.
+
+**"COLLISION IS SAMPLED CONTINUOUSLY SO IT FIRES FIRST" CONFUSES DETECTED WITH OCCURRED.**
+`classify` ranked collision above escape unconditionally and **discarded both times**. Collision is
+sampled inside the RK4 loop and escape only where the state is Cartesian, so an escape at `t = 5.0`
+noticed at `t = 5.28` lost to a collision at `t = 5.1`. Deciding by `min(t)`, with `t_end` set the
+same way so state and time cannot disagree, removes the dependence on *when each arm is sampled*.
+Measured alone it moves **one footprint of 5440** in production, because `stop_on_event` breaks on
+the first *detected* event so only one is ever recorded. On the reference path it is large:
+`preset_plambda` **990 of 996** trajectories that fired both arms escaped first and were labelled
+collision -- **42.97% of the whole slice** -- median lead 6.45 sync intervals. **The ordering
+guarantee comes from sampling both arms at the same cadence; `min(t)` is what stops the state and
+the time disagreeing.**
+
+**A GUARD NEEDS THE ARM THAT SAYS IT DID NOT CUT TOO MUCH.** `escape_confirm`'s test asserts it
+**reduces** the escape count in `deep interior` *and* leaves `preset_plambda`'s **unchanged**. A
+guard that rejects everything passes the first arm exactly as well as a correct one.
+
 ---
 
 ## SMOKE TEST

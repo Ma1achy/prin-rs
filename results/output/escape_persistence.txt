@@ -1,0 +1,41 @@
+48x48 per case, t=13, n_sync=32 (interval 0.406250), eta=1e-2, r_coll_frac=1e-3
+
+=== near-field === 2304 trajectories
+  [precedence] on the reference path (stop_on_event=false): 0 trajectories fired BOTH arms;
+              0 of them escaped FIRST and were labelled `collision` by the old fixed order
+              (0.00% of all, NaN% of those with both). Median lead: NaN (NaN sync intervals).
+  [persistence] 1 trajectories escape at stride 1 and NOT at the reference cadence.
+               1 of them are NOT unbound at some later boundary (100.0% flicker at least once).
+               median detection time 10.9884 (27.05 sync intervals in).
+               still unbound N boundaries later: +1: 0.000 (n 1)  +2: 0.000 (n 1)  +3: 0.000 (n 1)  +4: 0.000 (n 1)  +8: n/a  
+
+=== deep interior === 2304 trajectories
+  [precedence] on the reference path (stop_on_event=false): 1219 trajectories fired BOTH arms;
+              120 of them escaped FIRST and were labelled `collision` by the old fixed order
+              (5.21% of all, 9.8% of those with both). Median lead: 0.5084 (1.25 sync intervals).
+  [persistence] 895 trajectories escape at stride 1 and NOT at the reference cadence.
+               895 of them are NOT unbound at some later boundary (100.0% flicker at least once).
+               median detection time 1.8787 (4.62 sync intervals in).
+               still unbound N boundaries later: +1: 0.000 (n 894)  +2: 0.000 (n 894)  +3: 0.000 (n 893)  +4: 0.000 (n 892)  +8: 0.000 (n 892)  
+
+=== preset_plambda === 2304 trajectories
+  [precedence] on the reference path (stop_on_event=false): 996 trajectories fired BOTH arms;
+              990 of them escaped FIRST and were labelled `collision` by the old fixed order
+              (42.97% of all, 99.4% of those with both). Median lead: 2.6201 (6.45 sync intervals).
+  [persistence] 0 trajectories escape at stride 1 and NOT at the reference cadence.
+               0 of them are NOT unbound at some later boundary (NaN% flicker at least once).
+               median detection time NaN (NaN sync intervals in).
+
+HOW TO READ THIS
+
+[persistence] decides what the stride MEANS. `escape_candidate` is relative energy > 0
+and receding, and during a close encounter that can be transiently true. If a material
+fraction RE-BIND, a finer stride is not resolving a quantity -- it is latching
+transients as terminal events, and a persistence guard is required before the escape
+fraction at stride 1 can be believed. If essentially all persist, the stride is a pure
+resolution knob and 0.5494 stands.
+
+[precedence] bounds the ordering bug. Under `stop_on_event` the loop breaks on the
+first DETECTED event so only one is ever recorded, which is why repairing `classify`
+moved one footprint of 5440 in production settings. The reference path accumulates
+both, and that count is the size of the defect the repair addresses.

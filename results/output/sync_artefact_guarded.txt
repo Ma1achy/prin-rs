@@ -1,0 +1,163 @@
+level 3, N=8, res 64^2, t=13, n_sync=32 (boundaries 0.406250 apart)
+escape_every: 0 = the reference's boundary-only cadence; 1 = every 1 RK4 step(s)
+escape_confirm: true -- an in-loop escape must still hold at the next boundary
+
+COLLISION is sampled inside the RK4 loop and is already continuous. ESCAPE is sampled
+at sync boundaries. So t_end is quantised exactly where ESCAPE terminates, and the
+prediction is that Burrau (collision-terminated) is clean and the latent charts are not.
+
+=== near-field ===
+  escape_every=0   built     4.7s   footprints 5440   escape 0.0002  collision 0.0215  running 0.0000
+      t_end          distinct      86  modal  97.83%   ON A SYNC BOUNDARY: 5323 of 5440 (97.85%)
+      spread_event   distinct       5  modal  96.97%      spread_shape distinct    4862  modal   0.07%
+      per-quad: frac_hot_between    2 (ceiling 65) modal  97.6%   frac_hot_within    7 modal  92.9%
+                term_grad        8 modal  91.8%   within       85 modal   1.2%
+                d_min_true | escaped  p10  1.948e-3 p50  1.948e-3 p90  1.948e-3  (n 1)
+                           | collided p10  1.506e-3 p50  2.114e-3 p90  2.197e-3  (n 117)
+  escape_every=32  built     4.6s   footprints 5440   escape 0.0002  collision 0.0215  running 0.0000
+      t_end          distinct      86  modal  97.83%   ON A SYNC BOUNDARY: 5322 of 5440 (97.83%)
+      spread_event   distinct       5  modal  96.97%      spread_shape distinct    4862  modal   0.07%
+      per-quad: frac_hot_between    2 (ceiling 65) modal  97.6%   frac_hot_within    7 modal  92.9%
+                term_grad        8 modal  91.8%   within       85 modal   1.2%
+                d_min_true | escaped  p10  1.948e-3 p50  1.948e-3 p90  1.948e-3  (n 1)
+                           | collided p10  1.506e-3 p50  2.114e-3 p90  2.197e-3  (n 117)
+      DELTA vs the reference cadence: t_end distinct 86 -> 86 (1.0x), on-boundary 5323 -> 5322
+  escape_every=4   built     4.6s   footprints 5440   escape 0.0002  collision 0.0215  running 0.0000
+      t_end          distinct      86  modal  97.83%   ON A SYNC BOUNDARY: 5322 of 5440 (97.83%)
+      spread_event   distinct       5  modal  96.97%      spread_shape distinct    4862  modal   0.07%
+      per-quad: frac_hot_between    2 (ceiling 65) modal  97.6%   frac_hot_within    7 modal  92.9%
+                term_grad        8 modal  91.8%   within       85 modal   1.2%
+                d_min_true | escaped  p10  1.948e-3 p50  1.948e-3 p90  1.948e-3  (n 1)
+                           | collided p10  1.506e-3 p50  2.114e-3 p90  2.197e-3  (n 117)
+      DELTA vs the reference cadence: t_end distinct 86 -> 86 (1.0x), on-boundary 5322 -> 5322
+  escape_every=1   built     5.3s   footprints 5440   escape 0.0002  collision 0.0215  running 0.0000
+      t_end          distinct      86  modal  97.83%   ON A SYNC BOUNDARY: 5322 of 5440 (97.83%)
+      spread_event   distinct       5  modal  96.97%      spread_shape distinct    4862  modal   0.07%
+      per-quad: frac_hot_between    2 (ceiling 65) modal  97.6%   frac_hot_within    7 modal  92.9%
+                term_grad        8 modal  91.8%   within       85 modal   1.2%
+                d_min_true | escaped  p10  1.948e-3 p50  1.948e-3 p90  1.948e-3  (n 1)
+                           | collided p10  1.506e-3 p50  2.114e-3 p90  2.197e-3  (n 117)
+      DELTA vs the reference cadence: t_end distinct 86 -> 86 (1.0x), on-boundary 5322 -> 5322
+
+=== deep interior ===
+  escape_every=0   built     1.7s   footprints 5440   escape 0.0947  collision 0.8963  running 0.0000
+      t_end          distinct    2982  modal   6.60%   ON A SYNC BOUNDARY: 564 of 5440 (10.37%)
+      spread_event   distinct       8  modal  83.49%      spread_shape distinct    4514  modal   0.22%
+      per-quad: frac_hot_between   31 (ceiling 65) modal  41.2%   frac_hot_within   43 modal  24.7%
+                term_grad       85 modal   1.2%   within       76 modal   7.1%
+                d_min_true | escaped  p10  1.870e-4 p50  1.052e-3 p90  4.064e-3  (n 515)
+                           | collided p10  2.735e-4 p50  8.103e-4 p90  1.098e-3  (n 4876)
+  escape_every=32  built     1.6s   footprints 5440   escape 0.1268  collision 0.8642  running 0.0000
+      t_end          distinct    3194  modal   1.32%   ON A SYNC BOUNDARY: 205 of 5440 (3.77%)
+      spread_event   distinct       8  modal  84.41%      spread_shape distinct    4514  modal   0.22%
+      per-quad: frac_hot_between   31 (ceiling 65) modal  41.2%   frac_hot_within   43 modal  24.7%
+                term_grad       85 modal   1.2%   within       79 modal   5.9%
+                d_min_true | escaped  p10  5.541e-5 p50  7.300e-4 p90  3.939e-3  (n 690)
+                           | collided p10  3.733e-4 p50  8.193e-4 p90  1.103e-3  (n 4701)
+      DELTA vs the reference cadence: t_end distinct 2982 -> 3194 (1.1x), on-boundary 564 -> 205
+  escape_every=4   built     1.8s   footprints 5440   escape 0.1564  collision 0.8346  running 0.0000
+      t_end          distinct    3280  modal   0.88%   ON A SYNC BOUNDARY: 57 of 5440 (1.05%)
+      spread_event   distinct       8  modal  89.61%      spread_shape distinct    4514  modal   0.22%
+      per-quad: frac_hot_between   31 (ceiling 65) modal  41.2%   frac_hot_within   43 modal  24.7%
+                term_grad       85 modal   1.2%   within       81 modal   5.9%
+                d_min_true | escaped  p10  5.773e-5 p50  6.484e-4 p90  2.386e-3  (n 851)
+                           | collided p10  4.053e-4 p50  8.239e-4 p90  1.104e-3  (n 4540)
+      DELTA vs the reference cadence: t_end distinct 3194 -> 3280 (1.0x), on-boundary 205 -> 57
+  escape_every=1   built     1.9s   footprints 5440   escape 0.1564  collision 0.8346  running 0.0000
+      t_end          distinct    3281  modal   0.88%   ON A SYNC BOUNDARY: 49 of 5440 (0.90%)
+      spread_event   distinct       8  modal  89.60%      spread_shape distinct    4514  modal   0.22%
+      per-quad: frac_hot_between   31 (ceiling 65) modal  41.2%   frac_hot_within   43 modal  24.7%
+                term_grad       85 modal   1.2%   within       81 modal   5.9%
+                d_min_true | escaped  p10  5.773e-5 p50  6.484e-4 p90  2.386e-3  (n 851)
+                           | collided p10  4.053e-4 p50  8.239e-4 p90  1.104e-3  (n 4540)
+      DELTA vs the reference cadence: t_end distinct 3280 -> 3281 (1.0x), on-boundary 57 -> 49
+
+=== preset_plambda ===
+  escape_every=0   built     0.2s   footprints 5440   escape 0.9938  collision 0.0048  running 0.0000
+      t_end          distinct      16  modal  97.87%   ON A SYNC BOUNDARY: 5414 of 5440 (99.52%)
+      spread_event   distinct       7  modal  91.64%      spread_shape distinct    4379  modal   0.07%
+      per-quad: frac_hot_between    1 (ceiling 65) modal 100.0%   frac_hot_within    1 modal 100.0%
+                term_grad       12 modal  76.5%   within       85 modal   1.2%
+                d_min_true | escaped  p10  2.155e-1 p50   1.448e0 p90   1.708e0  (n 5406)
+                           | collided p10  5.074e-4 p50  9.213e-4 p90  9.974e-4  (n 26)
+  escape_every=32  built     0.2s   footprints 5440   escape 0.9956  collision 0.0029  running 0.0000
+      t_end          distinct    2623  modal   0.29%   ON A SYNC BOUNDARY: 14 of 5440 (0.26%)
+      spread_event   distinct       7  modal  92.81%      spread_shape distinct    4379  modal   0.07%
+      per-quad: frac_hot_between    1 (ceiling 65) modal 100.0%   frac_hot_within    1 modal 100.0%
+                term_grad       79 modal   2.4%   within       85 modal   1.2%
+                d_min_true | escaped  p10  2.136e-1 p50   1.445e0 p90   1.708e0  (n 5416)
+                           | collided p10  5.074e-4 p50  6.883e-4 p90  9.632e-4  (n 16)
+      DELTA vs the reference cadence: t_end distinct 16 -> 2623 (163.9x), on-boundary 5414 -> 14
+  escape_every=4   built     0.2s   footprints 5440   escape 0.9956  collision 0.0029  running 0.0000
+      t_end          distinct    2161  modal   0.29%   ON A SYNC BOUNDARY: 8 of 5440 (0.15%)
+      spread_event   distinct       7  modal  92.81%      spread_shape distinct    4379  modal   0.07%
+      per-quad: frac_hot_between    1 (ceiling 65) modal 100.0%   frac_hot_within    1 modal 100.0%
+                term_grad       78 modal   2.4%   within       85 modal   1.2%
+                d_min_true | escaped  p10  2.136e-1 p50   1.445e0 p90   1.708e0  (n 5416)
+                           | collided p10  5.074e-4 p50  6.883e-4 p90  9.632e-4  (n 16)
+      DELTA vs the reference cadence: t_end distinct 2623 -> 2161 (0.8x), on-boundary 14 -> 8
+  escape_every=1   built     0.2s   footprints 5440   escape 0.9956  collision 0.0029  running 0.0000
+      t_end          distinct    2099  modal   0.29%   ON A SYNC BOUNDARY: 8 of 5440 (0.15%)
+      spread_event   distinct       7  modal  92.72%      spread_shape distinct    4379  modal   0.07%
+      per-quad: frac_hot_between    1 (ceiling 65) modal 100.0%   frac_hot_within    1 modal 100.0%
+                term_grad       81 modal   2.4%   within       84 modal   2.4%
+                d_min_true | escaped  p10  2.136e-1 p50   1.445e0 p90   1.708e0  (n 5416)
+                           | collided p10  5.074e-4 p50  6.883e-4 p90  9.632e-4  (n 16)
+      DELTA vs the reference cadence: t_end distinct 2161 -> 2099 (1.0x), on-boundary 8 -> 8
+
+=== preset_shape_pl_h1 ===
+  escape_every=0   built     0.3s   footprints 5440   escape 0.9721  collision 0.0140  running 0.0000
+      t_end          distinct      41  modal  88.93%   ON A SYNC BOUNDARY: 5364 of 5440 (98.60%)
+      spread_event   distinct       7  modal  92.17%      spread_shape distinct    4379  modal   0.07%
+      per-quad: frac_hot_between    1 (ceiling 65) modal 100.0%   frac_hot_within    2 modal  97.6%
+                term_grad       17 modal  69.4%   within       84 modal   2.4%
+                d_min_true | escaped  p10  3.904e-1 p50   1.038e0 p90   1.427e0  (n 5288)
+                           | collided p10  3.613e-4 p50  7.821e-4 p90  9.395e-4  (n 76)
+  escape_every=32  built     0.3s   footprints 5440   escape 0.9721  collision 0.0140  running 0.0000
+      t_end          distinct    2313  modal   1.40%   ON A SYNC BOUNDARY: 170 of 5440 (3.12%)
+      spread_event   distinct       7  modal  92.26%      spread_shape distinct    4379  modal   0.07%
+      per-quad: frac_hot_between    1 (ceiling 65) modal 100.0%   frac_hot_within    2 modal  97.6%
+                term_grad       79 modal   2.4%   within       84 modal   2.4%
+                d_min_true | escaped  p10  3.904e-1 p50   1.038e0 p90   1.427e0  (n 5288)
+                           | collided p10  3.613e-4 p50  7.821e-4 p90  9.395e-4  (n 76)
+      DELTA vs the reference cadence: t_end distinct 41 -> 2313 (56.4x), on-boundary 5364 -> 170
+  escape_every=4   built     0.3s   footprints 5440   escape 0.9721  collision 0.0140  running 0.0000
+      t_end          distinct    2292  modal   1.40%   ON A SYNC BOUNDARY: 82 of 5440 (1.51%)
+      spread_event   distinct       7  modal  92.26%      spread_shape distinct    4379  modal   0.07%
+      per-quad: frac_hot_between    1 (ceiling 65) modal 100.0%   frac_hot_within    2 modal  97.6%
+                term_grad       82 modal   2.4%   within       84 modal   2.4%
+                d_min_true | escaped  p10  3.904e-1 p50   1.038e0 p90   1.427e0  (n 5288)
+                           | collided p10  3.613e-4 p50  7.821e-4 p90  9.395e-4  (n 76)
+      DELTA vs the reference cadence: t_end distinct 2313 -> 2292 (1.0x), on-boundary 170 -> 82
+  escape_every=1   built     0.3s   footprints 5440   escape 0.9721  collision 0.0140  running 0.0000
+      t_end          distinct    2314  modal   1.40%   ON A SYNC BOUNDARY: 78 of 5440 (1.43%)
+      spread_event   distinct       7  modal  92.30%      spread_shape distinct    4379  modal   0.07%
+      per-quad: frac_hot_between    1 (ceiling 65) modal 100.0%   frac_hot_within    2 modal  97.6%
+                term_grad       79 modal   2.4%   within       84 modal   2.4%
+                d_min_true | escaped  p10  3.904e-1 p50   1.038e0 p90   1.427e0  (n 5288)
+                           | collided p10  3.613e-4 p50  7.821e-4 p90  9.395e-4  (n 76)
+      DELTA vs the reference cadence: t_end distinct 2292 -> 2314 (1.0x), on-boundary 82 -> 78
+
+HOW TO READ THIS
+
+`t_end distinct` is the decisive number, and `ON A SYNC BOUNDARY` is the mechanism.
+A quantised t_end does not merely take few values -- its values ARE the boundary
+times, so a high on-boundary fraction at escape_every=0 that collapses at the fine
+cadence is the artefact, demonstrated rather than inferred.
+
+`frac_hot_between` is printed WITH ITS CEILING because it is a fraction over N^2
+footprints and cannot exceed N^2+1 distinct values however fine the cadence gets.
+Reading a saturation there as evidence about the physics is reading the resolution
+of a 64-sample fraction.
+
+`escape` vs `collision` bounds the whole effect before any count is read: only an
+escape-terminated footprint can carry a boundary time, so a region terminating by
+collision cannot be contaminated by this at all -- whatever its images look like.
+
+`d_min_true` by terminal state decides whether the finer cadence is a FIX or a BUG.
+`escape_candidate` asks whether a body is unbound and receding, and the reference asks
+it only at boundaries, where the state is Cartesian and shared. Asked every RK4 step it
+is also asked DURING a close encounter, where a pair's instantaneous two-body energy can
+read positive transiently. If the escaped population's d_min collapses toward the
+collided population's as the stride tightens, the test is firing mid-encounter and the
+finer cadence is wrong rather than finer.

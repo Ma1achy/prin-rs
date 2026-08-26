@@ -1,0 +1,73 @@
+budget 40000, alpha_hi=0.2, N=8, E+1=8, t=13, f64, viewport 1024^2
+tau = 1e-4 and k_frac = 1.0 are the LABELLED DEGENERATE CONTROLS: they reproduce
+the configuration every committed dump was made with.
+
+=== STAGE 1: tau x k_frac at structure=off, criterion=within ===
+
+        target      tau      k   struct   crit  leaves  lvls depthvar   %max  split   floor    keep    veto
+    near-field     1e-4   1.00      off within     412     5    1.015    61%    137     154       6     252
+    near-field     1e-4   0.50      off within     103     5    1.900    35%     34      42      25      36
+    near-field     1e-4   0.25      off within      46     5    2.053    17%     15      17      21       8
+    near-field     1e-4   0.10      off within      31     5    2.046    13%     10      12      15       4
+    near-field     3e-4   1.00      off within     400     5    1.026    59%    133     154      10     236
+    near-field     3e-4   0.50      off within     103     5    1.900    35%     34      42      25      36
+    near-field     3e-4   0.25      off within      46     5    2.053    17%     15      17      21       8
+    near-field     3e-4   0.10      off within      31     5    2.046    13%     10      12      15       4
+    near-field     1e-3   1.00      off within     259     5    1.347    53%     86      99      24     136
+    near-field     1e-3   0.50      off within     100     5    1.866    32%     33      42      26      32
+    near-field     1e-3   0.25      off within      43     5    1.691     9%     14      17      22       4
+    near-field     1e-3   0.10      off within      31     5    2.046    13%     10      12      15       4
+    near-field     3e-3   1.00      off within      16     1    0.000   100%      5       0      16       0
+    near-field     3e-3   0.50      off within      16     1    0.000   100%      5       0      16       0
+    near-field     3e-3   0.25      off within      16     1    0.000   100%      5       0      16       0
+    near-field     3e-3   0.10      off within      16     1    0.000   100%      5       0      16       0
+    near-field     1e-2   1.00      off within      16     1    0.000   100%      5       0      16       0
+    near-field     1e-2   0.50      off within      16     1    0.000   100%      5       0      16       0
+    near-field     1e-2   0.25      off within      16     1    0.000   100%      5       0      16       0
+    near-field     1e-2   0.10      off within      16     1    0.000   100%      5       0      16       0
+
+ deep_interior     1e-4   1.00      off within      22     3    0.614    18%      7       9      13       0
+ deep_interior     1e-4   0.50      off within      22     3    0.614    18%      7       9      13       0
+ deep_interior     1e-4   0.25      off within      22     3    0.614    18%      7       9      13       0
+ deep_interior     1e-4   0.10      off within      22     3    0.614    18%      7       9      13       0
+ deep_interior     3e-4   1.00      off within      16     1    0.000   100%      5       4      12       0
+ deep_interior     3e-4   0.50      off within      16     1    0.000   100%      5       4      12       0
+ deep_interior     3e-4   0.25      off within      16     1    0.000   100%      5       4      12       0
+ deep_interior     3e-4   0.10      off within      16     1    0.000   100%      5       4      12       0
+ deep_interior     1e-3   1.00      off within      16     1    0.000   100%      5       4      12       0
+ deep_interior     1e-3   0.50      off within      16     1    0.000   100%      5       4      12       0
+ deep_interior     1e-3   0.25      off within      16     1    0.000   100%      5       4      12       0
+ deep_interior     1e-3   0.10      off within      16     1    0.000   100%      5       4      12       0
+ deep_interior     3e-3   1.00      off within      16     1    0.000   100%      5       4      12       0
+ deep_interior     3e-3   0.50      off within      16     1    0.000   100%      5       4      12       0
+ deep_interior     3e-3   0.25      off within      16     1    0.000   100%      5       4      12       0
+ deep_interior     3e-3   0.10      off within      16     1    0.000   100%      5       4      12       0
+ deep_interior     1e-2   1.00      off within      16     1    0.000   100%      5       4      12       0
+ deep_interior     1e-2   0.50      off within      16     1    0.000   100%      5       4      12       0
+ deep_interior     1e-2   0.25      off within      16     1    0.000   100%      5       4      12       0
+ deep_interior     1e-2   0.10      off within      16     1    0.000   100%      5       4      12       0
+
+  preset_shape     1e-4   1.00      off within      16     1    0.000   100%      5       8       8       0
+  preset_shape     1e-4   0.50      off within      16     1    0.000   100%      5       8       8       0
+  preset_shape     1e-4   0.25      off within      16     1    0.000   100%      5       8       8       0
+  preset_shape     1e-4   0.10      off within      16     1    0.000   100%      5       8       8       0
+  preset_shape     3e-4   1.00      off within      16     1    0.000   100%      5       8       8       0
+  preset_shape     3e-4   0.50      off within      16     1    0.000   100%      5       8       8       0
+  preset_shape     3e-4   0.25      off within      16     1    0.000   100%      5       8       8       0
+  preset_shape     3e-4   0.10      off within      16     1    0.000   100%      5       8       8       0
+  preset_shape     1e-3   1.00      off within      16     1    0.000   100%      5       8       8       0
+  preset_shape     1e-3   0.50      off within      16     1    0.000   100%      5       8       8       0
+  preset_shape     1e-3   0.25      off within      16     1    0.000   100%      5       8       8       0
+  preset_shape     1e-3   0.10      off within      16     1    0.000   100%      5       8       8       0
+  preset_shape     3e-3   1.00      off within      16     1    0.000   100%      5       8       8       0
+  preset_shape     3e-3   0.50      off within      16     1    0.000   100%      5       8       8       0
+  preset_shape     3e-3   0.25      off within      16     1    0.000   100%      5       8       8       0
+  preset_shape     3e-3   0.10      off within      16     1    0.000   100%      5       8       8       0
+  preset_shape     1e-2   1.00      off within      16     1    0.000   100%      5       8       8       0
+  preset_shape     1e-2   0.50      off within      16     1    0.000   100%      5       8       8       0
+  preset_shape     1e-2   0.25      off within      16     1    0.000   100%      5       8       8       0
+  preset_shape     1e-2   0.10      off within      16     1    0.000   100%      5       8       8       0
+
+DEPTH VARIANCE is the headline. If no configuration produces a tree with
+meaningful depth variance, that is the finding and it is bigger than any
+individual setting.

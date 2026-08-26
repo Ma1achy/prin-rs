@@ -1,0 +1,46 @@
+budget 40000, alpha_hi=0.2, N=8, E+1=8, t=13, f64, viewport 1024^2
+tau = 1e-4 and k_frac = 1.0 are the LABELLED DEGENERATE CONTROLS: they reproduce
+the configuration every committed dump was made with.
+
+=== STAGE 2: structure x criterion at tau=1e-4, k_frac=0.25 ===
+
+        target      tau      k   struct   crit  leaves  lvls depthvar   %max  split   floor    keep    veto
+    near-field     1e-4   0.25      off within      46     5    2.053    17%     15      17      21       8
+    near-field     1e-4   0.25      off    fhb      40     5    1.569    10%     13      19      17       4
+    near-field     1e-4   0.25      off   lrel      40     5    1.569    10%     13      18      18       4
+    near-field     1e-4   0.25      off   grms      49     5    1.927    16%     16      19      22       8
+    near-field     1e-4   0.25  replace within      40     5    1.569    10%     13      18      18       4
+    near-field     1e-4   0.25  replace    fhb      40     5    1.569    10%     13      18      18       4
+    near-field     1e-4   0.25  replace   lrel      40     5    1.569    10%     13      18      18       4
+    near-field     1e-4   0.25  replace   grms      40     5    1.569    10%     13      18      18       4
+    near-field     1e-4   0.25 multiply within      40     5    1.569    10%     13      18      18       4
+    near-field     1e-4   0.25 multiply    fhb      40     5    1.569    10%     13      18      18       4
+    near-field     1e-4   0.25 multiply   lrel      40     5    1.569    10%     13      20      16       4
+    near-field     1e-4   0.25 multiply   grms      46     5    1.597     9%     15      20      22       4
+
+ deep_interior     1e-4   0.25      off within      22     3    0.614    18%      7       9      13       0
+ deep_interior     1e-4   0.25      off    fhb      34     5    1.925    12%     11      17      13       4
+ deep_interior     1e-4   0.25      off   lrel      31     4    1.193    13%     10      20      11       0
+ deep_interior     1e-4   0.25      off   grms      19     2    0.166    21%      6       8      11       0
+ deep_interior     1e-4   0.25  replace within      25     3    0.560    16%      8      16       9       0
+ deep_interior     1e-4   0.25  replace    fhb      25     3    0.560    16%      8      16       9       0
+ deep_interior     1e-4   0.25  replace   lrel      25     3    0.560    16%      8      16       9       0
+ deep_interior     1e-4   0.25  replace   grms      25     3    0.560    16%      8      16       9       0
+ deep_interior     1e-4   0.25 multiply within      16     1    0.000   100%      5       4      12       0
+ deep_interior     1e-4   0.25 multiply    fhb      34     5    1.925    12%     11      17      13       4
+ deep_interior     1e-4   0.25 multiply   lrel      31     5    2.046    13%     10      18       9       4
+ deep_interior     1e-4   0.25 multiply   grms      19     2    0.166    21%      6       8      11       0
+
+  preset_shape     1e-4   0.25      off within      16     1    0.000   100%      5       8       8       0
+  preset_shape     1e-4   0.25      off    fhb      31     4    1.193    13%     10      18      13       0
+  preset_shape     1e-4   0.25      off   lrel      28     4    1.167    14%      9      21       7       0
+  preset_shape     1e-4   0.25      off   grms      31     5    2.046    13%     10      11      16       4
+  preset_shape     1e-4   0.25  replace within      28     4    1.167    14%      9      19       9       0
+  preset_shape     1e-4   0.25  replace    fhb      28     4    1.167    14%      9      19       9       0
+  preset_shape     1e-4   0.25  replace   lrel      28     4    1.167    14%      9      19       9       0
+  preset_shape     1e-4   0.25  replace   grms      28     4    1.167    14%      9      19       9       0
+  preset_shape     1e-4   0.25 multiply within      16     1    0.000   100%      5       8       8       0
+  preset_shape     1e-4   0.25 multiply    fhb      28     4    1.167    14%      9      18      10       0
+  preset_shape     1e-4   0.25 multiply   lrel      28     4    1.167    14%      9      21       7       0
+  preset_shape     1e-4   0.25 multiply   grms      28     4    1.167    14%      9      13      15       0
+

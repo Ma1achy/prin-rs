@@ -2391,6 +2391,118 @@ budget-exhausted quad truncated before compute, or a frontier the camera has jus
 returned `LeafTexel` list stays leaves-only; including the fill would have doubled its rows and
 halved the apparent texel size at every level.
 
+## 18. The sweep — and PR #18 never ran anything with its own machinery enabled
+
+All 69 dumps committed by PR #18 carry `tau_display=1e-4  hot_rule=q[0.50]  structure=off
+k_frac=1  criterion=within`: the pre-fix configuration with new columns attached. `tau` at the
+0.4th percentile still gated the split, `k_frac = 1` took the top 100% of the frontier so the
+ranking changed nothing, and neither new signal was in play. **There was no "after" in the
+corpus.** Everything below writes to `results/sweep/`; nothing existing is touched.
+
+One correction to that diagnosis: `mode=balanced, k_frac=1` is *not* `Mode::Uniform`. Uniform
+returns `Split` unconditionally and bypasses the `tau` and `alpha` gates; balanced at `k_frac = 1`
+applies both and only declines to truncate. What never engaged was the **rank truncation**.
+
+### 18.0 The wiring check found a bug in the thing being swept
+
+Run before the sweep, exactly because a knob that is not plumbed through produces identical trees
+at every setting and reads as *"the criterion cannot be fixed"*. All four knobs reached the tree —
+and one reached too far.
+
+**`k_frac` was truncating the bootstrap.** Levels below `bootstrap_levels` split unconditionally
+because level 0 has no parent and therefore no `alpha`: there is no signal to rank them by. The
+ranking demoted them to `Keep` anyway, so the tree never reached the depth where the criterion
+could decide anything.
+
+The tell: `near-field`, `deep interior` and `preset_shape` returned **byte-identical** leaf counts
+and depth variances at every `k < 1` — `16/1/0.000`, `10/2/0.160`, `7/2/0.245`. Three unrelated
+charts agreeing to the digit is chart-independent arithmetic, not physics. The `split` column
+said so too: rows read 2 and 3 where the bootstrap alone requires 5. Fixed, and
+`tests/criterion.rs::k_frac_never_truncates_the_bootstrap` asserts both the split count and that
+no quad below the bootstrap is left a leaf.
+
+### 18.1 Stage 1 — `tau × k_frac`. It works on one target of three
+
+`near-field`, `structure=off`, `criterion=within`:
+
+| `tau` | `k_frac` | leaves | levels | **depth var** | %max | veto |
+|---|---|---|---|---|---|---|
+| 1e-4 | **1.00** | 412 | 5 | **1.015** | 61% | **252** |
+| 1e-4 | 0.50 | 103 | 5 | 1.900 | 35% | 36 |
+| 1e-4 | **0.25** | 46 | 5 | **2.053** | 17% | **8** |
+| 1e-4 | 0.10 | 31 | 5 | 2.046 | 13% | 4 |
+| 1e-3 | 1.00 | 259 | 5 | 1.347 | 53% | 136 |
+| **3e-3** | any | 16 | **1** | **0.000** | 100% | 0 |
+
+Depth variance doubles and the veto share falls 61% → 13%: the tree stops being cap-decided and
+becomes criterion-decided. `tau ≥ 3e-3` collapses it to one level at every `k` — §14.2's
+upper-side failure, landing where the percentile table put it.
+
+**The other two targets are inert across all twenty cells.** `deep_interior` returns `22/3/0.614`
+at every `k`; `preset_shape` returns `16/1/0.000`. Neither knob can reach them, structurally:
+
+- **`tau` cannot gate `preset_shape`** — its leaf-spread median is `2.86e-1`, 3400× above the
+  largest `tau` swept, so every quad clears the gate everywhere.
+- **`k_frac` has nothing to rank** — it truncates the set that already decided to *split*, and
+  `preset_shape` produces **zero** splits past the bootstrap while `deep_interior`'s frontier is
+  1–2 quads a round, where `ceil(1 × 0.1) = 1` truncates nothing.
+
+### 18.2 Stage 3 — `alpha` is what binds them, and it still cannot move `preset_shape`
+
+Swept because stage 1 showed the specified knobs could not reach two of three targets. Depth
+variance at `tau = 1e-4, k = 0.25`:
+
+| target | `alpha_hi` 0.5 | 0.2 | 0.1 | 0.0 | **−1.0 (gate off)** |
+|---|---|---|---|---|---|
+| near-field | 0.166 | 2.053 | 2.140 | 2.140 | 2.109 |
+| `deep_interior` | 0.166 | 0.614 | 0.614 | **2.311** | **2.410** |
+| **`preset_shape`** | 0.000 | 0.000 | 0.000 | 0.000 | **0.000** |
+
+`alpha_hi = −1.0` is the **degenerate control**: every finite `alpha` clears it, so the gate is
+effectively off. `deep_interior` needs `alpha_hi ≤ 0` to unlock at all — a 3.8× jump in depth
+variance between 0.05 and 0.0.
+
+**`preset_shape` is flat even with the gate off**: 16 leaves, one level, 5 splits (bootstrap
+only), 8 `Floor` + 8 `Keep`. At `alpha_hi = −1` a `Floor` requires `alpha < −1`, i.e. the child's
+spread is **more than twice the parent's**. So on half its quads refining makes the spread *grow*,
+and on the other half `alpha` is not computable at all. No threshold on a convergence exponent can
+help where there is no convergence.
+
+### 18.3 Stage 2 — the criterion moves them, through the RANKING
+
+I predicted stage 2 would be inert on those two for the same reason stage 1 was. **Wrong**:
+`priority()` reads `signal_with(criterion, agg, structure)`, so with `k_frac < 1` the criterion
+decides *which* quads get the budget, not only whether they pass a gate.
+
+`preset_shape`, `tau = 1e-4`, `k = 0.25`:
+
+| structure / criterion | leaves | levels | depth var |
+|---|---|---|---|
+| `off` / `within` | 16 | **1** | **0.000** |
+| `off` / `frac_hot_between` | 31 | 4 | 1.193 |
+| `off` / `layout_rel` | 28 | 4 | 1.167 |
+| **`off` / `grad_rms`** | **31** | **5** | **2.046** |
+| `multiply` / `within` | 16 | 1 | 0.000 |
+
+**So a configuration does produce a selective tree on every target, and the knob that does it is
+the criterion acting through the ranking** — not `tau`, not `alpha`. `grad_rms`, the
+threshold-free control on the whole mask family, is what unlocks the one chart the others cannot.
+No single criterion wins everywhere: `within` is best on near-field (2.053), `frac_hot_between`
+and `layout_rel` on `deep_interior` (1.925, 2.046 under `multiply`), `grad_rms` on `preset_shape`.
+
+Two controls firing correctly inside stage 2. **`replace` collapses to identical rows across all
+four criteria** on every target — 40/5/1.569, 25/3/0.560, 28/4/1.167 — which is the documented
+structural identity (`Replace` discards the criterion) confirming itself. And **`multiply/within`
+drives both `preset_shape` and `deep_interior` back to `16/1/0.000`**, which is the `NaN` structure
+term propagating through the product on an empty mask, exactly as the doc comment on
+`signal_with` warns.
+
+### 18.4 The dumps are self-describing
+
+93 dumps in `results/sweep/`, named
+`<target>__tau<t>__k<k>__struct-<s>__crit-<c>.prnq`, so a directory listing is a settings table
+and the corpus can be re-derived by parsing filenames. The header carries the settings too.
+
 ## 13. Reproducing any of this
 
 **Two of these commands were wrong, and only running them found it.** The `pan_sequence` line said
@@ -2468,3 +2580,7 @@ Every table above comes from a committed example. Raw output for all of them is 
 | §17 the slippy-map gates | `cargo test --release --test slippy -- --nocapture` |
 | the refinement animations | `cargo run --release --example refinement_animation -- 40000 1e-4 0.2 512` |
 | the four GLSL slices refining | `cargo run --release --example glsl_refinement -- 40000 1e-4 0.2 512 40` |
+| §18.0 the wiring check | `cargo run --release --example criterion_sweep -- 0` |
+| §18.1 stage 1, tau x k_frac | `cargo run --release --example criterion_sweep -- 1` |
+| §18.3 stage 2, structure x criterion | `cargo run --release --example criterion_sweep -- 2 40000 0.2 1024 1e-4 0.25` |
+| §18.2 stage 3, alpha | `cargo run --release --example criterion_sweep -- 3 40000 0.2 1024 1e-4 0.25` |

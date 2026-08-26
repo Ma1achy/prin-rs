@@ -1,0 +1,33 @@
+budget 40000, alpha_hi=0.2, N=8, E+1=8, t=13, f64, viewport 1024^2
+tau = 1e-4 and k_frac = 1.0 are the LABELLED DEGENERATE CONTROLS: they reproduce
+the configuration every committed dump was made with.
+
+=== STAGE 3: alpha_hi at tau=1e-4, k_frac=0.25, structure=off ===
+Stage 1 showed tau and k_frac are inert on deep_interior and preset_shape.
+alpha is what binds them, and it is the one knob the brief did not sweep.
+
+        target      tau      k   struct   crit  leaves  lvls depthvar   %max  split   floor    keep    veto
+    near-field     1e-4   0.25      off within      19     2    0.166    21%                                6      19       0       0   alpha_hi=0.5
+    near-field     1e-4   0.25      off within      46     5    2.053    17%                               15      17      21       8   alpha_hi=0.2
+    near-field     1e-4   0.25      off within      55     5    2.140    22%                               18      14      29      12   alpha_hi=0.1
+    near-field     1e-4   0.25      off within      55     5    2.140    22%                               18      14      29      12   alpha_hi=0.05
+    near-field     1e-4   0.25      off within      55     5    2.140    22%                               18      11      32      12   alpha_hi=0
+    near-field     1e-4   0.25      off within      64     5    2.109    25%                               21       0      48      16   alpha_hi=-1
+
+ deep_interior     1e-4   0.25      off within      19     2    0.166    21%                                6       7      12       0   alpha_hi=0.5
+ deep_interior     1e-4   0.25      off within      22     3    0.614    18%                                7       9      13       0   alpha_hi=0.2
+ deep_interior     1e-4   0.25      off within      22     3    0.614    18%                                7       9      13       0   alpha_hi=0.1
+ deep_interior     1e-4   0.25      off within      22     3    0.614    18%                                7       9      13       0   alpha_hi=0.05
+ deep_interior     1e-4   0.25      off within      28     5    2.311    14%                                9       5      19       4   alpha_hi=0
+ deep_interior     1e-4   0.25      off within      40     5    2.410    20%                               13       1      31       8   alpha_hi=-1
+
+  preset_shape     1e-4   0.25      off within      16     1    0.000   100%                                5       8       8       0   alpha_hi=0.5
+  preset_shape     1e-4   0.25      off within      16     1    0.000   100%                                5       8       8       0   alpha_hi=0.2
+  preset_shape     1e-4   0.25      off within      16     1    0.000   100%                                5       8       8       0   alpha_hi=0.1
+  preset_shape     1e-4   0.25      off within      16     1    0.000   100%                                5       8       8       0   alpha_hi=0.05
+  preset_shape     1e-4   0.25      off within      16     1    0.000   100%                                5       8       8       0   alpha_hi=0
+  preset_shape     1e-4   0.25      off within      16     1    0.000   100%                                5       8       8       0   alpha_hi=-1
+
+alpha_hi = -1.0 is the DEGENERATE CONTROL: every finite alpha clears it, so the
+alpha gate is effectively off and the tree runs to the veto or the budget. If a
+target is still flat there, nothing in the criterion can move it.

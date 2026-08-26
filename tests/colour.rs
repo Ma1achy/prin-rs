@@ -635,3 +635,111 @@ fn an_undetermined_pixel_never_takes_a_class_colour() {
     let (rows, _) = event_class_histogram(&[ok]);
     assert_eq!(rows.len(), prin_rs::output::png::N_EVENT_CLASSES);
 }
+
+/// **A truncated render must actually be truncated, and for a while none of them were.**
+///
+/// `adaptive::render` draws every node that carries samples, coarsest first — the
+/// coarse-ancestor fill. So building a "shadow tree" whose leaf set is truncated does **not**
+/// restrict the frame: the quads outside the set still carry their samples and paint last.
+///
+/// Every animation this project produced was one image repeated N times, and the check that
+/// would have caught it is one line — do two adjacent frames differ. Measured before the fix:
+/// frame 0 and frame 1 of a 49-frame APNG were byte-identical.
+#[test]
+fn a_truncated_render_differs_from_the_full_one() {
+    use prin_rs::camera::Camera;
+    use prin_rs::ensemble::pixel::{EnsembleCfg, PixelOut};
+    use prin_rs::output::adaptive;
+    use prin_rs::render::Precision;
+    use prin_rs::scheduler::{self, SchedCfg};
+
+    let ens = EnsembleCfg { t_max: 13.0, refine_flagged: false, ..Default::default() };
+    let cam = Camera::framing(1.0, 3.0, 0.05, 64);
+    let cfg = SchedCfg {
+        n: 4,
+        budget: 400,
+        tau_display: 1e-4,
+        alpha_hi: 0.2,
+        alpha_lo: 0.2,
+        camera: Some(cam),
+        keep_pixels: true,
+        ..Default::default()
+    };
+    let (t, st) = scheduler::descend(1.0, 3.0, 0.05, 0, &cfg, &ens, Precision::F64);
+    let res = 64;
+    // **A continuous ramp, not a threshold.** A binary colouring makes the coarsest frames flat
+    // on both sides of a cut, so cap 0 and cap 1 come out identical for a reason that has
+    // nothing to do with the render -- which is what the first version of this test reported.
+    let rgb = |p: &PixelOut| {
+        let v = if p.ensemble_spread.is_finite() {
+            (p.ensemble_spread.max(1e-12).log10() + 12.0) / 12.0
+        } else {
+            0.0
+        };
+        let t = (v.clamp(0.0, 1.0) * 255.0) as u8;
+        [t, 255 - t, t / 2]
+    };
+
+    // Frames at increasing depth caps, each rendered the way an animation builds them.
+    let frame = |cap: u32| -> Vec<u8> {
+        let leaves: Vec<usize> = (0..t.nodes.len())
+            .filter(|&i| {
+                let q = &t.nodes[i];
+                q.level <= cap && (q.children.is_none() || q.level == cap)
+            })
+            .collect();
+        let keep: std::collections::HashSet<usize> = leaves.iter().cloned().collect();
+        // The mask is the load-bearing half. Without it every cap renders identically.
+        let masked: Vec<Vec<PixelOut>> = (0..st.pixels.len())
+            .map(|i| if keep.contains(&i) { st.pixels[i].clone() } else { Vec::new() })
+            .collect();
+        let mut shadow = t.clone();
+        for i in 0..shadow.nodes.len() {
+            if keep.contains(&i) {
+                shadow.nodes[i].children = None;
+            }
+        }
+        adaptive::render(&shadow, &masked, &cam, res, adaptive::TexelMode::Adaptive, rgb).0
+    };
+
+    let depth = t.leaves().map(|i| t.nodes[i].level).max().unwrap_or(0);
+    assert!(depth >= 3, "tree is too shallow ({depth}) for this test to mean anything");
+    let frames: Vec<Vec<u8>> = (0..=depth).map(frame).collect();
+    let same: Vec<usize> =
+        (0..frames.len() - 1).filter(|&k| frames[k] == frames[k + 1]).collect();
+    for k in 0..frames.len() - 1 {
+        let n = t.leaves().filter(|&i| t.nodes[i].level as usize == k + 1).count();
+        println!("  cap {k} -> {}: {}   ({n} leaves at level {})",
+                 k + 1, if frames[k] == frames[k + 1] { "IDENTICAL" } else { "differs" }, k + 1);
+    }
+    // **Not `dup == 0`.** The deepest cap can legitimately match the one below it when almost
+    // nothing sits at that level -- adding a handful of quads to a 64x64 raster can change no
+    // pixel. What cannot happen on a working render is the EARLY caps collapsing, where whole
+    // regions of the image go from one flat texel to sixteen.
+    assert!(!same.contains(&0), "cap 0 -> 1 is identical; the truncation is not restricting");
+    assert!(!same.contains(&1), "cap 1 -> 2 is identical; the truncation is not restricting");
+    assert!(same.len() <= 1, "{} of {} adjacent pairs identical -- this is a still, not motion",
+            same.len(), frames.len() - 1);
+
+    // The control: WITHOUT the mask, they collapse. This is what was shipping, and it is what
+    // makes the assertion above a measurement rather than a hope.
+    let unmasked = |cap: u32| -> Vec<u8> {
+        let keep: std::collections::HashSet<usize> = (0..t.nodes.len())
+            .filter(|&i| {
+                let q = &t.nodes[i];
+                q.level <= cap && (q.children.is_none() || q.level == cap)
+            })
+            .collect();
+        let mut shadow = t.clone();
+        for i in 0..shadow.nodes.len() {
+            if keep.contains(&i) {
+                shadow.nodes[i].children = None;
+            }
+        }
+        adaptive::render(&shadow, &st.pixels, &cam, res, adaptive::TexelMode::Adaptive, rgb).0
+    };
+    let u: Vec<Vec<u8>> = (0..=depth).map(unmasked).collect();
+    let udup = u.windows(2).filter(|w| w[0] == w[1]).count();
+    println!("without the mask: {udup} of {} adjacent pairs identical", u.len() - 1);
+    assert_eq!(udup, u.len() - 1, "the control should collapse to one repeated frame");
+}

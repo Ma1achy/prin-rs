@@ -74,6 +74,40 @@ pub fn draw(img: &mut [u8], w: usize, h: usize, boxes: &[Box2], max_level: u32) 
 }
 
 /// Leaf boxes of a live [`crate::quad::QuadTree`], projected through a camera.
+/// Boxes for an **explicit** leaf set.
+///
+/// [`boxes_from_tree`] walks `tree.leaves()`, which is every node whose `children` is `None`.
+/// For a finished tree that is the leaf set. For a **truncated** one — an animation frame built
+/// by capping a completed descent — it is not: the deep quads outside the cap were already
+/// leaves, so their boxes come along and the wireframe shows the finished tree in every frame.
+///
+/// That is exactly what was shipping. The colour frames had the same fault one layer down, in
+/// `adaptive::render`; both are the same mistake, that a truncated view of a finished tree has to
+/// name its own leaf set rather than infer one from `children`.
+pub fn boxes_from_leaves(
+    tree: &crate::quad::QuadTree,
+    cam: &crate::camera::Camera,
+    res: usize,
+    leaves: &[usize],
+) -> Vec<Box2> {
+    let px = cam.pixel_size();
+    let to = |x: f64, y: f64| -> (f64, f64) {
+        (
+            (x - cam.cx) / px + res as f64 / 2.0,
+            res as f64 / 2.0 - (y - cam.cy) / px,
+        )
+    };
+    leaves
+        .iter()
+        .map(|&i| {
+            let q = &tree.nodes[i];
+            let (ax, ay) = to(q.cx - q.half, q.cy + q.half);
+            let (bx, by) = to(q.cx + q.half, q.cy - q.half);
+            Box2 { x0: ax, y0: ay, x1: bx, y1: by, level: q.level }
+        })
+        .collect()
+}
+
 pub fn boxes_from_tree(
     tree: &crate::quad::QuadTree,
     cam: &crate::camera::Camera,

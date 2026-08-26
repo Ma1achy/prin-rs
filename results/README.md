@@ -516,6 +516,34 @@ only by changing the **criterion**, which acts through the ranking rather than t
 
 ## `glsl/` — the four reference slices, refining
 
+> **Every animation in this repository before this commit was a still image repeated N frames.**
+> Two independent faults, both mine, both caught only when someone watched one:
+>
+> 1. **Colour frames.** `adaptive::render` draws every node that carries samples, coarsest first
+>    — the coarse-ancestor fill. A "shadow tree" with a truncated leaf set therefore restricts
+>    nothing: the quads outside the cap still carry their samples and paint last. Measured: frame
+>    0 and frame 1 of a 49-frame APNG were **byte-identical**, and so was every other pair.
+> 2. **Wireframes.** `wire::boxes_from_tree` walks `tree.leaves()`, which is every node whose
+>    `children` is `None`. On a truncated view of a *finished* tree that is the finished tree, so
+>    the outlines never moved either — a separate fault that survived the first fix.
+>
+> Both are the same mistake: **a truncated view of a completed tree must name its own leaf set
+> rather than infer one from `children`.** Fixed by masking the samples and by
+> `wire::boxes_from_leaves`, with `tests/colour.rs::a_truncated_render_differs_from_the_full_one`
+> asserting frames differ *and* that the unmasked control collapses to one repeated frame.
+>
+> Every generator now prints a **duplicate-frame count for colour and wire separately** and says
+> so on stdout if an animation is a still. `glsl/` is regenerated; `animated/` and `refinement/`
+> are **not**, and are stills.
+
+**GIF as well as APNG.** The APNG is the lossless record — 24-bit, no palette. **GitHub's blob
+viewer does not animate APNG**, and neither do many image viewers, so the `.gif` beside it is the
+one that actually moves. GIF is 256 colours, quantised with a single palette computed across all
+frames: per-frame palettes make flat regions shimmer as the quantiser changes its mind about a
+colour that did not change, which reads as motion in exactly the still areas the eye uses to judge
+that something else moved.
+
+
 **Four animations, one per GLSL preset**, from `examples/glsl_refinement.rs`. The reference's own
 default slices (`Ma1achy/principia-ii`, `src/state.ts:71-76`) at `z0 = 0` — the equilateral
 Lagrange configuration — over the reference UI's `Slice +/- 3.0e+0` window.
@@ -534,14 +562,34 @@ order the scheduler computed them**, so the picture sharpens continuously and th
 parameter rather than an accident of the tree's depth. The final frame is held, so the loop reads
 as an ending rather than a snap back to coarse.
 
-One descent per chart at `k_frac = 1.0` — the whole eligible frontier each round, so the tree
-fills out. These are a picture of *refinement*, not of the demotion mechanism; that one is
-`refinement/<case>_kfrac.png`.
+**The configuration is the one the sweep found, and the first cut of this got it wrong.** It ran
+at `k_frac = 1.0`, which takes the top 100% of the frontier: the ranking runs and changes nothing.
+That is the *pre-fix* configuration — the same defect that made every dump in PR #18 a pre-fix run
+— so it animated the old behaviour under a new name.
 
-512², and the wireframe twins are deliberately absent: they doubled the folder to 104 MB for a
-diagnostic that `refinement/` already carries.
+It now runs **`k_frac = 0.25`, `criterion = grad_rms`, `mode = balanced`** (RESULTS.md §18).
+`grad_rms` is the criterion that unlocks `preset_shape`, which `within` cannot move at **any**
+`tau`, `k_frac` or `alpha` including a gate-off control. What the change does to the trees:
+
+| chart | leaves, `k_frac = 1` (no ranking) | leaves, `k_frac = 0.25` (ranked) |
+|---|---|---|
+| `shape` | 181 | **31** |
+| `prho` | 2695 | **49** |
+| `plambda` | 2521 | **46** |
+| `shape_pl` | 1351 | **40** |
+
+All four reach depth 6 on a fraction of the quads — the budget going where the criterion ranks it
+highest rather than being spread over the whole frontier. The wireframe twins are included this
+time; the trees are small enough that both fit in 47 MB.
 
 ## `refinement/` — the new mechanism, animated
+
+> **STALE — generated before the `k_frac` bootstrap fix, and every `k < 1` frame carries the
+> bug.** `k_frac` was truncating the bootstrap, so the trees in `_budget` (k = 0.5) and every
+> frame of `_kfrac` below 1.0 are shaped by chart-independent arithmetic rather than by the
+> criterion. See RESULTS.md §18.0 for the tell — three unrelated charts returning byte-identical
+> leaf counts. **Do not read a tree off these.** `glsl/` is regenerated post-fix; this folder has
+> not been.
 
 **104 APNGs, three views per chart, from `examples/refinement_animation.rs`.** These are the only
 artefacts that show the *new* refinement mechanism working. `animated/<case>_levels.png` truncates

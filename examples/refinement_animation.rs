@@ -95,6 +95,18 @@ fn shadow_of(t: &QuadTree, leaves: &[usize]) -> QuadTree {
     shadow
 }
 
+/// Samples for the revealed set only.
+///
+/// **The shadow tree alone does not truncate the render.** `adaptive::render` draws every node
+/// that has samples, coarsest first, so quads outside the set paint last and win -- which made
+/// every frame of every animation here the finished image, byte-identical.
+fn mask(pixels: &[Vec<PixelOut>], leaves: &[usize]) -> Vec<Vec<PixelOut>> {
+    let keep: HashSet<usize> = leaves.iter().cloned().collect();
+    (0..pixels.len())
+        .map(|i| if keep.contains(&i) { pixels[i].clone() } else { Vec::new() })
+        .collect()
+}
+
 fn render_leaves(
     t: &QuadTree,
     pixels: &[Vec<PixelOut>],
@@ -104,7 +116,8 @@ fn render_leaves(
     rgb: &dyn Fn(&PixelOut) -> [u8; 3],
 ) -> Vec<u8> {
     let shadow = shadow_of(t, leaves);
-    adaptive::render(&shadow, pixels, cam, res, adaptive::TexelMode::Adaptive, |p| rgb(p)).0
+    let masked = mask(pixels, leaves);
+    adaptive::render(&shadow, &masked, cam, res, adaptive::TexelMode::Adaptive, |p| rgb(p)).0
 }
 
 /// Two panels side by side with a one-pixel divider, so a frame is one image.
@@ -218,12 +231,13 @@ fn main() {
         for k in 0..=rounds {
             let lv = leaves_at_round(&new.tree, k);
             let shadow = shadow_of(&new.tree, &lv);
+            let masked = mask(&new.st.pixels, &lv);
             let f = adaptive::render(
-                &shadow, &new.st.pixels, &cam, res, adaptive::TexelMode::Adaptive, |p| rgb(p),
+                &shadow, &masked, &cam, res, adaptive::TexelMode::Adaptive, |p| rgb(p),
             )
             .0;
             let mut wf = f.clone();
-            wire::draw(&mut wf, res, res, &wire::boxes_from_tree(&shadow, &cam, res), 1);
+            wire::draw(&mut wf, res, res, &wire::boxes_from_leaves(&new.tree, &cam, res, &lv), 1);
             budget_frames.push(f);
             budget_wire.push(wf);
         }

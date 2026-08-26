@@ -1,9 +1,10 @@
 the four GLSL preset slices, refining. 512^2, half 3, budget 40000, tau=1e-4, alpha_hi=0.2, N=8, E+1=8, t=13, f64
-      case   quads  leaves  depth  frames   wall s
-     shape     241     181      6      49      1.1
-      prho    3593    2695      6      50      6.7
-   plambda    3361    2521      6      49      6.2
-  shape_pl    1801    1351      6      49      2.5
+criterion=grad_rms, k_frac=0.25, mode=balanced -- the ranked frontier, which is the mechanism.
+      case   quads  leaves  depth  frames      dup c/w   wall s
+     shape      41      31      6      49    8/8 of 48      1.0
+      prho      65      49      6      73    8/8 of 72      1.9
+   plambda      61      46      6      69    8/8 of 68      1.5
+  shape_pl      53      40      6      61    8/8 of 60      1.1
 
 results/glsl/<case>.png and <case>_wire.png. A frame every few quads or so, in the order
 the scheduler computed them, so the picture sharpens continuously.

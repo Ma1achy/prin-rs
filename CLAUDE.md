@@ -908,7 +908,62 @@ level histogram says how. `within/median` in `near-field` at `B = 1535` leaves *
 level 7 -- its allocation is *inverted*, not merely worse. No error cell showed that, and the
 headroom it implies is real: the best criterion leaves **5.1% at `B = 1535` and 16.3% at
 `B = 12287`** of achievable improvement in `near-field`. Against greedy that figure read
-*negative*, which is why the question was unanswerable by inspection.
+*negative*, which is why the question was unanswerable by inspection. **This is the strongest
+finding in that run and the strongest argument for changing the default -- stronger than any error
+digit.** Those percentages are `frac_hot_between` against `dp`; with `Rank::Uniform` in the table the
+best *row* forfeits 3.4% and 12.4% at the same budgets, and it is uniform.
+
+**"BEATS RANDOM" IS THE WRONG BAR; THE BASELINE IS BREADTH-FIRST.** `Rank::Uniform` was missing from
+every table in the corpus, and against it most of the standing comparisons change sign.
+`frac_hot_between/median` -- the best criterion measured on this project -- **never beats uniform in
+`near-field` at any budget** (`0.11148` against `0.10984` at `B = 1535`), while sitting well clear of
+the random band. In `far` uniform **is** the exact optimum. Only `deep interior` at `B >= 6143` shows
+a criterion decisively ahead (`0.04035` against `0.04813`). Random is a floor no strategy should be
+below; it is not the thing a criterion has to beat.
+
+**THE HEADROOM RISES WITH STRUCTURE, AND A CRITERION ONLY EARNS ITS KEEP WHERE STRUCTURE IS
+LOCALISED.** Share of achievable improvement the best row forfeits at `B = 1535`: `far` **0.0002**
+(nothing varies), `near-field` **0.0336** (structure localised), `deep interior` **0.0999**
+(structure everywhere). Where nothing varies there is nothing to rank; where everything varies the
+budget must go everywhere and breadth-first is right again. So `far` degenerating is **correct
+behaviour** -- it is the control that shows what a featureless field looks like, not a region where
+the criteria mysteriously tie.
+
+**QUOTE THE GAP AS A CURVE; ONE BUDGET SUPPORTS A DIFFERENT STORY IN EVERY REGION.** `near-field`
+rises `0.0336 -> 0.1106 -> 0.1241` over `B = 1535, 6143, 12287` -- the criterion is adequate early
+and progressively worse late, which fits the inverted histogram: the failure is **late-stage
+allocation**. `deep interior` peaks at `B = 3071` and falls; `far` collapses to zero by `B = 1535`.
+Same statistic, three shapes.
+
+**THE CRITERION-TO-UNIFORM GAP RISES WITH DEPTH -- AND THAT IS THE ARGUMENT AGAINST A DEPTH
+PARAMETER, NOT FOR ONE.** `captured = (uniform - row)/(uniform - dp)` by level in `deep interior`:
+**-9.38, -1.97, -0.45, -0.04, +0.53** at levels 2-6. Shallow splits the criterion chooses are
+actively worse than raster order. But the crossing sits at level 6 there, is **never reached** in
+`near-field`, and is undefined in `far` -- so any fixed depth is a tunable constant that must be
+retuned per region, the same defect that killed a fixed `tau`. And the ranking **already
+self-adapts**: on a flat signal it ties, ties fall to a level-first tie-break, and that *is*
+breadth-first. Protect that property rather than overriding it.
+
+**AMPLITUDE CANNOT TELL A SMALL REAL SIGNAL FROM NOISE; COHERENCE CAN.** The AUTO-RANGED OVER NOISE
+guard's two arms both read amplitude, and its absolute arm compares against the region's own median
+energy drift -- so in a tame region the floor falls with the field it is meant to bound, a ratio in
+disguise. `far` cleared it at `ramp.1 = 1.064e-8` against a floor of `4.478e-9`. The discriminator
+is **spatial coherence**: lag-1 neighbour correlation of the ramped scalar reads **0.9434 -> 1.0000**
+across levels on `far`, and its p1/p99 halve **exactly** (ratio 2.000) per level -- `spread ~ g*w`
+measured, a real gradient of tiny magnitude. `far` is a smooth field, not an amplified noise floor,
+and the level-2 `err_sum` barrier is a property of the field. A third guard arm now reads coherence.
+
+**AN OUTPUT ROOT IS AN ARGUMENT, NOT A CONSTANT.** `criterion_metric` wrote to a hardcoded
+`results/`, so the reduced-`levels` validation pass that exists to fire the `dp_optimal` assert would
+overwrite the committed 512^2 artefacts with a small raster -- the failure already on record, at a
+second site. The root is now argument five, defaulting to `results`. **And an assert that has never
+run is a gap that survives indefinitely**: the bound assertion was executed at scale, worst margins
+`-1.4e-17`, `-5.6e-17`, `+0.0e0` across three regions.
+
+**A DEGENERATE DENOMINATOR IS THE FINDING, NOT A RATIO.** Where uniform *is* the optimum -- what a
+smooth field looks like -- `uniform - dp` is a rounding epsilon of either sign, and `captured` printed
+**-0.6786** on `far` from a denominator of `-1.55e-15`. It reads as "the criterion is 68% worse" and
+means "the two are identical to machine precision". Print the identity.
 
 ---
 

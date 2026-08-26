@@ -53,6 +53,13 @@ fn main() {
     let n: usize = arg(2, 8);
     let tau: f64 = arg(3, 1e-4);
     let t_max: f64 = arg(4, 13.0);
+    // **Where the artefacts land, and it is an argument because it has to be.** This example
+    // writes images, caches and an APNG under `<root>/criterion` and `<root>/animated`, and the
+    // committed ones there are 512^2. A validation pass at reduced `levels` -- the whole point of
+    // which is to fire the `dp_optimal` bound assertion cheaply -- would overwrite them with a
+    // small raster, and a small raster reads as a rendering fault rather than a stale file. That
+    // has cost this project two round trips. Point it at a scratch directory instead.
+    let root: String = std::env::args().nth(5).unwrap_or_else(|| "results".into());
     let res = (1usize << levels) * n;
 
     // **`n_sync` scales with `t_max`.** `dtau = eta*dt_left/(A0*B0)`, so holding `n_sync` fixed
@@ -117,7 +124,7 @@ fn main() {
         // The footprints, so no future colouring change costs another integration. PRQC stores
         // a BAKED err_sum and cannot be replayed under a new colouring; this can.
         let stem0 = region.replace(' ', "_");
-        if let Ok(f) = std::fs::File::create(format!("results/criterion/{stem0}_t{t_max}.fcache")) {
+        if let Ok(f) = std::fs::File::create(format!("{root}/criterion/{stem0}_t{t_max}.fcache")) {
             let mut w = std::io::BufWriter::new(f);
             let fp = cache.footprints_from(&px_of, t_max);
             let _ = prin_rs::output::fcache::write(&mut w, &fp);
@@ -178,7 +185,65 @@ fn main() {
                 } else {
                     100.0 * prin_rs::stats::quantile(&mut d, 0.5)
                 };
-                if cache.ramp.1 / cache.ramp.0.max(f64::MIN_POSITIVE) < 2.0 || cache.ramp.1 < floor
+                // **THE THIRD ARM, AND THE ONE THAT DISCRIMINATES.** The two above read
+                // AMPLITUDE, and amplitude cannot separate a small real signal from noise --
+                // which is exactly why neither fired on `far`. Worse, the absolute arm's floor
+                // is the region's own median energy drift, so in a tame region the floor falls
+                // with the field it is meant to bound: a ratio in disguise. Measured on `far`,
+                // `ramp.1 = 1.064e-8` against a floor of `4.478e-9` -- clears by 2.4x, and the
+                // field really is at the eighth digit.
+                //
+                // Noise is spatially INCOHERENT between neighbouring quads; a smooth field is
+                // coherent by definition. Lag-1 neighbour correlation of the ramped scalar over
+                // the level-3 grid separates them at any amplitude. `far` reads **0.9984** there
+                // and its p1/p99 halve exactly per level, which is `spread ~ g*w` measured: a
+                // real gradient of tiny magnitude, not an amplified noise floor.
+                let rho = {
+                    let l = 3u32.min(levels);
+                    let w = 1u32 << l;
+                    let f = |ix: u32, iy: u32| {
+                        cache.get((l, ix, iy)).red.signal(Criterion::Within, Agg::Median)
+                    };
+                    let (mut a, mut b): (Vec<f64>, Vec<f64>) = (Vec::new(), Vec::new());
+                    for iy in 0..w {
+                        for ix in 0..w {
+                            for (jx, jy) in [(ix + 1, iy), (ix, iy + 1)] {
+                                if jx < w && jy < w {
+                                    let (y, z) = (f(ix, iy), f(jx, jy));
+                                    if y.is_finite() && z.is_finite() {
+                                        a.push(y);
+                                        b.push(z);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    let n = a.len() as f64;
+                    if a.len() < 2 {
+                        f64::NAN
+                    } else {
+                        let (ma, mb) = (a.iter().sum::<f64>() / n, b.iter().sum::<f64>() / n);
+                        let (mut sxy, mut sxx, mut syy) = (0.0, 0.0, 0.0);
+                        for (x, y) in a.iter().zip(&b) {
+                            sxy += (x - ma) * (y - mb);
+                            sxx += (x - ma) * (x - ma);
+                            syy += (y - mb) * (y - mb);
+                        }
+                        if sxx <= 0.0 || syy <= 0.0 { f64::NAN } else { sxy / (sxx * syy).sqrt() }
+                    }
+                };
+                println!(
+                    "  ramp (p1,p99) = ({:.3e}, {:.3e}) span x{:.3}; noise floor (100x median                      drift) {:.3e}; lag-1 coherence at level 3 rho={:.4}",
+                    cache.ramp.0,
+                    cache.ramp.1,
+                    cache.ramp.1 / cache.ramp.0.max(f64::MIN_POSITIVE),
+                    floor,
+                    rho
+                );
+                if rho.is_finite() && rho < 0.5 {
+                    "  <-- AUTO-RANGED OVER NOISE: the ramped scalar is spatially INCOHERENT between neighbouring quads, so the p1-p99 window is stretched over something with no structure in it. This arm reads coherence rather than amplitude, which is what the two below could not do."
+                } else if cache.ramp.1 / cache.ramp.0.max(f64::MIN_POSITIVE) < 2.0
+                    || cache.ramp.1 < floor
                 {
                     "  <-- AUTO-RANGED OVER NOISE: the ramp is normalised to this region's own p1-p99, so a field with no dynamic range -- or one whose whole range sits at the integrator's own arithmetic floor -- is stretched to full scale and error(B) becomes nonzero for a region with nothing in it. Read this before the curve."
                 } else {
@@ -255,6 +320,11 @@ fn main() {
 
         let mut rows: Vec<(String, Vec<f64>)> = Vec::new();
         let runs: Vec<Rank> = vec![
+            // **The baseline, and it was missing from every table in the corpus.** Random is a
+            // floor no strategy should sit below; breadth-first is the bar a criterion has to
+            // clear, and measured against it `frac_hot_between/median` never wins in
+            // `near-field` at any budget while sitting well clear of the random band.
+            Rank::Uniform,
             Rank::GreedyLookahead1,
             Rank::Signal(Criterion::Within, Agg::Median),
             Rank::Signal(Criterion::Within, Agg::Mean),
@@ -354,7 +424,7 @@ fn main() {
         // table above means paying the 2.8M-trajectory integration again. Every criterion's
         // scalar is dumped whatever this run ranked on, which is what makes offline comparison
         // real rather than aspirational.
-        if let Ok(f) = std::fs::File::create(format!("results/criterion/{stem0}_t{t_max}.qcache")) {
+        if let Ok(f) = std::fs::File::create(format!("{root}/criterion/{stem0}_t{t_max}.qcache")) {
             let mut w = std::io::BufWriter::new(f);
             let _ = prin_rs::output::qcache::write(&mut w, &cache, &ens, tau);
         }
@@ -415,7 +485,7 @@ fn main() {
                         .into(),
                 ],
             };
-            if let Err(e) = fig.save(&format!("results/criterion/curve_{stem0}_t{t_max}")) {
+            if let Err(e) = fig.save(&format!("{root}/criterion/curve_{stem0}_t{t_max}")) {
                 eprintln!("figure failed: {e}");
             }
         }
@@ -427,7 +497,7 @@ fn main() {
         // displays, which is the instrument this project has already been caught using once.
         let stem = region.replace(' ', "_");
         let _ = prin_rs::output::adaptive::save(
-            &format!("results/criterion/{stem}_reference.png"),
+            &format!("{root}/criterion/{stem}_reference.png"),
             res,
             &cache.reference,
         );
@@ -438,12 +508,13 @@ fn main() {
             (0..w).flat_map(|iy| (0..w).map(move |ix| (levels, ix, iy))).collect()
         };
         let _ = prin_rs::output::adaptive::save(
-            &format!("results/criterion/{stem}_reference_wire.png"),
+            &format!("{root}/criterion/{stem}_reference_wire.png"),
             res,
             &cache.render_wire(&deepest),
         );
         let mid = full / 8;
         for r in [
+            Rank::Uniform,
             Rank::GreedyLookahead1,
             Rank::Signal(Criterion::Within, Agg::Median),
             Rank::Signal(Criterion::Between, Agg::Median),
@@ -456,12 +527,12 @@ fn main() {
             // cut. Neither substitutes for the other, and PR #11's failure was reading one as
             // though it were the other.
             let _ = prin_rs::output::adaptive::save(
-                &format!("results/criterion/{stem}_B{mid}_{tag}.png"),
+                &format!("{root}/criterion/{stem}_B{mid}_{tag}.png"),
                 res,
                 &cache.render(&leaves),
             );
             let _ = prin_rs::output::adaptive::save(
-                &format!("results/criterion/{stem}_B{mid}_{tag}_wire.png"),
+                &format!("{root}/criterion/{stem}_B{mid}_{tag}_wire.png"),
                 res,
                 &cache.render_wire(&leaves),
             );
@@ -508,7 +579,7 @@ fn main() {
                 }
             }
             let _ = prin_rs::output::apng::write(
-                &format!("results/animated/budget_{stem0}_t{t_max}_animated.png"),
+                &format!("{root}/animated/budget_{stem0}_t{t_max}_animated.png"),
                 res * 2,
                 res,
                 &frames,
@@ -516,7 +587,7 @@ fn main() {
                 2,
             );
             let _ = prin_rs::output::apng::write(
-                &format!("results/animated/budget_{stem0}_t{t_max}_wire_animated.png"),
+                &format!("{root}/animated/budget_{stem0}_t{t_max}_wire_animated.png"),
                 res * 2,
                 res,
                 &wire_frames,
@@ -531,7 +602,7 @@ fn main() {
             for &i in picks.iter() {
                 if let Some(fr) = frames.get(i) {
                     let _ = prin_rs::output::adaptive::save_rect(
-                        &format!("results/criterion/budget_{stem0}_t{t_max}_{i:02}.png"),
+                        &format!("{root}/criterion/budget_{stem0}_t{t_max}_{i:02}.png"),
                         res * 2,
                         res,
                         fr,
@@ -539,7 +610,7 @@ fn main() {
                 }
                 if let Some(fr) = wire_frames.get(i) {
                     let _ = prin_rs::output::adaptive::save_rect(
-                        &format!("results/criterion/budget_{stem0}_t{t_max}_wire_{i:02}.png"),
+                        &format!("{root}/criterion/budget_{stem0}_t{t_max}_wire_{i:02}.png"),
                         res * 2,
                         res,
                         fr,
@@ -552,7 +623,7 @@ fn main() {
             );
         }
 
-        println!("  images at B={mid} written to results/criterion/{stem}_*.png\n");
+        println!("  images at B={mid} written to {root}/criterion/{stem}_*.png\n");
     }
 
     println!(
@@ -564,6 +635,7 @@ fn main() {
            reference  greedy_lookahead_1    greedy on immediate delta-error -- NEITHER OPTIMAL\n\
                                             NOR A BOUND. Measured BELOW the random band on\n\
                                             `far`: 0.54760 against 0.48550-0.52047 at B = 1535.\n\
+           BASELINE   uniform               breadth-first -- the bar a criterion must clear.\n\
            ceiling    dp_optimal            the exact minimum over ALL tree-shaped leaf sets.\n\
                                             No row may sit below it; one that does is a harness\n\
                                             bug, and it is asserted, not trusted.\n\

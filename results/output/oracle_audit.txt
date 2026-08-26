@@ -1,14 +1,14 @@
-     Running `target/release/examples/oracle_audit 7 8 1e-4 13 all`
 complete tree to level 7, N=8, E+1=8, res 1024^2, tau=1e-4, t=13 n_sync=32, f64
 21845 quads per region, 5461 splits at the full tree
 floor = random band | reference = greedy_lookahead_1 | ceiling = dp_optimal
 
-=== far === built in 296.4s; error(root)=0.60219
+=== far === built in 198.7s; error(root)=0.60219
   dp_optimal: 5461 splits (B up to 21845) in 0.01s -- MEASURED, not the estimate. The 4-way merge is three 2-way convolutions, O(cap^2) not O(cap^4), and each node's cap is bounded by its own subtree; that is what makes it affordable.
   prefix-min binds at 1 of 5462 split counts (first 1, last 1): spending more made the image worse there. NEGATIVE GAIN, measured.
 
                      B = distinct         5        11        23        47        95       191       383       767      1535      3071      6143     12287     21845
     dp_optimal (CEILING)        -   0.60219   0.60219   0.60045   0.59596   0.58772   0.57120   0.53897   0.47414   0.36555   0.29523   0.17885   0.10855   0.00000
+                 uniform        8   0.60219   0.60219   0.60219   0.60219   0.60063   0.58141   0.54317   0.47692   0.36561   0.29563   0.17890   0.10888   0.00000
       greedy_lookahead_1     1250   0.60219   0.60219   0.60219   0.59838   0.59013   0.58422   0.57614   0.57175   0.54760   0.50224   0.42250   0.26391   0.00000
  greedy_lookahead_1/cost     1250   0.60219   0.60219   0.60219   0.59838   0.59013   0.58422   0.57614   0.57175   0.54760   0.50224   0.42250   0.26391   0.00000
            within/median    21845   0.60219   0.60219   0.60219   0.60219   0.60063   0.58165   0.54322   0.47685   0.36557   0.29575   0.17891   0.10885   0.00000
@@ -22,12 +22,12 @@ floor = random band | reference = greedy_lookahead_1 | ceiling = dp_optimal
         first_div/median        1   0.60219   0.60219   0.60219   0.60219   0.60063   0.58141   0.54317   0.47692   0.36561   0.29563   0.17890   0.10888   0.00000
                random lo        -   0.60219   0.60219   0.60054   0.59764   0.59311   0.58071   0.56095   0.53653   0.48550   0.42229   0.32752   0.17767   0.00000
                random hi        -   0.60219   0.60219   0.60219   0.60140   0.59732   0.58890   0.57651   0.55558   0.52047   0.46770   0.36606   0.19936   0.00000
-  bound check: worst margin (row - dp) = +0.000e0 at greedy_lookahead_1 B=21845  --  HOLDS. No ranking beats the exact optimum.
+  bound check: worst margin (row - dp) = +0.000e0 at uniform B=21845  --  HOLDS. No ranking beats the exact optimum.
 
   share of achievable improvement left on the table, (row - dp)/(root - dp):
                      B =         5        11        23        47        95       191       383       767      1535      3071      6143     12287     21845
       greedy_lookahead_1       NaN    0.0002    1.0000    0.3886    0.1666    0.4201    0.5881    0.7623    0.7693    0.6744    0.5755    0.3147    0.0000
-best: frac_hot_within/median       NaN    0.9001    1.0000    1.0000    0.8926    0.3294    0.0664    0.0216    0.0002    0.0013    0.0001    0.0007    0.0000
+           best: uniform       NaN    0.9001    1.0000    1.0000    0.8926    0.3294    0.0664    0.0216    0.0002    0.0013    0.0001    0.0007    0.0000
 
   gain(k) by level -- a parent's N x N grid and its children's are different
   approximation families, so gain need not be positive:
@@ -51,6 +51,30 @@ best: frac_hot_within/median       NaN    0.9001    1.0000    1.0000    0.8926  
       6      0.31066      0.30634      0.31177
       7      0.00000      0.00000      0.00000
 
+  criterion vs UNIFORM, per level -- at the budgets where uniform completes a
+  level exactly. captured = (uniform - row)/(uniform - dp); 1.0 = optimum,
+  0.0 = no better than breadth-first, <0 = worse:
+  level         B    uniform         dp     uni-dp             best criterion   captured
+      1         5    0.60219    0.60219   2.88e-13      within/median 0.60219    uni==dp
+      2        21    0.60219    0.60045    1.73e-3      within/median 0.60219     0.0000
+      3        85    0.60219    0.58909    1.31e-2 frac_hot_within/median 0.60219     0.0000
+      4       341    0.55006    0.54514    4.92e-3 frac_hot_within/median 0.55006     0.0000
+      5      1365    0.37328    0.37328  -1.55e-15      within/median 0.37328    uni==dp
+      6      5461    0.18664    0.18664  -1.08e-15 frac_hot_within/median 0.18664    uni==dp
+      7     21845    0.00000    0.00000     0.00e0      within/median 0.00000    uni==dp
+
+  ramp window (p1,p99) = (1.314e-9, 1.064e-8), span x8.097; median energy drift 4.478e-11, guard floor 100x = 4.478e-9
+  lag-1 neighbour correlation of the ramped scalar (spread_shape median), by level.
+  ~0 is incoherent = noise; ~1 is a smooth field the ramp is magnifying:
+  level    quads   rho(lag-1)           p1          p99
+      1        4       0.9434     8.453e-8     8.580e-8
+      2       16       0.9923     4.211e-8     4.306e-8
+      3       64       0.9984     2.105e-8     2.153e-8
+      4      256       0.9996     1.051e-8     1.078e-8
+      5     1024       0.9999     5.255e-9     5.390e-9
+      6     4096       1.0000     2.627e-9     2.695e-9
+      7    16384       1.0000     1.314e-9     1.348e-9
+
   leaf levels at B = 1535 -- where each strategy spent the budget:
               dp_optimal  5:982 6:168
       greedy_lookahead_1  2:14 5:48 6:64 7:1024
@@ -58,12 +82,13 @@ best: frac_hot_within/median       NaN    0.9001    1.0000    1.0000    0.8926  
  frac_hot_between/median  5:982 6:168
                random[1]  2:1 3:15 4:101 5:210 6:291 7:532
 
-=== near-field === built in 1486.5s; error(root)=0.20192
+=== near-field === built in 1422.4s; error(root)=0.20192
   dp_optimal: 5461 splits (B up to 21845) in 0.01s -- MEASURED, not the estimate. The 4-way merge is three 2-way convolutions, O(cap^2) not O(cap^4), and each node's cap is bounded by its own subtree; that is what makes it affordable.
   prefix-min binds NOWHERE: f_root(s) is monotone, so no split of the optimal tree ever increased the error. Gains are non-negative along the optimal path.
 
                      B = distinct         5        11        23        47        95       191       383       767      1535      3071      6143     12287     21845
     dp_optimal (CEILING)        -   0.16897   0.16143   0.14813   0.14073   0.13467   0.12873   0.12243   0.11535   0.10664   0.09335   0.07025   0.03169   0.00000
+                 uniform        8   0.16897   0.16427   0.14813   0.14528   0.13661   0.13286   0.12442   0.11925   0.10984   0.10182   0.08480   0.05282   0.00000
       greedy_lookahead_1     5462   0.16897   0.16143   0.14813   0.14073   0.13467   0.12873   0.12243   0.11538   0.10668   0.09347   0.07075   0.03247   0.00000
  greedy_lookahead_1/cost     5462   0.16897   0.16143   0.14813   0.14073   0.13467   0.12873   0.12244   0.11539   0.10673   0.09356   0.07082   0.03283   0.00000
            within/median    21649   0.16897   0.16427   0.15927   0.15913   0.15896   0.15853   0.15764   0.15616   0.14956   0.13979   0.11168   0.06891   0.00000
@@ -82,7 +107,7 @@ best: frac_hot_within/median       NaN    0.9001    1.0000    1.0000    0.8926  
   share of achievable improvement left on the table, (row - dp)/(root - dp):
                      B =         5        11        23        47        95       191       383       767      1535      3071      6143     12287     21845
       greedy_lookahead_1    0.0000    0.0000   -0.0000    0.0000    0.0000   -0.0000    0.0000    0.0004    0.0004    0.0011    0.0038    0.0046    0.0000
-best: frac_hot_between/median    0.0000    0.0699    0.0000    0.0744    0.0289    0.0582    0.0305    0.0527    0.0508    0.0979    0.1417    0.1627    0.0000
+           best: uniform    0.0000    0.0699    0.0000    0.0744    0.0289    0.0563    0.0250    0.0451    0.0336    0.0781    0.1106    0.1241    0.0000
 
   gain(k) by level -- a parent's N x N grid and its children's are different
   approximation families, so gain need not be positive:
@@ -106,6 +131,30 @@ best: frac_hot_between/median    0.0000    0.0699    0.0000    0.0744    0.0289 
       6      0.46190      0.21243      0.63690
       7      0.00000      0.00000      0.00000
 
+  criterion vs UNIFORM, per level -- at the budgets where uniform completes a
+  level exactly. captured = (uniform - row)/(uniform - dp); 1.0 = optimum,
+  0.0 = no better than breadth-first, <0 = worse:
+  level         B    uniform         dp     uni-dp             best criterion   captured
+      1         5    0.16897    0.16897     0.00e0      within/median 0.16897    uni==dp
+      2        21    0.14813    0.14813   2.78e-17 frac_hot_between/median 0.14813    uni==dp
+      3        85    0.13676    0.13529    1.47e-3 frac_hot_between/median 0.13676     0.0000
+      4       341    0.12494    0.12344    1.50e-3 frac_hot_between/median 0.12539    -0.2988
+      5      1365    0.11055    0.10828    2.27e-3 frac_hot_between/median 0.11219    -0.7210
+      6      5461    0.08809    0.07511    1.30e-2   term_grad/median 0.08807     0.0019
+      7     21845    0.00000    0.00000     0.00e0      within/median 0.00000    uni==dp
+
+  ramp window (p1,p99) = (1.230e-5, 1.421e-2), span x1155.281; median energy drift 2.329e-9, guard floor 100x = 2.329e-7
+  lag-1 neighbour correlation of the ramped scalar (spread_shape median), by level.
+  ~0 is incoherent = noise; ~1 is a smooth field the ramp is magnifying:
+  level    quads   rho(lag-1)           p1          p99
+      1        4       0.3536     1.625e-3     3.209e-3
+      2       16       0.8392     1.070e-3     2.658e-3
+      3       64       0.8316     7.108e-4     3.799e-3
+      4      256      -0.0253     5.905e-5     6.343e-3
+      5     1024       0.6352     4.279e-5     7.070e-3
+      6     4096       0.7652     2.618e-5     6.524e-3
+      7    16384       0.4478     1.202e-5     6.135e-3
+
   leaf levels at B = 1535 -- where each strategy spent the budget:
               dp_optimal  3:2 4:71 5:589 6:472 7:16
       greedy_lookahead_1  3:3 4:70 5:577 6:468 7:32
@@ -113,12 +162,13 @@ best: frac_hot_between/median    0.0000    0.0699    0.0000    0.0744    0.0289 
  frac_hot_between/median  3:2 4:14 5:870 6:264
                random[1]  2:1 3:15 4:101 5:210 6:291 7:532
 
-=== deep interior === built in 626.0s; error(root)=0.14845
-  dp_optimal: 5461 splits (B up to 21845) in 0.03s -- MEASURED, not the estimate. The 4-way merge is three 2-way convolutions, O(cap^2) not O(cap^4), and each node's cap is bounded by its own subtree; that is what makes it affordable.
+=== deep interior === built in 430.3s; error(root)=0.14845
+  dp_optimal: 5461 splits (B up to 21845) in 0.01s -- MEASURED, not the estimate. The 4-way merge is three 2-way convolutions, O(cap^2) not O(cap^4), and each node's cap is bounded by its own subtree; that is what makes it affordable.
   prefix-min binds NOWHERE: f_root(s) is monotone, so no split of the optimal tree ever increased the error. Gains are non-negative along the optimal path.
 
                      B = distinct         5        11        23        47        95       191       383       767      1535      3071      6143     12287     21845
     dp_optimal (CEILING)        -   0.12148   0.11283   0.09617   0.08708   0.08257   0.07851   0.07354   0.06744   0.05996   0.04984   0.03500   0.01716   0.00000
+                 uniform        8   0.12148   0.11874   0.09653   0.09538   0.08479   0.08292   0.07932   0.07725   0.06880   0.06225   0.04813   0.02897   0.00000
       greedy_lookahead_1     5462   0.12148   0.11283   0.09617   0.08708   0.08258   0.07884   0.07387   0.06880   0.06263   0.05436   0.04353   0.02948   0.00000
  greedy_lookahead_1/cost     5462   0.12148   0.11283   0.09653   0.08708   0.08265   0.07889   0.07406   0.06892   0.06286   0.05476   0.04437   0.02943   0.00000
            within/median    20250   0.12148   0.11283   0.10950   0.10870   0.10511   0.10265   0.09977   0.09768   0.09123   0.08040   0.04949   0.02359   0.00000
@@ -137,7 +187,7 @@ best: frac_hot_between/median    0.0000    0.0699    0.0000    0.0744    0.0289 
   share of achievable improvement left on the table, (row - dp)/(root - dp):
                      B =         5        11        23        47        95       191       383       767      1535      3071      6143     12287     21845
       greedy_lookahead_1    0.0000    0.0000   -0.0000    0.0000    0.0001    0.0047    0.0045    0.0168    0.0301    0.0459    0.0752    0.0939    0.0000
-best: frac_hot_between/median    0.0000    0.0929    0.0707    0.0684    0.0877    0.1078    0.0963    0.1181    0.0971    0.1023    0.0535    0.0307    0.0000
+           best: uniform    0.0000    0.1659    0.0068    0.1352    0.0337    0.0631    0.0772    0.1212    0.0999    0.1259    0.1157    0.0899    0.0000
 
   gain(k) by level -- a parent's N x N grid and its children's are different
   approximation families, so gain need not be positive:
@@ -160,6 +210,30 @@ best: frac_hot_between/median    0.0000    0.0929    0.0707    0.0684    0.0877 
       5      0.38210      0.20760      0.87528
       6      0.28214      0.18766      0.61827
       7      0.00000      0.00000      0.00000
+
+  criterion vs UNIFORM, per level -- at the budgets where uniform completes a
+  level exactly. captured = (uniform - row)/(uniform - dp); 1.0 = optimum,
+  0.0 = no better than breadth-first, <0 = worse:
+  level         B    uniform         dp     uni-dp             best criterion   captured
+      1         5    0.12148    0.12148     0.00e0      within/median 0.12148    uni==dp
+      2        21    0.09653    0.09617    3.56e-4 frac_hot_between/median 0.09987    -9.3824
+      3        85    0.08506    0.08304    2.02e-3 frac_hot_between/median 0.08904    -1.9729
+      4       341    0.07963    0.07435    5.28e-3 frac_hot_between/median 0.08200    -0.4497
+      5      1365    0.06965    0.06131    8.34e-3 frac_hot_between/median 0.06998    -0.0394
+      6      5461    0.05038    0.03778    1.26e-2    grad_rms/median 0.04371     0.5296
+      7     21845    0.00000    0.00000     0.00e0      within/median 0.00000    uni==dp
+
+  ramp window (p1,p99) = (2.165e-6, 4.765e-1), span x220041.112; median energy drift 6.505e-7, guard floor 100x = 6.505e-5
+  lag-1 neighbour correlation of the ramped scalar (spread_shape median), by level.
+  ~0 is incoherent = noise; ~1 is a smooth field the ramp is magnifying:
+  level    quads   rho(lag-1)           p1          p99
+      1        4      -0.3332     5.464e-5     1.429e-1
+      2       16      -0.0514     3.874e-5     7.143e-1
+      3       64       0.4781     3.118e-5     7.143e-1
+      4      256       0.7746     2.428e-5     7.143e-1
+      5     1024       0.9054     1.928e-5     7.143e-1
+      6     4096       0.9432     6.352e-6     7.143e-1
+      7    16384       0.9379     2.457e-6     7.143e-1
 
   leaf levels at B = 1535 -- where each strategy spent the budget:
               dp_optimal  3:15 4:99 5:200 6:724 7:112

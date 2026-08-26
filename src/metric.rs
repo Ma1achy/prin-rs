@@ -573,6 +573,20 @@ pub enum Rank {
     /// Uniformly random. The floor: any criterion must beat this. Run several seeds and read
     /// the band, never one trace — a single random run is a draw.
     Random(u64),
+    /// Breadth-first: refine the shallowest quad available. **The honest baseline**, and the
+    /// one that was missing while every table read "beats random" as though random were the
+    /// thing to beat.
+    ///
+    /// On a smooth field this is near-optimal, so `random` is the wrong comparison there — a
+    /// criterion can be far above random and still buy nothing over refining uniformly.
+    /// Measured on `far`, `dp_optimal` and every non-greedy row produce the *identical* leaf
+    /// set, which is this.
+    ///
+    /// It is also what the rest of the enum **degenerates to** when its signal goes flat: the
+    /// tie-break at the argmax is lexicographic on `(level, ix, iy)`, level first. Scoring
+    /// `-level` here makes that explicit rather than emergent, so the baseline can be read as a
+    /// row instead of inferred from a coincidence.
+    Uniform,
     /// Greedy on immediate `Δerror`. **Neither optimal nor a bound**, and named for what it is
     /// after being read as a ceiling in every table for two PRs.
     ///
@@ -622,6 +636,7 @@ impl Rank {
         match self {
             Rank::Signal(c, a) => format!("{}/{}", c.name(), a.name()),
             Rank::Random(s) => format!("random[{s}]"),
+            Rank::Uniform => "uniform".into(),
             Rank::GreedyLookahead1 => "greedy_lookahead_1".into(),
             Rank::GreedyLookahead1PerCost => "greedy_lookahead_1/cost".into(),
             Rank::Contrast(c, a) => format!("contrast:{}/{}", c.name(), a.name()),
@@ -722,6 +737,9 @@ pub fn score(cache: &Cache, k: Key, rank: Rank) -> f64 {
 fn raw_score(cache: &Cache, k: Key, rank: Rank) -> f64 {
     match rank {
         Rank::Signal(c, a) => cache.get(k).red.signal(c, a),
+        // Shallowest first. Ties (every quad at one level) fall to the same level-first
+        // lexicographic tie-break, so the order is total and deterministic.
+        Rank::Uniform => -(k.0 as f64),
         Rank::GreedyLookahead1 => cache.gain(k),
         Rank::GreedyLookahead1PerCost => {
             cache.gain(k) / cache.get(k).red.total_substeps.max(1) as f64

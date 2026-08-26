@@ -1248,6 +1248,7 @@ fn no_ranking_beats_the_exact_tree_optimum() {
     let budgets: Vec<usize> = (0..=max_splits).map(|s| 1 + 4 * s).collect();
 
     let mut ranks: Vec<Rank> = vec![
+        Rank::Uniform,
         Rank::GreedyLookahead1,
         Rank::GreedyLookahead1PerCost,
         Rank::StructureOnly,
@@ -1308,4 +1309,66 @@ fn no_ranking_beats_the_exact_tree_optimum() {
             dp.raw[s]
         );
     }
+}
+
+
+/// `Rank::Uniform` must actually be breadth-first, and the test has to be able to fail.
+///
+/// **This is the baseline every table in the corpus was missing**, so it is worth asserting
+/// rather than assuming: at the budgets where a complete tree exists,
+/// `B_d = 1 + 4(4^d - 1)/3`, every leaf must sit at level `d` exactly. A ranking that merely
+/// *tended* shallow would pass a depth-variance check and fail this.
+///
+/// The negative control is in the same test: a signal-ranked replay at the same budget must NOT
+/// produce a single-level tree, or the assertion above is measuring the budget rather than the
+/// ranking.
+#[test]
+fn uniform_is_breadth_first_and_a_signal_ranking_is_not() {
+    use prin_rs::ensemble::pixel::EnsembleCfg;
+    use prin_rs::metric::Rank;
+    let ens = EnsembleCfg {
+        n_extra: 1,
+        t_max: 2.0,
+        n_sync: 4,
+        refine_flagged: false,
+        ..Default::default()
+    };
+    // **`levels = 3`, and the negative control is why.** On a 2-level tree every level-complete
+    // budget is degenerate: `B = 5` is one split from the root, which is a complete level-1 tree
+    // whatever the ranking says, and `B = 21` is the whole tree. The control below fired on
+    // exactly that and it was right to -- the assertion could not have discriminated there.
+    let cache = prin_rs::metric::build(
+        "deep interior", 0.0, 0.0, 0.05, 0, prin_rs::grid::Chart::BodyPlane, 3, 2, 16, 1e-4, &ens,
+        prin_rs::metric::Colouring::Outcome,
+    );
+    let mut saw_multi_level = false;
+    for d in 1..=3u32 {
+        let b = 1 + 4 * (((1usize << (2 * d)) - 1) / 3);
+        let leaves = cache.leaves_at(Rank::Uniform, b);
+        assert_eq!(
+            leaves.len(),
+            1usize << (2 * d),
+            "uniform at B={b} must be the complete tree at level {d}"
+        );
+        assert!(
+            leaves.iter().all(|k| k.0 == d),
+            "uniform at B={b} left leaves off level {d}: {leaves:?}"
+        );
+        // `d = 1` is one split from the root and `d = levels` is the whole tree: both are
+        // single-level under any ranking, so only the interior rungs can carry the control.
+        if d > 1 && d < 3 {
+            let sig = cache.leaves_at(
+                Rank::Signal(prin_rs::quad::Criterion::Within, prin_rs::quad::Agg::Median),
+                b,
+            );
+            if sig.iter().any(|k| k.0 != d) {
+                saw_multi_level = true;
+            }
+        }
+    }
+    assert!(
+        saw_multi_level,
+        "a signal ranking produced a single-level tree at every budget too, so the uniform \
+         assertion above is measuring the budget and not the ranking"
+    );
 }

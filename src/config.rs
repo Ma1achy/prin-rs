@@ -44,6 +44,15 @@ prin — uniform-resolution three-body initial-condition kernel
   --shared-reference  force all copies onto the nominal copy's reference body
   --lc-unstable       use the reference's unconditioned inverse LC branch
   --r-coll <x>        collision radius as a FRACTION of R, fixed at t=0 (default 1e-3)
+  --r-esc <x>         escape distance gate as a FRACTION of R, fixed at t=0 (default 5);
+                      0 restores the numpy reference's ungated test
+  --escape-rule R     escape condition: reference | distance | closure  (default closure)
+  --r-esc X           distance-rule gate, a FRACTION of the initial hyperradius R
+  --closure-tau X     closure threshold, a chord on the unit sphere (dimensionless)
+  --closure-k N       closure window, in sync boundaries -- it is a TIME; scale n_sync with t_max
+  --stop-on-escape    terminate on escape (default off; collision is always terminal)
+  --dtau-mode M       step sizing: fixed | per-step-remaining | per-step-interval
+                      (default per-step-interval; `fixed` is what every committed number used)
   --no-stop           record events but integrate every copy to t_max anyway
   --no-refine         skip the second pass over error_ratio-flagged pixels
   --refine-threshold <x>  error_ratio above which a pixel is re-integrated (default 10)
@@ -91,6 +100,39 @@ pub fn parse(args: &[String]) -> Result<Config, String> {
             "--shared-reference" => c.ens.ref_policy = RefPolicy::Shared,
             "--lc-unstable" => c.ens.lc_stable = false,
             "--r-coll" => { c.ens.r_coll_frac = get(i)?.parse().map_err(|e| format!("{e}"))?; i += 1; }
+            "--escape-rule" => {
+                let v = get(i)?; i += 1;
+                c.ens.escape_rule = match v.as_str() {
+                    "reference" => crate::outcome::EscapeRule::Reference,
+                    "distance" => crate::outcome::EscapeRule::Distance(5.0),
+                    "closure" => crate::outcome::EscapeRule::Closure(crate::outcome::CLOSURE_TAU),
+                    _ => return Err(format!("--escape-rule: expected reference|distance|closure, got {v}")),
+                };
+            }
+            // Sets the payload of whichever rule carries one, so `--escape-rule` and the value
+            // flags compose in either order rather than one silently discarding the other.
+            "--r-esc" => {
+                let x: f64 = get(i)?.parse().map_err(|e| format!("{e}"))?; i += 1;
+                c.ens.escape_rule = crate::outcome::EscapeRule::Distance(x);
+            }
+            "--closure-tau" => {
+                let x: f64 = get(i)?.parse().map_err(|e| format!("{e}"))?; i += 1;
+                c.ens.escape_rule = crate::outcome::EscapeRule::Closure(x);
+            }
+            "--closure-k" => { c.ens.closure_k = get(i)?.parse().map_err(|e| format!("{e}"))?; i += 1; }
+            "--stop-on-escape" => c.ens.stop_on_escape = true,
+            "--dtau-mode" => {
+                let v = get(i)?; i += 1;
+                use crate::integrate::az::DtauMode;
+                c.ens.dtau_mode = match v.as_str() {
+                    "fixed" => DtauMode::FixedPerInterval,
+                    "per-step-remaining" => DtauMode::PerStepRemaining,
+                    "per-step-interval" => DtauMode::PerStepInterval,
+                    _ => return Err(format!(
+                        "--dtau-mode: expected fixed|per-step-remaining|per-step-interval, got {v}"
+                    )),
+                };
+            }
             "--no-stop" => c.ens.stop_on_event = false,
             "--no-refine" => c.ens.refine_flagged = false,
             "--refine-threshold" => { c.ens.refine_threshold = get(i)?.parse().map_err(|e| format!("{e}"))?; i += 1; }

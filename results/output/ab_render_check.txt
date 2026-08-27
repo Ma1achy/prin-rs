@@ -1,0 +1,13 @@
+preset_plambda at 1024^2 = 1048576 px, escape_every 0 vs 4, one ramp (8.2044e-5, 1.6185e-2)
+
+          quantity pixels differ     share
+             t_end      1045592  99.7154%   <- did the fix reach the PHYSICS?
+             state         1728   0.1648%
+      spread_shape            0   0.0000%   <- did it reach the COLOURED FIELD?
+         shape_vec            0   0.0000%
+      RENDERED RGB            0   0.0000%   <- did it reach the IMAGE?
+
+A large `t_end` count with a zero `RENDERED RGB` count is the finding: the fix
+demonstrably reached the physics and the image did not move. A ZERO `t_end` count
+would mean the flag never took effect, which is the failure mode this exists to rule
+out -- and it is not what happened.

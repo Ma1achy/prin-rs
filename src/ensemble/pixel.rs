@@ -2,7 +2,7 @@
 
 use crate::decode::Path;
 use crate::grid::Slice;
-use crate::integrate::az::{self, AzOpts, RefPolicy};
+use crate::integrate::az::{self, AzOpts, DtauMode, RefPolicy};
 use crate::outcome::{self, Outcome, State};
 use crate::physics::{energy, shape};
 use crate::Real;
@@ -21,6 +21,19 @@ pub struct EnsembleCfg {
     pub seed: u64,
     pub t_max: f64,
     pub n_sync: usize,
+    /// Which escape condition to use. See [`crate::outcome::EscapeRule`].
+    ///
+    /// **Default [`Closure`](crate::outcome::EscapeRule::Closure), and every committed result
+    /// predates it.** `--escape-rule reference` restores the numpy behaviour every dump in
+    /// `results/` was made under; `--escape-rule distance --r-esc 5` gives the GLSL's gate.
+    pub escape_rule: crate::outcome::EscapeRule<f64>,
+    /// The closure window in sync boundaries. See [`crate::integrate::az::AzOpts::closure_k`] --
+    /// **it is a time**, so scale `n_sync` with `t_max` or state the realised window.
+    pub closure_k: usize,
+    /// Terminate on escape. **Default off**; collision stays terminal.
+    /// See [`crate::integrate::az::AzOpts::stop_on_escape`] -- freezing on escape is what built
+    /// the patchwork, and under `Closure` it should barely matter, which is measured not assumed.
+    pub stop_on_escape: bool,
     /// Escape-test stride inside the RK4 loop; `0` is the reference's boundary-only cadence.
     /// See [`crate::integrate::az::AzOpts::escape_every`] -- this is the knob that decides
     /// whether `t_end` carries 32 distinct values across a chart or RK4-step resolution.
@@ -29,6 +42,12 @@ pub struct EnsembleCfg {
     /// [`crate::integrate::az::AzOpts::escape_confirm`] — without it the in-loop test latches
     /// transients, measured at **895 of 895** in `deep interior`.
     pub escape_confirm: bool,
+    /// How `dtau` is sized within a sync interval. See [`DtauMode`].
+    ///
+    /// **Every committed render, dump and table in `results/` predates this and was taken under
+    /// [`DtauMode::FixedPerInterval`]**, whose blow-up after a boundary-coincident encounter is
+    /// what put the magenta clusters and their speckled halos into `config_stability`.
+    pub dtau_mode: DtauMode,
     pub eta: f64,
     pub max_steps: usize,
     pub ref_policy: RefPolicy,
@@ -122,6 +141,10 @@ impl Default for EnsembleCfg {
             n_sync: 32,
             escape_every: 0,
             escape_confirm: true,
+            dtau_mode: DtauMode::default(),
+            escape_rule: crate::outcome::EscapeRule::Closure(crate::outcome::CLOSURE_TAU),
+            closure_k: 1,
+            stop_on_escape: false,
             eta: 0.01,
             max_steps: 30_000,
             ref_policy: RefPolicy::PerCopy,
@@ -423,6 +446,10 @@ pub fn evaluate_at<T: Real>(slice: &Slice, idx: usize, cfg: &EnsembleCfg, eta_v:
         stop_on_event: cfg.stop_on_event,
         escape_every: cfg.escape_every,
         escape_confirm: cfg.escape_confirm,
+        dtau_mode: cfg.dtau_mode,
+        escape_rule: cfg.escape_rule.lift(),
+        closure_k: cfg.closure_k,
+        stop_on_escape: cfg.stop_on_escape,
     };
 
     // The nominal copy first: its reference-body choices are what the shared policy hands to

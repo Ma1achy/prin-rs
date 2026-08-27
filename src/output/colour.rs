@@ -377,6 +377,13 @@ pub enum Scalar {
     ErrorRatio,
     TEnd,
     DMin,
+    /// `energy_drift_max` -- the **diagnostic** field, not a science field.
+    ///
+    /// Already in the payload per footprint, so this is a colouring and not a computation. It
+    /// is what made the `dtau` blow-up visible: mapping drift directly showed coherent ARCS of
+    /// high drift with the non-finite pixels sitting inside them, where the science fields only
+    /// show the artefact after it has propagated into an outcome or a spread.
+    Drift,
 }
 
 impl Scalar {
@@ -390,6 +397,7 @@ impl Scalar {
             Scalar::ErrorRatio => "error_ratio",
             Scalar::TEnd => "t_end",
             Scalar::DMin => "d_min",
+            Scalar::Drift => "energy_drift_max",
         }
     }
 
@@ -403,6 +411,7 @@ impl Scalar {
             Scalar::ErrorRatio => p.error_ratio,
             Scalar::TEnd => p.t_end,
             Scalar::DMin => p.d_min_true,
+            Scalar::Drift => p.energy_drift_max,
         }
     }
 
@@ -417,7 +426,8 @@ impl Scalar {
     pub fn curve(self) -> Curve {
         match self {
             // Spans decades with a median near 1e-3. This is the fix for the flat images.
-            Scalar::Spread | Scalar::ShapeSpread | Scalar::DMin => Curve::Log,
+            // Drift spans ~fifteen decades between a clean trajectory and a blown-up one.
+            Scalar::Spread | Scalar::ShapeSpread | Scalar::DMin | Scalar::Drift => Curve::Log,
             // Signed: the measured ramps start negative.
             Scalar::Diffusion => Curve::SymLog,
             // A count ratio in [0,1]; a log would only stretch the quantisation.
@@ -509,13 +519,68 @@ pub fn rgb(p: &PixelOut, s: Scalar, set: &SiteSet, lo: f64, hi: f64) -> [u8; 3] 
 /// other pixel into the bottom of the range and the image would read as featureless — the same
 /// failure as reading a variance where the excess kurtosis is 110.
 pub fn range(px: &[PixelOut], s: Scalar) -> (f64, f64) {
+    range_q(px, s, 0.01, 0.99)
+}
+
+/// [`range`] at stated quantiles. The diagnostic drift field is auto-ranged over p2-p98.
+///
+/// Percentiles rather than min/max, for the same reason: one undetermined footprint at `1e12`
+/// would compress every other pixel into the bottom of the range.
+pub fn range_q(px: &[PixelOut], s: Scalar, lo_q: f64, hi_q: f64) -> (f64, f64) {
     let mut v: Vec<f64> = px.iter().map(|p| s.value(p)).filter(|x| x.is_finite()).collect();
     if v.is_empty() {
         return (0.0, 1.0);
     }
-    let lo = crate::quad::quantile(&mut v.clone(), 0.01);
-    let hi = crate::quad::quantile(&mut v, 0.99);
+    let lo = crate::quad::quantile(&mut v.clone(), lo_q);
+    let hi = crate::quad::quantile(&mut v, hi_q);
     (lo, hi)
+}
+
+/// Inferno control points, sampled at `t = 0, 1/8, ..., 1`. Interpolated linearly in sRGB —
+/// close enough for a diagnostic ramp, and it needs no colour-space machinery.
+const INFERNO: [[f64; 3]; 9] = [
+    [0.0, 0.0, 3.0],
+    [22.0, 11.0, 57.0],
+    [66.0, 10.0, 104.0],
+    [106.0, 23.0, 110.0],
+    [147.0, 38.0, 103.0],
+    [188.0, 55.0, 84.0],
+    [221.0, 81.0, 58.0],
+    [243.0, 136.0, 20.0],
+    [252.0, 255.0, 164.0],
+];
+
+/// The **diagnostic** colouring: `energy_drift_max` on an inferno ramp, magenta where there is
+/// no value.
+///
+/// Univariate on purpose. [`rgb`] is bivariate (hue from the shape sphere, lightness from a
+/// scalar) and a diagnostic asked under that colouring inherits the shape field's structure,
+/// which is exactly what obscures a numerical defect: the science fields only show it once it
+/// has propagated. **When a numerical defect is suspected, render this, not the science field.**
+///
+/// Returns [`DEBUG_NAN`] for the same veto set [`rgb`] applies — a non-finite value, any
+/// non-finite copy in the ensemble, and the two failure states — reused rather than re-derived,
+/// so "no value" means the same thing in both panels.
+pub fn drift_rgb(p: &PixelOut, lo: f64, hi: f64) -> [u8; 3] {
+    if p.n_nonfinite > 0 {
+        return DEBUG_NAN;
+    }
+    match State::from_bits(p.state) {
+        Some(State::SimFailed) | Some(State::DecodeFailed) | None => return DEBUG_NAN,
+        _ => {}
+    }
+    let Some(t) = range_norm(Scalar::Drift, Scalar::Drift.value(p), lo, hi) else {
+        return DEBUG_NAN;
+    };
+    let x = (t.clamp(0.0, 1.0) * 8.0).min(7.999_999);
+    let i = x as usize;
+    let f = x - i as f64;
+    let mut out = [0u8; 3];
+    for k in 0..3 {
+        let c = INFERNO[i][k] * (1.0 - f) + INFERNO[i + 1][k] * f;
+        out[k] = c.round().clamp(0.0, 255.0) as u8;
+    }
+    out
 }
 
 /// How much ordering the lightness channel actually carries: `(distinct, finite, modal_frac)`.

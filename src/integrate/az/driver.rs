@@ -12,6 +12,45 @@ use super::reference_body::{choose_reference, triple, RefPolicy};
 use super::rk4;
 use super::system::AzSystem;
 
+/// How the fictitious step `dtau` is sized within a sync interval.
+///
+/// `dt = A*B*dtau`, so the physical step is `eta*dt_left` **only while `A*B` stays near its
+/// entry value**. A trajectory sitting at a close encounter *at a sync boundary* has a tiny
+/// `A0*B0`, so `dtau` is enormous; as the bodies separate through the interval `A*B` grows by
+/// orders and `dt` grows with it. Giant physical steps immediately after an encounter, on a thin
+/// set -- encounters coinciding with a boundary -- which is why the damage clusters spatially
+/// rather than tracking `d_min`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DtauMode {
+    /// `dtau = eta*dt_left/(A0*B0)`, computed **once** at the interval's entry and never
+    /// updated. The reference's behaviour (`reference/tb_az.py:integrate_az`) and the shipped
+    /// behaviour until this change, so **every committed Rust and NumPy number was taken with
+    /// it on**. Kept, named for what it is, and never deleted.
+    FixedPerInterval,
+    /// `dtau = eta*(dt_left - s.t)/(A*B)` recomputed per step -- the obvious repair, and it is
+    /// **Zeno by arithmetic**: `dt ~ eta*rem` gives `rem_{n+1} = rem_n (1 - eta)`, so the
+    /// interval is approached geometrically and the loop can never satisfy `s.t >= dt_left`.
+    /// At `eta = 0.01` it runs to `max_steps` on *every* interval. Kept as a measurement axis
+    /// precisely because it looks right; it is not a candidate default.
+    PerStepRemaining,
+    /// `dtau = min(eta*dt_left/(A*B), dtau_entry)` -- `dt_left` held fixed, only `A*B`
+    /// recomputed. `dt ~ eta*dt_left` throughout, so the step count stays at `~1/eta`.
+    ///
+    /// **The cap is one-sided in the right direction.** When `A*B` grows the recomputed value
+    /// falls and the blow-up is removed; when `A*B` *falls* at a close approach the cap holds
+    /// `dtau` at nominal, so `dt = A*B*dtau` shrinks with the separation -- which is what
+    /// regularisation buys and what the original comment wanted. It removes the over-correction
+    /// without reintroducing the thing that was over-corrected *for* (shrinking `dtau` with
+    /// separation drove `dt -> 1e-13` and produced a false "intractable region").
+    PerStepInterval,
+}
+
+impl Default for DtauMode {
+    fn default() -> Self {
+        DtauMode::PerStepInterval
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct AzOut<T> {
     pub state: Cart<T>,
@@ -84,6 +123,37 @@ pub struct AzOut<T> {
     /// `n_sync` rescaled makes every window a different discretisation, which is the same defect
     /// as holding `n_sync` fixed while `t_max` varies.
     pub escape_flags: Vec<bool>,
+    /// `|n(t_k) - n(t_{k-closure_k})|` at each completed boundary, `NaN` until the window is
+    /// full. **`NaN`, never `0`** — an unfilled window is "not yet determined", and `NaN < tau`
+    /// is false so it cannot fire, where a `0` would read as perfectly settled and fire on
+    /// everything at `t ~ 0`.
+    ///
+    /// Recorded whatever the rule, so the closure distribution can be measured on trajectories
+    /// the criterion did not label — which is what setting `tau` from a measured gap needs.
+    pub closure_hist: Vec<T>,
+    /// Per body, is it unbound from the other two, at each completed boundary?
+    ///
+    /// **The persistence question is "does it RE-BIND", and that is the energy arm alone.**
+    /// [`Self::escape_flags`] records full criterion candidacy, which under `Closure` also
+    /// carries the closure gate -- and closure is a difference of neighbouring samples, so it
+    /// fluctuates above `tau` on a perfectly settled escape. Reading persistence off it would
+    /// score ordinary jitter as a re-binding and report a correct criterion as broken.
+    pub unbound_flags: Vec<[bool; 3]>,
+    /// The escape's energy condition already held on **entry** to the interval in which the
+    /// conjunction fired, so the replay found no crossing and `t_end` is the entry boundary.
+    ///
+    /// The number that says whether the `t_end` refinement is doing anything. See the firing
+    /// block in `integrate_az_opts`.
+    pub t_end_at_entry: bool,
+    /// Smallest `A*B` seen at any step, **before** the `T::TINY` floor is applied.
+    ///
+    /// `dtau` divides by this, so it is the quantity the blow-up is a function of. Recorded
+    /// rather than argued about: the floor is `1e-300` at f64 and `1e-37` at f32, and
+    /// `TINY*TINY` **underflows at f32** -- so a doubly-degenerate state gives `dtau = inf`,
+    /// caught by the explicit `is_finite` test and *not* by the floor the guard is named for.
+    pub ab_min: T,
+    /// Whether either factor was ever clamped to `T::TINY`. Says which guard did the work.
+    pub ab_floored: bool,
     /// Time of the first terminating event, or the time reached if none fired. Distinct from
     /// `t` only when `stop_on_event` is off, where the run continues past the event.
     pub t_end: T,
@@ -108,6 +178,51 @@ pub struct AzOpts<'a, T> {
     /// `t_max` and the event is recorded but not acted on — which is what the reference does,
     /// and what keeps every copy's continuous fields evaluated at a common playhead.
     pub stop_on_event: bool,
+    /// Terminate on **escape**. Default **off**, and separately from [`Self::stop_on_event`],
+    /// which continues to govern collision.
+    ///
+    /// **Collision stays terminal unconditionally** — it is a singularity, and there is genuinely
+    /// nothing to integrate past. Escape is a *heuristic*, and freezing on one is what built the
+    /// patchwork: a terminated trajectory's `shape_vec` is the state at its own `t_end`, escape
+    /// is detected at sync boundaries, so the rendered field became a mosaic of `n_sync` time
+    /// strata stitched at hard seams. A ribbon is a level set of `theta` **at a common time**;
+    /// where neighbouring pixels froze at different times it breaks and resumes.
+    ///
+    /// Under [`crate::outcome::EscapeRule::Closure`] freezing should barely matter -- it fires on
+    /// a trajectory whose shape has already stopped moving, so the state it freezes is the state
+    /// it would have had anyway. That is the prediction, and it is measured before this flips.
+    pub stop_on_escape: bool,
+    /// Which escape condition to use. See [`crate::outcome::EscapeRule`] for the three and
+    /// where each comes from.
+    ///
+    /// **[`Distance`](crate::outcome::EscapeRule::Distance) carries a canonical fraction**, not a
+    /// length: a multiple of the initial hyperradius `R` evaluated once at `t = 0`, which this
+    /// driver multiplies out at `r0`. The reference's saved configs use `rEsc = 5` and `12` as
+    /// absolute lengths in the latent decode's own units, and every latent decode is normalised
+    /// to `M = 1` with `I = 1` an algebraic identity — so `R = 1` there and the literal transfers.
+    /// It does not transfer to Burrau's near-field, whose `R = 2.2361`. Expressing it as a
+    /// fraction is the scale-gauge rule (BRIEF §2.5) at a third constant.
+    ///
+    /// **[`Closure`](crate::outcome::EscapeRule::Closure)'s `tau` is dimensionless** — a chord on
+    /// the unit sphere — so it needs no conversion. Its *window* does, and that is [`Self::closure_k`].
+    ///
+    /// The body set is a property of the rule, each matching its own reference exactly, rather
+    /// than a separate knob: `Reference` labels only the body outside the tightest pair, the
+    /// other two test all three. That arm was measured on its own axis in the previous round and
+    /// it is **not free** — it alone moved near-field's ungated escape fraction 0.0000 -> 1.0000.
+    pub escape_rule: crate::outcome::EscapeRule<T>,
+    /// The closure window, in **sync boundaries**. `|n(t_k) - n(t_{k-closure_k})|`.
+    ///
+    /// The reference measures a 0.4 time-unit window and reads only the two **ends** of it
+    /// (`reference/escape_criterion.py` buffers `nbuf` samples and uses `buf[-1]`, `buf[0]`), so
+    /// boundary sampling is a transcription rather than an approximation — at `t_max = 13,
+    /// n_sync = 32` the realised window is 0.406 against 0.400.
+    ///
+    /// **It is a time, and `n_sync` is not scaled with `t_max`.** At `t_max = 50, n_sync = 32`
+    /// the interval is 1.5625, so `closure_k = 1` there is a 3.9x wider window and a different
+    /// criterion. The standing `n_sync`/`t_max` trap, landing on the new constant: scale `n_sync`
+    /// with `t_max` or state the realised window with every figure.
+    pub closure_k: usize,
     /// How often the **escape** test runs inside the RK4 loop, in steps. `0` is the
     /// reference's cadence: boundaries only.
     ///
@@ -151,6 +266,9 @@ pub struct AzOpts<'a, T> {
     /// Same shape as `spread_event_latched`'s `LATCH_RUN`, which exists for this reason on a
     /// different field; the convention is reused rather than a new one invented.
     pub escape_confirm: bool,
+    /// How `dtau` is sized within an interval. See [`DtauMode`]; the default is the fix and
+    /// [`DtauMode::FixedPerInterval`] is the behaviour every committed number was taken under.
+    pub dtau_mode: DtauMode,
     /// Record the shape vector at every sync boundary, for the temporal accumulators (§5).
     ///
     /// Off by default: `n_sync` triples per copy is ~70x the size of a `PixelOut`, and it is
@@ -165,9 +283,13 @@ impl<T: Real> Default for AzOpts<'_, T> {
             forced_refs: None,
             lc_stable: true,
             r_coll_frac: T::zero(),
+            escape_rule: crate::outcome::EscapeRule::Reference,
+            closure_k: 1,
             stop_on_event: true,
+            stop_on_escape: false,
             escape_every: 0,
             escape_confirm: true,
+            dtau_mode: DtauMode::default(),
             keep_boundary_shapes: false,
         }
     }
@@ -209,17 +331,128 @@ pub fn integrate_az_lc<T: Real>(
     // costs nothing and changes no arithmetic — but nothing acts on them.
     integrate_az_opts(
         s0, m, t_max, n_sync, eta, max_steps,
-        &AzOpts {
-            forced_refs,
-            lc_stable,
-            r_coll_frac: T::zero(),
-            stop_on_event: false,
-            escape_every: 0,
-            escape_confirm: true,
-            keep_boundary_shapes: false,
-        },
+        &reference_opts(forced_refs, lc_stable, DtauMode::default()),
     )
 }
+
+/// The reference-matching option set, in one place so the cross-check binary can vary the one
+/// axis it needs to without restating the other nine.
+///
+/// The reference has no distance gate, no closure arm and no persistence guard: the cross-check
+/// measures `EscapeRule::Reference` and this hardcodes it, so nothing added since can reach that
+/// path. `dtau_mode` is the exception and is a parameter, because **both sides carry the same
+/// defect and both are being fixed** -- the comparison that means anything is old-against-old and
+/// new-against-new, and either alone would pass while the two transcriptions diverged.
+pub fn reference_opts<T: Real>(
+    forced_refs: Option<&[u8]>,
+    lc_stable: bool,
+    dtau_mode: DtauMode,
+) -> AzOpts<'_, T> {
+    AzOpts {
+        forced_refs,
+        lc_stable,
+        r_coll_frac: T::zero(),
+        escape_rule: crate::outcome::EscapeRule::Reference,
+        closure_k: 1,
+        stop_on_event: false,
+        stop_on_escape: false,
+        escape_every: 0,
+        escape_confirm: true,
+        dtau_mode,
+        keep_boundary_shapes: false,
+    }
+}
+
+/// The step size for the *next* RK4 step, given the interval's entry sizing and the current
+/// regularised state.
+///
+/// Returns `(dtau_now, ab_raw, floored)` -- `ab_raw` is `A*B` **before** the `T::TINY` floor,
+/// which is what the blow-up is a function of and what the `TINY` report reads.
+#[inline]
+fn dtau_for_step<T: Real>(
+    mode: DtauMode,
+    eta: T,
+    dt_left: T,
+    dtau_entry: T,
+    s: &super::state::AzState<T>,
+) -> (T, T, bool) {
+    let a = s.a();
+    let b = s.b();
+    let ab_raw = a * b;
+    let floored = a < T::TINY || b < T::TINY;
+    let ab = a.max(T::TINY) * b.max(T::TINY);
+    let dtau = match mode {
+        DtauMode::FixedPerInterval => dtau_entry,
+        // `rem`, not `dt_left`: geometric decay, kept so the measurement can show it.
+        DtauMode::PerStepRemaining => {
+            let rem = (dt_left - s.t).max(T::zero());
+            eta * rem / ab
+        }
+        DtauMode::PerStepInterval => (eta * dt_left / ab).min(dtau_entry),
+    };
+    (dtau, ab_raw, floored)
+}
+
+/// Refine an escape's `t_end` by **replaying** the sync interval it fired in.
+///
+/// The closure criterion is evaluated at boundaries, so a firing at `t_k` says only that the
+/// conjunction holds by then. Closure itself has no finer resolution — it is defined from the
+/// boundary series — but the *energy* arm does, and if it crossed inside `(t_prev, t_k]` that
+/// crossing is the honest escape time. Re-run the interval with the same reference body, the same
+/// `dtau` rule and the same stepper, and take the first sub-step at which body `b` is unbound.
+///
+/// Returns the boundary time unchanged when there is no saved entry state (the first interval),
+/// and the **entry** time with `at_entry` set when the body was already unbound on entry — energy
+/// flickers, closure is what just settled, and there is then no crossing inside the interval.
+#[allow(clippy::too_many_arguments)]
+fn refine_escape_time<T: Real>(
+    m: &[T; 3],
+    prev: &Option<(Cart<T>, T, usize, T)>,
+    b: usize,
+    t_boundary: T,
+    lc_stable: bool,
+    mode: DtauMode,
+    eta: T,
+    at_entry: &mut bool,
+) -> T {
+    let Some((c0, t0, a, dtau)) = *prev else {
+        return t_boundary;
+    };
+    if crate::outcome::unbound(&c0, m, b) {
+        // **Keep the boundary time, not the entry time.** The criterion is the CONJUNCTION, and
+        // it first held here; the energy arm crossed at some earlier, unknown boundary. Reporting
+        // `t0` would claim an escape at a time the criterion had not yet concluded one.
+        *at_entry = true;
+        return t_boundary;
+    }
+    let (ab, bb, cb) = triple(a);
+    let sys = if lc_stable {
+        AzSystem::new(ab, bb, cb, *m)
+    } else {
+        AzSystem::new(ab, bb, cb, *m).with_reference_lc()
+    };
+    let (mut s, e) = sys.to_reg(&c0);
+    let dt_left = t_boundary - t0;
+    let mut steps = 0usize;
+    // The same budget shape as the main loop: bounded, and `is_finite` tested explicitly so a
+    // diverged replay cannot spin (NaN >= x is false).
+    // **The replay must step exactly as the march it is replaying.** A different step rule here
+    // returns a `t_end` that is wrong for a reason that looks like a criterion result -- and the
+    // escape criterion is precisely what this quantity is read as evidence about.
+    while s.is_finite() && s.t < dt_left && steps < REPLAY_MAX_STEPS {
+        let (h, _, _) = dtau_for_step(mode, eta, dt_left, dtau, &s);
+        s = rk4::step(&sys, &s, e, h);
+        steps += 1;
+        if crate::outcome::unbound(&sys.to_cartesian(&s), m, b) {
+            return t0 + s.t;
+        }
+    }
+    t_boundary
+}
+
+/// Step ceiling for [`refine_escape_time`]. One sync interval at the driver's own `dtau` is
+/// `~1/eta` steps; this is far above that and exists only so a pathological replay terminates.
+const REPLAY_MAX_STEPS: usize = 100_000;
 
 /// The full entry point.
 #[allow(clippy::too_many_arguments)]
@@ -258,7 +491,32 @@ pub fn integrate_az_opts<T: Real>(
     // Canonical and fixed at t=0: a fraction of *this* trajectory's initial hyperradius,
     // evaluated once, before anything moves. Never recomputed from the instantaneous
     // configuration — a co-moving length makes the Hamiltonian time-dependent.
-    let r_coll = opts.r_coll_frac * energy::hyperradius(&s0.r, m);
+    let r0 = energy::hyperradius(&s0.r, m);
+    let r_coll = opts.r_coll_frac * r0;
+    // `Distance`'s gate is canonical too — a fraction of R fixed at t = 0, multiplied out here
+    // and never recomputed from the instantaneous configuration.
+    let rule = opts.escape_rule;
+    let esc = |c: &Cart<T>, cl: Option<T>| {
+        crate::outcome::escape_candidate_rule(c, m, rule, r0, cl)
+    };
+    // The closure window's ring buffer: the last `closure_k + 1` boundary shape vectors. Pushed
+    // unconditionally rather than under `keep_boundary_shapes`, because the criterion reads it
+    // and a criterion that depends on a diagnostic flag is a criterion with two behaviours.
+    let kw = opts.closure_k.max(1);
+    let mut nbuf: std::collections::VecDeque<[T; 3]> = std::collections::VecDeque::with_capacity(kw + 1);
+    // The closure value at each boundary, NaN until the window is full. `NaN < tau` is false, so
+    // an unfilled window cannot fire — correct, since nothing has settled at t ~ 0.
+    let mut closure_hist: Vec<T> = Vec::with_capacity(n_sync);
+    let mut unbound_flags: Vec<[bool; 3]> = Vec::with_capacity(n_sync);
+    // The Cartesian state and time at the PREVIOUS boundary, for the replay refinement of
+    // `t_end`. See the firing block below.
+    // Always written before the boundary block that reads it -- the `None` is unreachable and
+    // exists so `refine_escape_time` has a total signature rather than an unwrap.
+    #[allow(unused_assignments)]
+    let mut prev_boundary: Option<(Cart<T>, T, usize, T)> = None;
+    let mut t_end_at_entry = false;
+    let mut ab_min = T::infinity();
+    let mut ab_floored = false;
 
     for kk in 0..n_sync {
         let t_target = T::lit((kk + 1) as f64) * t_max / T::lit(n_sync as f64);
@@ -299,9 +557,16 @@ pub fn integrate_az_opts<T: Real>(
         // with the separation: doing so drove dt -> 1e-13 and exhausted the step budget,
         // producing a false "this region is intractable". Size dtau so the FIRST physical
         // step is a fixed fraction of the interval; the rest follows.
+        // The interval's **entry** sizing. Under `FixedPerInterval` it is the whole step
+        // control; under `PerStepInterval` it is the one-sided cap that keeps the physical step
+        // shrinking at a close approach instead of being held at `eta*dt_left`.
         let a0 = s.a().max(T::TINY);
         let b0 = s.b().max(T::TINY);
         let dtau = eta * dt_left / (a0 * b0);
+
+        // The interval's entry state, kept for the replay refinement of `t_end`. `cart` is
+        // overwritten at the boundary below, so it has to be taken now.
+        prev_boundary = Some((cart, t, a, dtau));
 
         let mut steps = 0usize;
         loop {
@@ -320,7 +585,12 @@ pub fn integrate_az_opts<T: Real>(
                 break;
             }
 
-            s = rk4::step(&sys, &s, e, dtau);
+            let (h, ab_raw, floored) = dtau_for_step(opts.dtau_mode, eta, dt_left, dtau, &s);
+            if ab_raw.is_finite() && ab_raw < ab_min {
+                ab_min = ab_raw;
+            }
+            ab_floored |= floored;
+            s = rk4::step(&sys, &s, e, h);
             steps += 1;
 
             let (r1, r2, _, _) = sys.phys_from_state(&s);
@@ -357,13 +627,18 @@ pub fn integrate_az_opts<T: Real>(
             // The escape test at RK4-step resolution, when asked for. Off by default: this is
             // the reference's cadence and changing it changes results. `to_cartesian` per
             // tested step is the cost, which is why it is strided rather than unconditional.
+            // Under `Closure` this arm is **off** regardless of `escape_every`: closure is only
+            // defined where the state is Cartesian, so there is no value to test between
+            // boundaries, and the window is already the persistence guard `escape_confirm`
+            // exists to be. Both flags become vacuous under that rule; said, not silently dropped.
             if opts.escape_every > 0
+                && !matches!(rule, crate::outcome::EscapeRule::Closure(_))
                 && events.escape.is_none()
                 && pending_escape.is_none()
                 && steps % opts.escape_every == 0
             {
                 let c = sys.to_cartesian(&s);
-                if let Some(b) = crate::outcome::escape_candidate(&c, m) {
+                if let Some(b) = esc(&c, None) {
                     let te = t + s.t;
                     if opts.escape_confirm {
                         // Provisional. Do NOT break: the trajectory has to reach the next
@@ -373,7 +648,7 @@ pub fn integrate_az_opts<T: Real>(
                     } else {
                         events.escape = Some((b, te));
                         t_end.get_or_insert(te);
-                        if opts.stop_on_event {
+                        if opts.stop_on_escape {
                             break;
                         }
                     }
@@ -394,9 +669,29 @@ pub fn integrate_az_opts<T: Real>(
         t += s.t.min(dt_left);
 
         tight.push(crate::outcome::binary_id(&cart));
+        // Computed unconditionally: it is ~20 flops against a whole RK4 interval, the closure
+        // criterion reads it, and gating a criterion on a diagnostic flag gives it two behaviours.
+        let n_now = crate::physics::shape::shape_vec(&cart.r, m);
         if opts.keep_boundary_shapes {
-            boundary_shapes.push(crate::physics::shape::shape_vec(&cart.r, m));
+            boundary_shapes.push(n_now);
         }
+        // The closure window reads only the two ENDS — `buf[-1]` and `buf[0]` in the reference,
+        // never the interior — so a ring buffer of `kw + 1` is the whole state it needs.
+        nbuf.push_back(n_now);
+        if nbuf.len() > kw + 1 {
+            nbuf.pop_front();
+        }
+        let cl = if nbuf.len() == kw + 1 {
+            Some(crate::outcome::closure(&n_now, &nbuf[0]))
+        } else {
+            None
+        };
+        closure_hist.push(cl.unwrap_or(T::nan()));
+        unbound_flags.push([
+            crate::outcome::unbound(&cart, m, 0),
+            crate::outcome::unbound(&cart, m, 1),
+            crate::outcome::unbound(&cart, m, 2),
+        ]);
         {
             let mut d = crate::physics::newton::pair_dists(&cart.r);
             d.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
@@ -406,7 +701,7 @@ pub fn integrate_az_opts<T: Real>(
         // Instantaneous candidacy at this boundary, recorded whether or not it has already
         // fired — this is the history a persistence guard reads, and it must not stop being
         // written once `events.escape` is set.
-        let candidate_now = crate::outcome::escape_candidate(&cart, m);
+        let candidate_now = esc(&cart, cl);
         escape_flags.push(candidate_now.is_some());
 
         // Confirm or discard a provisional in-loop escape. The committed time is the FIRST
@@ -422,13 +717,44 @@ pub fn integrate_az_opts<T: Real>(
         // The escape test runs at the sync boundary, where the state is Cartesian and every
         // trajectory shares a playhead — the reference's cadence, transcribed.
         if events.escape.is_none() {
-            if let Some(b) = crate::outcome::escape_candidate(&cart, m) {
-                events.escape = Some((b, t));
-                t_end.get_or_insert(t);
+            if let Some(b) = candidate_now {
+                // **Refine `t_end` by replay, not by sampling finer.** The conjunction first
+                // holds at this boundary, so the energy crossing that completes it lies in
+                // `(t_prev, t]`. Replay that one interval from the saved entry state with the
+                // same stepper and the same `dtau`, and take the first sub-step at which body
+                // `b` is unbound. One extra interval per escaping trajectory, no second
+                // sampling path in the main loop, and no new numerics.
+                //
+                // **The honest limit, and it is counted rather than assumed:** closure's own
+                // resolution is still the boundary cadence, and `spec > 0` may already hold on
+                // ENTRY to the interval — energy flickers, closure is what just settled. Then
+                // there is no crossing to find, `t_end` is the entry time, and
+                // `t_end_at_entry` records it. If that fires on nearly everything the
+                // refinement is decoration, and the measurement says so.
+                //
+                // **Only under `Closure`.** There the boundary cadence is intrinsic -- closure is
+                // defined from the boundary series and has no finer resolution -- and energy is
+                // the one continuous arm. Under `Reference`/`Distance` both arms are continuous,
+                // so refining on energy alone would return a time at which the full condition may
+                // not yet hold, and `escape_every` is the knob that already samples those finer,
+                // with committed semantics and a cross-check measuring them.
+                let te = if matches!(rule, crate::outcome::EscapeRule::Closure(_)) {
+                    refine_escape_time(
+                        m, &prev_boundary, b as usize, t, lc_stable, opts.dtau_mode, eta,
+                        &mut t_end_at_entry,
+                    )
+                } else {
+                    t
+                };
+                events.escape = Some((b, te));
+                t_end.get_or_insert(te);
             }
         }
 
-        if budget_exhausted || (opts.stop_on_event && (events.collision.is_some() || events.escape.is_some())) {
+        if budget_exhausted
+            || (opts.stop_on_event && events.collision.is_some())
+            || (opts.stop_on_escape && events.escape.is_some())
+        {
             break;
         }
     }
@@ -448,6 +774,11 @@ pub fn integrate_az_opts<T: Real>(
         tight,
         tie_ratio,
         escape_flags,
+        closure_hist,
+        unbound_flags,
+        t_end_at_entry,
+        ab_min,
+        ab_floored,
         boundary_shapes,
         steps: total_steps,
         finite,

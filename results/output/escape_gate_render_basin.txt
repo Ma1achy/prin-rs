@@ -1,0 +1,20 @@
+    Finished `release` profile [optimized] target(s) in 0.61s
+     Running `target/release/examples/escape_gate_render 256 results config_basin`
+256^2, one sample per pixel, stride 0 (the reference cadence) at both r_esc.
+r_esc = 0 is the shipped-until-now ungated test; r_esc = 5 is the GLSL's gate in
+canonical units (R = 1 on the latent charts, so its literal transfers unconverted).
+
+        config_basin r_esc=0.0       9.5s  escape 1.0000 collision 0.0000  frozen 1.0000  t_end distinct      2  on boundary 100.00%  ramp (3.789e-5, 2.996e-3)
+        config_basin r_esc=5.0     131.8s  escape 0.0000 collision 0.0000  frozen 0.0000  t_end distinct      2  on boundary 100.00%  ramp (4.586e-3, 7.304e-2)
+
+HOW TO READ THIS
+
+`frozen` is the exposure the patchwork mechanism acts through -- the fraction of pixels
+whose shape_vec is read somewhere other than the horizon. If the gate works, it falls,
+and the ribbons in `_uniform` become continuous. If `frozen` falls and the arcs stay,
+the gate reduced exposure without removing the mechanism, and the next candidates are
+the flatness-based escape criterion or not terminating on escape at all.
+
+`config_basin_*_outcome.png` is the CONTROL. In basin mode the colour is the terminal
+outcome, so freezing cannot corrupt it; the two implementations should agree exactly and
+a disagreement is a SECOND, independent bug.

@@ -1,0 +1,142 @@
+    Finished `release` profile [optimized] target(s) in 0.03s
+     Running `target/release/examples/escape_closure 16`
+escape_closure -- n=16 per side, eta=0.01, tau=1e-3, window target 0.4
+
+== 0. WINDOW AND CADENCE ==
+The window is a TIME. `dt_sync` is set per case to realise ~0.4; `t_close` is the
+closest-approach timescale 2pi*sqrt(d_min^3/M), a proxy for the shortest inner period.
+A window at or above `t_close` can alias a fast orbit into reading as settled.
+
+A row that is all-bounded with no collisions may be a tame region or a run that
+never got anywhere: `budget` and `nonfin` say which, and `dmin p50` against `r_coll`
+says whether the collision arm could fire at all.
+
+case               nsync dt_sync   R p50   w(k=1)   w(k=4)   tcl p1  tcl p50  budget  nonfin  dmin p50
+near-field            33  0.3939  2.2361   0.3939   1.5758  1.90e-4  1.44e-3  0.0000  0.0000   8.59e-3
+deep interior         33  0.3939  1.3694   0.3939   1.5758  5.24e-6  7.99e-5  0.0000  0.0000   1.25e-3
+preset_plambda        33  0.3939  1.0000   0.3939   1.5758  1.30e-4  7.66e-4  0.0000  0.0000   2.46e-3
+config_basin         125  0.4000  1.0000   0.4000   1.6000  2.14e-2  2.28e-2  0.0000  0.0000   2.36e-2
+config_stability     125  0.4000  1.0000   0.4000   1.6000  1.18e-3  4.21e-3  0.0000  0.0000   7.65e-3
+
+== GROUND TRUTH (check 2: geometric, shares no term with the criterion) ==
+case                escaped       frac
+near-field              113     0.4414
+deep interior           169     0.6602
+preset_plambda          222     0.8672
+config_basin              0     0.0000
+config_stability        101     0.3945
+
+== 1. THE MEASURED GAP, and the tau it implies ==
+Closure at the FINAL boundary, split by ground truth. `sep` is p50(bound)/p50(esc);
+`tau*` is the geometric midpoint of p99(esc) and p1(bound) -- the gap, not a pick.
+A NEGATIVE gap means the populations overlap and no fixed tau separates them.
+
+case                 xT  k    esc p50    esc p99     bnd p1    bnd p50       sep       tau*
+near-field            1  1   2.118e-1   7.396e-1   1.509e-1   1.882e-1       0.9   3.341e-1
+near-field            1  2   4.677e-1    1.126e0   3.377e-1   4.142e-1       0.9   6.166e-1
+near-field            1  3   8.551e-1    1.342e0   6.232e-1   7.518e-1       0.9   9.146e-1
+near-field            1  4   8.991e-1    1.514e0   7.896e-1   9.917e-1       1.1    1.093e0
+near-field            2  1   8.459e-1    1.122e0   6.016e-2   7.167e-1       0.8   2.598e-1
+near-field            2  2    1.433e0    1.579e0   3.127e-1    1.309e0       0.9   7.027e-1
+near-field            2  3    1.813e0    1.874e0   5.448e-1    1.744e0       1.0    1.010e0
+near-field            2  4    1.605e0    1.839e0   6.243e-1    1.565e0       1.0    1.072e0
+deep interior         1  1   3.530e-1    1.553e0    0.000e0   4.005e-1       1.1    0.000e0
+deep interior         1  2   5.252e-1    1.775e0    0.000e0   5.323e-1       1.0    0.000e0
+deep interior         1  3   7.538e-1    1.905e0    0.000e0   8.317e-1       1.1    0.000e0
+deep interior         1  4   4.852e-1    1.771e0    0.000e0   5.347e-1       1.1    0.000e0
+deep interior         2  1   3.475e-1    1.415e0    0.000e0   4.407e-1       1.3    0.000e0
+deep interior         2  2   5.235e-1    1.804e0    0.000e0   5.323e-1       1.0    0.000e0
+deep interior         2  3   6.720e-1    1.878e0    0.000e0   8.317e-1       1.2    0.000e0
+deep interior         2  4   4.227e-1    1.674e0    0.000e0   5.246e-1       1.2    0.000e0
+preset_plambda        1  1   2.193e-3   5.033e-2   1.036e-2   4.325e-2      19.7   2.283e-2
+preset_plambda        1  2   4.011e-3   1.008e-1   1.681e-2   8.578e-2      21.4   4.116e-2
+preset_plambda        1  3   5.980e-3   1.724e-1   2.006e-2   1.300e-1      21.7   5.881e-2
+preset_plambda        1  4   7.453e-3   2.436e-1   2.247e-2   1.839e-1      24.7   7.399e-2
+preset_plambda        2  1   1.728e-3   5.033e-2   4.532e-3   4.325e-2      25.0   1.510e-2
+preset_plambda        2  2   3.278e-3   1.008e-1   6.948e-3   8.578e-2      26.2   2.647e-2
+preset_plambda        2  3   4.433e-3   1.724e-1   8.405e-3   1.300e-1      29.3   3.807e-2
+preset_plambda        2  4   5.316e-3   2.436e-1   1.160e-2   1.839e-1      34.6   5.316e-2
+config_basin          1  1        NaN        NaN   1.224e-1   1.885e-1       NaN        NaN
+config_basin          1  2        NaN        NaN   6.524e-3   9.522e-2       NaN        NaN
+config_basin          1  3        NaN        NaN   9.460e-2   1.396e-1       NaN        NaN
+config_basin          1  4        NaN        NaN   1.112e-2   2.493e-1       NaN        NaN
+config_basin          2  1        NaN        NaN   1.192e-1   4.706e-1       NaN        NaN
+config_basin          2  2        NaN        NaN   2.993e-1   3.637e-1       NaN        NaN
+config_basin          2  3        NaN        NaN   9.540e-2   6.505e-1       NaN        NaN
+config_basin          2  4        NaN        NaN   3.273e-1   5.514e-1       NaN        NaN
+config_stability      1  1   2.197e-1    1.634e0   1.464e-8   3.354e-2       0.2   1.547e-4
+config_stability      1  2   4.744e-1    1.890e0   2.929e-8   5.226e-2       0.1   2.353e-4
+config_stability      1  3   5.814e-1    1.836e0   4.393e-8   5.540e-2       0.1   2.840e-4
+config_stability      1  4   6.061e-1    1.949e0  1.123e-10   3.442e-2       0.1   1.480e-5
+config_stability      2  1   2.425e-1    1.634e0   1.464e-8   2.388e-2       0.1   1.547e-4
+config_stability      2  2   5.856e-1    1.890e0   2.928e-8   3.622e-2       0.1   2.353e-4
+config_stability      2  3   6.922e-1    1.836e0   4.393e-8   4.185e-2       0.1   2.840e-4
+config_stability      2  4   7.317e-1    1.949e0  1.123e-10   2.252e-2       0.0   1.480e-5
+
+== 2. PRECISION / RECALL / MEDIAN FIRING TIME (k=1, tau=1e-3) ==
+Against the geometric ground truth. Recall below 1 is the RIGHT failure direction:
+a late firing is a late timestamp; an early one writes a wrong one permanently.
+
+case                  fires       frac  precision     recall med t_fire
+near-field                0     0.0000        NaN     0.0000        NaN
+deep interior            14     0.0547     0.2143     0.0178      9.061
+preset_plambda          104     0.4062     1.0000     0.4685     11.818
+config_basin              0     0.0000        NaN        NaN        NaN
+config_stability         18     0.0703     0.7222     0.1287     14.000
+
+== 3. CHECK 1 -- DOES ANYTHING RE-BIND? ==
+Candidacy at every boundary of ONE unstopped run at ONE step size, out to 3*t_max
+with n_sync scaled so `dt_sync` is UNCHANGED. The old criterion read 0 of 895 here.
+**The question is whether the fired body is still UNBOUND** -- the energy arm alone.
+Full candidacy also carries the closure gate, and closure is a difference of
+neighbouring samples, so it jitters above tau on a perfectly settled escape; reading
+persistence off it scores ordinary jitter as a re-binding. Both columns are shown so
+the difference between the two questions is visible rather than asserted.
+
+case                 fired      u+1      u+2      u+4      u+8    u end  cand end
+near-field               0      NaN      NaN      NaN      NaN      NaN       NaN
+deep interior           44   1.0000   1.0000   1.0000   1.0000   1.0000    0.9545
+preset_plambda         140   1.0000   1.0000   1.0000   1.0000   1.0000    0.5143
+config_basin             0      NaN      NaN      NaN      NaN      NaN       NaN
+config_stability        26   1.0000   1.0000   0.9615   1.0000   1.0000    0.7308
+
+== 4. t_end REFINEMENT BY REPLAY ==
+`at entry` is the fraction where the energy arm already held on entry to the firing
+interval, so there was no crossing to find. If that is ~1 the refinement is
+decoration. `on bdry` is the fraction of escape t_end landing on a sync boundary.
+
+case                escapes   at entry    on bdry   distinct
+near-field                0     0.0000     0.0000          0
+deep interior            14     1.0000     1.0000          9
+preset_plambda          104     1.0000     1.0000          7
+config_basin              0     0.0000     0.0000          0
+config_stability         18     1.0000     1.0000         15
+
+== 5. THE TOGGLE ==
+`frozen` is the fraction whose run stopped before t_max. The prediction is that under
+this criterion the two rows are nearly identical -- it fires on a trajectory whose
+shape has already stopped moving, so freezing it changes little.
+
+case                 stop    escape   collide   bounded    frozen   shape d
+near-field          false    0.0000    0.0234    0.9766    0.0234       NaN
+                     true    0.0000    0.0234    0.9766    0.0234   0.000e0
+deep interior       false    0.1406    0.6094    0.2500    0.6094       NaN
+                     true    0.1406    0.6094    0.2500    0.6641   0.000e0
+preset_plambda      false    0.4375    0.4141    0.1484    0.4141       NaN
+                     true    0.4375    0.4141    0.1484    0.8125   0.000e0
+config_basin        false    0.0000    0.0000    1.0000    0.0000       NaN
+                     true    0.0000    0.0000    1.0000    0.0000   0.000e0
+config_stability    false    0.0742    0.4258    0.5000    0.4258       NaN
+                     true    0.0742    0.4258    0.5000    0.4961   0.000e0
+
+HOW TO READ THIS
+  §0 decides whether the window is safe before any distribution is read. A case whose
+     `t_close` is at or below `w(k=1)` can alias an inner orbit into reading settled.
+  §1 sets tau. If `tau*` is stable across regions a single value works; if the gap is
+     negative the populations overlap and NO fixed tau separates them there.
+  §2 recall < 1 is the right failure direction; precision < 1 is not.
+  §3 IS THE ONE THAT DECIDES. Near 1.0 means nothing re-binds and stopping is safe.
+     Near 0 means the criterion is latching transients and it is NOT the fix.
+  §4 says whether the replay bought anything. `at entry` near 1 means it did not.
+  §5 `shape d` near 0 is the prediction: freezing a converged trajectory is a no-op.
+DONE

@@ -133,6 +133,11 @@ fn main() {
                 refine_flagged: false,
                 t_max,
                 n_sync,
+                // The numpy reference's ungated escape test, with escape terminal: every
+                // result here predates both the distance gate and the closure criterion.
+                escape_rule: prin_rs::outcome::EscapeRule::Reference,
+                closure_k: 1,
+                stop_on_escape: true,
                 keep_boundary_shapes: true,
                 escape_every: ev,
                 escape_confirm: confirm,

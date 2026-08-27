@@ -1,0 +1,13 @@
+    Finished `release` profile [optimized] target(s) in 0.14s
+     Running `target/release/examples/escape_gate_render 512 results`
+512^2, one sample per pixel, stride 0 (the reference cadence) at both r_esc.
+r_esc = 0 is the shipped-until-now ungated test; r_esc = 5 is the GLSL's gate in
+canonical units (R = 1 on the latent charts, so its literal transfers unconverted).
+
+      preset_plambda r_esc=0.0      22.3s  escape 0.9978 collision 0.0022  frozen 1.0000  t_end distinct    535  on boundary  99.78%  ramp (1.642e-4, 2.674e-2)
+      preset_plambda r_esc=5.0      43.3s  escape 0.9928 collision 0.0039  frozen 0.9967  t_end distinct    943  on boundary  99.61%  ramp (1.023e-4, 5.863e-2)
+
+  preset_shape_pl_h1 r_esc=0.0      39.6s  escape 0.9953 collision 0.0047  frozen 1.0000  t_end distinct    976  on boundary  99.53%  ramp (2.302e-4, 4.938e-2)
+  preset_shape_pl_h1 r_esc=5.0     106.0s  escape 0.9273 collision 0.0456  frozen 0.9728  t_end distinct   9322  on boundary  95.44%  ramp (1.404e-5, 2.055e-1)
+
+        config_basin r_esc=0.0      37.5s  escape 1.0000 collision 0.0000  frozen 1.0000  t_end distinct      2  on boundary 100.00%  ramp (1.888e-5, 2.383e-3)

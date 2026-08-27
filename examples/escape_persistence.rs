@@ -76,6 +76,7 @@ fn main() {
     let dt_sync = t_max / n_sync as f64;
 
     let opts = |ev: usize, stop: bool| AzOpts::<f64> {
+        dtau_mode: prin_rs::integrate::az::DtauMode::default(),
         forced_refs: None,
         lc_stable: true,
         r_coll_frac: 1e-3,
@@ -84,6 +85,11 @@ fn main() {
         // **Deliberately OFF here.** This example is the diagnostic that measures whether the
         // guard is needed; running it with the guard on would measure the guard.
         escape_confirm: false,
+        // The numpy reference's ungated escape test: every result in this diagnostic
+        // predates the distance gate and is quoted against that form.
+        escape_rule: prin_rs::outcome::EscapeRule::Reference,
+        closure_k: 1,
+        stop_on_escape: stop,
         keep_boundary_shapes: false,
     };
 

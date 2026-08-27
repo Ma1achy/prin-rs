@@ -1,0 +1,96 @@
+    Finished `release` profile [optimized] target(s) in 0.21s
+     Running `target/release/examples/closure_render 512 results preset_plambda closure/esgate_fixed`
+512^2, one sample per pixel, tau=1e-3, closure_k=1.
+`n_sync` is derived from `t_max` so every case realises the same ~0.4 window --
+holding it fixed would compare different discretisations and different criteria.
+
+    preset_plambda stop=false   300.9s  escape 0.4129 collision 0.4346  frozen 0.8090  t_end distinct 112579  on bdry  56.54%  ramp (3.940e-7, 4.478e-2)
+    preset_plambda stop=true    242.9s  escape 0.4129 collision 0.4346  frozen 0.8090  t_end distinct 112579  on bdry  56.54%  ramp (3.940e-7, 4.482e-2)
+                     shape d: median 0.000e0  max 1.297e-1  pixels moved 98124
+
+HOW TO READ THIS
+
+`frozen` is the exposure the patchwork acts through. It does NOT have to be small:
+under this criterion freezing a converged trajectory is close to a no-op, so a high
+`frozen` with a `shape d` near zero is the *expected* result, not a warning.
+
+`shape d` decides. Median AND max AND the moved count, because an aggregate can only
+say the distribution did not move -- twice on this project a row identical to five
+digits hid every pixel moving, worst 6.7% and 1.86x.
+
+`config_basin_*_outcome.png` is the CONTROL. In basin mode the colour IS the terminal
+outcome, so freezing cannot corrupt it and the two toggle rows must agree exactly.
+A disagreement there is a SECOND fault, in the physics or the event detection, and
+it needs its own investigation rather than being folded into this one.
+    Finished `release` profile [optimized] target(s) in 0.14s
+     Running `target/release/examples/closure_render 512 results preset_shape_pl_h1 closure/esgate_fixed`
+512^2, one sample per pixel, tau=1e-3, closure_k=1.
+`n_sync` is derived from `t_max` so every case realises the same ~0.4 window --
+holding it fixed would compare different discretisations and different criteria.
+
+preset_shape_pl_h1 stop=false   253.8s  escape 0.0911 collision 0.4367  frozen 0.4553  t_end distinct  99916  on bdry  56.33%  ramp (4.394e-6, 2.037e-1)
+preset_shape_pl_h1 stop=true    258.4s  escape 0.0911 collision 0.4367  frozen 0.4553  t_end distinct  99916  on bdry  56.33%  ramp (4.394e-6, 2.040e-1)
+                     shape d: median 0.000e0  max 5.287e-1  pixels moved 4858
+
+HOW TO READ THIS
+
+`frozen` is the exposure the patchwork acts through. It does NOT have to be small:
+under this criterion freezing a converged trajectory is close to a no-op, so a high
+`frozen` with a `shape d` near zero is the *expected* result, not a warning.
+
+`shape d` decides. Median AND max AND the moved count, because an aggregate can only
+say the distribution did not move -- twice on this project a row identical to five
+digits hid every pixel moving, worst 6.7% and 1.86x.
+
+`config_basin_*_outcome.png` is the CONTROL. In basin mode the colour IS the terminal
+outcome, so freezing cannot corrupt it and the two toggle rows must agree exactly.
+A disagreement there is a SECOND fault, in the physics or the event detection, and
+it needs its own investigation rather than being folded into this one.
+    Finished `release` profile [optimized] target(s) in 0.14s
+     Running `target/release/examples/closure_render 256 results config_basin closure/esgate_fixed`
+256^2, one sample per pixel, tau=1e-3, closure_k=1.
+`n_sync` is derived from `t_max` so every case realises the same ~0.4 window --
+holding it fixed would compare different discretisations and different criteria.
+
+      config_basin stop=false   476.9s  escape 0.0000 collision 0.0000  frozen 0.0000  t_end distinct      1  on bdry 100.00%  ramp (1.236e-3, 4.242e-2)
+      config_basin stop=true    509.7s  escape 0.0000 collision 0.0000  frozen 0.0000  t_end distinct      1  on bdry 100.00%  ramp (1.236e-3, 4.242e-2)
+                     shape d: median 0.000e0  max 0.000e0  pixels moved 0
+
+HOW TO READ THIS
+
+`frozen` is the exposure the patchwork acts through. It does NOT have to be small:
+under this criterion freezing a converged trajectory is close to a no-op, so a high
+`frozen` with a `shape d` near zero is the *expected* result, not a warning.
+
+`shape d` decides. Median AND max AND the moved count, because an aggregate can only
+say the distribution did not move -- twice on this project a row identical to five
+digits hid every pixel moving, worst 6.7% and 1.86x.
+
+`config_basin_*_outcome.png` is the CONTROL. In basin mode the colour IS the terminal
+outcome, so freezing cannot corrupt it and the two toggle rows must agree exactly.
+A disagreement there is a SECOND fault, in the physics or the event detection, and
+it needs its own investigation rather than being folded into this one.
+    Finished `release` profile [optimized] target(s) in 0.19s
+     Running `target/release/examples/closure_render 256 results config_stability closure/esgate_fixed`
+256^2, one sample per pixel, tau=1e-3, closure_k=1.
+`n_sync` is derived from `t_max` so every case realises the same ~0.4 window --
+holding it fixed would compare different discretisations and different criteria.
+
+  config_stability stop=false   384.8s  escape 0.0588 collision 0.4251  frozen 0.4829  t_end distinct  27994  on bdry  57.47%  ramp (1.010e-4, 4.933e-1)
+  config_stability stop=true    259.3s  escape 0.0588 collision 0.4251  frozen 0.4829  t_end distinct  27994  on bdry  57.47%  ramp (1.010e-4, 4.933e-1)
+                     shape d: median 0.000e0  max 1.798e0  pixels moved 3335
+
+HOW TO READ THIS
+
+`frozen` is the exposure the patchwork acts through. It does NOT have to be small:
+under this criterion freezing a converged trajectory is close to a no-op, so a high
+`frozen` with a `shape d` near zero is the *expected* result, not a warning.
+
+`shape d` decides. Median AND max AND the moved count, because an aggregate can only
+say the distribution did not move -- twice on this project a row identical to five
+digits hid every pixel moving, worst 6.7% and 1.86x.
+
+`config_basin_*_outcome.png` is the CONTROL. In basin mode the colour IS the terminal
+outcome, so freezing cannot corrupt it and the two toggle rows must agree exactly.
+A disagreement there is a SECOND fault, in the physics or the event detection, and
+it needs its own investigation rather than being folded into this one.

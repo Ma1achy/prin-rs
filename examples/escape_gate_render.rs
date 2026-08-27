@@ -47,7 +47,11 @@ fn main() {
     let res: usize = arg(1, 1024);
     let root: String = std::env::args().nth(2).unwrap_or_else(|| "results".into());
     let only: String = std::env::args().nth(3).unwrap_or_else(|| "all".into());
-    let dir = format!("{root}/escgate");
+    // The subdirectory is an argument, not a constant. *An output root is an argument, not a
+    // constant* has already cost this project one overwritten artefact set; the same applies one
+    // level down, so a regeneration can be written beside the committed set instead of over it.
+    let sub: String = std::env::args().nth(4).unwrap_or_else(|| "escgate".into());
+    let dir = format!("{root}/{sub}");
     let _ = std::fs::create_dir_all(&dir);
 
     // (name, chart, cx, cy, half, body, t_max, r_coll)
@@ -81,11 +85,14 @@ fn main() {
                 refine_flagged: false,
                 t_max,
                 r_coll_frac: r_coll,
-                escape_rule: if r_esc > 0.0 {
-                    prin_rs::outcome::EscapeRule::Distance(r_esc)
-                } else {
-                    prin_rs::outcome::EscapeRule::Reference
-                },
+                // **`Distance(0.0)`, NOT `Reference`.** This example hardcoded
+                // `escape_all_bodies: true`, so its `r_esc = 0` row is the ungated **all-bodies**
+                // test, not the numpy reference's one-body one. Mapping it to `Reference` looks
+                // equivalent and is not: measured against the committed run it moved `escape`
+                // 0.9978 -> 0.9958, `frozen` 1.0000 -> 0.9983 and `t_end distinct` 535 -> 632,
+                // while the `r_esc = 5` row reproduced bitwise. Caught by diffing the
+                // regeneration against the committed numbers, which is what that diff is for.
+                escape_rule: prin_rs::outcome::EscapeRule::Distance(r_esc),
                 stop_on_escape: true,
                 ..Default::default()
             };

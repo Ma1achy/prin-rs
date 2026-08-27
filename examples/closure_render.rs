@@ -51,14 +51,19 @@ fn main() {
     let res: usize = arg(1, 1024);
     let root: String = std::env::args().nth(2).unwrap_or_else(|| "results".into());
     let only: String = std::env::args().nth(3).unwrap_or_else(|| "all".into());
-    let tau: f64 = arg(4, CLOSURE_TAU);
-    let dir = format!("{root}/closure");
+    let sub: String = std::env::args().nth(4).unwrap_or_else(|| "closure".into());
+    let tau: f64 = arg(5, CLOSURE_TAU);
+    // The subdirectory is an argument, not a constant -- so a regeneration lands beside the
+    // committed set rather than over it.
+    let dir = format!("{root}/{sub}");
     let _ = std::fs::create_dir_all(&dir);
 
     // (name, chart, cx, cy, half, body, t_max, r_coll)
     let mut targets: Vec<(String, Chart, f64, f64, f64, usize, f64, f64)> = Vec::new();
-    if let Some(c) = grid::gallery_cases().into_iter().find(|c| c.0 == "preset_plambda") {
-        targets.push((c.0.into(), c.1, c.2, c.3, c.4, 0, 13.0, 1e-3));
+    for w in ["preset_plambda", "preset_shape_pl_h1"] {
+        if let Some(c) = grid::gallery_cases().into_iter().find(|c| c.0 == w) {
+            targets.push((c.0.into(), c.1, c.2, c.3, c.4, 0, 13.0, 1e-3));
+        }
     }
     // The saved Config slices at their own settings. `horizon = 50` is past the f64 measurement
     // horizon (~52 at lambda = 0.7), so the deepest structure is expected to be unresolvable --

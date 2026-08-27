@@ -1,0 +1,32 @@
+    Finished `release` profile [optimized] target(s) in 0.12s
+     Running `target/release/examples/closure_render 1024 results`
+1024^2, one sample per pixel, tau=1e-3, closure_k=1.
+`n_sync` is derived from `t_max` so every case realises the same ~0.4 window --
+holding it fixed would compare different discretisations and different criteria.
+
+    preset_plambda stop=false   826.4s  escape 0.4128 collision 0.4345  frozen 0.8088  t_end distinct 449373  on bdry  56.55%  ramp (1.962e-7, 1.968e-2)
+    preset_plambda stop=true    572.2s  escape 0.4128 collision 0.4345  frozen 0.8088  t_end distinct 449373  on bdry  56.55%  ramp (1.962e-7, 2.042e-2)
+                     shape d: median 0.000e0  max 5.993e-1  pixels moved 392466
+
+      config_basin stop=false  4457.1s  escape 0.0000 collision 0.0000  frozen 0.0000  t_end distinct      1  on bdry 100.00%  ramp (1.151e-3, 4.189e-2)
+      config_basin stop=true   5375.2s  escape 0.0000 collision 0.0000  frozen 0.0000  t_end distinct      1  on bdry 100.00%  ramp (1.151e-3, 4.189e-2)
+                     shape d: median 0.000e0  max 0.000e0  pixels moved 0
+
+  config_stability stop=false  2390.8s  escape 0.0583 collision 0.4257  frozen 0.4832  t_end distinct 446650  on bdry  57.42%  ramp (5.810e-5, 4.911e-1)
+  config_stability stop=true   2097.6s  escape 0.0583 collision 0.4257  frozen 0.4832  t_end distinct 446650  on bdry  57.42%  ramp (5.810e-5, 4.911e-1)
+                     shape d: median 0.000e0  max 1.999e0  pixels moved 52733
+
+HOW TO READ THIS
+
+`frozen` is the exposure the patchwork acts through. It does NOT have to be small:
+under this criterion freezing a converged trajectory is close to a no-op, so a high
+`frozen` with a `shape d` near zero is the *expected* result, not a warning.
+
+`shape d` decides. Median AND max AND the moved count, because an aggregate can only
+say the distribution did not move -- twice on this project a row identical to five
+digits hid every pixel moving, worst 6.7% and 1.86x.
+
+`config_basin_*_outcome.png` is the CONTROL. In basin mode the colour IS the terminal
+outcome, so freezing cannot corrupt it and the two toggle rows must agree exactly.
+A disagreement there is a SECOND fault, in the physics or the event detection, and
+it needs its own investigation rather than being folded into this one.

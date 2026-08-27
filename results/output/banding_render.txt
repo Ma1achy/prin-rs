@@ -1,0 +1,16 @@
+1024^2, one sample per pixel, E+1=8, t=13, n_sync=32 (interval 0.406250)
+strides [0, 4]; escape_confirm ON at both (inert at 0)
+hue = shape sphere, lightness = spread_shape over each panel's own p1-p99
+
+      preset_plambda escape_every=0      30.6s   escape 0.9958   t_end distinct   2497  on a sync boundary  99.74%   ramp (8.204e-5, 1.618e-2)
+      preset_plambda escape_every=4      36.4s   escape 0.9974   t_end distinct 692456  on a sync boundary   0.19%   ramp (8.204e-5, 1.618e-2)
+
+         preset_prho escape_every=0      29.0s   escape 0.9953   t_end distinct   2787  on a sync boundary  99.73%   ramp (5.602e-5, 1.287e-2)
+         preset_prho escape_every=4      30.0s   escape 0.9973   t_end distinct 712318  on a sync boundary   0.34%   ramp (5.602e-5, 1.287e-2)
+
+  preset_shape_pl_h1 escape_every=0      50.3s   escape 0.9764   t_end distinct   8659  on a sync boundary  98.93%   ramp (1.132e-4, 1.043e-1)
+  preset_shape_pl_h1 escape_every=4      51.7s   escape 0.9765   t_end distinct 733364  on a sync boundary   1.52%   ramp (1.132e-4, 1.043e-1)
+
+     preset_shape_pl escape_every=0      25.2s   escape 0.8810   t_end distinct 113772  on a sync boundary  88.25%   ramp (7.377e-6, 3.228e-2)
+     preset_shape_pl escape_every=4      24.5s   escape 0.9973   t_end distinct 785952  on a sync boundary   0.18%   ramp (7.377e-6, 3.228e-2)
+

@@ -390,6 +390,83 @@ impl Chart {
     /// -- that gives `e_beta + e_pLy`, `e_alpha + e_pLx`, still crossed. It renders as *twisted*
     /// rather than tilted, because the coupling sets how momentum co-varies with configuration
     /// across the slice and the two pairings give different shears.
+    // ---- The user's two saved Config-chart slices ----------------------------------------
+    //
+    // Both are the reference UI's **Config chart**: GLSL `dimH = 0`, `dimV = 1`, which in the
+    // GLSL's indexing is beta horizontal and alpha vertical. Its window is
+    // `uv = pan + vUV*zoom`, then `z = z0 + (2u-1)*q1 + (2v-1)*q2` with `q_k = mag*e_dim`, so
+    // the chart-coordinate box is
+    //
+    // ```text
+    //   centre = 2*pan - 1 + zoom       half = zoom          (basis carries `mag`)
+    // ```
+    //
+    // The arithmetic is checked against the ranges the configs were quoted with, in
+    // `tests/charts.rs`, because a window that is *nearly* right reads as a physics
+    // disagreement — that is how the presets shipped at a 3x crop.
+
+    /// Saved config 1: the **basin-mode** slice. `horizon = 50`, `r_coll = 0.02`, `r_esc = 5`.
+    ///
+    /// **This is the control, and the more valuable of the two.** In basin mode the colour *is*
+    /// the terminal outcome, so freezing a trajectory's state at its own `t_end` cannot corrupt
+    /// it — the patchwork mechanism has no exposure here. The two implementations should
+    /// therefore agree *exactly*, and a disagreement is a second, independent bug in the physics
+    /// or the event detection rather than a rendering artefact.
+    ///
+    /// Its horizon is also past the f64 measurement horizon (~52 at `lambda = 0.7`), so the
+    /// deepest structure is expected to be unresolvable. That is a horizon statement, not a
+    /// disagreement, and must be said rather than read as one.
+    pub fn config_basin() -> (Chart, f64, f64, f64) {
+        Chart::config_slice(
+            [0.006, -0.052, -0.063, 0.095, -0.024, -0.088, 0.036, -0.123, -0.029, -0.044],
+            0.009_095_268_722_082_687,
+            (0.315_439_696_369_407_33, 0.831_421_501_766_114_6),
+            4.0,
+        )
+    }
+
+    /// Saved config 2: the stability/greyscale slice. `horizon = 50`, `r_coll = 0.005`,
+    /// `r_esc = 12`.
+    pub fn config_stability() -> (Chart, f64, f64, f64) {
+        Chart::config_slice(
+            [-0.098, 0.11, -0.034, 0.067, -0.093, -0.066, 0.027, -0.114, 0.107, -0.116],
+            0.637_63,
+            (0.175_12, 0.177_27),
+            1.0,
+        )
+    }
+
+    /// A Config-chart slice from the reference UI's own ten-slot `z0`, `zoom`, `pan` and `mag`.
+    ///
+    /// Returns `(chart, cx, cy, half)` — the window is part of the slice, not a default, for the
+    /// reason [`Chart::default_half`] exists.
+    ///
+    /// `z2` and `z3` are dropped, as `decodeIC` never reads them, and the two angle slots are
+    /// renumbered into the spec's order. **The basis pair is renumbered with them**: GLSL
+    /// `dimH = 0` is beta, which is spec index 1, and `dimV = 1` is alpha, spec index 0. Getting
+    /// that backwards renders a transposed slice that looks plausible — the `shape_pl` lesson at
+    /// a second site.
+    pub fn config_slice(z_glsl: [f64; 10], zoom: f64, pan: (f64, f64), mag: f64)
+        -> (Chart, f64, f64, f64)
+    {
+        let z0 = decoder::Latent {
+            z_alpha: z_glsl[1],
+            z_beta: z_glsl[0],
+            z_q: [z_glsl[4], z_glsl[5], z_glsl[6], z_glsl[7]],
+            z_mu: [z_glsl[8], z_glsl[9]],
+        };
+        let mut q1 = [0.0; 8];
+        let mut q2 = [0.0; 8];
+        q1[1] = mag; // horizontal: GLSL dim 0 = beta = spec index 1
+        q2[0] = mag; // vertical:   GLSL dim 1 = alpha = spec index 0
+        (
+            Chart::Latent { z0, q1, q2 },
+            2.0 * pan.0 - 1.0 + zoom,
+            2.0 * pan.1 - 1.0 + zoom,
+            zoom,
+        )
+    }
+
     pub fn preset_shape_pl() -> Chart {
         Chart::Latent {
             z0: decoder::Latent::default(),

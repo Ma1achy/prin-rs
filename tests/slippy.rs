@@ -32,9 +32,18 @@ fn ens() -> EnsembleCfg {
 #[test]
 fn the_two_to_one_constraint_holds_and_the_control_violates_it() {
     let e = ens();
-    // `deep interior` under a camera: the tree that actually has depth variation to violate.
-    // Under the veto near-field reaches a complete tree at one depth, where 2:1 holds trivially.
-    let root = prin_rs::grid::region("deep interior", 2, 2, 0.05).unwrap();
+    // **The fixture region swapped when the escape distance gate landed, and the control arm is
+    // what caught it.** This test used `deep interior`, because before the gate near-field
+    // reached a complete tree at one depth under the veto while `deep interior` had variation to
+    // violate. With the gate, `deep interior`'s terminal class moves from 60% escape to 2% —
+    // most of those escapes were mid-encounter transients — its field flattens, and its tree
+    // becomes uniform at 19 leaves with an adjacent-level gap of 1. near-field now carries the
+    // variation: gap 2 at `alpha_hi = 0.2`, which is the arm that makes the balance pass
+    // testable at all. Measured, not guessed: gap 2 at `alpha_hi = 0.2` against 1 at `0.5`, and
+    // 0 at `tau = 1e-2` where nothing refines.
+    //
+    // The assertion below is what turned a silently-vacuous test into a failing one. It stays.
+    let root = prin_rs::grid::region("near-field", 2, 2, 0.05).unwrap();
     let run = |balance| {
         let cfg = SchedCfg {
             n: 4,

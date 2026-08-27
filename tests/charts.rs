@@ -925,3 +925,49 @@ fn latent_oblique_refuses_two_parallel_seeds() {
     let b = a.map(|x| -2.5 * x);
     let _ = Chart::latent_oblique(base_latent(), a, b);
 }
+
+/// The two saved Config-chart slices reproduce the coordinate ranges their configs were quoted
+/// with.
+///
+/// **The arm with teeth is the transposition.** GLSL `dimH = 0` is beta and `dimV = 1` is alpha,
+/// and this port renumbers those two into the spec's order — so the horizontal basis vector is
+/// spec index 1 and the vertical is spec index 0. Swapping them gives ranges that are *plausible*
+/// and wrong, which is exactly how `shape_pl` and the 3x preset crop both got through. The
+/// quoted ranges separate the two: `z_0` (beta) spans 0.0728 and `z_1` (alpha) spans the same
+/// width about a centre two units away, so a transposition moves both by ~4.
+#[test]
+fn config_slices_reproduce_their_quoted_windows() {
+    // (chart, cx, cy, half), the GLSL's z0 (beta) range, its z1 (alpha) range.
+    let cases: [((prin_rs::grid::Chart, f64, f64, f64), [f64; 2], [f64; 2]); 2] = [
+        (prin_rs::grid::Chart::config_basin(), [-1.4705, -1.3977], [2.5994, 2.6721]),
+        (prin_rs::grid::Chart::config_stability(), [-0.7478, 0.5275], [-0.5355, 0.7398]),
+    ];
+    for (k, ((chart, cx, cy, half), want_beta, want_alpha)) in cases.iter().enumerate() {
+        let prin_rs::grid::Chart::Latent { z0, q1, q2 } = chart else {
+            panic!("config slice {k} is not a latent chart");
+        };
+        // beta is spec index 1, carried by the HORIZONTAL basis; alpha is index 0, vertical.
+        let beta = [z0.get(1) + (cx - half) * q1[1], z0.get(1) + (cx + half) * q1[1]];
+        let alpha = [z0.get(0) + (cy - half) * q2[0], z0.get(0) + (cy + half) * q2[0]];
+        for i in 0..2 {
+            assert!(
+                (beta[i] - want_beta[i]).abs() < 5e-4,
+                "slice {k} beta[{i}]: {} against the config's {}",
+                beta[i], want_beta[i]
+            );
+            assert!(
+                (alpha[i] - want_alpha[i]).abs() < 5e-4,
+                "slice {k} alpha[{i}]: {} against the config's {}",
+                alpha[i], want_alpha[i]
+            );
+        }
+        // The negative control: with the basis transposed, both ranges are wrong by ~4 on the
+        // first slice. Without this the test passes on a swapped basis whenever the two axes
+        // happen to sit at similar values.
+        let beta_swapped = z0.get(1) + cy * q2[0];
+        assert!(
+            (beta_swapped - 0.5 * (want_beta[0] + want_beta[1])).abs() > 1e-3,
+            "slice {k}: the transposed basis is indistinguishable here, so this test cannot fire"
+        );
+    }
+}

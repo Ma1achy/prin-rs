@@ -622,6 +622,10 @@ fn the_shape_accumulators_survive_ragged_per_copy_records() {
     // exactly the boundaries where the surviving copies are diverging.
     let s = Slice::body_plane(2, 2, 0.0, 0.0, 0.05, 0); // deep interior: copies really do stop
     let ens = EnsembleCfg {
+        // The numpy reference's ungated escape test: every result in this diagnostic
+        // predates the distance gate and is quoted against that form.
+        r_esc_frac: 0.0,
+        escape_all_bodies: false,
         keep_boundary_shapes: true,
         stop_on_event: true,
         refine_flagged: false,

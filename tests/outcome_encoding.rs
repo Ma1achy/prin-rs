@@ -331,6 +331,10 @@ fn escape_every_moves_t_end_off_the_sync_boundary_and_is_inert_at_zero() {
         // Off: this test asserts the CADENCE moves `t_end`, and the guard would suppress the
         // in-loop detections it is asserting on. The guard has its own test.
         escape_confirm: false,
+        // The numpy reference's ungated escape test: every result in this diagnostic
+        // predates the distance gate and is quoted against that form.
+        r_esc_frac: 0.0,
+        escape_all_bodies: false,
         keep_boundary_shapes: false,
     };
 
@@ -413,6 +417,10 @@ fn escape_confirm_cuts_transients_and_keeps_genuine_escapes() {
         stop_on_event: true,
         escape_every: 1,
         escape_confirm: confirm,
+        // The numpy reference's ungated escape test: every result in this diagnostic
+        // predates the distance gate and is quoted against that form.
+        r_esc_frac: 0.0,
+        escape_all_bodies: false,
         keep_boundary_shapes: false,
     };
     let count = |chart: &Chart, body: usize, cx: f64, cy: f64, half: f64, confirm: bool| {
@@ -466,4 +474,66 @@ fn escape_confirm_cuts_transients_and_keeps_genuine_escapes() {
          transients",
         pd - pc
     );
+}
+
+/// The escape **distance gate**, with the arm that says it does not reject real escapes.
+///
+/// Two hand-built states, one masses. A body sitting close to a tight pair but momentarily
+/// unbound and receding — the mid-encounter transient the ungated test latches — and the same
+/// body far away on the same kind of orbit. The ungated test cannot tell them apart; that is the
+/// defect. The gated one must reject the first and **keep the second**.
+///
+/// *A guard needs the arm that says it did not cut too much.* A gate that refused everything
+/// would pass the first assertion exactly as well as a correct one.
+#[test]
+fn escape_distance_gate_rejects_transients_and_keeps_real_escapes() {
+    let m = [3.0f64, 4.0, 5.0];
+    // Bodies 0 and 1 are the tight pair, so body 2 is the candidate under either rule.
+    let build = |d: f64| {
+        let mut s = Cart::<f64>::default();
+        s.r = [
+            Vec2::new(-0.1, 0.0),
+            Vec2::new(0.1, 0.0),
+            Vec2::new(d, 0.0),
+        ];
+        // Fast and outward: unbound relative to the pair's barycentre at either separation.
+        s.v = [Vec2::new(0.0, 0.0), Vec2::new(0.0, 0.0), Vec2::new(8.0, 0.0)];
+        s
+    };
+    let near = build(0.5);
+    let far = build(40.0);
+
+    // Ungated — the numpy reference's form. It fires on BOTH, which is the fault.
+    assert_eq!(outcome::escape_candidate(&near, &m), Some(2),
+               "the ungated test is supposed to fire mid-encounter; if it does not, this test \
+                is not exercising the defect it exists for");
+    assert_eq!(outcome::escape_candidate(&far, &m), Some(2));
+
+    // Gated at 5R. **`R` is fixed at `t = 0`**, from the compact configuration both states
+    // start in — the driver forms it once from `s0` and never recomputes it. Taking it from the
+    // instantaneous state instead makes the gate co-moving, and a co-moving length grows with
+    // the very separation it is meant to bound: at `d = 40` its own `R` is 12.5, so `5R = 62.5`
+    // and the gate rejects the escape it exists to admit. That is the same defect
+    // `r_coll`/`epsilon` are canonical to avoid, and it fired here first.
+    let r_esc = 5.0 * energy::hyperradius(&near.r, &m);
+    assert_eq!(
+        outcome::escape_candidate_gated(&near, &m, r_esc, true),
+        None,
+        "the distance gate must reject a body still deep inside the system"
+    );
+    assert_eq!(
+        outcome::escape_candidate_gated(&far, &m, r_esc, true),
+        Some(2),
+        "the distance gate must NOT reject a genuine, far escape — without this arm a gate that \
+         refuses everything passes"
+    );
+
+    // `r_esc = 0` is the reference path and must be bit-for-bit the ungated test.
+    for s in [&near, &far] {
+        assert_eq!(
+            outcome::escape_candidate_gated(s, &m, 0.0, false),
+            outcome::escape_candidate(s, &m),
+            "r_esc = 0 with one candidate body is the numpy reference and must not diverge"
+        );
+    }
 }

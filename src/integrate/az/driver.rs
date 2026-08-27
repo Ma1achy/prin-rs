@@ -108,6 +108,36 @@ pub struct AzOpts<'a, T> {
     /// `t_max` and the event is recorded but not acted on — which is what the reference does,
     /// and what keeps every copy's continuous fields evaluated at a common playhead.
     pub stop_on_event: bool,
+    /// **Canonical**: the escape distance gate as a fraction of the initial hyperradius `R`,
+    /// evaluated once at `t = 0`. Zero disables the arm and recovers the numpy reference.
+    ///
+    /// # The condition prin-rs did not have
+    ///
+    /// `reference/tb_all_az.py:59-75` tests two conditions — unbound and receding. The GLSL
+    /// (`Ma1achy/principia-ii`, `src/shaders/principia/frag.glsl:104`) tests **three**:
+    /// `dist > r_esc && outward > 0 && E_out > 0`. This port transcribed the numpy form, so it
+    /// declared escape **at any distance, including mid-encounter** — which is precisely the
+    /// transient population [`Self::escape_confirm`] was written to catch temporally.
+    ///
+    /// `r_esc` is the same guard done **geometrically**: distance is monotone on a real escape,
+    /// where a time window is a heuristic.
+    ///
+    /// # Units, and why the GLSL's literal is not copied
+    ///
+    /// The reference's saved configs use `rEsc = 5` and `rEsc = 12` as **absolute** lengths in
+    /// the latent decode's own units. Every latent decode is normalised to `M = 1` and
+    /// `I = 1` — the second an algebraic identity of the shape parameterisation — so
+    /// `R = sqrt(I/M) = 1` identically on that chart family and the literal `5` *is* `5 R`
+    /// there. Measured across the presets rather than assumed: see `examples/escape_gate.rs`.
+    ///
+    /// Expressing it as a fraction is what makes it transferable to Burrau's near-field, whose
+    /// `R = 2.2361`; an absolute 5 there would mean something else entirely, which is the
+    /// scale-gauge rule (BRIEF §2.5) at a third constant.
+    pub r_esc_frac: T,
+    /// Test **all three** bodies rather than only the one outside the tightest pair.
+    ///
+    /// The numpy reference tests one; the GLSL tests three. A second divergence, and free.
+    pub escape_all_bodies: bool,
     /// How often the **escape** test runs inside the RK4 loop, in steps. `0` is the
     /// reference's cadence: boundaries only.
     ///
@@ -165,6 +195,8 @@ impl<T: Real> Default for AzOpts<'_, T> {
             forced_refs: None,
             lc_stable: true,
             r_coll_frac: T::zero(),
+            r_esc_frac: T::zero(),
+            escape_all_bodies: false,
             stop_on_event: true,
             escape_every: 0,
             escape_confirm: true,
@@ -213,6 +245,8 @@ pub fn integrate_az_lc<T: Real>(
             forced_refs,
             lc_stable,
             r_coll_frac: T::zero(),
+            r_esc_frac: T::zero(),
+            escape_all_bodies: false,
             stop_on_event: false,
             escape_every: 0,
             escape_confirm: true,
@@ -258,7 +292,12 @@ pub fn integrate_az_opts<T: Real>(
     // Canonical and fixed at t=0: a fraction of *this* trajectory's initial hyperradius,
     // evaluated once, before anything moves. Never recomputed from the instantaneous
     // configuration — a co-moving length makes the Hamiltonian time-dependent.
-    let r_coll = opts.r_coll_frac * energy::hyperradius(&s0.r, m);
+    let r0 = energy::hyperradius(&s0.r, m);
+    let r_coll = opts.r_coll_frac * r0;
+    // The escape distance gate, same canonical rule: a fraction of R fixed at t = 0. Zero is
+    // the numpy reference's (absent) gate, and `dist > 0` is then vacuous.
+    let r_esc = opts.r_esc_frac * r0;
+    let esc = |c: &Cart<T>| crate::outcome::escape_candidate_gated(c, m, r_esc, opts.escape_all_bodies);
 
     for kk in 0..n_sync {
         let t_target = T::lit((kk + 1) as f64) * t_max / T::lit(n_sync as f64);
@@ -363,7 +402,7 @@ pub fn integrate_az_opts<T: Real>(
                 && steps % opts.escape_every == 0
             {
                 let c = sys.to_cartesian(&s);
-                if let Some(b) = crate::outcome::escape_candidate(&c, m) {
+                if let Some(b) = esc(&c) {
                     let te = t + s.t;
                     if opts.escape_confirm {
                         // Provisional. Do NOT break: the trajectory has to reach the next
@@ -406,7 +445,7 @@ pub fn integrate_az_opts<T: Real>(
         // Instantaneous candidacy at this boundary, recorded whether or not it has already
         // fired — this is the history a persistence guard reads, and it must not stop being
         // written once `events.escape` is set.
-        let candidate_now = crate::outcome::escape_candidate(&cart, m);
+        let candidate_now = esc(&cart);
         escape_flags.push(candidate_now.is_some());
 
         // Confirm or discard a provisional in-loop escape. The committed time is the FIRST
@@ -422,7 +461,7 @@ pub fn integrate_az_opts<T: Real>(
         // The escape test runs at the sync boundary, where the state is Cartesian and every
         // trajectory shares a playhead — the reference's cadence, transcribed.
         if events.escape.is_none() {
-            if let Some(b) = crate::outcome::escape_candidate(&cart, m) {
+            if let Some(b) = esc(&cart) {
                 events.escape = Some((b, t));
                 t_end.get_or_insert(t);
             }

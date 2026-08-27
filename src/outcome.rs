@@ -74,6 +74,11 @@ pub fn binary_id<T: Real>(s: &Cart<T>) -> u8 {
 //             its `1e-12` distance floor, and its restriction to the body outside the
 //             *tightest* pair. Same test, same cadence.
 //
+//             **And the numpy tree is not the only reference.** The GLSL
+//             (`frag.glsl:104`) tests a third condition the numpy form does not have —
+//             `dist > r_esc` — on all three bodies. `escape_candidate_gated` carries both
+//             arms; which one runs is a configuration, not a transcription.
+//
 //   INVENTED  everything else. `r_coll` appears nowhere in the numpy tree, so the collision
 //             arm, the >=2-pair triple rule, `triple_ejection`, and the packing are new
 //             construction with no oracle. They are validated by property tests only.
@@ -192,12 +197,65 @@ pub fn collision_detail(mask: u8) -> u8 {
     }
 }
 
-/// The escaping body, or `None`. **Ported** from `tb_all_az.py:59-75`.
+/// Does body `b` satisfy the escape test against the barycentre of the other two?
 ///
-/// The candidate is the body outside the *tightest* pair; it escapes if its specific orbital
-/// energy relative to that pair's barycentre is positive **and** it is receding. A body that
-/// is not the candidate can never be labelled escaping — a property of the reference, kept.
-pub fn escape_candidate<T: Real>(s: &Cart<T>, m: &[T; 3]) -> Option<u8> {
+/// Three conditions, in the order the GLSL writes them: **far**, **receding**, **unbound**.
+/// `r_esc` is an absolute length (the caller multiplies the canonical fraction by `R`); pass
+/// zero and the distance arm is vacuous, which recovers the numpy reference exactly.
+fn escapes<T: Real>(s: &Cart<T>, m: &[T; 3], b: usize, r_esc: T) -> bool {
+    let o: Vec<usize> = (0..3).filter(|&k| k != b).collect();
+    let mb = m[o[0]] + m[o[1]];
+    let rc = (s.r[o[0]] * m[o[0]] + s.r[o[1]] * m[o[1]]) / mb;
+    let vc = (s.v[o[0]] * m[o[0]] + s.v[o[1]] * m[o[1]]) / mb;
+    let dr = s.r[b] - rc;
+    let dv = s.v[b] - vc;
+    let dist = dr.norm();
+    // The reference floors the distance at 1e-12 and writes `mb`, not `G*mb`; G is 1.
+    let spec = T::lit(0.5) * dv.norm_sq() - T::lit(G) * mb / dist.max(T::DIST_FLOOR);
+    dist > r_esc && dr.dot(dv) > T::zero() && spec > T::zero()
+}
+
+/// The escaping body, or `None`.
+///
+/// # Two references, and they do not agree
+///
+/// The numpy tree (`tb_all_az.py:59-75`) tests **two** conditions — unbound and receding — on
+/// the **one** body outside the tightest pair. The GLSL
+/// (`Ma1achy/principia-ii`, `src/shaders/principia/frag.glsl:104`) tests **three**:
+/// `dist > r_esc && outward > 0 && E_out > 0`, on **all three** bodies. This port transcribed
+/// the numpy form, faithfully, and so shipped with **no distance gate at all**.
+///
+/// The energy forms differ by a positive factor (specific against mu-weighted), so their signs
+/// agree and that difference is not behavioural. The distance gate is.
+///
+/// # Why the missing arm matters
+///
+/// `spec > 0 && receding` is **not absorbing**. During a close encounter a body's two-body
+/// energy relative to the other pair goes transiently positive while it is still deep inside
+/// the system; without a distance gate that instant is declared an escape and, under
+/// `stop_on_event`, terminates the trajectory. `r_esc` is a persistence guard done
+/// **geometrically** rather than temporally — distance is monotone on a real escape, where a
+/// time window is a heuristic. It is the same job [`crate::integrate::az::AzOpts::escape_confirm`]
+/// does, by a better mechanism.
+///
+/// # Units
+///
+/// `r_esc` here is an **absolute length**. Callers form it as `r_esc_frac * R` with `R` the
+/// initial hyperradius, fixed at `t = 0` — the same canonical rule as `r_coll` and `epsilon`.
+/// Zero disables the arm and recovers the numpy reference bit for bit.
+///
+/// # Body selection
+///
+/// With `all_bodies = false` only the body outside the *tightest* pair can be labelled — a
+/// property of the numpy reference, transcribed rather than fixed. With it true, all three are
+/// tested, the tightest-pair candidate first so that the single-candidate answer is returned
+/// unchanged whenever it fires.
+pub fn escape_candidate_gated<T: Real>(
+    s: &Cart<T>,
+    m: &[T; 3],
+    r_esc: T,
+    all_bodies: bool,
+) -> Option<u8> {
     let d = newton::pair_dists(&s.r);
     let mut tight = 0usize;
     for k in 1..3 {
@@ -205,20 +263,26 @@ pub fn escape_candidate<T: Real>(s: &Cart<T>, m: &[T; 3]) -> Option<u8> {
             tight = k;
         }
     }
-    let b = THIRD[tight];
-    let o: Vec<usize> = (0..3).filter(|&k| k != b).collect();
-    let mb = m[o[0]] + m[o[1]];
-    let rc = (s.r[o[0]] * m[o[0]] + s.r[o[1]] * m[o[1]]) / mb;
-    let vc = (s.v[o[0]] * m[o[0]] + s.v[o[1]] * m[o[1]]) / mb;
-    let dr = s.r[b] - rc;
-    let dv = s.v[b] - vc;
-    // The reference floors the distance at 1e-12 and writes `mb`, not `G*mb`; G is 1.
-    let spec = T::lit(0.5) * dv.norm_sq() - T::lit(G) * mb / dr.norm().max(T::DIST_FLOOR);
-    if spec > T::zero() && dr.dot(dv) > T::zero() {
-        Some(b as u8)
-    } else {
-        None
+    let first = THIRD[tight];
+    if escapes(s, m, first, r_esc) {
+        return Some(first as u8);
     }
+    if all_bodies {
+        for b in (0..3).filter(|&b| b != first) {
+            if escapes(s, m, b, r_esc) {
+                return Some(b as u8);
+            }
+        }
+    }
+    None
+}
+
+/// The numpy reference's form: no distance gate, tightest-pair candidate only.
+///
+/// Kept as the reference-matching path. See [`escape_candidate_gated`] for what it is missing
+/// and why.
+pub fn escape_candidate<T: Real>(s: &Cart<T>, m: &[T; 3]) -> Option<u8> {
+    escape_candidate_gated(s, m, T::zero(), false)
 }
 
 /// All three pairs mutually unbound and receding, with total energy positive. **Invented** —

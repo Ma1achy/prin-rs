@@ -44,6 +44,9 @@ prin — uniform-resolution three-body initial-condition kernel
   --shared-reference  force all copies onto the nominal copy's reference body
   --lc-unstable       use the reference's unconditioned inverse LC branch
   --r-coll <x>        collision radius as a FRACTION of R, fixed at t=0 (default 1e-3)
+  --r-esc <x>         escape distance gate as a FRACTION of R, fixed at t=0 (default 5);
+                      0 restores the numpy reference's ungated test
+  --escape-one-body   test only the body outside the tightest pair (the numpy reference)
   --no-stop           record events but integrate every copy to t_max anyway
   --no-refine         skip the second pass over error_ratio-flagged pixels
   --refine-threshold <x>  error_ratio above which a pixel is re-integrated (default 10)
@@ -91,6 +94,8 @@ pub fn parse(args: &[String]) -> Result<Config, String> {
             "--shared-reference" => c.ens.ref_policy = RefPolicy::Shared,
             "--lc-unstable" => c.ens.lc_stable = false,
             "--r-coll" => { c.ens.r_coll_frac = get(i)?.parse().map_err(|e| format!("{e}"))?; i += 1; }
+            "--r-esc" => { c.ens.r_esc_frac = get(i)?.parse().map_err(|e| format!("{e}"))?; i += 1; }
+            "--escape-one-body" => c.ens.escape_all_bodies = false,
             "--no-stop" => c.ens.stop_on_event = false,
             "--no-refine" => c.ens.refine_flagged = false,
             "--refine-threshold" => { c.ens.refine_threshold = get(i)?.parse().map_err(|e| format!("{e}"))?; i += 1; }

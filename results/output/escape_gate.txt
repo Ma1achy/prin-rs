@@ -1,0 +1,221 @@
+    Finished `release` profile [optimized] target(s) in 0.20s
+     Running `target/release/examples/escape_gate 24 32`
+24x24 per case, n_sync=32, eta=1e-2, escape_confirm=OFF, escape_all_bodies=ON
+r_esc ladder [0.0, 1.0, 2.0, 3.0, 5.0, 8.0, 12.0, 20.0] (fractions of R), strides [0, 4]
+
+=== 0. canonical units: R = sqrt(I/M) at t = 0 ===
+                  case          R p1     R median        R p99   r_esc=5 means
+            near-field      2.216578     2.236113     2.255685   11.1806 in absolute units
+         deep interior      1.361559     1.369381     1.377494   6.8469 in absolute units
+        preset_plambda      1.000000     1.000000     1.000000   5.0000 in absolute units
+    preset_shape_pl_h1      1.000000     1.000000     1.000000   5.0000 in absolute units
+          config_basin      1.000000     1.000000     1.000000   5.0000 in absolute units
+      config_stability      1.000000     1.000000     1.000000   5.0000 in absolute units
+
+  A latent decode has M = 1 and I = 1 identically, so R = 1 and the GLSL's absolute
+`rEsc = 5` IS `5 R` there -- the literal transfers on that family with no conversion.
+Burrau's R = 2.2361, where an absolute 5 would mean 2.24 R instead: the same defect a
+shared `half` default had across two coordinate systems.
+
+=== 1+2. transient population and escape fraction ===
+
+--- near-field --- 576 trajectories, t_max=13, r_coll=1e-3, sync interval 0.40625
+  r_esc  bodies stride    escape collision         +1       +2       +4       +8
+    0.0     one      0    0.0000    0.0208        n/a      n/a      n/a      n/a
+    0.0     one      4    0.0000    0.0208        n/a      n/a      n/a      n/a
+    0.0     all      0    1.0000    0.0208      0.000    0.005    0.200    0.000
+    0.0     all      4    1.0000    0.0208      0.000    0.000    0.120    0.000
+    5.0     one      0    0.0000    0.0208        n/a      n/a      n/a      n/a
+    5.0     one      4    0.0000    0.0208        n/a      n/a      n/a      n/a
+    5.0     all      0    0.0000    0.0208        n/a      n/a      n/a      n/a
+    5.0     all      4    0.0000    0.0208        n/a      n/a      n/a      n/a
+
+--- deep interior --- 576 trajectories, t_max=13, r_coll=1e-3, sync interval 0.40625
+  r_esc  bodies stride    escape collision         +1       +2       +4       +8
+    0.0     one      0    0.5781    0.9462      0.425    0.397    0.364    0.269
+    0.0     one      4    0.8281    0.9462      0.228    0.201    0.180    0.142
+    0.0     all      0    0.9965    0.9462      0.253    0.179    0.214    0.201
+    0.0     all      4    1.0000    0.9462      0.000    0.464    0.021    0.264
+    5.0     one      0    0.2083    0.9462      0.963    0.961    0.973    1.000
+    5.0     one      4    0.2083    0.9462      0.973    0.961    0.976    1.000
+    5.0     all      0    0.2240    0.9462      0.974    0.972    0.975    1.000
+    5.0     all      4    0.2240    0.9462      0.983    0.972    0.977    1.000
+
+--- preset_plambda --- 576 trajectories, t_max=13, r_coll=1e-3, sync interval 0.40625
+  r_esc  bodies stride    escape collision         +1       +2       +4       +8
+    0.0     one      0    0.9965    0.4306      1.000    1.000    1.000    1.000
+    0.0     one      4    0.9965    0.4306      1.000    1.000    1.000    1.000
+    0.0     all      0    1.0000    0.4306      0.997    0.993    0.993    0.993
+    0.0     all      4    1.0000    0.4306      0.997    0.997    0.993    0.993
+    5.0     one      0    0.9931    0.4306      1.000    1.000    1.000    1.000
+    5.0     one      4    0.9931    0.4306      1.000    1.000    1.000    1.000
+    5.0     all      0    0.9931    0.4306      1.000    1.000    1.000    1.000
+    5.0     all      4    0.9931    0.4306      1.000    1.000    1.000    1.000
+
+--- preset_shape_pl_h1 --- 576 trajectories, t_max=13, r_coll=1e-3, sync interval 0.40625
+  r_esc  bodies stride    escape collision         +1       +2       +4       +8
+    0.0     one      0    0.9861    0.4549      0.982    0.982    0.982    0.986
+    0.0     one      4    0.9861    0.4549      0.975    0.982    0.982    0.986
+    0.0     all      0    1.0000    0.4549      0.983    0.972    0.976    0.965
+    0.0     all      4    1.0000    0.4549      0.979    0.983    0.976    0.972
+    5.0     one      0    0.9618    0.4549      1.000    1.000    0.996    0.996
+    5.0     one      4    0.9618    0.4549      1.000    1.000    0.996    0.996
+    5.0     all      0    0.9618    0.4549      1.000    1.000    0.996    0.996
+    5.0     all      4    0.9618    0.4549      1.000    1.000    0.996    0.996
+
+--- config_basin --- 576 trajectories, t_max=50, r_coll=2e-2, sync interval 1.56250
+  r_esc  bodies stride    escape collision         +1       +2       +4       +8
+    0.0     one      0    1.0000    0.0000      0.000    0.000    0.000    0.181
+    0.0     one      4    1.0000    0.0000      0.000    0.000    0.000    0.000
+    0.0     all      0    1.0000    0.0000      0.910    0.302    0.417    0.168
+    0.0     all      4    1.0000    0.0000      0.000    1.000    0.280    0.493
+    5.0     one      0    0.0000    0.0000        n/a      n/a      n/a      n/a
+    5.0     one      4    0.0000    0.0000        n/a      n/a      n/a      n/a
+    5.0     all      0    0.0000    0.0000        n/a      n/a      n/a      n/a
+    5.0     all      4    0.0000    0.0000        n/a      n/a      n/a      n/a
+
+--- config_stability --- 576 trajectories, t_max=50, r_coll=5e-3, sync interval 1.56250
+  r_esc  bodies stride    escape collision         +1       +2       +4       +8
+    0.0     one      0    0.8733    0.3576      0.784    0.769    0.753    0.734
+    0.0     one      4    0.9844    0.3576      0.640    0.626    0.606    0.602
+    0.0     all      0    0.9931    0.3576      0.766    0.757    0.734    0.771
+    0.0     all      4    1.0000    0.3576      0.778    0.741    0.713    0.732
+    5.0     one      0    0.7153    0.3576      0.968    0.958    0.944    0.923
+    5.0     one      4    0.7188    0.3576      0.965    0.962    0.946    0.924
+    5.0     all      0    0.8212    0.3576      0.942    0.915    0.918    0.935
+    5.0     all      4    0.8299    0.3576      0.907    0.912    0.899    0.920
+
+=== 4. r_esc sensitivity: terminal outcome fractions (stop_on_event, stride 0) ===
+
+--- near-field --- t_max=13, r_coll=1e-3
+  r_esc  bodies    escape collision  bounded  running   failed     t_end p50
+    0.0     one    0.0000    0.0208   0.9792   0.0000   0.0000      13.00000
+    1.0     one    0.0000    0.0208   0.9792   0.0000   0.0000      13.00000
+    2.0     one    0.0000    0.0208   0.9792   0.0000   0.0000      13.00000
+    3.0     one    0.0000    0.0208   0.9792   0.0000   0.0000      13.00000
+    5.0     one    0.0000    0.0208   0.9792   0.0000   0.0000      13.00000
+    8.0     one    0.0000    0.0208   0.9792   0.0000   0.0000      13.00000
+   12.0     one    0.0000    0.0208   0.9792   0.0000   0.0000      13.00000
+   20.0     one    0.0000    0.0208   0.9792   0.0000   0.0000      13.00000
+    0.0     all    1.0000    0.0000   0.0000   0.0000   0.0000       6.90625
+    1.0     all    0.0938    0.0208   0.8854   0.0000   0.0000      13.00000
+    2.0     all    0.0000    0.0208   0.9792   0.0000   0.0000      13.00000
+    3.0     all    0.0000    0.0208   0.9792   0.0000   0.0000      13.00000
+    5.0     all    0.0000    0.0208   0.9792   0.0000   0.0000      13.00000
+    8.0     all    0.0000    0.0208   0.9792   0.0000   0.0000      13.00000
+   12.0     all    0.0000    0.0208   0.9792   0.0000   0.0000      13.00000
+   20.0     all    0.0000    0.0208   0.9792   0.0000   0.0000      13.00000
+
+--- deep interior --- t_max=13, r_coll=1e-3
+  r_esc  bodies    escape collision  bounded  running   failed     t_end p50
+    0.0     one    0.0990    0.8872   0.0139   0.0000   0.0000       3.03800
+    1.0     one    0.0955    0.8906   0.0139   0.0000   0.0000       3.03800
+    2.0     one    0.0208    0.9462   0.0330   0.0000   0.0000       3.06831
+    3.0     one    0.0208    0.9462   0.0330   0.0000   0.0000       3.06831
+    5.0     one    0.0208    0.9462   0.0330   0.0000   0.0000       3.06831
+    8.0     one    0.0191    0.9462   0.0347   0.0000   0.0000       3.06831
+   12.0     one    0.0174    0.9462   0.0365   0.0000   0.0000       3.06831
+   20.0     one    0.0156    0.9462   0.0382   0.0000   0.0000       3.06831
+    0.0     all    0.6007    0.3993   0.0000   0.0000   0.0000       2.02143
+    1.0     all    0.1458    0.8472   0.0069   0.0000   0.0000       3.01397
+    2.0     all    0.0608    0.9288   0.0104   0.0000   0.0000       3.06831
+    3.0     all    0.0451    0.9427   0.0122   0.0000   0.0000       3.06831
+    5.0     all    0.0226    0.9462   0.0312   0.0000   0.0000       3.06831
+    8.0     all    0.0208    0.9462   0.0330   0.0000   0.0000       3.06831
+   12.0     all    0.0191    0.9462   0.0347   0.0000   0.0000       3.06831
+   20.0     all    0.0174    0.9462   0.0365   0.0000   0.0000       3.06831
+
+--- preset_plambda --- t_max=13, r_coll=1e-3
+  r_esc  bodies    escape collision  bounded  running   failed     t_end p50
+    0.0     one    0.9965    0.0000   0.0035   0.0000   0.0000       0.40625
+    1.0     one    0.9965    0.0000   0.0035   0.0000   0.0000       0.40625
+    2.0     one    0.9931    0.0000   0.0069   0.0000   0.0000       0.40625
+    3.0     one    0.9931    0.0000   0.0069   0.0000   0.0000       0.40625
+    5.0     one    0.9931    0.0000   0.0069   0.0000   0.0000       0.81250
+    8.0     one    0.9896    0.0035   0.0069   0.0000   0.0000       1.21875
+   12.0     one    0.9757    0.0174   0.0069   0.0000   0.0000       1.62500
+   20.0     one    0.8854    0.0972   0.0174   0.0000   0.0000       2.84375
+    0.0     all    1.0000    0.0000   0.0000   0.0000   0.0000       0.40625
+    1.0     all    1.0000    0.0000   0.0000   0.0000   0.0000       0.40625
+    2.0     all    0.9931    0.0000   0.0069   0.0000   0.0000       0.40625
+    3.0     all    0.9931    0.0000   0.0069   0.0000   0.0000       0.40625
+    5.0     all    0.9931    0.0000   0.0069   0.0000   0.0000       0.81250
+    8.0     all    0.9896    0.0035   0.0069   0.0000   0.0000       1.21875
+   12.0     all    0.9757    0.0174   0.0069   0.0000   0.0000       1.62500
+   20.0     all    0.8854    0.0972   0.0174   0.0000   0.0000       2.84375
+
+--- preset_shape_pl_h1 --- t_max=13, r_coll=1e-3
+  r_esc  bodies    escape collision  bounded  running   failed     t_end p50
+    0.0     one    0.9826    0.0139   0.0035   0.0000   0.0000       0.40625
+    1.0     one    0.9792    0.0174   0.0035   0.0000   0.0000       0.40625
+    2.0     one    0.9653    0.0243   0.0104   0.0000   0.0000       0.81250
+    3.0     one    0.9583    0.0278   0.0139   0.0000   0.0000       1.21875
+    5.0     one    0.9201    0.0625   0.0174   0.0000   0.0000       1.62500
+    8.0     one    0.6076    0.3681   0.0243   0.0000   0.0000       2.43750
+   12.0     one    0.5069    0.4514   0.0417   0.0000   0.0000       3.25000
+   20.0     one    0.4688    0.4514   0.0799   0.0000   0.0000       4.87500
+    0.0     all    0.9931    0.0069   0.0000   0.0000   0.0000       0.40625
+    1.0     all    0.9931    0.0069   0.0000   0.0000   0.0000       0.40625
+    2.0     all    0.9653    0.0243   0.0104   0.0000   0.0000       0.81250
+    3.0     all    0.9583    0.0278   0.0139   0.0000   0.0000       1.21875
+    5.0     all    0.9201    0.0625   0.0174   0.0000   0.0000       1.62500
+    8.0     all    0.6076    0.3681   0.0243   0.0000   0.0000       2.43750
+   12.0     all    0.5069    0.4514   0.0417   0.0000   0.0000       3.25000
+   20.0     all    0.4688    0.4514   0.0799   0.0000   0.0000       4.87500
+
+--- config_basin --- t_max=50, r_coll=2e-2
+  r_esc  bodies    escape collision  bounded  running   failed     t_end p50
+    0.0     one    1.0000    0.0000   0.0000   0.0000   0.0000       4.68750
+    1.0     one    1.0000    0.0000   0.0000   0.0000   0.0000       4.68750
+    2.0     one    0.0000    0.0000   1.0000   0.0000   0.0000      50.00000
+    3.0     one    0.0000    0.0000   1.0000   0.0000   0.0000      50.00000
+    5.0     one    0.0000    0.0000   1.0000   0.0000   0.0000      50.00000
+    8.0     one    0.0000    0.0000   1.0000   0.0000   0.0000      50.00000
+   12.0     one    0.0000    0.0000   1.0000   0.0000   0.0000      50.00000
+   20.0     one    0.0000    0.0000   1.0000   0.0000   0.0000      50.00000
+    0.0     all    1.0000    0.0000   0.0000   0.0000   0.0000       1.56250
+    1.0     all    1.0000    0.0000   0.0000   0.0000   0.0000       4.68750
+    2.0     all    0.0000    0.0000   1.0000   0.0000   0.0000      50.00000
+    3.0     all    0.0000    0.0000   1.0000   0.0000   0.0000      50.00000
+    5.0     all    0.0000    0.0000   1.0000   0.0000   0.0000      50.00000
+    8.0     all    0.0000    0.0000   1.0000   0.0000   0.0000      50.00000
+   12.0     all    0.0000    0.0000   1.0000   0.0000   0.0000      50.00000
+   20.0     all    0.0000    0.0000   1.0000   0.0000   0.0000      50.00000
+
+--- config_stability --- t_max=50, r_coll=5e-3
+  r_esc  bodies    escape collision  bounded  running   failed     t_end p50
+    0.0     one    0.6944    0.2465   0.0573   0.0000   0.0017       3.12500
+    1.0     one    0.6840    0.2535   0.0608   0.0000   0.0017       3.12500
+    2.0     one    0.6198    0.2951   0.0833   0.0000   0.0017       3.12500
+    3.0     one    0.5382    0.3438   0.1163   0.0000   0.0017       4.68750
+    5.0     one    0.4983    0.3542   0.1458   0.0000   0.0017       6.25000
+    8.0     one    0.4705    0.3542   0.1736   0.0000   0.0017       9.37500
+   12.0     one    0.4549    0.3576   0.1858   0.0000   0.0017      12.50000
+   20.0     one    0.4358    0.3576   0.2049   0.0000   0.0017      17.18750
+    0.0     all    0.8420    0.1562   0.0000   0.0000   0.0017       3.12500
+    1.0     all    0.7951    0.2031   0.0000   0.0000   0.0017       3.12500
+    2.0     all    0.7153    0.2708   0.0122   0.0000   0.0017       3.12500
+    3.0     all    0.6372    0.3351   0.0260   0.0000   0.0017       4.68750
+    5.0     all    0.5729    0.3542   0.0712   0.0000   0.0017       6.25000
+    8.0     all    0.5278    0.3542   0.1163   0.0000   0.0017       7.81250
+   12.0     all    0.4913    0.3576   0.1493   0.0000   0.0017      10.90057
+   20.0     all    0.4722    0.3576   0.1684   0.0000   0.0017      14.06250
+
+HOW TO READ THIS
+
+[1] is the test the fix stands or falls on. Ungated, the escapes that only a fine
+stride sees do not persist -- 0 of 895 in `deep interior`. If the gated rows do not
+read near 1.000 at +1 through +8, the distance gate is NOT the fix and no render
+should be quoted from it.
+
+[2] the escape fraction is expected to FALL where transients were being latched
+(`deep interior`) and to be essentially UNCHANGED where escape genuinely terminates
+(`preset_plambda`). A guard that cuts both is cutting too much, and that arm is what
+separates a guard from a refusal.
+
+[4] `r_esc` is a new constant. The curve is the argument for whatever value ships, and
+a plateau in it is what says the answer is not sensitive to the choice.
+
+The `bodies` column is the SECOND divergence from the numpy form and it is not free.
+`one` is what this port has shipped; `all` is what the GLSL does. Read the two rows at
+`r_esc = 0` first -- their difference is the body arm on its own, with no gate.

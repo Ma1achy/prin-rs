@@ -74,6 +74,12 @@ fn main() {
         refine_flagged: false,
         t_max,
         n_sync,
+        // The numpy reference's ungated escape test, with escape terminal: every result in
+        // this diagnostic predates both the distance gate and the closure criterion, and is
+        // quoted against that form.
+        escape_rule: prin_rs::outcome::EscapeRule::Reference,
+        closure_k: 1,
+        stop_on_escape: true,
         keep_boundary_shapes: true,
         ..Default::default()
     };

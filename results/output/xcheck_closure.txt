@@ -1,0 +1,182 @@
+    Finished `release` profile [optimized] target(s) in 0.20s
+     Running tests/xcheck.rs (target/release/deps/xcheck-d435fd0011c2655f)
+
+running 4 tests
+
+=== az_t13 ===
+
+=== az_t0p5 ===
+wrote xcheck_out/ref_algebra.tsv: 256 rows
+wrote xcheck_out/ref_az_t0p5.tsv: 9 rows, n_sync=1, stepped-vs-monolithic dev=0.00e+00
+wrote xcheck_out/rs_az_t0p5.tsv: 9 rows, n_sync=1
+wrote xcheck_out/rs_algebra.tsv: 256 rows
+column               max abs       max rel  argmax row
+------------------------------------------------------
+energy             3.553e-15     5.001e-16         140
+d01                0.000e+00     0.000e+00          -1
+d02                0.000e+00     0.000e+00          -1
+d12                0.000e+00     0.000e+00          -1
+inertia            2.842e-14     2.200e-16           1
+hyperradius        4.441e-16     2.539e-16         198
+n0                 0.000e+00     0.000e+00          -1
+n1                 0.000e+00     0.000e+00          -1
+n2                 0.000e+00     0.000e+00          -1
+------------------------------------------------------
+tolerances: rel 1.0e-15  or  abs 1.0e-15
+PASS
+test algebra_matches_the_reference ... ok
+column               max abs       max rel  argmax row
+------------------------------------------------------
+r0x                0.000e+00     0.000e+00          -1
+r0y                0.000e+00     0.000e+00          -1
+r1x                0.000e+00     0.000e+00          -1
+r1y                0.000e+00     0.000e+00          -1
+r2x                0.000e+00     0.000e+00          -1
+r2y                0.000e+00     0.000e+00          -1
+v0x                0.000e+00     0.000e+00          -1
+v0y                0.000e+00     0.000e+00          -1
+v1x                0.000e+00     0.000e+00          -1
+v1y                0.000e+00     0.000e+00          -1
+v2x                0.000e+00     0.000e+00          -1
+v2y                0.000e+00     0.000e+00          -1
+t                  0.000e+00     0.000e+00          -1
+dmin_ref           0.000e+00     0.000e+00          -1
+drift              0.000e+00     0.000e+00          -1
+switches           0.000e+00     0.000e+00          -1
+ref00              0.000e+00     0.000e+00          -1
+------------------------------------------------------
+tolerances: rel 1.0e-13  or  abs 1.0e-13
+PASS
+
+=== az_t1 ===
+wrote xcheck_out/ref_az_t1.tsv: 9 rows, n_sync=2, stepped-vs-monolithic dev=0.00e+00
+wrote xcheck_out/rs_az_t1.tsv: 9 rows, n_sync=2
+column               max abs       max rel  argmax row
+------------------------------------------------------
+r0x                4.441e-16     4.856e-16           6
+r0y                4.441e-16     1.579e-16           6
+r1x                4.441e-16     2.691e-16           6
+r1y                2.220e-16     2.310e-16           6
+r2x                2.220e-16     2.878e-16           6
+r2y                2.220e-16     2.418e-16           6
+v0x                5.551e-17     5.535e-16           6
+v0y                1.110e-16     2.400e-16           6
+v1x                1.110e-16     1.547e-16           8
+v1y                4.163e-17     3.980e-16           8
+v2x                2.220e-16     4.321e-16           6
+v2y                8.327e-17     4.365e-16           8
+t                  0.000e+00     0.000e+00          -1
+dmin_ref           4.441e-16     1.832e-16           8
+drift              2.783e-16     6.008e-04           6
+switches           0.000e+00     0.000e+00          -1
+ref00              0.000e+00     0.000e+00          -1
+ref01              0.000e+00     0.000e+00          -1
+------------------------------------------------------
+tolerances: rel 1.0e-13  or  abs 1.0e-13
+PASS
+
+=== az_t2 ===
+wrote xcheck_out/ref_az_t2.tsv: 9 rows, n_sync=5, stepped-vs-monolithic dev=0.00e+00
+wrote xcheck_out/rs_az_t2.tsv: 9 rows, n_sync=5
+column               max abs       max rel  argmax row
+------------------------------------------------------
+r0x                8.882e-16     1.172e-15           7
+r0y                4.441e-16     2.325e-16           0
+r1x                8.882e-16     1.278e-15           7
+r1y                2.220e-16     4.240e-16           0
+r2x                7.494e-16     6.558e-15           0
+r2y                2.220e-16     3.054e-16           0
+v0x                4.441e-16     1.313e-15           0
+v0y                4.441e-16     3.580e-16           0
+v1x                3.553e-15     1.683e-15           0
+v1y                3.331e-16     5.117e-16           4
+v2x                2.665e-15     1.408e-15           0
+v2y                4.441e-16     2.230e-15           0
+t                  0.000e+00     0.000e+00          -1
+dmin_ref           1.214e-17     1.176e-15           0
+drift              5.572e-16     3.577e-05           7
+switches           0.000e+00     0.000e+00          -1
+ref00              0.000e+00     0.000e+00          -1
+ref01              0.000e+00     0.000e+00          -1
+ref02              0.000e+00     0.000e+00          -1
+ref03              0.000e+00     0.000e+00          -1
+ref04              0.000e+00     0.000e+00          -1
+------------------------------------------------------
+tolerances: rel 1.0e-13  or  abs 1.0e-13
+PASS
+test short_horizons_match_to_1e13 ... ok
+column               max abs       max rel  argmax row
+------------------------------------------------------
+ftle               8.882e-16     3.872e-16           0
+diffusion          0.000e+00     0.000e+00          -1
+dmin               0.000e+00     0.000e+00          -1
+nre                0.000e+00     0.000e+00          -1
+S                  1.776e-15     3.872e-16           0
+rx0                0.000e+00     0.000e+00          -1
+ry0                0.000e+00     0.000e+00          -1
+------------------------------------------------------
+tolerances: rel 1.0e-10  or  abs 1.0e-12
+PASS
+test ftle_matches_the_reference ... ok
+wrote xcheck_out/ref_az_t13.tsv: 9 rows, n_sync=32, stepped-vs-monolithic dev=0.00e+00
+wrote xcheck_out/rs_az_t13.tsv: 9 rows, n_sync=32
+column               max abs       max rel  argmax row
+------------------------------------------------------
+r0x                1.168e-13     3.975e-14           2
+r0y                2.021e-13     1.380e-12           3
+r1x                1.164e-13     4.816e-14           3
+r1y                1.412e-13     5.393e-12           7
+r2x                1.403e-13     2.588e-11           0
+r2y                1.634e-13     2.942e-13           8
+v0x                2.559e-13     4.887e-12           8
+v0y                1.364e-13     4.033e-13           8
+v1x                2.718e-13     8.828e-13           8
+v1y                6.839e-14     7.348e-13           3
+v2x                8.693e-14     2.300e-13           8
+v2y                1.013e-13     2.983e-13           8
+t                  0.000e+00     0.000e+00          -1
+dmin_ref           5.001e-15     5.868e-13           4
+drift              2.692e-14     7.832e-06           5
+switches           0.000e+00     0.000e+00          -1
+ref00              0.000e+00     0.000e+00          -1
+ref01              0.000e+00     0.000e+00          -1
+ref02              0.000e+00     0.000e+00          -1
+ref03              0.000e+00     0.000e+00          -1
+ref04              0.000e+00     0.000e+00          -1
+ref05              0.000e+00     0.000e+00          -1
+ref06              0.000e+00     0.000e+00          -1
+ref07              0.000e+00     0.000e+00          -1
+ref08              0.000e+00     0.000e+00          -1
+ref09              0.000e+00     0.000e+00          -1
+ref10              0.000e+00     0.000e+00          -1
+ref11              0.000e+00     0.000e+00          -1
+ref12              0.000e+00     0.000e+00          -1
+ref13              0.000e+00     0.000e+00          -1
+ref14              0.000e+00     0.000e+00          -1
+ref15              0.000e+00     0.000e+00          -1
+ref16              0.000e+00     0.000e+00          -1
+ref17              0.000e+00     0.000e+00          -1
+ref18              0.000e+00     0.000e+00          -1
+ref19              0.000e+00     0.000e+00          -1
+ref20              0.000e+00     0.000e+00          -1
+ref21              0.000e+00     0.000e+00          -1
+ref22              0.000e+00     0.000e+00          -1
+ref23              0.000e+00     0.000e+00          -1
+ref24              0.000e+00     0.000e+00          -1
+ref25              0.000e+00     0.000e+00          -1
+ref26              0.000e+00     0.000e+00          -1
+ref27              0.000e+00     0.000e+00          -1
+ref28              0.000e+00     0.000e+00          -1
+ref29              0.000e+00     0.000e+00          -1
+ref30              0.000e+00     0.000e+00          -1
+ref31              0.000e+00     0.000e+00          -1
+------------------------------------------------------
+tolerances: rel 1.0e-07  or  abs 1.0e-11
+PASS
+
+Judged on absolute agreement; relative figures are inflated where a
+coordinate passes near zero. See tools/xcheck/horizon.py for the growth curve.
+test long_horizon_t13 ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 9.33s
+

@@ -1076,6 +1076,79 @@ the time disagreeing.**
 **reduces** the escape count in `deep interior` *and* leaves `preset_plambda`'s **unchanged**. A
 guard that rejects everything passes the first arm exactly as well as a correct one.
 
+**THE CLOSURE CRITERION PASSES THE CHECK THAT KILLED THE LAST ONE, AND ITS HEADLINE GAP DOES NOT
+REPRODUCE.** `|dn| over a window < tau AND E_rel > 0`, transcribed from
+`reference/escape_criterion.py`. Of the trajectories it fires on, **1.0000 are still unbound at +1,
++2, +4, +8 boundaries and at `3 t_max`** in `deep interior`, `preset_plambda` and
+`config_stability` -- against **0 of 895** for `spec > 0 && receding`. But the reference's 383x
+separation between escapers and bound trajectories is not reachable here: the best cell is **6.8x**
+(`deep interior`, `2 t_max`, `k = 2`) and **`near-field` shows none at all** (0.9-1.1 at both
+horizons, 0 fires of 576). Three separable causes, none decided: maturity (`|dn/dt| ~ 1/t^3`, the
+reference quotes `t = 25-30` and this ships at 13, and every region that separates separates better
+at `2 t_max`), population (a geometric ground truth counts a **triple dispersal** as an escape and
+nothing converges to a pole in one), and `near-field` simply not having escaped yet.
+
+**A WIDER CLOSURE WINDOW MAKES THE GAP WORSE.** `k` from 1 to 4 runs `deep interior` 6.1 -> 4.0 and
+`config_stability` 0.6 -> 0.4; `k = 1` is best or joint-best in every region that separates at all.
+The window is a **TIME**, so `n_sync` must scale with `t_max` -- at `t_max = 50, n_sync = 32` it is
+1.5625 against the reference's 0.4, a different criterion wearing the same name.
+
+**THE CLOSURE WINDOW CANNOT RESOLVE INNER-BINARY PHASE, ANYWHERE.** `t_close = 2 pi sqrt(d_min^3/M)`
+runs **17x to 274x below the window** in every region, and a two-end chord cannot tell a full
+revolution from stationarity -- the reference buffers `nbuf` samples and reads only `buf[-1]` and
+`buf[0]`. So the closure arm is structurally blind to a tight bound pair and rejecting one rests
+**entirely on the energy arm**. Transcribed, not a defect, and the reason neither arm is redundant.
+`tests/outcome_encoding.rs::a_full_revolution_aliases_to_zero_closure` holds it as a property.
+
+**PERSISTENCE IS THE ENERGY ARM, NOT FULL CANDIDACY.** Closure is a difference of neighbouring
+samples, so it jitters above `tau` on a perfectly settled escape: `preset_plambda` reads **0.4777**
+still-candidate at the last boundary against **1.0000** still-unbound. Reading the 0-of-895 test off
+candidacy would have scored ordinary jitter as a re-binding and reported a correct criterion as
+broken. `AzOut::unbound_flags` exists for that question; `escape_flags` is rule-aware and answers a
+different one.
+
+**AND PRECISION MUST BE READ AGAINST IT.** `deep interior` reads precision 0.3214 while **every** one
+of its fires is still unbound at `3 t_max`. The geometric ground truth demands 3x separation growth
+by then, so a slow genuine escape is not certified -- a precision shortfall with persistence at
+1.0000 is the **ground truth missing them**, not the criterion inventing them.
+
+**THE `t_end` REPLAY REFINEMENT IS MEASURABLY DECORATION -- `at entry` is 1.0000 everywhere.** The
+energy arm always already holds when closure settles, so there is never a crossing inside the firing
+interval to find. `t_end` under this criterion is irreducibly quantised to the boundary cadence,
+because closure is *defined* from the boundary series and has no finer resolution. Kept with the
+counter, because the counter is what says it is inert -- and it returns the **boundary** time, not
+the entry time, since the entry time would claim an escape at a playhead the criterion had not yet
+concluded one at.
+
+**A COLLIDED RUN FREEZES AND ITS CLOSURE READS EXACTLY ZERO.** Under `stop_on_event` the shape stops
+changing, so a collided trajectory is the most "settled" thing in the sample -- and it lands in the
+**bound** population and destroys the gap it is supposed to measure. Measure the signal with nothing
+terminal and split collisions out. Exactly-zero closure survives even then: `deep interior` 10 of 63
+bound, `config_stability` 4 of 248, **0 of every escaper population**. Count it; do not let a
+percentile absorb it.
+
+**THE ESCAPING-BODY LABEL IS THE LOWEST FIRING INDEX, NOT THE ESCAPING BODY.** The reference's
+`b = np.argmax(fire, -1)` returns index order, and on a dispersing system all three bodies read
+unbound -- checked against the reference itself, `E = [9.474, 12.178, 31.825]`, `argmax = 0`. So
+`detail`, which classification and rendering read, says 0 where the physics says 2. Transcribed, not
+corrected. **14 of the 40 golden rows discriminate it**, and a tightest-pair-first ordering fails on
+them.
+
+**THE TOGGLE'S MEDIAN IS EXACTLY ZERO AND 214 OF 576 PIXELS MOVED.** `stop_on_escape` on
+`preset_plambda` takes the frozen fraction 0.4306 -> 0.8021, a 37.15% rise, and **37.15% of pixels
+move** -- exactly the newly-frozen ones -- by up to **7.4e-2** of chord on a sphere of diameter 2.
+The median says 0.000e0. *Never conclude "no effect" from an aggregate without the per-pixel
+distribution*, now three times, and this time on the run written to confirm the prediction. The
+prediction is half right: freezing a **converged** trajectory is a no-op for the typical pixel and
+not for a third of them, so `stop_on_escape` stays **off**.
+
+**`escape_confirm` AND `escape_every` ARE VACUOUS UNDER `Closure`.** Closure is only defined where
+the state is Cartesian, so there is nothing to test between boundaries, and the window already is
+the persistence guard. Stated, not silently dropped -- and the replay refinement is scoped to
+`Closure` alone, because under `Reference`/`Distance` both arms are continuous and refining on
+energy would return a time at which the full condition may not hold.
+
+
 ---
 
 ## SMOKE TEST

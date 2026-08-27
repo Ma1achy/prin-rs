@@ -1,0 +1,405 @@
+    Finished `release` profile [optimized] target(s) in 0.25s
+     Running unittests src/lib.rs (target/release/deps/prin_rs-862ce62216185db6)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/prin.rs (target/release/deps/prin-c2c6827b7cb92787)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/prinq.rs (target/release/deps/prinq-8667c8afa3bc3de1)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/xcheck.rs (target/release/deps/xcheck-da6e485dd4dd26fd)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/az_hamiltonian_fd.rs (target/release/deps/az_hamiltonian_fd-7b9b14eb92fd0aac)
+
+running 3 tests
+test the_fd_test_detects_the_r3_sign_error ... ok
+test deriv_matches_finite_differenced_gamma ... ok
+test finite_difference_error_falls_as_h_squared ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/az_identities.rs (target/release/deps/az_identities-92e4e89097cedc27)
+
+running 4 tests
+test gamma_equals_ab_times_energy_defect ... ok
+test energy_phys_matches_cartesian_energy ... ok
+test the_gamma_identity_detects_a_sign_error ... ok
+test to_reg_to_cartesian_round_trips ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/burrau_constants.rs (target/release/deps/burrau_constants-cbda75a249d3f09f)
+
+running 3 tests
+test burrau_is_at_rest_with_com_at_origin ... ok
+test burrau_reference_constants ... ok
+test hyperradius_is_scale_covariant ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/charts.rs (target/release/deps/charts-82e42dd639d3020f)
+
+running 38 tests
+test a_degenerate_primary_seed_falls_back_rather_than_giving_up ... ok
+test a_target_below_k_min_is_refused_rather_than_approximated ... ok
+test a_unit_domain_chart_refuses_a_slice_box_that_leaves_the_square ... ok
+test an_axis_aligned_latent_slice_equals_a_direct_sweep_of_those_two_coordinates ... ok
+test an_oblique_latent_basis_is_orthonormal ... ok
+test body_plane_still_decodes_to_burrau_masses_and_every_old_chart_does_too ... ok
+test burrau_at_nu_one_half_is_the_three_four_five_triangle ... ok
+test energy_normalisation_is_refused_on_a_chart_whose_axis_is_energy ... ok
+test config_slices_reproduce_their_quoted_windows ... ok
+test a_latent_index_past_seven_panics_rather_than_aliasing - should panic ... ok
+test jitter_reflects_into_the_unit_square_and_does_not_collapse_the_copies ... ok
+test every_chart_records_enough_to_be_reproduced ... ok
+test latent_oblique_refuses_two_parallel_seeds - should panic ... ok
+test lz_e_and_lz_k_are_the_same_map_which_the_reference_lists_as_two_charts ... ok
+test neither_catch_fires_at_equal_masses_and_that_is_stated ... ok
+test only_the_affine_charts_claim_to_be_affine ... ok
+test small_alpha_is_a_wide_inner_pair_not_a_tight_one ... ok
+test setting_a_latent_index_past_seven_panics_rather_than_aliasing - should panic ... ok
+test sum_p_is_zero_for_both_the_correct_form_and_the_swap ... ok
+test the_burrau_chart_puts_the_primitive_triples_on_a_continuous_curve ... ok
+test the_burrau_family_is_smooth_in_nu_and_the_triples_sit_on_it ... ok
+test the_burrau_family_reproduces_the_repos_configuration_up_to_the_gauge ... ok
+test the_canonical_frame_decode_gives_unit_inertia ... ok
+test the_canonicaliser_and_scale_gauge_are_no_ops_on_the_latent_chart ... ok
+test the_canonicaliser_is_idempotent_and_a_no_op_on_an_already_canonical_state ... ok
+test the_decoder_conserves_total_momentum_and_puts_the_com_at_the_origin ... ok
+test the_invariant_chart_is_feasible_at_every_pixel_of_the_unit_square ... ok
+test the_jacobi_round_trip_catches_the_crossed_mass_swap ... ok
+test the_kinetic_energy_identity_catches_the_crossed_mass_swap ... ok
+test the_mass_simplex_varies_the_masses_and_keeps_them_positive ... ok
+test the_masses_are_a_normalised_simplex_point ... ok
+test the_pinned_saturation_constants_are_the_glsls_not_the_latex_reference ... ok
+test the_momentum_construction_hits_lz_and_k_exactly ... ok
+test the_scale_gauge_uses_the_asymmetric_powers ... ok
+test the_shape_pl_preset_basis_is_not_orthonormalised ... ok
+test the_origin_of_the_latent_chart_is_the_equilateral_lagrange_configuration ... ok
+test the_shape_pl_preset_pairs_alpha_with_p_lambda_y ... ok
+test the_four_default_presets_decode_across_their_whole_box ... ok
+
+test result: ok. 38 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/colour.rs (target/release/deps/colour-8acd8f03860c07e2)
+
+running 23 tests
+test a_log_curve_spreads_a_decade_spanning_field_and_linear_does_not ... ok
+test an_undetermined_pixel_never_takes_a_class_colour ... ok
+test chroma_shrinks_between_two_sites ... ok
+test every_undetermined_case_is_debug_nan_and_never_the_background ... ok
+test kappa_interpolates_between_a_smooth_blend_and_a_hard_voronoi ... ok
+test landmark_sites_are_unit_vectors_and_mutually_distinct ... ok
+test lightness_never_reaches_pure_black_or_pure_white ... ok
+test polarity_is_monotone_in_the_declared_direction_for_every_field ... ok
+test oklab_round_trips_and_matches_ottosson ... ok
+test euler_points_are_central_configurations ... ok
+test range_norm_declines_rather_than_clamping_a_non_finite_value ... ok
+test quantisation_counts_exact_distinct_values ... ok
+test the_collision_sites_lie_on_the_collinear_circle_and_lagrange_does_not ... ok
+test the_event_class_alphabet_is_fixed_disjoint_and_gap_free ... ok
+test the_hue_map_separates_shapes_the_old_projection_merged ... ok
+test the_landmarks_move_with_the_masses ... ok
+test the_outcome_palette_flags_a_failed_decode ... ok
+test the_hue_map_is_continuous_on_the_sphere ... ok
+test the_site_set_leaves_no_large_hole_on_the_sphere ... ok
+test viridis_never_produces_the_reserved_undetermined_colour ... ok
+test vmf_weights_decline_a_non_finite_input_rather_than_returning_a_number ... ok
+test vmf_weights_sum_to_one_and_are_invariant_to_a_constant_shift ... ok
+test a_truncated_render_differs_from_the_full_one ... ok
+
+test result: ok. 23 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.83s
+
+     Running tests/criterion.rs (target/release/deps/criterion-3822c87d59f4a5f6)
+
+running 48 tests
+test a_collapsed_decode_is_undetermined_and_a_uniform_region_is_not ... ok
+test a_degenerate_field_reads_all_hot_rather_than_none ... ok
+test a_fully_hot_quad_has_no_perimeter_and_one_component ... ok
+test a_deterministic_perturbation_is_a_unit_direction_and_varies_with_the_seed ... ok
+test a_non_finite_footprint_is_hot_and_not_calm ... ok
+test a_quad_at_the_root_border_has_no_neighbour_outside_it ... ok
+test between_event_reads_the_event_class_and_never_the_terminal_outcome ... ok
+test a_strictly_diagonal_mask_reads_as_scatter_and_that_is_a_known_limit ... ok
+test between_matched_equals_between_full_when_the_counts_already_agree ... ok
+test an_empty_hot_set_reports_nan_and_not_zero ... ok
+test an_isolated_cell_reads_four_and_a_filament_reads_about_two ... ok
+test a_quantile_hot_rule_is_rescaling_invariant_and_n_hot_stops_being_a_signal ... ok
+test between_shape_is_the_same_estimator_over_the_nominals ... ok
+test ftle_declines_rather_than_returning_zero_when_it_never_renormalised ... ok
+test contrast_reports_how_many_edges_it_saw ... ok
+test grad_rms_is_nan_with_no_finite_pair_and_ranks_a_filament_above_a_flat_field ... ok
+test boundary_shapes_are_only_recorded_when_asked_for ... ok
+test image_error_reports_the_fraction_moved_beside_the_mean ... ok
+test looks_like_a_boundary_separates_the_filament_from_the_checkerboard ... ok
+test neighbour_agrees_with_an_independent_geometric_predicate ... ok
+test oklab_distance_is_zero_only_on_equality_and_orders_sensibly ... ok
+test oklab_matches_the_published_reference_triples ... ok
+test oklab_round_trips_through_srgb ... ok
+test rank_displacement_shows_movement_a_high_rho_conceals ... ok
+test spearman_declines_rather_than_returning_zero_on_a_dead_input ... ok
+test structure_separates_a_filament_from_a_full_quad_and_from_scatter ... ok
+test the_escape_gradient_refuses_to_answer_when_nothing_escaped ... ok
+test the_ftle_perturbation_is_normalised_over_all_six_components_not_per_body ... ok
+test ftle_renormalises_and_the_count_is_the_thing_to_assert ... ok
+test the_queue_fix_is_identical_under_the_criterion_every_committed_run_used ... ok
+test the_event_arm_already_had_all_three_accumulators ... ok
+test the_shape_accumulators_survive_ragged_per_copy_records ... ok
+test the_uniform_disguise_guard_fires_only_on_the_degenerate_cell ... ok
+test two_blobs_are_two_components_and_a_checkerboard_is_scatter ... ok
+test uniform_is_breadth_first_and_a_signal_ranking_is_not ... ok
+test the_metric_is_exact_at_the_full_tree_and_the_greedy_replay_is_monotone ... ok
+test replay_scored_reproduces_a_rank_exactly ... ok
+test within_pooled_is_nan_when_the_copies_were_not_kept ... ok
+test no_ranking_beats_the_exact_tree_optimum ... ok
+test dp_labels_describe_the_optimal_tree_and_move_with_budget ... ok
+test a_signal_that_declines_to_score_does_not_block_the_ones_that_do ... ok
+test a_criterion_enters_the_replay_as_an_ordering_and_not_against_tau ... ok
+test the_relative_mask_desaturates_where_the_absolute_one_does_not ... ok
+test the_default_is_the_ranked_frontier_and_it_reaches_the_tree ... ok
+test uniform_mode_degenerates_to_one_depth_and_balanced_does_not ... ok
+test k_frac_never_truncates_the_bootstrap ... ok
+test k_frac_defers_as_keep_and_one_reproduces_the_unranked_descent has been running for over 60 seconds
+test uniform_mode_ignores_k_frac_and_balanced_does_not has been running for over 60 seconds
+test k_frac_defers_as_keep_and_one_reproduces_the_unranked_descent ... ok
+test uniform_mode_ignores_k_frac_and_balanced_does_not ... ok
+
+test result: ok. 48 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 75.12s
+
+     Running tests/ensemble_stats.rs (target/release/deps/ensemble_stats-a99019d81a6c15b6)
+
+running 5 tests
+test mad_is_the_scaled_median_absolute_deviation ... ok
+test mad_survives_a_non_finite_copy_where_a_std_would_not ... ok
+test median_uses_the_even_count_convention ... ok
+test spread_event_is_normalised_to_one_when_maximally_split ... ok
+test spread_event_matches_the_reference_statistic_up_to_its_normalisation ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/error_ratio.rs (target/release/deps/error_ratio-b94d8c7e0b8b8c8c)
+
+running 4 tests
+test error_ratio_is_exactly_one_at_t_zero ... ok
+test error_ratio_is_invariant_under_shift_and_scale ... ok
+test error_ratio_sits_at_one_on_a_near_two_body_control ... ok
+test error_ratio_minus_one_falls_with_step_size ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.09s
+
+     Running tests/error_ratio_acceptance.rs (target/release/deps/error_ratio_acceptance-f1f133ceba5610fd)
+
+running 4 tests
+test d_min_gap_is_zero_in_every_region ... ok
+test mad_based_error_ratio_cannot_separate_damaged_pixels ... ok
+test error_ratio_acceptance_near_field_t13 ... ok
+test refined_pixels_are_repaired ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 25.92s
+
+     Running tests/f32_precision.rs (target/release/deps/f32_precision-090903fa60ac0f63)
+
+running 4 tests
+test the_reference_floors_do_not_survive_the_cast_to_f32 ... ok
+test the_two_body_collision_gate_is_parameterised_by_precision ... ok
+test the_shared_reference_policy_survives_an_early_terminating_nominal ... ok
+test f32_renders_the_grid_and_agrees_with_f64_on_the_labels ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.82s
+
+     Running tests/fcache.rs (target/release/deps/fcache-585484759ff7dae6)
+
+running 5 tests
+test a_nan_survives_the_round_trip_as_a_nan ... ok
+test a_footprint_file_round_trips_through_disk ... ok
+test a_recolour_is_bitwise_identical_to_a_fresh_build ... ok
+test the_reductions_carry_over_untouched_by_a_recolour ... ok
+test a_mismatched_footprint_file_is_refused_rather_than_recoloured ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.09s
+
+     Running tests/gauge_invariance.rs (target/release/deps/gauge_invariance-9596a95e66613936)
+
+running 2 tests
+test shape_spread_is_invariant_under_the_scale_symmetry ... ok
+test shape_spread_is_invariant_across_the_grid ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+
+     Running tests/halton_offsets.rs (target/release/deps/halton_offsets-85dea8b1400dd74e)
+
+running 4 tests
+test the_radical_inverse_is_the_reflected_digit_expansion ... ok
+test copy_zero_is_never_jittered ... ok
+test halton_offsets_are_fixed_across_pixels_and_resolutions ... ok
+test the_halton_prefix_covers_the_footprint_better_than_pcg_draws ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/lc_conditioning.rs (target/release/deps/lc_conditioning-8211252d6d737a07)
+
+running 2 tests
+test lc_inverse_conditioning_versus_angle ... ok
+test the_stable_branch_is_rotationally_uniform ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/leapfrog_energy.rs (target/release/deps/leapfrog_energy-37dc499d57367644)
+
+running 5 tests
+test cell_widths_are_per_axis ... ok
+test grid_row_order_is_x_fastest ... ok
+test drift_falls_with_step_size_on_tractable_pixels ... ok
+test characterise_the_failure_mode ... ok
+test locate_where_the_unregularised_integrator_gives_up ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.11s
+
+     Running tests/outcome_encoding.rs (target/release/deps/outcome_encoding-c4010799d0b57007)
+
+running 14 tests
+test a_full_revolution_aliases_to_zero_closure ... ok
+test escape_distance_gate_rejects_transients_and_keeps_real_escapes ... ok
+test closure_needs_both_arms_and_each_fixture_isolates_one ... ok
+test deep_interior_terminates_in_bounded_wall_clock ... ok
+test the_collision_mask_labels_the_right_pair_for_every_reference_body ... ok
+test the_criterion_transcribes_the_reference_including_its_body_ordering ... ok
+test the_encoding_packs_into_one_byte_without_loss ... ok
+test two_pairs_below_r_coll_is_never_an_ordinary_binary_collision ... ok
+test r_coll_is_fixed_at_t_zero_and_not_co_moving ... ok
+test escape_every_moves_t_end_off_the_sync_boundary_and_is_inert_at_zero ... ok
+test escape_matches_the_legacy_classifier ... ok
+test outcomes_and_t_end_are_invariant_under_the_scale_symmetry ... ok
+test escape_confirm_cuts_transients_and_keeps_genuine_escapes ... ok
+test outcome_fields_populate_across_a_grid ... ok
+
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.51s
+
+     Running tests/plot.rs (target/release/deps/plot-c16ab66048d2a55b)
+
+running 6 tests
+test an_exact_zero_is_located_and_is_not_confused_with_a_small_value ... ok
+test a_set_of_series_that_are_all_zero_is_detected ... ok
+test the_palette_gives_distinct_colours_for_as_many_series_as_asked ... ok
+test a_non_finite_point_is_counted_as_dropped_and_never_as_live ... ok
+test a_degenerate_figure_says_so_instead_of_drawing_a_line ... ok
+test a_figure_writes_both_a_png_and_an_svg_and_the_svg_carries_its_labels_as_text ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+
+     Running tests/quadtree.rs (target/release/deps/quadtree-ceb6fbd1d0db9fd3)
+
+running 9 tests
+test a_quads_slice_spans_its_own_box ... ok
+test a_childs_cell_width_is_exactly_half_its_parents ... ok
+test leaves_tile_the_root_exactly ... ok
+test a_single_sample_quad_is_rejected - should panic ... ok
+test the_precision_floor_fires_above_machine_epsilon ... ok
+test a_parent_is_never_synthesised_from_its_children ... ok
+test the_budget_is_respected_and_exhaustion_is_reported ... ok
+test the_sibling_range_is_set_on_the_parent_from_four_children ... ok
+test both_policies_descend ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.45s
+
+     Running tests/seeding_golden.rs (target/release/deps/seeding_golden-8ce7ab4a516657d0)
+
+running 4 tests
+test golden_jitter_values ... ok
+test copy_zero_is_always_the_un_jittered_nominal ... ok
+test jitter_is_bounded_by_the_per_axis_cell_width ... ok
+test pixels_are_independent_and_order_free ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/shape_vec.rs (target/release/deps/shape_vec-76ef90d35c18f930)
+
+running 3 tests
+test shape_vec_is_a_unit_vector ... ok
+test spread_statistics_are_zero_on_identical_copies_and_bounded ... ok
+test shape_vec_quotients_translation_rotation_scale ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/slippy.rs (target/release/deps/slippy-5a96bf3b96d5c453)
+
+running 8 tests
+test bands_are_monotone_and_undetermined_sits_at_the_bottom ... ok
+test camera_position_moves_the_ranking_and_never_the_veto ... ok
+test neighbour_contrast_catches_an_edge_filament_that_every_within_quad_measure_misses ... ok
+test the_derived_term_is_never_stored_so_a_pan_touches_no_stored_priority ... ok
+test the_incremental_frontier_matches_a_from_scratch_rebuild ... ok
+test zooming_out_computes_a_subset_of_what_zooming_in_computed ... ok
+test the_two_to_one_constraint_holds_and_the_control_violates_it ... ok
+test a_pan_is_an_identity_until_camera_bias_is_switched_on ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 33.98s
+
+     Running tests/spread_branch_cut.rs (target/release/deps/spread_branch_cut-0d506dbfde9cd701)
+
+running 2 tests
+test at_f64_the_branch_cut_barely_leaks_into_spread_shape ... ok
+test at_f32_the_unstable_branch_destroys_spread_shape ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 6.03s
+
+     Running tests/two_body_collision.rs (target/release/deps/two_body_collision-a8a97a0771d92f1b)
+
+running 5 tests
+test d_min_threshold_is_unreachable_at_production_eta ... ok
+test the_close_pair_is_the_regularised_one ... ok
+test radial_collision_passes_through_at_machine_precision ... ok
+test d_min_is_a_step_function_because_the_sample_grids_nest ... ok
+test d_min_at_collision_is_phase_limited ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 8.41s
+
+     Running tests/vertical_slice.rs (target/release/deps/vertical_slice-3cbf6f67dc87ee68)
+
+running 13 tests
+test body_plane_decode_is_bitwise_unchanged ... ok
+test a_floored_quad_refines_again_when_zoomed_into ... ok
+test lin_split_f32_keeps_samples_distinct_where_direct_f32_has_collapsed ... ok
+test lin_naive_f32_collapses_on_the_same_curve_as_plain_f32 ... ok
+test lin_split_f32_reaches_the_f64_floor_and_no_further ... ok
+test plane_chart_reproduces_body_plane_exactly ... ok
+test shape_chart_is_nonlinear_and_body_plane_is_not ... ok
+test screen_floor_lands_at_level_six_at_n8_on_512 ... ok
+test shape_chart_round_trips_and_the_sign_matters ... ok
+test ssaa_copy_footprint_scales_with_the_texel ... ok
+test texel_size_varies_as_two_to_the_minus_level_and_uniform_is_rejected ... ok
+test the_camera_can_only_ever_stop_a_descent ... ok
+test lowering_max_rel_depth_changes_no_payload ... ok
+
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s
+
+     Running tests/xcheck.rs (target/release/deps/xcheck-d435fd0011c2655f)
+
+running 4 tests
+test algebra_matches_the_reference ... ignored
+test ftle_matches_the_reference ... ignored
+test long_horizon_t13 ... ignored
+test short_horizons_match_to_1e13 ... ignored
+
+test result: ok. 0 passed; 0 failed; 4 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests prin_rs
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

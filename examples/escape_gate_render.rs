@@ -81,8 +81,12 @@ fn main() {
                 refine_flagged: false,
                 t_max,
                 r_coll_frac: r_coll,
-                r_esc_frac: r_esc,
-                escape_all_bodies: true,
+                escape_rule: if r_esc > 0.0 {
+                    prin_rs::outcome::EscapeRule::Distance(r_esc)
+                } else {
+                    prin_rs::outcome::EscapeRule::Reference
+                },
+                stop_on_escape: true,
                 ..Default::default()
             };
             let t0 = std::time::Instant::now();

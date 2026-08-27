@@ -69,13 +69,24 @@ fn sample(chart: &Chart, body: usize, cx: f64, cy: f64, half: f64, n: usize)
     out
 }
 
+// **The `all_bodies` axis no longer exists as a knob.** The body set is now a property of the
+// rule -- `Reference` labels only the body outside the tightest pair, `Distance` tests all three
+// -- so each rule matches its own reference exactly. The separated-axis measurement this example
+// made is on record: the body arm alone moved near-field 0.0000 -> 1.0000, so it is *not* free.
+// `all` here selects the rule: `false` gives `Reference` (one body, no gate) and `true` gives
+// `Distance(r_esc)` (all three), so `Distance(0.0)` is still the ungated all-bodies cell.
 fn opts(r_coll: f64, r_esc: f64, all: bool, ev: usize, stop: bool) -> AzOpts<'static, f64> {
     AzOpts {
         forced_refs: None,
         lc_stable: true,
         r_coll_frac: r_coll,
-        r_esc_frac: r_esc,
-        escape_all_bodies: all,
+        escape_rule: if r_esc > 0.0 || all {
+            prin_rs::outcome::EscapeRule::Distance(r_esc)
+        } else {
+            prin_rs::outcome::EscapeRule::Reference
+        },
+        closure_k: 1,
+        stop_on_escape: stop,
         stop_on_event: stop,
         escape_every: ev,
         // **Deliberately off.** The question is whether the geometric guard works; running the
@@ -167,7 +178,7 @@ fn main() {
         // separate divergences from the numpy form, and `(0, one)` is the reference this port
         // has shipped. Sweeping them together would score their sum -- and the sum is not
         // small: the body arm alone moves near-field's escape fraction from 0 to 1.
-        for &(r_esc, all) in &[(0.0f64, false), (0.0, true), (5.0, false), (5.0, true)] {
+        for &(r_esc, all) in &[(0.0f64, false), (5.0, true)] {
             for &ev in &strides {
                 let rows: Vec<(u8, Option<usize>, [Option<bool>; 4])> = c.ics.par_iter().map(|(s0, m)| {
                     // One unstopped run: both arms accumulate and `escape_flags` carries the
@@ -219,7 +230,7 @@ fn main() {
         println!("{:>7} {:>7}  {:>8} {:>9} {:>8} {:>8} {:>8}   {:>11}",
                  "r_esc", "bodies", "escape", "collision", "bounded", "running", "failed",
                  "t_end p50");
-        for &all in &[false, true] {
+        for &all in &[true] {
         for &r_esc in &esc_ladder {
             let rows: Vec<(u8, f64)> = c.ics.par_iter().map(|(s0, m)| {
                 let o = integrate_az_opts(*s0, m, c.t_max, n_sync, eta,

@@ -138,7 +138,7 @@ pub fn write<W: Write>(
     let header = format!(
         "region={} body={} n_samples_per_axis={} n_copies={} budget={} bootstrap_levels={}\n\
          tau_display={} hot_rule={} structure={} mode={} k_frac={} alpha_hi={} alpha_lo={} sib_tau={} policy={} order={} agg={} criterion={} max_level={:?}\n\
-         t_max={} eta={} n_sync={} r_coll_frac={} r_esc_frac={} escape_all_bodies={} lc_stable={} jitter_scheme={:?} precision={}\n\
+         t_max={} eta={} n_sync={} r_coll_frac={} escape_rule={:?} closure_k={} stop_on_escape={} lc_stable={} jitter_scheme={:?} precision={}\n\
          chart={} decode_path={} camera={:?}\n\
          chart_params={}\n\
          quads_computed={} footprints={} iterations={} budget_exhausted={} wall_seconds={:.3}\n\
@@ -148,7 +148,7 @@ pub fn write<W: Write>(
         cfg.tau_display, cfg.hot_rule.name(), cfg.structure.name(), cfg.mode.name(),
         cfg.k_frac, cfg.alpha_hi, cfg.alpha_lo, cfg.sib_tau,
         cfg.policy.name(), cfg.order.name(), cfg.agg.name(), cfg.criterion.name(), cfg.max_level,
-        ens.t_max, ens.eta, ens.n_sync, ens.r_coll_frac, ens.r_esc_frac, ens.escape_all_bodies, ens.lc_stable, ens.jitter_scheme,
+        ens.t_max, ens.eta, ens.n_sync, ens.r_coll_frac, ens.escape_rule, ens.closure_k, ens.stop_on_escape, ens.lc_stable, ens.jitter_scheme,
         precision,
         // The chart is the one thing that now makes two otherwise identical dumps different
         // configurations. A dump that does not name it cannot be read back with confidence.

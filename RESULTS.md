@@ -3204,6 +3204,186 @@ speculating past the render is how the earlier ones went wrong.
 
 ---
 
+## 22. The closure criterion: check 1 passes outright, and the 383x gap does not reproduce
+
+`examples/escape_closure.rs`, `examples/closure_render.rs`, n = 24 per side, `eta = 1e-2`,
+`tau = 1e-3`, `closure_k = 1`. Raw output in `results/output/escape_closure.txt`.
+
+The criterion, transcribed from `reference/escape_criterion.py`:
+
+```text
+ESCAPE  <=>  |dn| over a window < tau    AND    E_rel > 0
+```
+
+**Four details are read off the reference and three of them change the design.** `dn` is a chord
+between the two **ends** of the window -- `nbuf` samples are buffered and only `buf[-1]` and
+`buf[0]` are used -- so boundary sampling is a *transcription* rather than an approximation: at
+`t_max = 13, n_sync = 32` the realised window is **0.406 against the reference's 0.400**. Closure
+gates once per trajectory and energy per body (`dn[...,None]` against an `E` of shape `(...,3)`).
+Body selection is `np.argmax(fire,-1)`, the **lowest firing index** -- not tightest-pair-first, which
+is what the `Distance` rule does. And there is no latch beyond `esc_body < 0`: the window *is* the
+persistence guard, and it cannot fire before `t = win` because the buffer is not full.
+
+### 22.1 The window is a TIME, and it is 100-1000x the shortest inner timescale
+
+`n_sync` is derived per case so every row realises the same ~0.4 window. Holding it fixed while
+`t_max` varies would compare different discretisations and, here, different criteria -- at
+`t_max = 50, n_sync = 32` the window is **1.5625**, 3.9x the reference's.
+
+| case | n_sync | dt_sync | R p50 | w(k=1) | t_close p50 | nonfin | d_min p50 | bnd/n_sync |
+|---|---|---|---|---|---|---|---|---|
+| `near-field` | 33 | 0.3939 | 2.2361 | 0.3939 | 1.44e-3 | 0.0000 | 8.56e-3 | 1.0000 |
+| `deep interior` | 33 | 0.3939 | 1.3694 | 0.3939 | 7.86e-5 | 0.0052 | 1.23e-3 | **0.3030** |
+| `preset_plambda` | 33 | 0.3939 | 1.0000 | 0.3939 | 6.82e-4 | 0.0000 | 2.27e-3 | 1.0000 |
+| `config_basin` | 125 | 0.4000 | 1.0000 | 0.4000 | 2.28e-2 | 0.0000 | 2.36e-2 | 1.0000 |
+| `config_stability` | 125 | 0.4000 | 1.0000 | 0.4000 | 4.16e-3 | 0.0017 | 7.60e-3 | 1.0000 |
+
+**THE WINDOW CANNOT RESOLVE INNER-BINARY PHASE ANYWHERE.** `t_close` -- the closest-approach
+timescale `2 pi sqrt(d_min^3/M)`, a proxy for the shortest inner period -- runs **17x to 274x below
+the window** in every region. A two-end chord cannot tell a full revolution from stationarity
+(`tests/outcome_encoding.rs::a_full_revolution_aliases_to_zero_closure` holds that as a property,
+not a bug), so the closure arm is structurally blind to a tight bound pair and **rejecting one rests
+entirely on the energy arm**. That is not a defect of this port -- the reference uses the same 0.4 --
+but it is the reason the two arms are not interchangeable and neither is redundant.
+
+`bnd/n_sync = 0.3030` says the median `deep interior` trajectory completes **30% of its boundaries**
+before collision stops it, so the criterion sees a third of that region's run.
+
+### 22.2 The gap does not reproduce, and a wider window makes it worse
+
+Closure at the final boundary of a run with **nothing terminal**, split by the geometric ground
+truth. Collided trajectories are excluded rather than folded in: with `stop_on_event` on, a collided
+run freezes, its shape stops changing, closure reads **exactly 0**, and it lands in the *bound*
+population and destroys the gap it is supposed to measure.
+
+| case | xT | k=1 | k=2 | k=3 | k=4 |
+|---|---|---|---|---|---|
+| `near-field` | 1 | 0.9 | 0.9 | 0.9 | 1.1 |
+| `near-field` | 2 | 1.0 | 0.9 | 0.9 | 1.1 |
+| `deep interior` | 1 | 1.5 | 1.4 | 1.2 | 1.1 |
+| `deep interior` | 2 | **6.1** | **6.8** | 4.9 | 4.0 |
+| `config_stability` | 1 | 0.6 | 0.5 | 0.5 | 0.4 |
+| `config_stability` | 2 | 1.9 | 4.0 | 3.8 | 1.7 |
+
+(`sep` = p50(bound)/p50(escaper); `preset_plambda` has **zero** bound trajectories to compare
+against and `config_basin` has zero escapers, so neither yields a gap at all.)
+
+**The reference's 383x is not reachable here. The best cell is 6.8x, and in `near-field` there is no
+separation whatsoever** -- 0.9 to 1.1 at both horizons, which is the two populations sitting on top
+of one another. Three things account for it and they are separable:
+
+- **Maturity.** `|dn/dt| ~ 1/t^3`, so the gap is a function of how far the run has got. The
+  reference quotes 383x at `t = 25-30`; this project ships at **13**. Every region that separates at
+  all separates *better* at `xT = 2` -- `deep interior` 1.5 -> 6.1, `config_stability` 0.6 -> 1.9.
+- **Population.** The ground truth here is geometric and counts a *triple dispersal* as an escape.
+  The limit argument assumes a **hierarchical** escape -- binary bounded, `lambda` linear, so
+  `alpha -> pi/2`. In a full dispersal nothing converges to a pole and closure stays large. The
+  reference's ground truth was "unbound and receding at `t = 30`", which shares a term with the
+  criterion; this one shares none, and the disagreement is informative rather than a discrepancy.
+- **`near-field` has not escaped yet.** The standing result -- *the escape arm contributes nothing
+  at `t = 13`* -- reappears exactly: **0 fires of 576**, against a ground truth that says 42% escape
+  by `t = 39`. The criterion is not failing there; the population has not formed.
+
+**`k` narrows the gap rather than widening it**, which is the opposite of what a longer window was
+expected to buy. `k = 1` is the best or joint-best rung in every region that separates.
+
+**A closure of exactly zero is not a settled trajectory**, and it is counted rather than absorbed
+into a percentile: `deep interior` **10 of 63** bound, `config_stability` **4 of 248**, and **0 of
+every escaper population**. Those zeros are what drive `bnd p1` to 0 and make the geometric-midpoint
+`tau*` construction undefined in two regions. They are bitwise-identical consecutive shape vectors
+on trajectories that have stopped moving numerically; the energy arm is what stops them firing, and
+if one ever coincided with a positive relative energy it would read as maximally settled.
+
+### 22.3 CHECK 1 PASSES OUTRIGHT -- 1.0000 against the old criterion's 0 of 895
+
+Candidacy at every boundary of **one** unstopped run at **one** step size, out to `3 t_max` with
+`n_sync` scaled so `dt_sync` is unchanged. The question is whether the fired body is still
+**unbound** -- the energy arm alone.
+
+| case | fired | u+1 | u+2 | u+4 | u+8 | u end | cand end |
+|---|---|---|---|---|---|---|---|
+| `deep interior` | 82 | **1.0000** | 1.0000 | 1.0000 | 1.0000 | **1.0000** | 0.9146 |
+| `preset_plambda` | 314 | **1.0000** | 1.0000 | 1.0000 | 0.9968 | **1.0000** | 0.4777 |
+| `config_stability` | 52 | **1.0000** | 0.9808 | 0.9808 | 0.9608 | **1.0000** | 0.6731 |
+
+**Nothing re-binds.** The old criterion's number on the same question was **0 of 895**. This is the
+check that killed the previous criterion and the strongest result in the run.
+
+**And the two columns are not the same question.** `cand end` -- full criterion candidacy at the last
+boundary -- reads 0.4777 on `preset_plambda` while `u end` reads 1.0000. Closure is a difference of
+neighbouring samples, so it jitters above `tau` on a perfectly settled escape; reading persistence
+off *candidacy* would have scored ordinary jitter as a re-binding and reported a correct criterion as
+broken. Both are printed so the difference is visible rather than asserted.
+
+**Precision must be read against `u end`, not alone.** `deep interior` reads precision 0.3214 and
+`config_stability` 0.5385 -- but every one of those fires is still unbound at `3 t_max`. The ground
+truth demands **3x separation growth by `3 t_max`**, so a slow genuine escape fails to be certified.
+A precision shortfall with `u end` at 1.0000 is the **ground truth missing them**, not the criterion
+inventing them.
+
+Recall is low -- 0.4466 on `preset_plambda`, 0.0217 on `deep interior`, **0.0000** on `near-field` --
+and the median firing time is **11.8 of 13**. The criterion is a late one by construction, and at
+this horizon most of the escape population has not settled. That is the *right* failure direction:
+firing late writes a late timestamp, firing early writes a wrong one permanently.
+
+### 22.4 The `t_end` replay refinement is measurably decoration
+
+When the conjunction first holds at boundary `k`, the interval `(t_{k-1}, t_k]` is replayed from the
+saved entry state with the same stepper and the same `dtau`, and the first sub-step at which the
+firing body is unbound is taken as `t_end`. Measured:
+
+| case | escapes | at entry | on boundary | distinct t_end |
+|---|---|---|---|---|
+| `deep interior` | 28 | **1.0000** | 1.0000 | 16 |
+| `preset_plambda` | 226 | **1.0000** | 1.0000 | 9 |
+| `config_stability` | 26 | **1.0000** | 1.0000 | 14 |
+
+**`at entry` is 1.0000 everywhere: the energy arm always already holds when closure settles, so there
+is never a crossing inside the interval to find.** The replay runs and changes nothing. `t_end` under
+this criterion is irreducibly quantised to the boundary cadence, and that is a property of the
+criterion rather than a bug to route around -- closure is *defined* from the boundary series and has
+no finer resolution. The mechanism is visible in §22.3: energy goes positive early and flickers,
+closure settles at `t ~ 11.8`.
+
+Kept, with the counter, because the counter is what says it is inert. `refine_escape_time` returns
+the **boundary** time in that case, not the entry time -- reporting the entry time would claim an
+escape at a playhead the criterion had not yet concluded one at.
+
+### 22.5 The toggle moves 37% of pixels, and the median says zero
+
+| case | stop | escape | collide | frozen | d med | d max | moved |
+|---|---|---|---|---|---|---|---|
+| `near-field` | false / true | 0.0000 | 0.0226 | 0.0226 / 0.0226 | 0.000e0 | 0.000e0 | 0 |
+| `deep interior` | false / true | 0.1042 | 0.6372 | 0.6424 / 0.6875 | 0.000e0 | 6.353e-2 | 18 |
+| `preset_plambda` | false / true | 0.4097 | 0.4306 | 0.4306 / **0.8021** | 0.000e0 | **7.365e-2** | **214** |
+| `config_stability` | false / true | 0.0451 | 0.4323 | 0.4340 / 0.4792 | 0.000e0 | 3.059e-2 | 22 |
+
+**THE MEDIAN IS EXACTLY ZERO AND 214 OF 576 PIXELS MOVED.** *Never conclude "no effect" from an
+aggregate without the per-pixel distribution* -- the rule that has now caught this three times, and
+it caught it again here on the run that was expected to confirm the prediction. `preset_plambda`'s
+frozen fraction goes 0.4306 -> 0.8021, a **37.15%** increase, and **214/576 = 37.15%** of pixels
+move: exactly the pixels that newly froze, by up to **7.4e-2** of chord on a sphere of diameter 2.
+
+So the prediction -- *"the two toggle states produce near-identical images"* -- is **half right**.
+The typical pixel does not move at all, which is the mechanism working: freezing a converged
+trajectory is a no-op. But a third of them do, by a few percent of the shape sphere, so the toggle
+is **not** free and `stop_on_escape` is correctly still defaulted **off**.
+
+### 22.6 What is settled and what is not
+
+**Settled:** check 1 passes at 1.0000, on `deep interior` (check 3), against an independent
+geometric ground truth (check 2). The criterion does not latch transients. The reference path is
+untouched by construction -- `integrate_az_lc` hardcodes `EscapeRule::Reference` and the cross-check
+reads 4/4 PASS.
+
+**Not settled:** the 383x separation does not reproduce at this project's horizon, on this project's
+regions, against a ground truth that shares no term with the criterion -- the best cell is 6.8x and
+`near-field` shows none. Whether that is maturity, population, or the criterion is separated in
+§22.2 but not decided. `stop_on_escape` stays **off**.
+
+
+---
+
 ## 13. Reproducing any of this
 
 **Two of these commands were wrong, and only running them found it.** The `pan_sequence` line said
@@ -3300,6 +3480,8 @@ Every table above comes from a committed example. Raw output for all of them is 
 | §18.2 stage 3, alpha | `cargo run --release --example criterion_sweep -- 3 40000 0.2 1024 1e-4 0.25` |
 | §20 the ceiling, uniform, and the audit | `cargo run --release --example oracle_audit -- 7 8 1e-4 13 all` |
 | §21 the sync-cadence artefact | `cargo run --release --example sync_artefact -- 3 8 13 1 0` (unguarded) and `... 3 8 13 1 1` (guarded) |
+| §22 the closure criterion | `cargo run --release --example escape_closure -- 24` |
+| §22.5 the toggle renders | `cargo run --release --example closure_render -- 1024 results` — writes `results/closure/`, **never** over the committed "before" set |
 | §21.6 persistence and precedence | `cargo run --release --example escape_persistence -- 48 13 32` |
 | the signal audit against the DP labels | `cargo run --release --example signal_audit -- 7 8 1e-4 13 <scratch>` (~2 h; it enables the FTLE march, which is ~2.5x a plain build. **Point it at a scratch root**) |
 | §20.6 firing the bound assert cheaply | `cargo run --release --example criterion_metric -- 4 8 1e-4 13 /tmp/scratch` |

@@ -84,6 +84,28 @@ pub struct AzOut<T> {
     /// `n_sync` rescaled makes every window a different discretisation, which is the same defect
     /// as holding `n_sync` fixed while `t_max` varies.
     pub escape_flags: Vec<bool>,
+    /// `|n(t_k) - n(t_{k-closure_k})|` at each completed boundary, `NaN` until the window is
+    /// full. **`NaN`, never `0`** — an unfilled window is "not yet determined", and `NaN < tau`
+    /// is false so it cannot fire, where a `0` would read as perfectly settled and fire on
+    /// everything at `t ~ 0`.
+    ///
+    /// Recorded whatever the rule, so the closure distribution can be measured on trajectories
+    /// the criterion did not label — which is what setting `tau` from a measured gap needs.
+    pub closure_hist: Vec<T>,
+    /// Per body, is it unbound from the other two, at each completed boundary?
+    ///
+    /// **The persistence question is "does it RE-BIND", and that is the energy arm alone.**
+    /// [`Self::escape_flags`] records full criterion candidacy, which under `Closure` also
+    /// carries the closure gate -- and closure is a difference of neighbouring samples, so it
+    /// fluctuates above `tau` on a perfectly settled escape. Reading persistence off it would
+    /// score ordinary jitter as a re-binding and report a correct criterion as broken.
+    pub unbound_flags: Vec<[bool; 3]>,
+    /// The escape's energy condition already held on **entry** to the interval in which the
+    /// conjunction fired, so the replay found no crossing and `t_end` is the entry boundary.
+    ///
+    /// The number that says whether the `t_end` refinement is doing anything. See the firing
+    /// block in `integrate_az_opts`.
+    pub t_end_at_entry: bool,
     /// Time of the first terminating event, or the time reached if none fired. Distinct from
     /// `t` only when `stop_on_event` is off, where the run continues past the event.
     pub t_end: T,
@@ -108,36 +130,51 @@ pub struct AzOpts<'a, T> {
     /// `t_max` and the event is recorded but not acted on — which is what the reference does,
     /// and what keeps every copy's continuous fields evaluated at a common playhead.
     pub stop_on_event: bool,
-    /// **Canonical**: the escape distance gate as a fraction of the initial hyperradius `R`,
-    /// evaluated once at `t = 0`. Zero disables the arm and recovers the numpy reference.
+    /// Terminate on **escape**. Default **off**, and separately from [`Self::stop_on_event`],
+    /// which continues to govern collision.
     ///
-    /// # The condition prin-rs did not have
+    /// **Collision stays terminal unconditionally** — it is a singularity, and there is genuinely
+    /// nothing to integrate past. Escape is a *heuristic*, and freezing on one is what built the
+    /// patchwork: a terminated trajectory's `shape_vec` is the state at its own `t_end`, escape
+    /// is detected at sync boundaries, so the rendered field became a mosaic of `n_sync` time
+    /// strata stitched at hard seams. A ribbon is a level set of `theta` **at a common time**;
+    /// where neighbouring pixels froze at different times it breaks and resumes.
     ///
-    /// `reference/tb_all_az.py:59-75` tests two conditions — unbound and receding. The GLSL
-    /// (`Ma1achy/principia-ii`, `src/shaders/principia/frag.glsl:104`) tests **three**:
-    /// `dist > r_esc && outward > 0 && E_out > 0`. This port transcribed the numpy form, so it
-    /// declared escape **at any distance, including mid-encounter** — which is precisely the
-    /// transient population [`Self::escape_confirm`] was written to catch temporally.
+    /// Under [`crate::outcome::EscapeRule::Closure`] freezing should barely matter -- it fires on
+    /// a trajectory whose shape has already stopped moving, so the state it freezes is the state
+    /// it would have had anyway. That is the prediction, and it is measured before this flips.
+    pub stop_on_escape: bool,
+    /// Which escape condition to use. See [`crate::outcome::EscapeRule`] for the three and
+    /// where each comes from.
     ///
-    /// `r_esc` is the same guard done **geometrically**: distance is monotone on a real escape,
-    /// where a time window is a heuristic.
+    /// **[`Distance`](crate::outcome::EscapeRule::Distance) carries a canonical fraction**, not a
+    /// length: a multiple of the initial hyperradius `R` evaluated once at `t = 0`, which this
+    /// driver multiplies out at `r0`. The reference's saved configs use `rEsc = 5` and `12` as
+    /// absolute lengths in the latent decode's own units, and every latent decode is normalised
+    /// to `M = 1` with `I = 1` an algebraic identity — so `R = 1` there and the literal transfers.
+    /// It does not transfer to Burrau's near-field, whose `R = 2.2361`. Expressing it as a
+    /// fraction is the scale-gauge rule (BRIEF §2.5) at a third constant.
     ///
-    /// # Units, and why the GLSL's literal is not copied
+    /// **[`Closure`](crate::outcome::EscapeRule::Closure)'s `tau` is dimensionless** — a chord on
+    /// the unit sphere — so it needs no conversion. Its *window* does, and that is [`Self::closure_k`].
     ///
-    /// The reference's saved configs use `rEsc = 5` and `rEsc = 12` as **absolute** lengths in
-    /// the latent decode's own units. Every latent decode is normalised to `M = 1` and
-    /// `I = 1` — the second an algebraic identity of the shape parameterisation — so
-    /// `R = sqrt(I/M) = 1` identically on that chart family and the literal `5` *is* `5 R`
-    /// there. Measured across the presets rather than assumed: see `examples/escape_gate.rs`.
+    /// The body set is a property of the rule, each matching its own reference exactly, rather
+    /// than a separate knob: `Reference` labels only the body outside the tightest pair, the
+    /// other two test all three. That arm was measured on its own axis in the previous round and
+    /// it is **not free** — it alone moved near-field's ungated escape fraction 0.0000 -> 1.0000.
+    pub escape_rule: crate::outcome::EscapeRule<T>,
+    /// The closure window, in **sync boundaries**. `|n(t_k) - n(t_{k-closure_k})|`.
     ///
-    /// Expressing it as a fraction is what makes it transferable to Burrau's near-field, whose
-    /// `R = 2.2361`; an absolute 5 there would mean something else entirely, which is the
-    /// scale-gauge rule (BRIEF §2.5) at a third constant.
-    pub r_esc_frac: T,
-    /// Test **all three** bodies rather than only the one outside the tightest pair.
+    /// The reference measures a 0.4 time-unit window and reads only the two **ends** of it
+    /// (`reference/escape_criterion.py` buffers `nbuf` samples and uses `buf[-1]`, `buf[0]`), so
+    /// boundary sampling is a transcription rather than an approximation — at `t_max = 13,
+    /// n_sync = 32` the realised window is 0.406 against 0.400.
     ///
-    /// The numpy reference tests one; the GLSL tests three. A second divergence, and free.
-    pub escape_all_bodies: bool,
+    /// **It is a time, and `n_sync` is not scaled with `t_max`.** At `t_max = 50, n_sync = 32`
+    /// the interval is 1.5625, so `closure_k = 1` there is a 3.9x wider window and a different
+    /// criterion. The standing `n_sync`/`t_max` trap, landing on the new constant: scale `n_sync`
+    /// with `t_max` or state the realised window with every figure.
+    pub closure_k: usize,
     /// How often the **escape** test runs inside the RK4 loop, in steps. `0` is the
     /// reference's cadence: boundaries only.
     ///
@@ -195,9 +232,10 @@ impl<T: Real> Default for AzOpts<'_, T> {
             forced_refs: None,
             lc_stable: true,
             r_coll_frac: T::zero(),
-            r_esc_frac: T::zero(),
-            escape_all_bodies: false,
+            escape_rule: crate::outcome::EscapeRule::Reference,
+            closure_k: 1,
             stop_on_event: true,
+            stop_on_escape: false,
             escape_every: 0,
             escape_confirm: true,
             keep_boundary_shapes: false,
@@ -245,15 +283,73 @@ pub fn integrate_az_lc<T: Real>(
             forced_refs,
             lc_stable,
             r_coll_frac: T::zero(),
-            r_esc_frac: T::zero(),
-            escape_all_bodies: false,
+            // The reference has no distance gate, no closure arm and no persistence guard: the
+            // cross-check measures `EscapeRule::Reference` and this hardcodes it, so nothing
+            // added since can reach this path.
+            escape_rule: crate::outcome::EscapeRule::Reference,
+            closure_k: 1,
             stop_on_event: false,
+            stop_on_escape: false,
             escape_every: 0,
             escape_confirm: true,
             keep_boundary_shapes: false,
         },
     )
 }
+
+/// Refine an escape's `t_end` by **replaying** the sync interval it fired in.
+///
+/// The closure criterion is evaluated at boundaries, so a firing at `t_k` says only that the
+/// conjunction holds by then. Closure itself has no finer resolution — it is defined from the
+/// boundary series — but the *energy* arm does, and if it crossed inside `(t_prev, t_k]` that
+/// crossing is the honest escape time. Re-run the interval with the same reference body, the same
+/// `dtau` and the same stepper, and take the first sub-step at which body `b` is unbound.
+///
+/// Returns the boundary time unchanged when there is no saved entry state (the first interval),
+/// and the **entry** time with `at_entry` set when the body was already unbound on entry — energy
+/// flickers, closure is what just settled, and there is then no crossing inside the interval.
+fn refine_escape_time<T: Real>(
+    m: &[T; 3],
+    prev: &Option<(Cart<T>, T, usize, T)>,
+    b: usize,
+    t_boundary: T,
+    lc_stable: bool,
+    at_entry: &mut bool,
+) -> T {
+    let Some((c0, t0, a, dtau)) = *prev else {
+        return t_boundary;
+    };
+    if crate::outcome::unbound(&c0, m, b) {
+        // **Keep the boundary time, not the entry time.** The criterion is the CONJUNCTION, and
+        // it first held here; the energy arm crossed at some earlier, unknown boundary. Reporting
+        // `t0` would claim an escape at a time the criterion had not yet concluded one.
+        *at_entry = true;
+        return t_boundary;
+    }
+    let (ab, bb, cb) = triple(a);
+    let sys = if lc_stable {
+        AzSystem::new(ab, bb, cb, *m)
+    } else {
+        AzSystem::new(ab, bb, cb, *m).with_reference_lc()
+    };
+    let (mut s, e) = sys.to_reg(&c0);
+    let dt_left = t_boundary - t0;
+    let mut steps = 0usize;
+    // The same budget shape as the main loop: bounded, and `is_finite` tested explicitly so a
+    // diverged replay cannot spin (NaN >= x is false).
+    while s.is_finite() && s.t < dt_left && steps < REPLAY_MAX_STEPS {
+        s = rk4::step(&sys, &s, e, dtau);
+        steps += 1;
+        if crate::outcome::unbound(&sys.to_cartesian(&s), m, b) {
+            return t0 + s.t;
+        }
+    }
+    t_boundary
+}
+
+/// Step ceiling for [`refine_escape_time`]. One sync interval at the driver's own `dtau` is
+/// `~1/eta` steps; this is far above that and exists only so a pathological replay terminates.
+const REPLAY_MAX_STEPS: usize = 100_000;
 
 /// The full entry point.
 #[allow(clippy::too_many_arguments)]
@@ -294,10 +390,28 @@ pub fn integrate_az_opts<T: Real>(
     // configuration — a co-moving length makes the Hamiltonian time-dependent.
     let r0 = energy::hyperradius(&s0.r, m);
     let r_coll = opts.r_coll_frac * r0;
-    // The escape distance gate, same canonical rule: a fraction of R fixed at t = 0. Zero is
-    // the numpy reference's (absent) gate, and `dist > 0` is then vacuous.
-    let r_esc = opts.r_esc_frac * r0;
-    let esc = |c: &Cart<T>| crate::outcome::escape_candidate_gated(c, m, r_esc, opts.escape_all_bodies);
+    // `Distance`'s gate is canonical too — a fraction of R fixed at t = 0, multiplied out here
+    // and never recomputed from the instantaneous configuration.
+    let rule = opts.escape_rule;
+    let esc = |c: &Cart<T>, cl: Option<T>| {
+        crate::outcome::escape_candidate_rule(c, m, rule, r0, cl)
+    };
+    // The closure window's ring buffer: the last `closure_k + 1` boundary shape vectors. Pushed
+    // unconditionally rather than under `keep_boundary_shapes`, because the criterion reads it
+    // and a criterion that depends on a diagnostic flag is a criterion with two behaviours.
+    let kw = opts.closure_k.max(1);
+    let mut nbuf: std::collections::VecDeque<[T; 3]> = std::collections::VecDeque::with_capacity(kw + 1);
+    // The closure value at each boundary, NaN until the window is full. `NaN < tau` is false, so
+    // an unfilled window cannot fire — correct, since nothing has settled at t ~ 0.
+    let mut closure_hist: Vec<T> = Vec::with_capacity(n_sync);
+    let mut unbound_flags: Vec<[bool; 3]> = Vec::with_capacity(n_sync);
+    // The Cartesian state and time at the PREVIOUS boundary, for the replay refinement of
+    // `t_end`. See the firing block below.
+    // Always written before the boundary block that reads it -- the `None` is unreachable and
+    // exists so `refine_escape_time` has a total signature rather than an unwrap.
+    #[allow(unused_assignments)]
+    let mut prev_boundary: Option<(Cart<T>, T, usize, T)> = None;
+    let mut t_end_at_entry = false;
 
     for kk in 0..n_sync {
         let t_target = T::lit((kk + 1) as f64) * t_max / T::lit(n_sync as f64);
@@ -341,6 +455,10 @@ pub fn integrate_az_opts<T: Real>(
         let a0 = s.a().max(T::TINY);
         let b0 = s.b().max(T::TINY);
         let dtau = eta * dt_left / (a0 * b0);
+
+        // The interval's entry state, kept for the replay refinement of `t_end`. `cart` is
+        // overwritten at the boundary below, so it has to be taken now.
+        prev_boundary = Some((cart, t, a, dtau));
 
         let mut steps = 0usize;
         loop {
@@ -396,13 +514,18 @@ pub fn integrate_az_opts<T: Real>(
             // The escape test at RK4-step resolution, when asked for. Off by default: this is
             // the reference's cadence and changing it changes results. `to_cartesian` per
             // tested step is the cost, which is why it is strided rather than unconditional.
+            // Under `Closure` this arm is **off** regardless of `escape_every`: closure is only
+            // defined where the state is Cartesian, so there is no value to test between
+            // boundaries, and the window is already the persistence guard `escape_confirm`
+            // exists to be. Both flags become vacuous under that rule; said, not silently dropped.
             if opts.escape_every > 0
+                && !matches!(rule, crate::outcome::EscapeRule::Closure(_))
                 && events.escape.is_none()
                 && pending_escape.is_none()
                 && steps % opts.escape_every == 0
             {
                 let c = sys.to_cartesian(&s);
-                if let Some(b) = esc(&c) {
+                if let Some(b) = esc(&c, None) {
                     let te = t + s.t;
                     if opts.escape_confirm {
                         // Provisional. Do NOT break: the trajectory has to reach the next
@@ -412,7 +535,7 @@ pub fn integrate_az_opts<T: Real>(
                     } else {
                         events.escape = Some((b, te));
                         t_end.get_or_insert(te);
-                        if opts.stop_on_event {
+                        if opts.stop_on_escape {
                             break;
                         }
                     }
@@ -433,9 +556,29 @@ pub fn integrate_az_opts<T: Real>(
         t += s.t.min(dt_left);
 
         tight.push(crate::outcome::binary_id(&cart));
+        // Computed unconditionally: it is ~20 flops against a whole RK4 interval, the closure
+        // criterion reads it, and gating a criterion on a diagnostic flag gives it two behaviours.
+        let n_now = crate::physics::shape::shape_vec(&cart.r, m);
         if opts.keep_boundary_shapes {
-            boundary_shapes.push(crate::physics::shape::shape_vec(&cart.r, m));
+            boundary_shapes.push(n_now);
         }
+        // The closure window reads only the two ENDS — `buf[-1]` and `buf[0]` in the reference,
+        // never the interior — so a ring buffer of `kw + 1` is the whole state it needs.
+        nbuf.push_back(n_now);
+        if nbuf.len() > kw + 1 {
+            nbuf.pop_front();
+        }
+        let cl = if nbuf.len() == kw + 1 {
+            Some(crate::outcome::closure(&n_now, &nbuf[0]))
+        } else {
+            None
+        };
+        closure_hist.push(cl.unwrap_or(T::nan()));
+        unbound_flags.push([
+            crate::outcome::unbound(&cart, m, 0),
+            crate::outcome::unbound(&cart, m, 1),
+            crate::outcome::unbound(&cart, m, 2),
+        ]);
         {
             let mut d = crate::physics::newton::pair_dists(&cart.r);
             d.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
@@ -445,7 +588,7 @@ pub fn integrate_az_opts<T: Real>(
         // Instantaneous candidacy at this boundary, recorded whether or not it has already
         // fired — this is the history a persistence guard reads, and it must not stop being
         // written once `events.escape` is set.
-        let candidate_now = esc(&cart);
+        let candidate_now = esc(&cart, cl);
         escape_flags.push(candidate_now.is_some());
 
         // Confirm or discard a provisional in-loop escape. The committed time is the FIRST
@@ -461,13 +604,41 @@ pub fn integrate_az_opts<T: Real>(
         // The escape test runs at the sync boundary, where the state is Cartesian and every
         // trajectory shares a playhead — the reference's cadence, transcribed.
         if events.escape.is_none() {
-            if let Some(b) = esc(&cart) {
-                events.escape = Some((b, t));
-                t_end.get_or_insert(t);
+            if let Some(b) = candidate_now {
+                // **Refine `t_end` by replay, not by sampling finer.** The conjunction first
+                // holds at this boundary, so the energy crossing that completes it lies in
+                // `(t_prev, t]`. Replay that one interval from the saved entry state with the
+                // same stepper and the same `dtau`, and take the first sub-step at which body
+                // `b` is unbound. One extra interval per escaping trajectory, no second
+                // sampling path in the main loop, and no new numerics.
+                //
+                // **The honest limit, and it is counted rather than assumed:** closure's own
+                // resolution is still the boundary cadence, and `spec > 0` may already hold on
+                // ENTRY to the interval — energy flickers, closure is what just settled. Then
+                // there is no crossing to find, `t_end` is the entry time, and
+                // `t_end_at_entry` records it. If that fires on nearly everything the
+                // refinement is decoration, and the measurement says so.
+                //
+                // **Only under `Closure`.** There the boundary cadence is intrinsic -- closure is
+                // defined from the boundary series and has no finer resolution -- and energy is
+                // the one continuous arm. Under `Reference`/`Distance` both arms are continuous,
+                // so refining on energy alone would return a time at which the full condition may
+                // not yet hold, and `escape_every` is the knob that already samples those finer,
+                // with committed semantics and a cross-check measuring them.
+                let te = if matches!(rule, crate::outcome::EscapeRule::Closure(_)) {
+                    refine_escape_time(m, &prev_boundary, b as usize, t, lc_stable, &mut t_end_at_entry)
+                } else {
+                    t
+                };
+                events.escape = Some((b, te));
+                t_end.get_or_insert(te);
             }
         }
 
-        if budget_exhausted || (opts.stop_on_event && (events.collision.is_some() || events.escape.is_some())) {
+        if budget_exhausted
+            || (opts.stop_on_event && events.collision.is_some())
+            || (opts.stop_on_escape && events.escape.is_some())
+        {
             break;
         }
     }
@@ -487,6 +658,9 @@ pub fn integrate_az_opts<T: Real>(
         tight,
         tie_ratio,
         escape_flags,
+        closure_hist,
+        unbound_flags,
+        t_end_at_entry,
         boundary_shapes,
         steps: total_steps,
         finite,

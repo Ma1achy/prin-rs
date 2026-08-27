@@ -3364,12 +3364,48 @@ it caught it again here on the run that was expected to confirm the prediction. 
 frozen fraction goes 0.4306 -> 0.8021, a **37.15%** increase, and **214/576 = 37.15%** of pixels
 move: exactly the pixels that newly froze, by up to **7.4e-2** of chord on a sphere of diameter 2.
 
-So the prediction -- *"the two toggle states produce near-identical images"* -- is **half right**.
-The typical pixel does not move at all, which is the mechanism working: freezing a converged
-trajectory is a no-op. But a third of them do, by a few percent of the shape sphere, so the toggle
-is **not** free and `stop_on_escape` is correctly still defaulted **off**.
+### 22.6 AT 1024^2 THE PREDICTION FAILS OUTRIGHT, AND THE RENDER IS THE EVIDENCE
 
-### 22.6 What is settled and what is not
+`examples/closure_render.rs`, `preset_plambda`, 1024^2, one sample per pixel, `tau = 1e-3`,
+`closure_k = 1`, `n_sync = 33`.
+
+```text
+preset_plambda stop=false  826.4s  escape 0.4128 collision 0.4345  frozen 0.8088
+preset_plambda stop=true   572.2s  escape 0.4128 collision 0.4345  frozen 0.8088
+                shape d: median 0.000e0  max 5.993e-1  pixels moved 392466
+```
+
+**392,466 of 1,048,576 pixels move -- 37.43% -- and the worst moves 5.993e-1**, a third of the
+shape sphere's diameter. At `n = 24` the worst was 7.4e-2; **at full resolution it is eight times
+that**, so the small grid understated the effect by nearly an order of magnitude. The median is
+`0.000e0` in both.
+
+**The two `_outcome.png` files are bitwise identical** (same md5). The toggle changes no label and no
+event time -- events are recorded whether or not they terminate -- so the only difference is *when
+`shape_vec` is read*, and the comparison is clean by construction.
+
+**The images settle it.** Under `stop = false` the ribbons run continuously to every frame edge:
+no domes, no tents, no seams. Under `stop = true`, with the same criterion and the same physics,
+**two large smooth arcs sweep up from the lower corners and cut straight through the ribbon
+structure**, with sharply truncated regions in both upper corners. That is the artefact family,
+regrown by the single-variable change, under the *new* criterion.
+
+So the prediction on record -- *"under the new criterion freezing barely matters, and the toggle
+produces near-identical images"* -- **does not hold**, and neither does the mechanism stated with it.
+The criterion fires at a median `t = 11.8` of 13 with persistence 1.0000, and the shape still moves
+by up to 0.6 in the remaining 1.2 time units on more than a third of the frame.
+
+**CLOSURE OVER A 0.4 WINDOW IS A LOCAL RATE TEST; IT DOES NOT CERTIFY STATIONARITY OVER THE REST OF
+THE RUN.** `|dn/dt| ~ 1/t^3` bounds the *rate*, and a small rate integrated over 1.2 time units is
+not a small displacement -- least of all on the pixels where the run has barely converged. The two
+arms are doing different jobs than the design assumed: the criterion is right about **what escaped**
+(check 1 at 1.0000 against 0 of 895) and silent about **whether the displayed quantity has settled**.
+
+`stop_on_escape` stays **off**, which is the shipped continuous-ribbon image. Nothing is stacked on
+top of this: the next candidate is the one already named -- not terminating on escape at all -- and
+it is a decision to be taken on these numbers rather than a third fix.
+
+### 22.7 What is settled and what is not
 
 **Settled:** check 1 passes at 1.0000, on `deep interior` (check 3), against an independent
 geometric ground truth (check 2). The criterion does not latch transients. The reference path is
@@ -3379,7 +3415,10 @@ reads 4/4 PASS.
 **Not settled:** the 383x separation does not reproduce at this project's horizon, on this project's
 regions, against a ground truth that shares no term with the criterion -- the best cell is 6.8x and
 `near-field` shows none. Whether that is maturity, population, or the criterion is separated in
-§22.2 but not decided. `stop_on_escape` stays **off**.
+§22.2 but not decided.
+
+**Refuted:** that this criterion makes freezing safe. §22.6 regrows the domes at 1024^2 with 37.43%
+of pixels moving and a worst chord of 0.5993. `stop_on_escape` stays **off**.
 
 
 ---

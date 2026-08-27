@@ -1134,13 +1134,23 @@ unbound -- checked against the reference itself, `E = [9.474, 12.178, 31.825]`, 
 corrected. **14 of the 40 golden rows discriminate it**, and a tightest-pair-first ordering fails on
 them.
 
-**THE TOGGLE'S MEDIAN IS EXACTLY ZERO AND 214 OF 576 PIXELS MOVED.** `stop_on_escape` on
-`preset_plambda` takes the frozen fraction 0.4306 -> 0.8021, a 37.15% rise, and **37.15% of pixels
-move** -- exactly the newly-frozen ones -- by up to **7.4e-2** of chord on a sphere of diameter 2.
-The median says 0.000e0. *Never conclude "no effect" from an aggregate without the per-pixel
-distribution*, now three times, and this time on the run written to confirm the prediction. The
-prediction is half right: freezing a **converged** trajectory is a no-op for the typical pixel and
-not for a third of them, so `stop_on_escape` stays **off**.
+**THE TOGGLE'S MEDIAN IS EXACTLY ZERO AND 392,466 OF 1,048,576 PIXELS MOVED.** `stop_on_escape` on
+`preset_plambda` at 1024^2: median `0.000e0`, **37.43% of pixels move, worst 5.993e-1** -- a third of
+the shape sphere's diameter. *Never conclude "no effect" from an aggregate without the per-pixel
+distribution*, now three times, and this time on the run written to **confirm** the prediction. And
+**the small grid understated it by eight times**: at `n = 24` the worst was 7.4e-2. Read the max and
+the moved count at the resolution that ships.
+
+**CLOSURE DOES NOT CERTIFY THAT THE DISPLAYED QUANTITY HAS SETTLED, AND THE RENDER SAYS SO.** Under
+`stop_on_escape = false` `preset_plambda`'s ribbons run continuously to every frame edge; under
+`true`, same criterion and same physics, **two large smooth arcs sweep up from the lower corners and
+cut through the ribbon structure**. The domes regrow. The criterion fires at a median `t = 11.8` of
+13 with persistence 1.0000, and the shape still moves by up to 0.6 in the remaining 1.2 time units.
+`|dn/dt| ~ 1/t^3` bounds the **rate**; a small rate integrated over 1.2 time units is not a small
+displacement. **The criterion is right about what escaped and silent about whether the shape has
+stopped** -- those are different questions and one window cannot answer both. `stop_on_escape` stays
+**off**, and the `_outcome.png` pair is **bitwise identical**, so the toggle changes only *when*
+`shape_vec` is read and the comparison is clean by construction.
 
 **`escape_confirm` AND `escape_every` ARE VACUOUS UNDER `Closure`.** Closure is only defined where
 the state is Cartesian, so there is nothing to test between boundaries, and the window already is

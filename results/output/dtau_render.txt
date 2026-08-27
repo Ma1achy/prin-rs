@@ -1,0 +1,33 @@
+1024^2, one sample per pixel. Only `dtau_mode` differs between rows; every other
+setting is `closure_render`'s, which is what the committed "before" images used.
+
+`nonfin` is the magenta count -- pixels with a non-finite copy. `simfail` is the
+budget-exhausted count, SEPARATE on purpose: a fix that traded one for the other would
+not have fixed anything. `hot` is the fraction above 1e-6 energy drift -- the speckle.
+`ramp` is each panel's own auto-range window, and it belongs with the image: a clean
+field and a blown-up one both fill the ramp, so the window is where the magnitude is.
+
+    config_stability fixoff   725.9s  escape 0.2618 collision 0.3632  nonfin   30109  simfail       0  hot 0.9285  spread ramp (6.850e-5, 4.955e-1)  drift ramp (1.079e-8, 4.071e7)
+    config_stability fixon    767.9s  escape 0.2048 collision 0.3477  nonfin     178  simfail       0  hot 0.8558  spread ramp (6.830e-5, 4.954e-1)  drift ramp (1.075e-8, 4.364e7)
+                            shape d: median 1.113e-1  max 2.000e0  pixels moved 909184  outcome labels flipped 348314
+
+        preset_shape fixon    318.2s  escape 0.0182 collision 0.8024  nonfin      27  simfail       0  hot 0.1767  spread ramp (1.793e-5, 4.661e-1)  drift ramp (5.664e-10, 2.105e3)
+
+         preset_prho fixon    760.3s  escape 0.9901 collision 0.0041  nonfin       1  simfail       0  hot 0.0116  spread ramp (1.332e-6, 1.981e-2)  drift ramp (1.243e-13, 2.378e-8)
+
+      preset_plambda fixon    557.7s  escape 0.4049 collision 0.4343  nonfin       0  simfail       0  hot 0.0033  spread ramp (1.048e-8, 1.970e-2)  drift ramp (3.943e-12, 9.306e-9)
+
+     preset_shape_pl fixon    447.1s  escape 0.3198 collision 0.4850  nonfin       1  simfail       0  hot 0.0451  spread ramp (1.268e-6, 2.150e-2)  drift ramp (1.471e-11, 8.278e-5)
+
+HOW TO READ THIS
+
+THE PREDICTION, stated so it can fail: the magenta clusters shrink sharply or vanish,
+the speckle halos around them go with them and the outcome bands become SOLID as in the
+reference GLSL, the continuous ribbons stop being interrupted, and nothing new appears.
+
+`nonfin` and `hot` are the numbers behind the first two clauses. `outcome labels
+flipped` is the number behind the third: the speckle IS label flipping, so if the
+bands are solidifying that count is large and concentrated where the halos were.
+
+If the magenta survives, that is a SECOND cause and it is worth knowing before
+anything is built on top of this one.

@@ -96,6 +96,8 @@ rows = [struct.unpack_from(f"<{nf}d", d, off + i*nf*8) for i in range(n)]
 | `output/sync_artefact_guarded.txt` | **§21.7**: the same sweep with `escape_confirm` on -- labels stride-invariant on the charts, `deep interior` converging at stride 4. The delta against `sync_artefact.txt` is the guard |
 | `output/sync_artefact.txt` | **§21**: is the concentric banding on the latent charts a sync-cadence artefact? `t_end` distinct values and the fraction landing exactly on a sync boundary, at four escape-test strides, over two Burrau regions and two latent charts -- plus the `d_min` split by terminal state that says whether a finer cadence is a fix or spurious mid-encounter firing |
 | `output/oracle_audit.txt` | **§20**: the exact `dp_optimal` ceiling, the `uniform` (breadth-first) baseline, the criterion-to-uniform gap per level, gain and `err_sum` by level, leaf histograms, and the lag-1 coherence that says whether a region's colour field is smooth or amplified noise. Read the four roles at the top: floor `random`, **baseline `uniform`**, reference `greedy_lookahead_1`, ceiling `dp_optimal` |
+| `output/dtau_step.txt` | **§23**: the `dtau` step-control measurement. Step-count distribution FIRST (it gates everything), then drift and non-finite, the spatial clustering test, the trajectories that got *worse*, and the `T::TINY` report. Read `t/t_max` before any drift column — `per-step-remaining` has the best drift in the table and completes 0.8–8% of the horizon |
+| `output/dtau_render.txt` | **§23**: the before/after render run. `nonfin` and `simfail` are separate columns on purpose — a fix that traded one for the other would not have fixed anything — and the drift ramp window beside each panel is where the magnitude lives |
 | `output/structure_metric.txt` | **§2.2 settled**: `error(B)` for `off` / `multiply` / `replace` on three targets, with `structure_only` and the threshold-free `grad_rms` as controls. Read the oracle-to-random separation first, then `off` against `multiply` on the *same arm* |
 | `output/balanced_march.txt` | **§3.2's acceptance test**: depth variance and per-quad churn against `t`, balanced against the uniform control. Carries the median leaf spread per row, which is what shows the treadmill premise to be wrong in sign |
 | `output/hot_rule_sweep.txt` | the hot rule swept per region — mask saturation and component counts under `abs` against `q[0.50/0.75/0.90]`, with a constant leaf count asserted as the control |
@@ -738,6 +740,30 @@ command recorded beside them in `.gitignore`.
 
 `PRQC` is still committed: it is the per-quad reductions and every criterion's scalar, which is
 what every table is read from.
+
+## `dtau_fix/` — the step-control before/after, from `examples/dtau_render.rs`
+
+```
+cargo run --release --example dtau_render -- 1024 results all dtau_fix
+```
+
+`<case>_fix{off,on}_{uniform,outcome,drift}.png`, 1024². `off` is
+`DtauMode::FixedPerInterval` — **the behaviour every other image in this directory was made
+under** — and `on` is the shipped `PerStepInterval`. `config_stability` carries both arms; the four
+presets are regenerated at `on` only, so the standard gallery stops carrying the defect.
+
+**`_drift.png` is the panel to look at first.** It is `energy_drift_max` on an inferno ramp with
+magenta for no-value, auto-ranged over the field's own p2–p98, and it is what made this bug
+visible: coherent arcs of high drift with the non-finite pixels sitting inside them. The
+`_uniform` and `_outcome` panels are *science* fields and show a numerical defect only once it has
+propagated into a spread or a label, where it reads as fractal mixing. See `../NOTES.md` §14.
+
+**The ramp window is printed beside every panel in `output/dtau_render.txt` and belongs with the
+image.** Auto-ranging is per panel, so a clean field and a blown-up one both fill the ramp; the
+window is where the magnitude lives.
+
+The committed renders elsewhere in this directory are the **"before"** for every claim §23 makes
+and are not touched by this run.
 
 ## A note on raster sizes
 

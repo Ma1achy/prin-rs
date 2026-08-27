@@ -10,7 +10,7 @@ use std::fs::File;
 use std::io::{BufWriter, Write};
 
 use prin_rs::grid::Slice;
-use prin_rs::integrate::az;
+use prin_rs::integrate::az::{self, DtauMode};
 use prin_rs::physics::{burrau, energy, newton, shape};
 use prin_rs::rng::SplitMix64;
 use prin_rs::Vec2;
@@ -70,6 +70,23 @@ fn dump_algebra(path: &str) -> std::io::Result<()> {
     Ok(())
 }
 
+/// The step-sizing mode, from `PRIN_DTAU_MODE`, defaulting to the shipped one.
+///
+/// **Both sides carry the same `dtau` defect and both were fixed, so the comparison that means
+/// anything is old-against-old AND new-against-new** -- either alone would pass while the two
+/// transcriptions diverged. It is an environment variable rather than a flag so
+/// `tests/xcheck.rs` needs no argument threading: the test spawns both processes and they
+/// inherit it. It is also emitted into the header, and `compare.py` asserts headers match, so a
+/// mode mismatch between the two sides is a hard failure rather than a quiet disagreement.
+fn dtau_mode_from_env() -> (DtauMode, &'static str) {
+    match std::env::var("PRIN_DTAU_MODE").unwrap_or_default().as_str() {
+        "fixed" => (DtauMode::FixedPerInterval, "fixed"),
+        "per-step-remaining" => (DtauMode::PerStepRemaining, "per-step-remaining"),
+        "" | "per-step-interval" => (DtauMode::PerStepInterval, "per-step-interval"),
+        other => panic!("PRIN_DTAU_MODE: expected fixed|per-step-remaining|per-step-interval, got {other}"),
+    }
+}
+
 /// Fixed physical length of one sync sub-interval; `n_sync` is derived from it so every
 /// horizon in the sweep runs at the same per-interval resolution. Mirrors `cases.py`.
 const SYNC_INTERVAL: f64 = 13.0 / 32.0;
@@ -84,6 +101,7 @@ fn dump_az(name: &str, t_max: f64, path: &str, lc_stable: bool) -> std::io::Resu
     let n_sync = n_sync_for(t_max);
     let eta = 0.01f64;
     let max_steps = 30_000usize;
+    let (dtau_mode, mode_name) = dtau_mode_from_env();
     let s = Slice::body_plane(3, 3, 1.0, 3.0, 0.05, 0);
 
     let f = File::create(path)?;
@@ -95,7 +113,7 @@ fn dump_az(name: &str, t_max: f64, path: &str, lc_stable: bool) -> std::io::Resu
     )?;
     writeln!(
         w,
-        "# t_max={t_max:?} n_sync={n_sync} eta={eta:?} max_steps={max_steps} masses=3,4,5 G=1 ens=0"
+        "# t_max={t_max:?} n_sync={n_sync} eta={eta:?} max_steps={max_steps} masses=3,4,5 G=1 ens=0 dtau_mode={mode_name}"
     )?;
     let refs: Vec<String> = (0..n_sync).map(|k| format!("ref{k:02}")).collect();
     writeln!(
@@ -105,7 +123,10 @@ fn dump_az(name: &str, t_max: f64, path: &str, lc_stable: bool) -> std::io::Resu
     )?;
 
     for i in 0..s.npix() {
-        let o = az::integrate_az_lc(s.nominal::<f64>(i), &m, t_max, n_sync, eta, max_steps, None, lc_stable);
+        let o = az::integrate_az_opts(
+            s.nominal::<f64>(i), &m, t_max, n_sync, eta, max_steps,
+            &az::reference_opts(None, lc_stable, dtau_mode),
+        );
         write!(w, "{i}")?;
         for k in 0..3 {
             write!(w, "\t{:.17e}\t{:.17e}", o.state.r[k].x, o.state.r[k].y)?;

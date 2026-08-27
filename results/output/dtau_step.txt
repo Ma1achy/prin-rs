@@ -1,0 +1,148 @@
+dtau_step -- 48x48 nominal trajectories per case, eta=0.01, max_steps=30000
+
+MODES: `fixed` is the shipped-until-now sizing and what EVERY committed Rust and
+NumPy number was taken under. `per-step-rem` is the obvious repair and is Zeno by
+arithmetic: dt ~ eta*rem gives rem_(n+1) = rem_n (1-eta), so the interval is
+approached geometrically and never completed. `per-step-int` holds dt_left fixed and
+recomputes only A*B, capped at the entry value.
+
+== 1. STEP-COUNT DISTRIBUTION -- THE GATE ==
+The fix trades accuracy for step count. If the budget is exhausted elsewhere, the
+non-finite pixels have been swapped for budget-exhausted ones -- a different failure
+wearing a different colour. `budget` is that count and it is not folded into §2.
+
+**`t/t_max` IS THE DISCRIMINATOR AND IT BELONGS HERE, NOT IN §2.** A mode that stalls
+has a beautiful drift -- it barely moved. Reading §2 without this column would score
+`per-step-rem` as five orders better than either real mode. A difference can be small
+because both sides are right or because one side is dead.
+
+case                   mode           steps p50 steps p99 steps max   budget     frac  t/t_max
+near-field             fixed               3961      4109      4118        0   0.0000   1.0000
+near-field             per-step-rem       30000     30000     30000     2304   1.0000   0.0303
+near-field             per-step-int        4311      4429      4433        0   0.0000   1.0000
+
+deep interior          fixed               4725      7034     31606        3   0.0013   1.0000
+deep interior          per-step-rem       30000     30000     30000     2304   1.0000   0.0303
+deep interior          per-step-int        5427      7314     34539        1   0.0004   1.0000
+
+config_stability       fixed              13995     18914     20778        0   0.0000   1.0000
+config_stability       per-step-rem       30000     30000     30000     2304   1.0000   0.0080
+config_stability       per-step-int       15308     21027     37211        1   0.0004   1.0000
+
+config_stability@t6    fixed               1464      2066     11644        0   0.0000   1.0000
+config_stability@t6    per-step-rem       30000     30000     30000     2304   1.0000   0.0833
+config_stability@t6    per-step-int        1625      2260      6392        0   0.0000   1.0000
+
+== 2. DRIFT AND NON-FINITE ==
+`affected` is the union over modes of trajectories any mode drives above 1e-6 --
+a FIXED population, so the medians compare the same trajectories rather than each
+mode's own tail. `d_min` is printed for affected and unaffected: if they agree, the
+damage is not simply `close encounters`, it is encounters coinciding with a
+boundary, and that thin set is why it clusters.
+
+case                   mode            drift p50  drift p99  frac>hot  nonfin med(affctd)   max drift
+near-field             fixed            1.515e-9   2.428e-6    0.0113       0    4.315e-6    1.600e-2
+near-field             per-step-rem    1.345e-13  1.404e-13    0.0000       0   1.344e-13   1.440e-13
+near-field             per-step-int     1.233e-9   2.427e-7    0.0082       0    1.797e-9    4.477e-4
+                       d_min p50  affected 9.700e-3   unaffected 8.385e-3   (n_affected 45)
+
+deep interior          fixed            2.094e-1    3.364e6    0.9206      42    2.496e-1    3.572e24
+deep interior          per-step-rem    5.029e-13  5.970e-13    0.0000       0   5.008e-13   6.137e-13
+deep interior          per-step-int     1.613e-4    6.077e5    0.7799      15    1.957e-4    2.178e19
+                       d_min p50  affected 4.000e-5   unaffected 6.112e-5   (n_affected 2189)
+
+config_stability       fixed            2.549e-6    5.789e3    0.5621       7    1.467e-4     3.556e8
+config_stability       per-step-rem    1.319e-14  6.511e-14    0.0000       0   1.495e-14   9.559e-14
+config_stability       per-step-int     8.083e-8    6.233e3    0.3056       5    1.190e-6   3.617e183
+                       d_min p50  affected 9.296e-3   unaffected 5.455e-3   (n_affected 1365)
+
+config_stability@t6    fixed            1.721e-7    4.170e2    0.3555      11    2.818e-4     3.366e7
+config_stability@t6    per-step-rem    4.295e-14  1.020e-13    0.0000       0   3.850e-14   1.432e-13
+config_stability@t6    per-step-int     2.248e-8    1.956e2    0.1888       2    1.192e-6     2.331e8
+                       d_min p50  affected 1.874e-2   unaffected 1.959e-2   (n_affected 837)
+
+== 3. THE SPATIAL TEST -- what ties the numbers to the image ==
+`clust` is the fraction of hot pixels with a hot 4-neighbour divided by the same
+under a random field of the same density. **1.0 is chance.** `nf w/ hot nbr` is the
+fraction of non-finite pixels having a high-drift neighbour -- magenta cores inside
+speckled halos. The user measured 1.7x and 6/6 under `fixed`.
+
+Chance is `1 - (1-base)^4` for base density `n_hot/N^2`, so **the ratio is not
+comparable across densities** -- it rises simply because the fix thins the mask.
+Read `n_hot` as the measurement and the ratio as a shape statistic. And where the
+mask SATURATES (deep interior, 92% hot) chance is ~1 and the ratio says nothing:
+that is the standing regional mask-saturation result, at a third statistic.
+
+case                   mode             n_hot nbr frac   clust n_nonfin  nf w/ hot nbr
+near-field             fixed               26   0.5385  12.133        0       0/0     
+near-field             per-step-rem         0      NaN     NaN        0       0/0     
+near-field             per-step-int        19   0.5263  16.154        0       0/0     
+
+deep interior          fixed             2121   1.0000   1.000       42      42/42    
+deep interior          per-step-rem         0      NaN     NaN        0       0/0     
+deep interior          per-step-int      1797   0.9800   0.982       15      15/15    
+
+config_stability       fixed             1295   0.9629   1.000        7       7/7     
+config_stability       per-step-rem         0      NaN     NaN        0       0/0     
+config_stability       per-step-int       704   0.8935   1.164        5       5/5     
+
+config_stability@t6    fixed              819   0.9634   1.164       11      11/11    
+config_stability@t6    per-step-rem         0      NaN     NaN        0       0/0     
+config_stability@t6    per-step-int       435   0.9356   1.650        2       2/2     
+
+== 4. THE TRAJECTORIES THAT GOT WORSE ==
+Max drift moved the WRONG way in the NumPy smoke test (3.43e-06 -> 6.93e-06). A
+handful of trajectories do worse under the fix; averaging that away is how a second
+mechanism stays hidden. The worst regressions are named with the quantities that
+would explain them.
+
+**Ranked by the ABSOLUTE rise, not the ratio.** A ratio ranking finds a small
+denominator, not a bad outcome: near-field's largest ratio is a pixel going
+9.2e-10 -> 4.5e-4, still among the region's best, on a region whose `drift max`
+IMPROVED 36x overall.
+
+case                        k       fixed per-step-int steps fix steps new      d_min     ab_min
+near-field             189 of 2304 regressed
+                          747   9.191e-10    4.477e-4      4054      4288   1.009e-2   3.026e-2
+                          790    1.061e-9    3.763e-4      4037      4285   9.977e-3   2.992e-2
+                          617   9.566e-10    8.929e-5      4062      4319   9.834e-3   2.840e-2
+
+deep interior          449 of 2304 regressed
+                          151    1.642e-7    2.178e19      5209     34539   3.672e-9  2.613e-17
+                         1011     6.331e1     1.303e8      3361      5522   2.263e-5   7.638e-5
+                          682     2.253e0     1.006e8      3744      4704   1.631e-5   5.563e-5
+
+config_stability       392 of 2304 regressed
+                         1616    8.263e-6   3.617e183     13182     37211  2.102e-99 1.858e-190
+                          556     5.073e2     2.288e8     12663     13895   1.332e-5   6.402e-6
+                         1868     1.418e5     1.933e8     12717     12817   2.211e-4   1.265e-5
+
+config_stability@t6    270 of 2304 regressed
+                         1439     4.637e1     1.640e7      1296      1476   2.069e-3   7.217e-2
+                         1387     1.160e1     6.793e6      1402      1550   2.569e-2   4.126e-2
+                         1087     3.173e1     5.281e6      1502      1743   2.396e-3   1.537e-2
+
+== 5. T::TINY -- IS THE FLOOR EVER THE GUARD? ==
+`dtau` divides by `A*B`, floored at TINY (1e-300 at f64, 1e-37 at f32). At f32
+`TINY*TINY` UNDERFLOWS, so a doubly-degenerate state gives `dtau = inf` -- caught by
+the explicit `is_finite` test and NOT by the floor it is named for. `ab_min` is the
+raw product before the floor, so `floored` says whether the clamp ever bound.
+
+case                   mode              ab_min p1   ab_min min   floored
+near-field             fixed              5.767e-3     4.206e-3         0
+near-field             per-step-rem        1.138e1      1.137e1         0
+near-field             per-step-int       5.765e-3     4.222e-3         0
+
+deep interior          fixed            2.849e-215   3.295e-219         0
+deep interior          per-step-rem        2.146e0      2.121e0         0
+deep interior          per-step-int      1.348e-15   2.628e-217         0
+
+config_stability       fixed              1.408e-7   1.114e-217         0
+config_stability       per-step-rem        1.491e0      1.413e0         0
+config_stability       per-step-int       2.615e-6      0.000e0         1
+
+config_stability@t6    fixed              4.709e-6   2.663e-217         0
+config_stability@t6    per-step-rem        1.295e0      1.223e0         0
+config_stability@t6    per-step-int       1.158e-5   1.151e-216         0
+
+DONE

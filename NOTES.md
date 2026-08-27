@@ -1839,3 +1839,41 @@ would be reporting one.
 What is left open, and is measured: what *would* be evictable (`Camera::covers`, a predicate the
 scheduler never consults), and whether a quad recomputed after leaving view comes back
 **bitwise** what it was — the property a future cache would need to be sound.
+
+---
+
+## 14. Render the diagnostic field, not the science field
+
+Three bugs in this sequence began the same way: an image looked wrong, the reference did not have
+the artefact, and the cause was numerical rather than physical. The LC branch cut, the
+escape-termination patchwork, and the `dtau` step control. Each was dismissed as physics at least
+once.
+
+The general lesson from the third is about *which field to look at*.
+
+The production colouring is bivariate — hue from the shape sphere, lightness from a scalar — and
+both channels are **science** fields. A numerical defect reaches them only after it has propagated:
+it has to corrupt a trajectory badly enough to move a spread or flip an outcome label before
+anything appears, and what appears then is a scatter of pixels that looks exactly like fractal
+mixing. That is why the `dtau` blow-up survived a whole corpus.
+
+`energy_drift_max` is already in the payload per footprint. Mapped directly — inferno ramp,
+magenta for no-value, auto-ranged over its own p2-p98 — it showed **coherent arcs** of high drift
+with the non-finite pixels sitting *inside* them: clustering 1.7x over chance, and 6 of 6
+non-finite pixels having a high-drift neighbour. The defect at source, in one picture, on a field
+that costs nothing to render because the number was always there.
+
+So: `Scalar::Drift` and `colour::drift_rgb` are part of the standard render set alongside outcome
+and spread, and `_drift.png` is written for **both** arms of any before/after — the "before" map is
+the artefact worth keeping, because it is what the signature looks like for the next person.
+
+Two cautions that came out of using it:
+
+- **A ratio and its base rate move together.** The clustering ratio *rose* under the fix (2.381 ->
+  3.868) while the counts fell (819 -> 435 hot, 11 -> 2 non-finite). What the fix removes is the
+  diffuse population; what survives is the genuinely clustered core. Read the count beside the
+  ratio or the ratio reads backwards.
+- **Auto-ranging hides magnitude.** The p2-p98 window is per panel, so a clean field and a blown-up
+  one both fill the ramp. The window is printed beside every panel for that reason —
+  `(9.885e-10, 3.624e5)` before against `(8.559e-10, 4.387e4)` after is the improvement, and neither
+  image says it on its own.

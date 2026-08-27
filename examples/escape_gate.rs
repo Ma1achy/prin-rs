@@ -77,6 +77,7 @@ fn sample(chart: &Chart, body: usize, cx: f64, cy: f64, half: f64, n: usize)
 // `Distance(r_esc)` (all three), so `Distance(0.0)` is still the ungated all-bodies cell.
 fn opts(r_coll: f64, r_esc: f64, all: bool, ev: usize, stop: bool) -> AzOpts<'static, f64> {
     AzOpts {
+        dtau_mode: prin_rs::integrate::az::DtauMode::default(),
         forced_refs: None,
         lc_stable: true,
         r_coll_frac: r_coll,

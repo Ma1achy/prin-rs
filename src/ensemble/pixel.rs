@@ -2,7 +2,7 @@
 
 use crate::decode::Path;
 use crate::grid::Slice;
-use crate::integrate::az::{self, AzOpts, RefPolicy};
+use crate::integrate::az::{self, AzOpts, DtauMode, RefPolicy};
 use crate::outcome::{self, Outcome, State};
 use crate::physics::{energy, shape};
 use crate::Real;
@@ -42,6 +42,12 @@ pub struct EnsembleCfg {
     /// [`crate::integrate::az::AzOpts::escape_confirm`] — without it the in-loop test latches
     /// transients, measured at **895 of 895** in `deep interior`.
     pub escape_confirm: bool,
+    /// How `dtau` is sized within a sync interval. See [`DtauMode`].
+    ///
+    /// **Every committed render, dump and table in `results/` predates this and was taken under
+    /// [`DtauMode::FixedPerInterval`]**, whose blow-up after a boundary-coincident encounter is
+    /// what put the magenta clusters and their speckled halos into `config_stability`.
+    pub dtau_mode: DtauMode,
     pub eta: f64,
     pub max_steps: usize,
     pub ref_policy: RefPolicy,
@@ -135,6 +141,7 @@ impl Default for EnsembleCfg {
             n_sync: 32,
             escape_every: 0,
             escape_confirm: true,
+            dtau_mode: DtauMode::default(),
             escape_rule: crate::outcome::EscapeRule::Closure(crate::outcome::CLOSURE_TAU),
             closure_k: 1,
             stop_on_escape: false,
@@ -439,6 +446,7 @@ pub fn evaluate_at<T: Real>(slice: &Slice, idx: usize, cfg: &EnsembleCfg, eta_v:
         stop_on_event: cfg.stop_on_event,
         escape_every: cfg.escape_every,
         escape_confirm: cfg.escape_confirm,
+        dtau_mode: cfg.dtau_mode,
         escape_rule: cfg.escape_rule.lift(),
         closure_k: cfg.closure_k,
         stop_on_escape: cfg.stop_on_escape,

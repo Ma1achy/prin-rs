@@ -3405,7 +3405,35 @@ arms are doing different jobs than the design assumed: the criterion is right ab
 top of this: the next candidate is the one already named -- not terminating on escape at all -- and
 it is a decision to be taken on these numbers rather than a third fix.
 
-### 22.7 What is settled and what is not
+### 22.7 THE BASIN CONTROL IS DEAD UNDER THIS RULE, AND ITS AGREEMENT PROVES NOTHING
+
+`config_basin` at 1024^2, `t = 50`, `n_sync = 125`, `EscapeRule::Closure`:
+
+```text
+config_basin stop=false  4457.1s  escape 0.0000 collision 0.0000  frozen 0.0000
+                                  t_end distinct 1  on bdry 100.00%
+```
+
+**Nothing terminates. Not one pixel of 1,048,576.** `t_end` takes a single value -- the horizon --
+and `frozen = 0.0000`, so the toggle has nothing to act on and the two rows are identical *by
+construction*. It reproduces the `n = 24` measurement exactly (0 escapers, 0 collisions, 576/576
+bounded), so it is the region and not the resolution.
+
+*A difference can be small because both sides are right or because both are dead.* This one is dead:
+an agreement here would be the arithmetic of a field with one value in it. Asserted rather than
+assumed -- `d_min p50` is `2.36e-2` against `r_coll = 2.0e-2`, so the collision arm is *just* out of
+reach, and `t_close p50` is `2.28e-2` against a 0.4 window, the tightest window-to-inner-timescale
+ratio in the set.
+
+**And the control was pointed at the wrong rule.** The saved config is a **basin-mode** slice with
+`rEsc = 5`, and basin mode in the reference colours by the terminal outcome under
+`dist > r_esc && outward > 0 && E_out > 0`. Rendering it under `Closure` compares a different
+criterion, so a disagreement with the reference here would not localise to the physics -- it would
+just be the two rules differing, which is the thing being measured everywhere else in §22. **The
+basin control has to be rendered under `EscapeRule::Distance(5.0)`**, the rule its own saved config
+names, and that is a separate run rather than a conclusion drawn from this one.
+
+### 22.8 What is settled and what is not
 
 **Settled:** check 1 passes at 1.0000, on `deep interior` (check 3), against an independent
 geometric ground truth (check 2). The criterion does not latch transients. The reference path is
@@ -3419,6 +3447,311 @@ regions, against a ground truth that shares no term with the criterion -- the be
 
 **Refuted:** that this criterion makes freezing safe. §22.6 regrows the domes at 1024^2 with 37.43%
 of pixels moving and a worst chord of 0.5993. `stop_on_escape` stays **off**.
+
+
+---
+
+## 23. The `dtau` step control: a blow-up after a boundary-coincident encounter
+
+**Third bug in this sequence found by taking an odd-looking image seriously**, after the LC branch
+cut and the escape-termination patchwork. The user saw clusters of magenta (non-finite) pixels on
+`config_stability_stop0_*.png`, each ringed by a halo of speckle — red interrupting solid green
+bands in outcome mode, salt-and-pepper over the ribbons in continuous mode — where the reference
+GLSL renders the same slice solid and continuous.
+
+### 23.1 The mechanism
+
+`dt = A*B*dtau`, and `driver.rs` sized `dtau` **once** at each sync interval's entry:
+
+```rust
+let dtau = eta * dt_left / (a0 * b0);      // ONCE
+loop { s = rk4::step(&sys, &s, e, dtau); } // never updated
+```
+
+`reference/tb_az.py:184` carried the identical line and the identical comment, so **every NumPy
+number in the corpus inherited it**.
+
+The physical step is `eta*dt_left` only while `A*B` stays near its entry value. A trajectory sitting
+at a close encounter *at a sync boundary* has a tiny `A0*B0`, so `dtau` is enormous; as the bodies
+separate through the interval, `A*B` grows by orders and `dt` grows with it. **Giant physical steps
+immediately after an encounter.** The GLSL is clean because its step is fixed and cannot explode.
+
+That is not "close encounters" — it is encounters **coinciding with a boundary**, a thin set, which
+is why the damage clusters spatially rather than tracking `d_min`.
+
+The comment above the line records how it got here: shrinking `dtau` with separation was a real
+earlier bug (drove `dt -> 1e-13`, produced a false "intractable region"), and the correction removed
+adaptivity **entirely**. Fixed-per-interval is only right if `A*B` is roughly constant across the
+interval.
+
+### 23.2 The obvious repair is Zeno by arithmetic, and the measurement says so
+
+Putting the **remaining** time in the numerator — `dtau = eta*(dt_left - s.t)/(A*B)` — gives
+`dt ~ eta*rem`, so `rem_{n+1} = rem_n (1 - eta)`. The interval is approached **geometrically and
+never completed**. Measured, `DtauMode::PerStepRemaining` completes
+
+| case | `t/t_max` | steps p50 | budget exhausted |
+|---|---|---|---|
+| config chart @ t6 | **0.0833** | 30000 | 2304 / 2304 |
+| near-field | **0.0303** | 30000 | 2304 / 2304 |
+| deep interior | **0.0303** | 30000 | 2304 / 2304 |
+| config_stability | **0.0080** | 30000 | 2304 / 2304 |
+
+**And its drift is the best in the whole table** — `1.3e-14` to `6.0e-13`, ten orders below
+everything else — because it went nowhere. *A difference can be small because both sides are right
+or because one side is dead*, arriving inside the diagnostic written to catch it. The `t/t_max`
+column was added for exactly this and is printed first.
+
+The form that keeps the intent holds `dt_left` fixed and recomputes only `A*B`:
+
+```rust
+let dtau_now = (eta * dt_left / ab).min(dtau_entry);
+```
+
+**The cap is one-sided in the right direction.** When `A*B` grows the recomputed value falls and the
+blow-up is removed; when `A*B` *falls* at a close approach the cap holds `dtau` at nominal, so
+`dt = A*B*dtau` shrinks with the separation — which is what regularisation buys and what the
+original comment wanted. It removes the over-correction without reintroducing what was
+over-corrected for.
+
+### 23.3 The cost, which gates everything — about 10% more steps
+
+`examples/dtau_step.rs`, 48x48 nominal trajectories per case, `max_steps = 30000`, nothing terminal.
+
+| case | mode | steps p50 | steps p99 | budget |
+|---|---|---|---|---|
+| config chart @ t6 | fixed | 1464 | 2066 | 0 |
+| | per-step-int | 1625 | 2260 | 0 |
+| near-field | fixed | 3961 | 4109 | 0 |
+| | per-step-int | 4311 | 4429 | 0 |
+| deep interior | fixed | 4725 | 7034 | 3 |
+| | per-step-int | 5427 | 7314 | **1** |
+| config_stability | fixed | 13995 | 18914 | 0 |
+| | per-step-int | 15308 | 21027 | 1 |
+
+`t/t_max = 1.0000` on every row. The tail does **not** blow up and the budget count does not rise —
+`deep interior` falls 3 to 1. **The fix does not swap non-finite pixels for budget-exhausted ones**,
+which was the failure it had to be cleared of before any drift number could be read.
+
+### 23.4 The NumPy numbers reproduce, and `med(affected)` falls 123x-2400x
+
+Row one is the reproduction case at the settings the mechanism was found at (`t = 6`,
+`n_sync = 12`, `eta = 0.01`).
+
+| case | mode | nonfin | drift p50 | frac>1e-6 | med(affected) |
+|---|---|---|---|---|---|
+| config chart @ t6 | fixed | **11** | 1.721e-7 | **0.3555** | 2.818e-4 |
+| | per-step-int | **2** | 2.248e-8 | **0.1888** | **1.192e-6** |
+| near-field | fixed | 0 | 1.515e-9 | 0.0113 | 4.315e-6 |
+| | per-step-int | 0 | 1.233e-9 | 0.0082 | **1.797e-9** |
+| deep interior | fixed | **42** | 2.094e-1 | 0.9206 | 2.496e-1 |
+| | per-step-int | **15** | 1.613e-4 | 0.7799 | **1.957e-4** |
+| config_stability | fixed | **7** | 2.549e-6 | 0.5621 | 1.467e-4 |
+| | per-step-int | **5** | 8.083e-8 | 0.3056 | **1.190e-6** |
+
+The NumPy measurement gave non-finite 8 -> 2 and `frac>1e-6` 35.6% -> 18.6% on the same case; this
+reads 11 -> 2 and 35.55% -> 18.88%. It reproduces.
+
+**`med(affected)` is over the pixels hot under EITHER mode, the same set in every row.** The first
+cut conditioned each row on its own hot set and read the improvement *backwards* (3.53e-4 ->
+4.44e-4), because the selection moves with the thing being measured. Paired, it falls 236x, 2400x,
+1275x and 123x.
+
+### 23.5 The spatial test — the counts fall, and the clustering ratio RISES
+
+`cluster` is the fraction of hot pixels having a hot 4-neighbour, divided by the same under a
+random field of the same density — `1 - (1-base)^4`. **1.0 is chance.**
+
+| case | mode | cluster | n hot | nf w/ hot nb | n nonfin |
+|---|---|---|---|---|---|
+| config chart @ t6 | fixed | 1.164 | 819 | 1.0000 | 11 |
+| | per-step-int | **1.650** | **435** | 1.0000 | **2** |
+| near-field | fixed | 12.133 | 26 | — | 0 |
+| | per-step-int | **16.154** | **19** | — | 0 |
+| deep interior | fixed | 1.000 | 2121 | 1.0000 | 42 |
+| | per-step-int | **0.982** | **1797** | 1.0000 | **15** |
+| config_stability | fixed | 1.000 | 1295 | 1.0000 | 7 |
+| | per-step-int | **1.164** | **704** | 1.0000 | **5** |
+
+**The prediction was that the clustering ratio falls toward chance. It rises, in three regions of
+four.** Stated rather than dressed up. The counts fall — `n hot` by 47%, 27%, 15% and 46%,
+non-finite by 82%, 64% and 29% — so what the fix removes is the *diffuse* high-drift population,
+and what survives is the genuinely clustered core, which is a higher ratio on a smaller set.
+
+**Read `n hot` as the measurement and the ratio as a shape statistic.** Chance depends on the
+density, so the ratio is *not comparable across the two rows of a pair* — it rises partly because
+the fix thins the mask. And in `deep interior` the mask **saturates** at 92% hot, where chance is
+~1 and the ratio can say nothing at all; that is the standing regional mask-saturation result
+landing on a third statistic. The ratio column is quoted here because it was the shape the bug was
+found by, not because it decides anything.
+
+**`nf w/ hot nb` is 1.0000 in every cell, before and after — which means it cannot fail here.**
+Every non-finite pixel sits inside a high-drift neighbourhood under both modes, so the statistic
+the user quoted as 6/6 is saturated in this configuration and is a description rather than a test.
+It says the magenta that remains is magenta for the same reason it always was; it could not have
+said otherwise.
+
+### 23.6 A few trajectories get much worse, and they are near-singular
+
+Ranked by the **absolute** rise, not the ratio. The first cut ranked by ratio and returned pixels
+whose `fixed` drift was accidentally excellent — `9.2e-10 -> 4.5e-4` is a ratio of `4.9e5` on a pixel
+that is still the region's best, while near-field's `drift max` *improved* 36x overall. A ratio
+ranking finds a small denominator, not a bad outcome.
+
+| case | pixel | fixed | per-step-int | `d_min` |
+|---|---|---|---|---|
+| config_stability | 1616 | 8.263e-6 | **3.617e183** | **2.102e-99** |
+| deep interior | 151 | 1.642e-7 | **2.178e19** | 3.672e-9 |
+| config chart @ t6 | 1439 | 4.637e1 | 1.640e7 | 2.069e-3 |
+
+270 / 189 / 449 / 392 of ~2300 finite-both pixels get worse per case. The worst are at `d_min` of
+`1e-99` and `1e-9` — genuine near-singular states, where finer stepping penetrates *further* toward
+the singularity within the interval instead of blowing past it. Both modes are wrong there; the
+fix's failure is louder. `error_ratio` and `n_nonfinite` are what flag those, and they are never
+discarded.
+
+### 23.7 `T::TINY` underflows at **f64**, not only f32
+
+`ab_floored` fires on exactly **one** trajectory of 2304, in `config_stability` under
+`per-step-int`, where the raw `A*B` reaches **exactly `0.000e0`**. The standing note has this as an
+f32 property — `TINY*TINY` underflowing so a doubly-degenerate state gives `dtau = inf`. At f64
+`TINY = 1e-300` and `TINY*TINY = 1e-600` **also underflows to zero**, so the same hole is open at
+both precisions. Here the `.min(dtau_entry)` cap absorbs it (`inf.min(x) == x`); under
+`FixedPerInterval` there is no cap and nothing to absorb it. Minimum raw `A*B` seen: `2.663e-217`
+(config chart), `4.206e-3` (near-field), `3.295e-219` (deep interior), `1.114e-217`
+(config_stability).
+
+### 23.8 The 109 escaping near-field pixels at `t = 20` were the bug
+
+This is the largest correction to the corpus in this section. The standing finding reads *"zero of
+1024 near-field pixels fire at `t_max = 13`, 109 at `t_max = 20`"*. Under the corrected stepping,
+**zero of 1024 fire at `t = 20`**.
+
+That is not a chaotic reshuffle, and the discriminator is on the trajectories themselves:
+
+| population (`fixed`, `t = 20`) | drift p50 | drift p90 | `d_min` p50 |
+|---|---|---|---|
+| the 109 that FIRE | **1.147** | 2.186e2 | 8.883e-3 |
+| the 915 that stay silent | **6.233e-5** | 1.941e-2 | 6.876e-4 |
+| the same 109, under `per-step-int` | **1.610e-3** | 2.182e-3 | 3.194e-4 |
+
+**A median energy drift of 1.147 is 115% of the total energy.** Those trajectories are not physics.
+A giant post-encounter step throws a body outward, it reads as unbound and receding at the next
+boundary, and the arm latches. Under correct stepping the same pixels sit four orders lower and do
+not escape.
+
+**Genuine escape is not suppressed.** At `t = 40` the two modes give **280 and 308** of 1024, and at
+`t = 30`, 2 and 2. Burrau's escape is simply later than `t = 20`; the earlier figure was measuring
+the step control.
+
+### 23.9 Two tests went vacuous, and both control arms caught it
+
+Neither is a regression in the fix; both are guards firing because the thing under test stopped
+being exercised.
+
+- `escape_matches_the_legacy_classifier` asserted `fired > 0`, and at `t = 20` nothing fires any
+  more. Re-pinned at `t = 40` (7 of 25 fire, worst drift 7.5e-6), and **`n_sync` is now scaled with
+  `t_max`** — the old form ran `t = 13` at a 0.406 interval and `t = 20` at 0.625, which is this
+  project's own discretisation trap inside a test.
+- `the_two_to_one_constraint_holds_and_the_control_violates_it` asserted its unbalanced control
+  actually violates 2:1. **The fixture region has now moved twice.** It was `deep interior`, moved
+  to `near-field` when the escape distance gate flattened `deep interior`, and moves back now: under
+  the corrected stepping near-field is gap 1 at **all twenty-four** cells of
+  `alpha_hi x tau x n` swept, while `deep interior` recovers gap 2 at `n = 4`.
+
+### 23.10 The cross-check, run three ways
+
+| pair | result |
+|---|---|
+| new Rust vs new Python (`per-step-interval`) | **4/4 PASS** |
+| old Rust vs old Python (`fixed`) | **4/4 PASS** |
+| old Rust vs new Python (deliberate mismatch) | **refused** — header assertion |
+
+Either of the first two alone would pass while the two transcriptions diverged, which is why both
+are run. The mode is emitted into the TSV header and `compare.py` asserts headers match, so a
+mismatched pair is a hard failure rather than a quiet disagreement; the third row confirms that
+guard fires.
+
+`fixed` reproduces the committed pre-fix `tb_az.py` **bitwise** on the smoke test —
+`3.1966735584829495e-09` — so the mode switch is faithful. Under the fix the median is
+`4.462793760861922e-10`. **Separately: the number `reference/README.md` used to quote,
+`3.892633125701676e-09`, does not reproduce on the unmodified committed reference either.** It was
+already wrong, and only running it found out.
+
+BRIEF §5 acceptance is unchanged: `M = 12`, `R = 2.23606797749979`, `E = -12.816666666666666`; gauge
+invariance `rel err = 0e0` at `alpha in {0.25, 1, 4}`; two-body radial collision
+`d_min = 1.288146e-11` with `|dE/E| = 2.947299e-14`; `error_ratio` median `1.000000`. Suite: **223
+passed, 0 failed**.
+
+### 23.11 The modes have to be shown to differ, and where they must not
+
+`tests/dtau_step_control.rs`. `dtau_mode` is threaded through four structs and a closure, and a
+field that never reaches the stepper produces perfectly plausible numbers — so each test names the
+configuration in which it fires and asserts a direction.
+
+| test | what would have to be true for it to fail |
+|---|---|
+| `the_modes_disagree_where_ab_grows_across_an_interval` | `dtau_mode` not reaching `rk4::step`; asserts >half of 64 `deep interior` trajectories differ, and by more than round-off |
+| `the_modes_agree_to_roundoff_where_ab_is_flat` | the difference above being two arbitrary steppers rather than the mechanism; over `t = 0.5` with no encounter the cap binds throughout and the modes agree to `< 1e-8` |
+| `per_step_remaining_stalls_rather_than_integrating` | Zeno not happening; asserts the budget is exhausted, `t` stays inside the first interval, **and that the stalled mode's drift is smaller than the completed one's** — the trap, asserted rather than described |
+| `ab_min_is_recorded_and_the_f64_floor_never_binds` | `ab_min` written from the entry state rather than per step; asserts it falls below `1e-3` on `deep interior` and that the floor binds nowhere there |
+
+### 23.12 The renders — the prediction holds on all four clauses
+
+`examples/dtau_render.rs`, 1024², one sample per pixel, `results/dtau_fix/`. Only `dtau_mode`
+differs between the two rows; every other setting is `closure_render`'s, which is what the
+committed "before" images used.
+
+| case | mode | nonfin | simfail | hot | drift ramp p2–p98 | secs |
+|---|---|---|---|---|---|---|
+| config_stability | fixoff | **30109** | **0** | 0.9285 | (1.079e-8, 4.071e7) | 725.9 |
+| config_stability | fixon | **178** | **0** | 0.8558 | (1.075e-8, 4.364e7) | 767.9 |
+| preset_shape | fixon | 27 | 0 | 0.1767 | (5.664e-10, 2.105e3) | 318.2 |
+| preset_prho | fixon | 1 | 0 | 0.0116 | (1.243e-13, 2.378e-8) | 760.3 |
+| preset_plambda | fixon | 0 | 0 | 0.0033 | (3.943e-12, 9.306e-9) | 557.7 |
+| preset_shape_pl | fixon | 1 | 0 | 0.0451 | (1.471e-11, 8.278e-5) | 447.1 |
+
+**The magenta count falls 30109 → 178, a factor of 169** — from 2.87% of the frame to 0.017%. And
+`simfail` is **0 on both rows**, which is the clause that had to be checked separately: a fix that
+removed non-finite pixels by exhausting the budget instead would have moved the first column and
+fixed nothing.
+
+Against the prediction, clause by clause:
+
+- **magenta clusters shrink sharply or vanish** — yes, 169x, and visibly nothing left in either
+  `_outcome` or `_drift`.
+- **the speckle halos go, and the outcome bands become solid** — yes. The blue *bounded* regions
+  that were shot through with red-and-magenta stipple are now large and solid, and the green bands
+  are unbroken. 348,314 of 1,048,576 outcome labels flip, concentrated exactly where the halos were.
+- **the continuous ribbons stop being interrupted** — yes, and the filament structure is *more*
+  legible afterwards, not less.
+- **nothing new appears** — the large-scale geometry is the same slice, recognisably feature for
+  feature.
+
+**What remains is genuine.** The red regions still carry blue and green stipple, but that is
+fractal mixing at the sampling limit, not the halo pattern: it has no magenta in it, it does not
+ring a core, and it survives at every resolution. Distinguishing the two is what the `_drift` panel
+is for, and there the "before" is grained with magenta through every arc while the "after" is
+smooth.
+
+`shape d` between the rows is median `1.113e-1`, max `2.000` — the full diameter of the shape
+sphere — over 909,184 pixels moved. That is **not** a defect and is not evidence either way: the
+two modes integrate genuinely different trajectories through a chaotic region, so they must
+diverge. The question the images answer is whether the structure got cleaner, not whether the
+pixels agree.
+
+### 23.13 The diagnostic render mode
+
+`Scalar::Drift` and `colour::drift_rgb` — `energy_drift_max` on an inferno ramp, `DEBUG_NAN` magenta
+for the same veto set `colour::rgb` applies, auto-ranged over the field's own p2-p98 via
+`colour::range_q`. Univariate on purpose: `rgb` is bivariate and a diagnostic asked under it
+inherits the shape field's structure.
+
+**When a numerical defect is suspected, render the diagnostic field, not the science field.** The
+science fields show a defect only after it has propagated into a spread or a label; the drift map
+shows it at source, as coherent arcs with the non-finite pixels inside them. `_drift.png` is written
+for **both** modes — the "before" map is the artefact worth keeping, because it is what the
+signature looks like.
 
 
 ---
@@ -3521,6 +3854,12 @@ Every table above comes from a committed example. Raw output for all of them is 
 | §21 the sync-cadence artefact | `cargo run --release --example sync_artefact -- 3 8 13 1 0` (unguarded) and `... 3 8 13 1 1` (guarded) |
 | §22 the closure criterion | `cargo run --release --example escape_closure -- 24` |
 | §22.5 the toggle renders | `cargo run --release --example closure_render -- 1024 results` — writes `results/closure/`, **never** over the committed "before" set |
+| §23.3-23.7 the `dtau` measurement | `cargo run --release --example dtau_step -- 48` — stdout only, `results/output/dtau_step.txt` |
+| §23.8 the escape-arm correction | inside `tests/outcome_encoding.rs::escape_matches_the_legacy_classifier`; the 109-vs-0 comparison is `t = 20`, `n_sync = 32`, near-field 32x32, both `DtauMode` arms |
+| §23.11 the mode-discrimination tests | `cargo test --release --test dtau_step_control` — four tests, each naming the configuration in which it fires |
+| §23.10 the cross-check, three ways | `cargo test --release --test xcheck -- --ignored` and again with `PRIN_DTAU_MODE=fixed`. The mode is in the TSV header and `compare.py` asserts headers match, so a mismatched pair is refused rather than compared |
+| §23 renders | `cargo run --release --example dtau_render -- 1024 results all dtau_fix` — writes `results/dtau_fix/`, **never** over the committed "before" set. Args are `res root only sub`; `only` filters to one case |
+| the reference smoke test | `reference/README.md`. `fixed` reproduces the committed pre-fix file bitwise at `3.1966735584829495e-09`; the fix gives `4.462793760861922e-10`. The number the README used to quote, `3.892633125701676e-09`, does not reproduce on the unmodified committed reference either |
 | §21.6 persistence and precedence | `cargo run --release --example escape_persistence -- 48 13 32` |
 | the signal audit against the DP labels | `cargo run --release --example signal_audit -- 7 8 1e-4 13 <scratch>` (~2 h; it enables the FTLE march, which is ~2.5x a plain build. **Point it at a scratch root**) |
 | §20.6 firing the bound assert cheaply | `cargo run --release --example criterion_metric -- 4 8 1e-4 13 /tmp/scratch` |

@@ -1159,6 +1159,87 @@ the persistence guard. Stated, not silently dropped -- and the replay refinement
 energy would return a time at which the full condition may not hold.
 
 
+**`dtau` SIZED ONCE PER SYNC INTERVAL BLOWS UP AFTER A BOUNDARY-COINCIDENT ENCOUNTER.**
+`dt = A*B*dtau`, so the physical step is `eta*dt_left` only while `A*B` stays near its entry value.
+A trajectory at a close encounter **at a boundary** has a tiny `A0*B0`, so `dtau` is enormous and
+`dt` grows by orders as the bodies separate. Not "close encounters" — encounters *coinciding with a
+boundary*, a thin set, which is why the damage clusters spatially and a `d_min` correlation is flat
+(`1.04e-04` in both populations). `DtauMode::PerStepInterval` recomputes `A*B` per step with
+`dt_left` **held fixed** and caps at the entry value; the cap is one-sided in the right direction —
+when `A*B` grows the value falls and the blow-up goes, when `A*B` falls at a close approach the cap
+holds `dtau` at nominal so `dt` shrinks with the separation, which is what regularisation buys.
+Cost is **~10% more steps** and the budget count does **not** rise (`deep interior` 3 -> 1). It
+removes the over-correction without reintroducing what was over-corrected for. `tb_az.py` carries
+the same three modes; **fix both sides or the cross-check disagrees for the right reason.**
+
+**PUTTING THE REMAINING TIME IN THE NUMERATOR IS ZENO BY ARITHMETIC.** `dtau = eta*(dt_left-s.t)/(A*B)`
+gives `dt ~ eta*rem`, so `rem_{n+1} = rem_n (1-eta)` and the interval is approached geometrically and
+**never completed** — measured `t/t_max` of 0.0833, 0.0303, 0.0303, **0.0080**, with the whole budget
+burned on 2304 of 2304. **And its drift is the best in the table by ten orders** (`1.3e-14`) because
+it went nowhere. Kept as `DtauMode::PerStepRemaining`, a named axis and never a candidate. Print
+`t/t_max` before any drift column: *a difference can be small because both sides are right or
+because one side is dead*, and this arrived inside the diagnostic written to catch it.
+
+**THE 109 NEAR-FIELD ESCAPES AT `t = 20` WERE THE `dtau` BUG.** The standing finding "zero of 1024
+fire at `t_max = 13`, 109 at `t_max = 20`" is corrected: under per-step stepping **zero** fire at
+`t = 20`. The discriminator is on the trajectories — the 109 that fire have median energy drift
+**1.147**, which is 115% of the total energy, against **6.2e-5** for the 915 that stay silent, and
+under the fix those same pixels sit at 1.6e-3 and do not escape. A giant post-encounter step throws
+a body outward, it reads as unbound and receding at the next boundary, and the arm latches. Genuine
+escape is **not** suppressed: at `t = 40` the modes give 280 and 308 of 1024. Burrau's escape is
+simply later than 20.
+
+**`TINY*TINY` UNDERFLOWS AT f64 TOO, NOT ONLY f32.** `1e-300 * 1e-300 = 1e-600` is zero at f64, so
+the doubly-degenerate hole the standing note describes as an f32 property is open at **both**
+precisions. Measured: `ab_floored` fires on one trajectory of 2304 with raw `A*B` reaching exactly
+`0.000e0`. Under `PerStepInterval` the `.min(dtau_entry)` cap absorbs the resulting `inf`; under
+`FixedPerInterval` there is no cap and nothing to absorb it. Know which guard is doing the work.
+
+**THE CLUSTERING RATIO ROSE WHERE THE PREDICTION SAID IT WOULD FALL, AND THE FIX STILL HELD.**
+Observed neighbour fraction over chance `1-(1-base)^4` went 1.164 -> 1.650, 1.000 -> 1.164 and
+12.133 -> 16.154 under the fix. The counts fell with it — `n_hot` by 15-47%, non-finite 11 -> 2,
+42 -> 15, 7 -> 5 — so what is removed is the *diffuse* high-drift population and what survives is
+the genuinely clustered core, a higher ratio on a smaller set. **A ratio and its base rate move
+together; read both or the ratio reads backwards.** And in `deep interior` it went *down*
+(1.000 -> 0.982) for a fourth reason: at **92% hot** the mask is saturated, chance is ~1 and the
+ratio cannot say anything — the standing regional mask-saturation result, at a third statistic.
+`nf w/ hot nbr` is worse still: **1.0000 in every cell of the table, before and after**, so the
+6-of-6 the mechanism was first quoted from is saturated and could not have come out otherwise. Same defect one level down: ranking the worsened trajectories by `after/before`
+returned pixels whose baseline was accidentally excellent (`9.2e-10 -> 4.5e-4`, ratio `4.9e5`, still
+the region's best) while the region's `drift max` *improved* 36x. Rank by the absolute rise.
+
+**A MEDIAN CONDITIONED ON EACH ARM'S OWN SELECTION IS A DIFFERENT STATISTIC IN EACH ROW.**
+`med(drift | drift > 1e-6)` read the `dtau` fix **backwards** — 3.53e-4 -> 4.44e-4 — because the
+fix removes pixels from the selection. Over the pixels hot under **either** arm, the same set in
+every row, it falls **236x, 2400x, 1275x and 123x**.
+
+**THE `dtau` FIX REMOVES 169 OF EVERY 170 MAGENTA PIXELS AND TRADES NOTHING FOR THEM.**
+`config_stability` at 1024^2: non-finite **30109 -> 178** (2.87% of the frame to 0.017%) with
+`budget_exhausted` **0 on both sides**, so the failure was not swapped for a differently-coloured
+one. 348,314 of 1,048,576 outcome labels flip, concentrated where the speckle halos were; the
+bounded regions become solid and the ribbons continuous. What remains -- red regions stippled with
+blue and green -- is genuine fractal mixing: no magenta in it, not ringing a core, stable across
+resolution. **`shape d` between the two modes is median 0.111 with a max of 2.000, the full
+diameter of the shape sphere, over 909,184 pixels. That is not evidence of anything** -- the two
+modes integrate different trajectories through a chaotic region and must diverge. The images
+answer whether the structure got cleaner, not whether the pixels agree.
+
+**WHEN A NUMERICAL DEFECT IS SUSPECTED, RENDER THE DIAGNOSTIC FIELD, NOT THE SCIENCE FIELD.**
+`Scalar::Drift` / `colour::drift_rgb`: `energy_drift_max` on an inferno ramp, magenta for the same
+veto set `colour::rgb` applies, auto-ranged p2-p98. It is already in the payload, so it is a
+colouring and not a computation. The science fields show a defect only *after* it has propagated
+into a spread or a label; the drift map shows it at source, as coherent arcs with the non-finite
+pixels sitting inside them. Write it for **both** arms of a before/after — the "before" map is the
+artefact worth keeping, because it is what the signature looks like.
+
+**A FIXTURE THAT HAS TO BE MEASURED ONCE HAS TO BE MEASURED EVERY TIME THE PHYSICS MOVES.** The 2:1
+balance test's region has now swapped **twice** — `deep interior`, then `near-field` when the escape
+distance gate flattened `deep interior`, then back to `deep interior` under the `dtau` fix (near-field
+is now gap 1 at **all twenty-four** swept cells of `alpha_hi x tau x n`). Each time it was the
+*control* arm — "the unbalanced tree must actually violate 2:1" — that caught it, not the property
+under test. Same session: `escape_matches_the_legacy_classifier` went vacuous because its arm stopped
+firing at `t = 20`. **The assertion that the test is exercised is the part that keeps working.**
+
 ---
 
 ## SMOKE TEST

@@ -125,6 +125,22 @@ FTLE_PERT = [1.0, -2.0, 3.0, -4.0, 5.0, -6.0]
 AZ_HORIZONS = ["az_t0p5", "az_t1", "az_t2", "az_t4", "az_t8", "az_t13"]
 
 
+def dtau_mode():
+    """The step-sizing mode, from `PRIN_DTAU_MODE`, defaulting to the shipped one.
+
+    Both sides carry the same `dtau` defect and both were fixed, so the comparison that means
+    anything is old-against-old AND new-against-new -- either alone would pass while the two
+    transcriptions diverged. It is emitted into the header, and `compare.py` asserts headers
+    match, so a mode mismatch between the two sides is a hard failure rather than a quiet
+    disagreement.
+    """
+    import os
+    m = os.environ.get("PRIN_DTAU_MODE", "") or "per-step-interval"
+    if m not in ("fixed", "per-step-remaining", "per-step-interval"):
+        raise SystemExit(f"PRIN_DTAU_MODE: unexpected value {m!r}")
+    return m
+
+
 def header_lines(name):
     c = CASES[name]
     if c["kind"] == "algebra":
@@ -145,6 +161,7 @@ def header_lines(name):
             f"# case={name} kind={c['kind']} nx={c['nx']} ny={c['ny']}"
             f" cx={c['cx']} cy={c['cy']} half={c['half']} body={c['body']}",
             f"# t_max={c['t_max']} n_sync={c['n_sync']} eta={c['eta']}"
-            f" max_steps={c['max_steps']} masses=3,4,5 G=1 ens=0",
+            f" max_steps={c['max_steps']} masses=3,4,5 G=1 ens=0"
+            f" dtau_mode={dtau_mode()}",
         ]
     return head + [f"# columns={c['columns']}"]

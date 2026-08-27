@@ -19,10 +19,39 @@ Pure NumPy, no other dependencies. Verified to import cleanly as a set.
 python3 -c "
 import numpy as np, tb, tb_all_az as AA, warnings; warnings.filterwarnings('ignore')
 r0,v0,gid,_,_ = tb.burrau_grid(3,3, 1.0,3.0, 0.05, ens=3, jitter_frac=0.5, seed=0)
-res = AA.integrate_all_az(r0,v0, t_max=13.0, n_sync=32, eta=0.01)
-print('median |dE/E| =', np.median(res['drift']))   # expect ~3.9e-09
+for mode in ['fixed', 'per-step-interval']:
+    res = AA.integrate_all_az(r0,v0, t_max=13.0, n_sync=32, eta=0.01, dtau_mode=mode)
+    print(mode, 'median |dE/E| =', np.median(res['drift']))
 "
 ```
+
+Measured here:
+
+| `dtau_mode` | median `|dE/E|` | max |
+|---|---|---|
+| `fixed` (the behaviour every committed number used) | `3.196673558482950e-09` | `2.9587e-06` |
+| `per-step-interval` (the default) | `4.462793760861922e-10` | `3.7858e-08` |
+
+**Two things to know before quoting these.**
+
+`fixed` reproduces the committed pre-fix `tb_az.py` **bitwise** — `3.1966735584829495e-09` from
+`git show HEAD:reference/tb_az.py` — so the mode switch is faithful and the change in the second
+row is the fix, not a transcription slip.
+
+**The number this README used to quote, `3.892633125701676e-09`, does not reproduce on the
+unmodified committed reference either.** It is not a casualty of the `dtau` change; it was already
+wrong. A documented reproduction command can be wrong, and only running it finds out.
+
+## `dtau_mode`
+
+`integrate_az` and `integrate_all_az` take `dtau_mode`, matching
+`src/integrate/az/driver.rs::DtauMode`. `dt = A*B*dtau`, so sizing `dtau` once per sync interval
+makes the physical step `eta*dt_left` only while `A*B` stays near its entry value — a trajectory at
+a close encounter *at a boundary* has a tiny `A0*B0`, so `dtau` is enormous and `dt` grows by orders
+as the bodies separate. `'per-step-interval'` recomputes `A*B` per step with `dt_left` held fixed
+and caps at the entry value; `'per-step-remaining'` puts the remaining time in the numerator and is
+**Zeno by arithmetic** — `rem_{n+1} = rem_n (1-eta)`, so the interval is never completed. It is kept
+as a named measurement axis, not as a candidate.
 
 `tb_az.py` uses RK4 — **not** symplectic or time-symmetric. It was built to prove the physics, not to
 ship. Match it at f64 first, then change one thing at a time.

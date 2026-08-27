@@ -150,7 +150,45 @@ def choose_reference(r):
     return ref
 
 
-def integrate_az(r0, v0, t_max, n_sync=32, eta=0.02, max_steps=8000, M=None):
+# How `dtau` is sized within a sync interval. Ported from the corrected Rust
+# (`src/integrate/az/driver.rs::DtauMode`), which is the considered implementation.
+#
+#   'fixed'              -- once at interval entry, never updated. What this file did until now,
+#                           and therefore what EVERY committed NumPy number in the corpus used.
+#                           dt = A*B*dtau, so the physical step is eta*dt_left only while A*B
+#                           stays near its entry value; a trajectory at a close encounter AT a
+#                           sync boundary has a tiny A0*B0, so dtau is enormous, and as the
+#                           bodies separate through the interval dt grows with A*B. Giant
+#                           physical steps immediately after an encounter.
+#   'per-step-remaining' -- eta*(dt_left - s.t)/(A*B) per step. Zeno by arithmetic:
+#                           dt ~ eta*rem gives rem_{n+1} = rem_n (1-eta), so the interval is
+#                           approached geometrically and never completed. Kept because it looks
+#                           right, not because it is a candidate.
+#   'per-step-interval'  -- min(eta*dt_left/(A*B), dtau_entry). dt ~ eta*dt_left throughout, so
+#                           the step count stays at ~1/eta. The cap is ONE-SIDED in the right
+#                           direction: when A*B grows the recomputed value falls and the blow-up
+#                           goes; when A*B falls at a close approach the cap holds dtau at
+#                           nominal so dt shrinks with the separation -- which is what
+#                           regularisation buys and what the comment below always wanted.
+DTAU_MODES = ('fixed', 'per-step-remaining', 'per-step-interval')
+DTAU_MODE_DEFAULT = 'per-step-interval'
+
+
+def _dtau_for_step(mode, eta, dt_left, dtau_entry, s):
+    """(A*B) recomputed from the CURRENT state. Mirrors `dtau_for_step` in driver.rs."""
+    A = np.maximum(np.einsum('sk,sk->s', s[:, 0:2], s[:, 0:2]), 1e-300)
+    B = np.maximum(np.einsum('sk,sk->s', s[:, 4:6], s[:, 4:6]), 1e-300)
+    if mode == 'fixed':
+        return dtau_entry
+    if mode == 'per-step-remaining':
+        return eta*np.maximum(dt_left - s[:, 8], 0.0)/(A*B)
+    if mode == 'per-step-interval':
+        return np.minimum(eta*dt_left/(A*B), dtau_entry)
+    raise ValueError(f"dtau_mode: expected one of {DTAU_MODES}, got {mode!r}")
+
+
+def integrate_az(r0, v0, t_max, n_sync=32, eta=0.02, max_steps=8000, M=None,
+                 dtau_mode=DTAU_MODE_DEFAULT):
     Mv = tb.M if M is None else M
     n = r0.shape[0]
     r = r0.copy(); v = v0.copy()
@@ -174,11 +212,9 @@ def integrate_az(r0, v0, t_max, n_sync=32, eta=0.02, max_steps=8000, M=None):
             s, E = sysm.to_reg(r[sel], v[sel])
             dt_left = t_target - t[sel]
 
-            # dt = A B dtau, so the A B factor ALREADY shrinks the physical step at close
-            # approach -- that is what regularisation buys. dtau must therefore NOT also shrink
-            # with the separation (doing so drove dt -> 1e-13 and exhausted the step budget:
-            # the original deep-interior failure was this, not the physics). Size dtau so the
-            # FIRST physical step is a fixed fraction of the interval; the rest follows.
+            # The interval's ENTRY sizing. Under 'fixed' it is the whole step control; under
+            # 'per-step-interval' it is the one-sided cap that keeps the physical step shrinking
+            # at a close approach instead of being pinned at eta*dt_left.
             A0 = np.maximum(np.einsum('sk,sk->s', s[:, 0:2], s[:, 0:2]), 1e-300)
             B0 = np.maximum(np.einsum('sk,sk->s', s[:, 4:6], s[:, 4:6]), 1e-300)
             dtau = eta*dt_left/(A0*B0)
@@ -191,7 +227,7 @@ def integrate_az(r0, v0, t_max, n_sync=32, eta=0.02, max_steps=8000, M=None):
                 done = (s[:, 8] >= dt_left) | bad
                 if done.all():
                     break
-                h = (dtau*(~done)).astype(float)[:, None]
+                h = (_dtau_for_step(dtau_mode, eta, dt_left, dtau, s)*(~done)).astype(float)[:, None]
                 k1 = sysm.deriv(s, E)
                 k2 = sysm.deriv(s + 0.5*h*k1, E)
                 k3 = sysm.deriv(s + 0.5*h*k2, E)

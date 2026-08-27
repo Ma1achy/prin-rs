@@ -91,6 +91,7 @@ fn sample(chart: &Chart, body: usize, cx: f64, cy: f64, half: f64, n: usize)
 
 fn opts(r_coll: f64, rule: EscapeRule<f64>, k: usize, stop_esc: bool) -> AzOpts<'static, f64> {
     AzOpts {
+        dtau_mode: prin_rs::integrate::az::DtauMode::default(),
         forced_refs: None,
         lc_stable: true,
         r_coll_frac: r_coll,

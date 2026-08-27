@@ -98,29 +98,42 @@ fn the_collision_mask_labels_the_right_pair_for_every_reference_body() {
 /// The ported escape arm and `classify_legacy`'s escape arm come from the same reference
 /// lines, so they must agree on every state they are both shown.
 ///
-/// **The arm does not fire at all at `t = 13`.** Measured over a 32x32 near-field grid, both
-/// classifiers return "bound" for all 1024 pixels; Burrau's escape happens later than the
-/// project's horizon. So this test also runs to `t = 20`, where 109 of 1024 pixels fire,
-/// because an arm that is never exercised is not tested by agreeing with another arm that is
-/// also never exercised.
+/// **The arm does not fire at `t = 13`, and under the corrected step control it does not fire at
+/// `t = 20` either.** An arm that is never exercised is not tested by agreeing with another arm
+/// that is also never exercised, so the horizon here is chosen to make it fire and the assertion
+/// at the bottom is what enforces that.
+///
+/// **The `t = 20` figure on record was measuring the `dtau` bug.** With `dtau` sized once per
+/// interval, 109 of 1024 near-field pixels fired at `t_max = 20`; with it recomputed per step,
+/// **zero** do. Those 109 are not a chaotic reshuffle -- their median energy drift is **1.147**,
+/// which is 115% of the total energy, against **6.2e-5** for the 915 that stay silent, and under
+/// the fix the same pixels sit at 1.6e-3 and do not escape. A giant post-encounter step throws a
+/// body outward, it reads as unbound and receding at the next boundary, and the arm latches.
+/// Genuine escape is not suppressed: at `t = 40` the two modes give 280 and 308 of 1024.
+///
+/// So this runs at `t = 40`, where 7 of 25 fire with a worst drift of 7.5e-6.
+///
+/// **`n_sync` is scaled with `t_max`**, not held at 32. `dtau = eta*dt_left/(A0*B0)`, so a fixed
+/// `n_sync` across two horizons compares two discretisations; the old form ran `t = 13` at a
+/// 0.406 interval and `t = 20` at 0.625.
 ///
 /// **Two properties of the ported arm, transcribed rather than fixed.** It is sampled at sync
-/// boundaries, so `t_end` for an escape has the resolution of the sync grid and its value
-/// depends on `n_sync` and `t_max` — an event at `t = 9.5` is seen at `t_max = 16`, where the
-/// boundaries are 0.5 apart, and missed at `t_max = 13`, where they are 0.40625 apart. And it
-/// latches on first firing: at `t = 20`, 109 pixels fire but only 87 are still labelled
-/// escaping at the horizon, so a body can satisfy "unbound and receding" at one boundary and
-/// be recaptured by the next.
+/// boundaries, so an escape's `t_end` has the resolution of the sync grid. And it latches on
+/// first firing, so a body can satisfy "unbound and receding" at one boundary and be recaptured
+/// by the next.
 #[test]
 fn escape_matches_the_legacy_classifier() {
     let s = grid::region("near-field", 5, 5, 0.05).unwrap();
     let m = burrau::masses::<f64>();
+    // The sync interval every horizon is held to, so the rows are one discretisation.
+    const DT_SYNC: f64 = 13.0 / 32.0;
     let mut fired = 0usize;
     let mut checked = 0usize;
-    for t_max in [13.0f64, 20.0] {
+    for t_max in [13.0f64, 40.0] {
+        let n_sync = (t_max / DT_SYNC).round() as usize;
         for i in 0..s.npix() {
             let o = az::integrate_az_opts(
-                s.nominal::<f64>(i), &m, t_max, 32, 0.01, 30_000,
+                s.nominal::<f64>(i), &m, t_max, n_sync, 0.01, 30_000,
                 &AzOpts { stop_on_event: false, ..Default::default() },
             );
             let legacy = outcome::classify_legacy(&o.state, &m);
@@ -135,6 +148,60 @@ fn escape_matches_the_legacy_classifier() {
     println!("{checked} states: the ported escape test and tb.classify agree everywhere");
     println!("the arm fired at a sync boundary on {fired} of them");
     assert!(fired > 0, "the escape arm never fired, so the agreement above proves nothing");
+}
+
+/// The two `dtau` modes must **disagree** where `A*B` moves across an interval and **agree to
+/// round-off** where it does not.
+///
+/// "The modes differ somewhere" is the test that cannot fail: they are different expressions, so
+/// of course they do. The form with teeth is the pair -- a case that separates them and a case
+/// that does not -- because a fix that changed every trajectory would pass the first arm exactly
+/// as well as a correct one, and so would a no-op that changed none.
+///
+/// The separating case is `deep interior`, which is collision-rich, so encounters land inside
+/// intervals and `A*B` swings by orders. The control is a **long sync interval on a tame
+/// trajectory**: near-field at `t = 1` with `n_sync = 1`, where the geometry barely moves, the
+/// recomputed `A*B` stays near its entry value, and the cap in `PerStepInterval` is active
+/// throughout -- so the two modes are the same arithmetic and the states agree to round-off.
+#[test]
+fn the_dtau_modes_separate_where_ab_moves_and_agree_where_it_does_not() {
+    use prin_rs::integrate::az::DtauMode;
+    let m = burrau::masses::<f64>();
+    let run = |s, t: f64, n_sync, mode| {
+        az::integrate_az_opts(
+            s, &m, t, n_sync, 0.01, 30_000,
+            &AzOpts { stop_on_event: false, dtau_mode: mode, ..Default::default() },
+        )
+    };
+    let dev = |a: &az::AzOut<f64>, b: &az::AzOut<f64>| {
+        (0..3).map(|k| (a.state.r[k] - b.state.r[k]).norm()).fold(0.0f64, f64::max)
+    };
+
+    // Separating: encounters inside intervals, so `A*B` swings and the step control matters.
+    let di = grid::region("deep interior", 4, 4, 0.05).unwrap();
+    let mut worst = 0.0f64;
+    for i in 0..di.npix() {
+        let s0 = di.nominal::<f64>(i);
+        let a = run(s0, 13.0, 32, DtauMode::FixedPerInterval);
+        let b = run(s0, 13.0, 32, DtauMode::PerStepInterval);
+        if a.finite && b.finite {
+            worst = worst.max(dev(&a, &b));
+        }
+    }
+    assert!(worst > 1e-3, "the modes agree on deep interior (worst dev {worst:e}); the step \
+                           control cannot be doing anything there and the fix is a no-op");
+
+    // Control: one long interval on a tame trajectory. `A*B` barely moves, the cap binds, and
+    // the two modes are the same arithmetic.
+    let nf = grid::region("near-field", 3, 3, 0.05).unwrap();
+    for i in 0..nf.npix() {
+        let s0 = nf.nominal::<f64>(i);
+        let a = run(s0, 1.0, 1, DtauMode::FixedPerInterval);
+        let b = run(s0, 1.0, 1, DtauMode::PerStepInterval);
+        let d = dev(&a, &b);
+        assert!(d < 1e-9, "pixel {i}: the modes disagree by {d:e} on a tame interval, where \
+                           `A*B` does not move and they should be the same arithmetic");
+    }
 }
 
 /// Rescale by `alpha`, rescale time by `alpha^{3/2}`, and both the **outcome** and `t_end/
@@ -323,6 +390,7 @@ fn escape_every_moves_t_end_off_the_sync_boundary_and_is_inert_at_zero() {
     let t_max = 13.0f64;
     let dt_sync = t_max / n_sync as f64;
     let opts = |ev: usize| AzOpts::<f64> {
+        dtau_mode: prin_rs::integrate::az::DtauMode::default(),
         forced_refs: None,
         lc_stable: true,
         r_coll_frac: 1e-3,
@@ -412,6 +480,7 @@ fn escape_confirm_cuts_transients_and_keeps_genuine_escapes() {
 
     let (t_max, n_sync) = (13.0f64, 32usize);
     let opts = |confirm: bool| AzOpts::<f64> {
+        dtau_mode: prin_rs::integrate::az::DtauMode::default(),
         forced_refs: None,
         lc_stable: true,
         r_coll_frac: 1e-3,

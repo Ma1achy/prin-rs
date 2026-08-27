@@ -32,18 +32,22 @@ fn ens() -> EnsembleCfg {
 #[test]
 fn the_two_to_one_constraint_holds_and_the_control_violates_it() {
     let e = ens();
-    // **The fixture region swapped when the escape distance gate landed, and the control arm is
-    // what caught it.** This test used `deep interior`, because before the gate near-field
-    // reached a complete tree at one depth under the veto while `deep interior` had variation to
-    // violate. With the gate, `deep interior`'s terminal class moves from 60% escape to 2% —
-    // most of those escapes were mid-encounter transients — its field flattens, and its tree
-    // becomes uniform at 19 leaves with an adjacent-level gap of 1. near-field now carries the
-    // variation: gap 2 at `alpha_hi = 0.2`, which is the arm that makes the balance pass
-    // testable at all. Measured, not guessed: gap 2 at `alpha_hi = 0.2` against 1 at `0.5`, and
-    // 0 at `tau = 1e-2` where nothing refines.
+    // **The fixture region has now swapped TWICE, and the control arm caught it both times.**
+    // Originally `deep interior`, because near-field reached a complete tree at one depth under
+    // the veto. The escape distance gate flattened `deep interior` -- its terminal class moved
+    // from 60% escape to 2%, most of those escapes being mid-encounter transients -- so the
+    // fixture moved to near-field, which then carried a gap of 2 at `alpha_hi = 0.2`.
     //
-    // The assertion below is what turned a silently-vacuous test into a failing one. It stays.
-    let root = prin_rs::grid::region("near-field", 2, 2, 0.05).unwrap();
+    // The `dtau` step-control fix has moved it back. Under the corrected stepping near-field is
+    // gap 1 at **every** cell of `alpha_hi in {0.1,0.2,0.3,0.5} x tau in {1e-6,1e-4,1e-3} x
+    // n in {4,8}` -- twenty-four cells, nothing forced -- while `deep interior` recovers gap 2
+    // at `n = 4` across most of that grid. Measured by sweeping, not guessed, and the assertion
+    // below is what turned a silently-vacuous test into a failing one each time. It stays.
+    //
+    // `n = 4` matters: at `n = 8` `deep interior` is gap 1 too. A coarser footprint grid makes a
+    // noisier spread estimate, which biases toward *refine* -- the conservative direction -- and
+    // that extra depth variation is what there is to balance.
+    let root = prin_rs::grid::region("deep interior", 2, 2, 0.05).unwrap();
     let run = |balance| {
         let cfg = SchedCfg {
             n: 4,

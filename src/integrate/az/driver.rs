@@ -12,6 +12,45 @@ use super::reference_body::{choose_reference, triple, RefPolicy};
 use super::rk4;
 use super::system::AzSystem;
 
+/// How the fictitious step `dtau` is sized within a sync interval.
+///
+/// `dt = A*B*dtau`, so the physical step is `eta*dt_left` **only while `A*B` stays near its
+/// entry value**. A trajectory sitting at a close encounter *at a sync boundary* has a tiny
+/// `A0*B0`, so `dtau` is enormous; as the bodies separate through the interval `A*B` grows by
+/// orders and `dt` grows with it. Giant physical steps immediately after an encounter, on a thin
+/// set -- encounters coinciding with a boundary -- which is why the damage clusters spatially
+/// rather than tracking `d_min`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DtauMode {
+    /// `dtau = eta*dt_left/(A0*B0)`, computed **once** at the interval's entry and never
+    /// updated. The reference's behaviour (`reference/tb_az.py:integrate_az`) and the shipped
+    /// behaviour until this change, so **every committed Rust and NumPy number was taken with
+    /// it on**. Kept, named for what it is, and never deleted.
+    FixedPerInterval,
+    /// `dtau = eta*(dt_left - s.t)/(A*B)` recomputed per step -- the obvious repair, and it is
+    /// **Zeno by arithmetic**: `dt ~ eta*rem` gives `rem_{n+1} = rem_n (1 - eta)`, so the
+    /// interval is approached geometrically and the loop can never satisfy `s.t >= dt_left`.
+    /// At `eta = 0.01` it runs to `max_steps` on *every* interval. Kept as a measurement axis
+    /// precisely because it looks right; it is not a candidate default.
+    PerStepRemaining,
+    /// `dtau = min(eta*dt_left/(A*B), dtau_entry)` -- `dt_left` held fixed, only `A*B`
+    /// recomputed. `dt ~ eta*dt_left` throughout, so the step count stays at `~1/eta`.
+    ///
+    /// **The cap is one-sided in the right direction.** When `A*B` grows the recomputed value
+    /// falls and the blow-up is removed; when `A*B` *falls* at a close approach the cap holds
+    /// `dtau` at nominal, so `dt = A*B*dtau` shrinks with the separation -- which is what
+    /// regularisation buys and what the original comment wanted. It removes the over-correction
+    /// without reintroducing the thing that was over-corrected *for* (shrinking `dtau` with
+    /// separation drove `dt -> 1e-13` and produced a false "intractable region").
+    PerStepInterval,
+}
+
+impl Default for DtauMode {
+    fn default() -> Self {
+        DtauMode::PerStepInterval
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct AzOut<T> {
     pub state: Cart<T>,
@@ -106,6 +145,15 @@ pub struct AzOut<T> {
     /// The number that says whether the `t_end` refinement is doing anything. See the firing
     /// block in `integrate_az_opts`.
     pub t_end_at_entry: bool,
+    /// Smallest `A*B` seen at any step, **before** the `T::TINY` floor is applied.
+    ///
+    /// `dtau` divides by this, so it is the quantity the blow-up is a function of. Recorded
+    /// rather than argued about: the floor is `1e-300` at f64 and `1e-37` at f32, and
+    /// `TINY*TINY` **underflows at f32** -- so a doubly-degenerate state gives `dtau = inf`,
+    /// caught by the explicit `is_finite` test and *not* by the floor the guard is named for.
+    pub ab_min: T,
+    /// Whether either factor was ever clamped to `T::TINY`. Says which guard did the work.
+    pub ab_floored: bool,
     /// Time of the first terminating event, or the time reached if none fired. Distinct from
     /// `t` only when `stop_on_event` is off, where the run continues past the event.
     pub t_end: T,
@@ -218,6 +266,9 @@ pub struct AzOpts<'a, T> {
     /// Same shape as `spread_event_latched`'s `LATCH_RUN`, which exists for this reason on a
     /// different field; the convention is reused rather than a new one invented.
     pub escape_confirm: bool,
+    /// How `dtau` is sized within an interval. See [`DtauMode`]; the default is the fix and
+    /// [`DtauMode::FixedPerInterval`] is the behaviour every committed number was taken under.
+    pub dtau_mode: DtauMode,
     /// Record the shape vector at every sync boundary, for the temporal accumulators (§5).
     ///
     /// Off by default: `n_sync` triples per copy is ~70x the size of a `PixelOut`, and it is
@@ -238,6 +289,7 @@ impl<T: Real> Default for AzOpts<'_, T> {
             stop_on_escape: false,
             escape_every: 0,
             escape_confirm: true,
+            dtau_mode: DtauMode::default(),
             keep_boundary_shapes: false,
         }
     }
@@ -279,22 +331,66 @@ pub fn integrate_az_lc<T: Real>(
     // costs nothing and changes no arithmetic — but nothing acts on them.
     integrate_az_opts(
         s0, m, t_max, n_sync, eta, max_steps,
-        &AzOpts {
-            forced_refs,
-            lc_stable,
-            r_coll_frac: T::zero(),
-            // The reference has no distance gate, no closure arm and no persistence guard: the
-            // cross-check measures `EscapeRule::Reference` and this hardcodes it, so nothing
-            // added since can reach this path.
-            escape_rule: crate::outcome::EscapeRule::Reference,
-            closure_k: 1,
-            stop_on_event: false,
-            stop_on_escape: false,
-            escape_every: 0,
-            escape_confirm: true,
-            keep_boundary_shapes: false,
-        },
+        &reference_opts(forced_refs, lc_stable, DtauMode::default()),
     )
+}
+
+/// The reference-matching option set, in one place so the cross-check binary can vary the one
+/// axis it needs to without restating the other nine.
+///
+/// The reference has no distance gate, no closure arm and no persistence guard: the cross-check
+/// measures `EscapeRule::Reference` and this hardcodes it, so nothing added since can reach that
+/// path. `dtau_mode` is the exception and is a parameter, because **both sides carry the same
+/// defect and both are being fixed** -- the comparison that means anything is old-against-old and
+/// new-against-new, and either alone would pass while the two transcriptions diverged.
+pub fn reference_opts<T: Real>(
+    forced_refs: Option<&[u8]>,
+    lc_stable: bool,
+    dtau_mode: DtauMode,
+) -> AzOpts<'_, T> {
+    AzOpts {
+        forced_refs,
+        lc_stable,
+        r_coll_frac: T::zero(),
+        escape_rule: crate::outcome::EscapeRule::Reference,
+        closure_k: 1,
+        stop_on_event: false,
+        stop_on_escape: false,
+        escape_every: 0,
+        escape_confirm: true,
+        dtau_mode,
+        keep_boundary_shapes: false,
+    }
+}
+
+/// The step size for the *next* RK4 step, given the interval's entry sizing and the current
+/// regularised state.
+///
+/// Returns `(dtau_now, ab_raw, floored)` -- `ab_raw` is `A*B` **before** the `T::TINY` floor,
+/// which is what the blow-up is a function of and what the `TINY` report reads.
+#[inline]
+fn dtau_for_step<T: Real>(
+    mode: DtauMode,
+    eta: T,
+    dt_left: T,
+    dtau_entry: T,
+    s: &super::state::AzState<T>,
+) -> (T, T, bool) {
+    let a = s.a();
+    let b = s.b();
+    let ab_raw = a * b;
+    let floored = a < T::TINY || b < T::TINY;
+    let ab = a.max(T::TINY) * b.max(T::TINY);
+    let dtau = match mode {
+        DtauMode::FixedPerInterval => dtau_entry,
+        // `rem`, not `dt_left`: geometric decay, kept so the measurement can show it.
+        DtauMode::PerStepRemaining => {
+            let rem = (dt_left - s.t).max(T::zero());
+            eta * rem / ab
+        }
+        DtauMode::PerStepInterval => (eta * dt_left / ab).min(dtau_entry),
+    };
+    (dtau, ab_raw, floored)
 }
 
 /// Refine an escape's `t_end` by **replaying** the sync interval it fired in.
@@ -303,17 +399,20 @@ pub fn integrate_az_lc<T: Real>(
 /// conjunction holds by then. Closure itself has no finer resolution — it is defined from the
 /// boundary series — but the *energy* arm does, and if it crossed inside `(t_prev, t_k]` that
 /// crossing is the honest escape time. Re-run the interval with the same reference body, the same
-/// `dtau` and the same stepper, and take the first sub-step at which body `b` is unbound.
+/// `dtau` rule and the same stepper, and take the first sub-step at which body `b` is unbound.
 ///
 /// Returns the boundary time unchanged when there is no saved entry state (the first interval),
 /// and the **entry** time with `at_entry` set when the body was already unbound on entry — energy
 /// flickers, closure is what just settled, and there is then no crossing inside the interval.
+#[allow(clippy::too_many_arguments)]
 fn refine_escape_time<T: Real>(
     m: &[T; 3],
     prev: &Option<(Cart<T>, T, usize, T)>,
     b: usize,
     t_boundary: T,
     lc_stable: bool,
+    mode: DtauMode,
+    eta: T,
     at_entry: &mut bool,
 ) -> T {
     let Some((c0, t0, a, dtau)) = *prev else {
@@ -337,8 +436,12 @@ fn refine_escape_time<T: Real>(
     let mut steps = 0usize;
     // The same budget shape as the main loop: bounded, and `is_finite` tested explicitly so a
     // diverged replay cannot spin (NaN >= x is false).
+    // **The replay must step exactly as the march it is replaying.** A different step rule here
+    // returns a `t_end` that is wrong for a reason that looks like a criterion result -- and the
+    // escape criterion is precisely what this quantity is read as evidence about.
     while s.is_finite() && s.t < dt_left && steps < REPLAY_MAX_STEPS {
-        s = rk4::step(&sys, &s, e, dtau);
+        let (h, _, _) = dtau_for_step(mode, eta, dt_left, dtau, &s);
+        s = rk4::step(&sys, &s, e, h);
         steps += 1;
         if crate::outcome::unbound(&sys.to_cartesian(&s), m, b) {
             return t0 + s.t;
@@ -412,6 +515,8 @@ pub fn integrate_az_opts<T: Real>(
     #[allow(unused_assignments)]
     let mut prev_boundary: Option<(Cart<T>, T, usize, T)> = None;
     let mut t_end_at_entry = false;
+    let mut ab_min = T::infinity();
+    let mut ab_floored = false;
 
     for kk in 0..n_sync {
         let t_target = T::lit((kk + 1) as f64) * t_max / T::lit(n_sync as f64);
@@ -452,6 +557,9 @@ pub fn integrate_az_opts<T: Real>(
         // with the separation: doing so drove dt -> 1e-13 and exhausted the step budget,
         // producing a false "this region is intractable". Size dtau so the FIRST physical
         // step is a fixed fraction of the interval; the rest follows.
+        // The interval's **entry** sizing. Under `FixedPerInterval` it is the whole step
+        // control; under `PerStepInterval` it is the one-sided cap that keeps the physical step
+        // shrinking at a close approach instead of being held at `eta*dt_left`.
         let a0 = s.a().max(T::TINY);
         let b0 = s.b().max(T::TINY);
         let dtau = eta * dt_left / (a0 * b0);
@@ -477,7 +585,12 @@ pub fn integrate_az_opts<T: Real>(
                 break;
             }
 
-            s = rk4::step(&sys, &s, e, dtau);
+            let (h, ab_raw, floored) = dtau_for_step(opts.dtau_mode, eta, dt_left, dtau, &s);
+            if ab_raw.is_finite() && ab_raw < ab_min {
+                ab_min = ab_raw;
+            }
+            ab_floored |= floored;
+            s = rk4::step(&sys, &s, e, h);
             steps += 1;
 
             let (r1, r2, _, _) = sys.phys_from_state(&s);
@@ -626,7 +739,10 @@ pub fn integrate_az_opts<T: Real>(
                 // not yet hold, and `escape_every` is the knob that already samples those finer,
                 // with committed semantics and a cross-check measuring them.
                 let te = if matches!(rule, crate::outcome::EscapeRule::Closure(_)) {
-                    refine_escape_time(m, &prev_boundary, b as usize, t, lc_stable, &mut t_end_at_entry)
+                    refine_escape_time(
+                        m, &prev_boundary, b as usize, t, lc_stable, opts.dtau_mode, eta,
+                        &mut t_end_at_entry,
+                    )
                 } else {
                     t
                 };
@@ -661,6 +777,8 @@ pub fn integrate_az_opts<T: Real>(
         closure_hist,
         unbound_flags,
         t_end_at_entry,
+        ab_min,
+        ab_floored,
         boundary_shapes,
         steps: total_steps,
         finite,

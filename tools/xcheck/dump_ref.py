@@ -64,7 +64,7 @@ def dump_az(name, out):
         c["nx"], c["ny"], c["cx"], c["cy"], c["half"], body=c["body"], ens=0
     )
     n_sync, t_max = c["n_sync"], c["t_max"]
-    kw = dict(eta=c["eta"], max_steps=c["max_steps"])
+    kw = dict(eta=c["eta"], max_steps=c["max_steps"], dtau_mode=cases.dtau_mode())
 
     e0 = tb.energy(r0, v0, 0.0)
     r, v = r0.copy(), v0.copy()

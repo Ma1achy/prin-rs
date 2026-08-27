@@ -11,7 +11,7 @@ import tb, tb_az, tb_ftle
 
 
 def integrate_all_az(r0, v0, t_max, n_sync=32, eta=0.01, max_steps=30000,
-                     d0=1e-8, seed=0, M=None):
+                     d0=1e-8, seed=0, M=None, dtau_mode=tb_az.DTAU_MODE_DEFAULT):
     Mv = tb.M if M is None else M
     n = r0.shape[0]
 
@@ -32,7 +32,8 @@ def integrate_all_az(r0, v0, t_max, n_sync=32, eta=0.01, max_steps=30000,
 
     for kk in range(n_sync):
         step = t_max / n_sync
-        out = tb_az.integrate_az(R, V, t_max=step, n_sync=1, eta=eta, max_steps=max_steps, M=Mv)
+        out = tb_az.integrate_az(R, V, t_max=step, n_sync=1, eta=eta, max_steps=max_steps, M=Mv,
+                                dtau_mode=dtau_mode)
         R, V = out['r'], out['v']
         dmin = np.minimum(dmin, out['dmin'][:n])
 

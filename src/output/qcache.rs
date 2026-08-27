@@ -113,7 +113,7 @@ pub fn write<W: Write>(w: &mut W, c: &Cache, ens: &crate::ensemble::pixel::Ensem
         "region={} chart={} body={} cx={:?} cy={:?} half={:?} levels={} n={} res={}\n\
          chart_params={}\n\
          colouring={} ramp_lo={:?} ramp_hi={:?} tau={:?}\n\
-         t_max={} n_sync={} eta={} n_copies={} jitter_frac={} r_coll_frac={} escape_rule={:?} closure_k={} stop_on_escape={} \
+         t_max={} n_sync={} eta={} n_copies={} jitter_frac={} r_coll_frac={} escape_rule={:?} closure_k={} stop_on_escape={} dtau_mode={:?} \
          jitter_scheme={:?} precision=f64\n\
          quads={} trajectories={}\n\
          note=err_sum is this quad's SUMMED OKLab distance to the reference were it drawn as a \
@@ -125,7 +125,7 @@ sampled arbitrarily.\n\
          fields={}\n",
         c.region, c.chart.name(), c.body, c.cx, c.cy, c.half, c.levels, c.n, c.res, c.chart.params(),
         c.colouring.name(), c.ramp.0, c.ramp.1, tau,
-        ens.t_max, ens.n_sync, ens.eta, ens.n_extra + 1, ens.jitter_frac, ens.r_coll_frac, ens.escape_rule, ens.closure_k, ens.stop_on_escape,
+        ens.t_max, ens.n_sync, ens.eta, ens.n_extra + 1, ens.jitter_frac, ens.r_coll_frac, ens.escape_rule, ens.closure_k, ens.stop_on_escape, ens.dtau_mode,
         ens.jitter_scheme,
         c.quads.len(), c.trajectories,
         FIELDS.join(","),

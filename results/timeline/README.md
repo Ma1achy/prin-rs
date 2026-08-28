@@ -167,6 +167,69 @@ approximation.
 equal-mass control could not have produced it: on a preset every mass error is invisible by
 construction, so `config_stability` is the only row in that table carrying information.
 
+### THE `r_esc` UNIT ASSUMPTION HOLDS ON THIS SLICE — AND IT IS AN IDENTITY, NOT A `z0 = 0` COINCIDENCE
+
+The concern is that `EscapeRule::Distance`'s gate is `frac * R` with `R` the initial
+hyperradius, and that if `R != 1` on a `z0 != 0` chart the app's `rEsc = 12` would compute a
+different absolute length, silently, only on non-preset slices.
+
+Measured over every pixel and all eight copies, 8388608 systems:
+
+```text
+  config_stability   R min 0.99999999999999967  max 1.00000000000000044   max|R-1| 4.441e-16
+      preset_shape   R min 0.99999999999999967  max 1.00000000000000044   max|R-1| 4.441e-16
+       preset_prho   R min 1.00000000000000000  max 1.00000000000000000   max|R-1| 0.000e0
+    preset_plambda   R min 1.00000000000000000  max 1.00000000000000000   max|R-1| 0.000e0
+   preset_shape_pl   R min 0.99999999999999967  max 1.00000000000000044   max|R-1| 4.441e-16
+```
+
+`R = 1` to **4.4e-16**, and `config_stability` reads **exactly the same residual as
+`preset_shape`**, which has `z0 = 0`. The residual tracks whether the chart *sweeps alpha and
+beta* — trig round-off — not whether `z0` is zero: the two constant-configuration presets read
+exactly 1.0 because their angles never move. If the identity depended on `z0 = 0`, `preset_shape`
+would have read 0 and `config_stability` large; they are identical.
+
+The mechanism: `decoder::config` writes `rho~ = (cos a, 0)` and `lam~ = sin a (cos b, sin b)` in
+**mass-weighted** Jacobi coordinates, so `I = mu_rho|rho|^2 + mu_lam|lam|^2 = cos^2 a + sin^2 a`
+with the mass factors cancelling, and `sum m = 1`. It is the same algebraic identity CLAUDE.md
+already records for the `z = 0` Lagrange landmark, and it holds under **any** masses.
+
+So `r_esc_frac = 12` gives an absolute gate of exactly 12, which is what the app intends. The
+units question is live in the **opposite** place: `escape_gate.txt` §0 has `near-field` at
+`R = 2.236` and `deep interior` at `1.369`, where `r_esc = 5` means **11.18** and **6.85**
+absolute. The Burrau regions are the ones whose literals do not transfer; the latent charts are
+where they do.
+
+### THE ESCAPE-GATE SWEEP ALREADY COVERS `config_stability` — THE COMMIT MESSAGE DID NOT
+
+The gap is in `e53223d`'s write-up, not in the harness: `examples/escape_gate.rs` carries
+`config_stability` at its own settings, and `results/output/escape_gate.txt` reports it. At
+`r_esc = 5`, the gate takes persistence at +1/+2/+4/+8 boundaries from
+
+```text
+  ungated   0.784  0.769  0.753  0.734        escape 0.8733
+  gated     0.968  0.958  0.944  0.923        escape 0.7153
+```
+
+— so **the gate does work on this slice**, and by the same mechanism the commit measured
+elsewhere. The `r_esc` sensitivity is strong and monotone here where `near-field` is completely
+flat: escape runs `0.6944 -> 0.4358` across the ladder `0 .. 20` (one body) and
+`0.8420 -> 0.4722` (all bodies), against `near-field`'s `0.0000` at every rung.
+
+**And the coarse sweep validates against the strip.** At `r_esc = 12, all bodies` — the app's own
+setting — the 24x24 sweep gives escape `0.4913`, collision `0.3576`, bounded `0.1493`; the 1024^2
+`e53223d` panel gives `0.4899`, `0.3604`, `0.1488`. Agreement to 0.3% on 576 trajectories against
+1048576, which is what a per-trajectory statistic is expected to do and is the reason no re-run
+at higher `n` was needed.
+
+### `077b092` MOVES 347 LABELS AND NOT ONE SHAPE VECTOR
+
+Read from the diff rather than the message: `escape_confirm` holds a detection provisional only
+when it came from an **in-loop** test, and boundary detections are left exactly as they were. The
+render path runs at `escape_every = 0`, so it produces no in-loop detections at all and the guard
+is structurally inert there. The strip agrees: 347 flips of 1048576 (0.03%), `moved` **0**, `chord
+p50` and `chord max` both exactly **0.000e0**. The candidate is as well-controlled as it looked.
+
 ### THE HISTORY IS LINEAR — THERE IS NO BRANCH COMPARISON TO MAKE
 
 `git log --all --graph` restricted to `driver.rs` and `outcome.rs` is a **single straight line**

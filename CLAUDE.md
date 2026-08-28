@@ -1459,3 +1459,31 @@ The one non-ancestor tip, `criterion-sweep`, has a `src/` tree **identical** to 
 `main` at `0c070e4` is a stale ref, not a fork — **check `origin/main` before reading a branch
 list as a divergence.** Triple collision is likewise not a missing prototype: `State::is_triple`,
 `triple_ejection` and the `>=2-pair` rule are in `src/outcome.rs` at `0114be4` and earlier.
+
+**`R = 1` ON THE LATENT CHARTS IS AN ALGEBRAIC IDENTITY, NOT A `z0 = 0` COINCIDENCE — AND THE
+UNITS QUESTION IS LIVE IN THE OPPOSITE PLACE.** `decoder::config` writes `rho~ = (cos a, 0)` and
+`lam~ = sin a (cos b, sin b)` in **mass-weighted** Jacobi coordinates, so
+`I = mu_rho|rho|^2 + mu_lam|lam|^2 = cos^2 a + sin^2 a` with the mass factors cancelling, and
+`sum m = 1`. Measured over 8388608 systems, `config_stability` reads `max|R-1| = 4.441e-16` —
+**exactly the same residual as `preset_shape`**, which has `z0 = 0`; the residual tracks whether
+the chart sweeps alpha and beta (trig round-off), not whether `z0` is zero, and the two
+constant-configuration presets read exactly 1.0. So `EscapeRule::Distance(12)` computes an
+absolute gate of exactly 12, which is what the app's `rEsc = 12` means. Where the literals do
+**not** transfer is Burrau: `escape_gate.txt` §0 has `near-field` at `R = 2.236` and
+`deep interior` at `1.369`, so `r_esc = 5` means 11.18 and 6.85 absolute.
+
+**A COMMIT MESSAGE'S COVERAGE GAP IS NOT ALWAYS THE HARNESS'S.** `e53223d`'s write-up quotes only
+`deep interior`, `near-field` and `preset_plambda`, but `examples/escape_gate.rs` already carries
+`config_stability` at its own settings and `results/output/escape_gate.txt` reports it: at
+`r_esc = 5` the gate takes persistence at +1/+2/+4/+8 from `0.784/0.769/0.753/0.734` to
+`0.968/0.958/0.944/0.923`. The gate works on this slice too. Its `r_esc` sensitivity is strong and
+monotone here (escape `0.6944 -> 0.4358` across the ladder) where `near-field` is flat at 0.0000
+at every rung — **read the committed output before re-running the sweep.** And the 24x24 sweep
+validates against the 1024^2 panel to **0.3%** at the app's own `r_esc = 12` (escape 0.4913
+against 0.4899), which is what a per-trajectory statistic is expected to do.
+
+**`escape_confirm` IS STRUCTURALLY INERT IN THE RENDER PATH.** Read from the diff, not the
+message: it holds a detection provisional only when the detection came from an **in-loop** test,
+and the render path runs at `escape_every = 0`, so there are none. The strip agrees — `077b092`
+moves **347 labels of 1048576 and not one shape vector** (`moved` 0, `chord p50` and `chord max`
+both exactly 0).

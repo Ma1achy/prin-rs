@@ -16,7 +16,12 @@
 //! - `|m - m_expect|` — the decode gives the masses the chart says it does;
 //! - `|sum m|` — they are normalised;
 //! - `|sum m_i v_i|` — total momentum is zero, so the COM does not drift;
-//! - `|sum m_i r_i|` — the COM is *at* the origin, which is what AZ's reconstruction assumes.
+//! - `|sum m_i r_i|` — the COM is *at* the origin, which is what AZ's reconstruction assumes;
+//! - `|R - 1|` — the initial hyperradius, because **every canonical length in the build is a
+//!   fraction of it**. `r_coll`, `epsilon` and `EscapeRule::Distance`'s gate are all
+//!   `frac * R` evaluated once at `t = 0`. If `R` were not 1 on a chart whose app settings
+//!   quote an absolute `rEsc = 12`, the gate would compute a different length than intended,
+//!   silently, and only on that chart family.
 //!
 //! The last two are separate assertions on purpose. A construction that assumes a COM-centred
 //! input returns a drifting system without one, and zero momentum does not imply zero first
@@ -81,7 +86,8 @@ fn main() {
                     &sl, k, cfg.n_extra, cfg.jitter_frac, cfg.seed, cfg.jitter_scheme,
                     cfg.decode_path,
                 );
-                let mut o = [0.0f64; 5];
+                let mut o = [0.0f64; 7];
+                o[5] = f64::INFINITY;
                 for c in &cs {
                     let ms: f64 = c.m.iter().sum();
                     let mut p = [0.0f64; 2];
@@ -106,12 +112,18 @@ fn main() {
                     for i in 0..3 {
                         o[4] = o[4].max((c.m[i] - cs[0].m[i]).abs());
                     }
+                    let rr = prin_rs::physics::energy::hyperradius(&c.s.r, &c.m);
+                    o[5] = o[5].min(rr);
+                    o[6] = o[6].max(rr);
                 }
                 o
             })
             .reduce(
-                || [0.0f64; 5],
-                |a, b| [a[0].max(b[0]), a[1].max(b[1]), a[2].max(b[2]), a[3].max(b[3]), a[4].max(b[4])],
+                || [0.0, 0.0, 0.0, 0.0, 0.0, f64::INFINITY, 0.0],
+                |a, b| {
+                    [a[0].max(b[0]), a[1].max(b[1]), a[2].max(b[2]), a[3].max(b[3]),
+                     a[4].max(b[4]), a[5].min(b[5]), a[6].max(b[6])]
+                },
             );
 
         let m0 = sl.decode_state(cx, cy).m;
@@ -119,6 +131,16 @@ fn main() {
             "{name:>18} {:>14} {:>11.3e} {:>11.3e} {:>11.3e} {:>11.3e} {:>11.3e}",
             format!("{:.5},{:.5}", m0[0], m0[1]),
             acc[0], acc[1], acc[2], acc[3], acc[4],
+        );
+        // **R is an algebraic identity, not a property of `z0 = 0`.** `decoder::config` writes
+        // `rho~ = (cos a, 0)` and `lam~ = sin a (cos b, sin b)` in MASS-WEIGHTED Jacobi
+        // coordinates, so `I = mu_rho|rho|^2 + mu_lam|lam|^2 = cos^2 a + sin^2 a = 1` with the
+        // mass factors cancelling, and `sum m = 1`. Measured rather than argued, because the
+        // argument is exactly the kind that holds for twelve charts and fails on the
+        // thirteenth.
+        println!(
+            "{:>18}   hyperradius R over every pixel and copy: min {:.17} max {:.17}  max|R-1| {:.3e}",
+            "", acc[5], acc[6], (acc[5] - 1.0).abs().max((acc[6] - 1.0).abs()),
         );
         // 1e-4 on the masses matches the precision the reference UI quotes them to; the three
         // conservation quantities are exact identities of the construction and get round-off

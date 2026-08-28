@@ -3,10 +3,15 @@ Built by `jitter::copies_with_path` with `evaluate_at`'s own arguments.
 
               case  masses (px 0)     max|dm| max|sum m-1|  max|sum p| max|sum m r|    m spread
   config_stability 0.32735,0.42763    3.525e-6   1.110e-16   2.861e-17   2.124e-16     0.000e0
+                     hyperradius R over every pixel and copy: min 0.99999999999999967 max 1.00000000000000044  max|R-1| 4.441e-16
       preset_shape 0.33333,0.33333     0.000e0     0.000e0     0.000e0   1.777e-16     0.000e0
+                     hyperradius R over every pixel and copy: min 0.99999999999999967 max 1.00000000000000044  max|R-1| 4.441e-16
        preset_prho 0.33333,0.33333     0.000e0     0.000e0     0.000e0   5.914e-17     0.000e0
+                     hyperradius R over every pixel and copy: min 1.00000000000000000 max 1.00000000000000000  max|R-1| 0.000e0
     preset_plambda 0.33333,0.33333     0.000e0     0.000e0     0.000e0   5.914e-17     0.000e0
+                     hyperradius R over every pixel and copy: min 1.00000000000000000 max 1.00000000000000000  max|R-1| 0.000e0
    preset_shape_pl 0.33333,0.33333     0.000e0     0.000e0     0.000e0   1.777e-16     0.000e0
+                     hyperradius R over every pixel and copy: min 0.99999999999999967 max 1.00000000000000044  max|R-1| 4.441e-16
 
 PASS. The masses the integrator receives are the decoded ones on every pixel and
 every copy, they sum to 1, total momentum is zero and the COM is at the origin.

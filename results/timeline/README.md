@@ -112,13 +112,87 @@ each with its numbers underneath.
      220d928->f7d2a31    145651   0.1389    979642   0.9343   1.242e-02   2.000e+00
 ```
 
-### THERE IS NO EARLIER CANDIDATE
+### THERE IS NO EARLIER CANDIDATE — AND BEFORE 08-25 13:39 THERE IS NO SLICE
 
-**`f4084de` (08-25 18:02) through `483b630` (08-27 00:16) are BITWISE IDENTICAL on this slice** —
-34 hours and the whole scheduler/criterion run of 08-26, zero pixels moved. `0114be4` and
+**`030de1a` (08-25 13:39) through `483b630` (08-27 00:16) are BITWISE IDENTICAL on this slice** —
+34½ hours, the whole scheduler/criterion run of 08-26, zero pixels moved. `0114be4` and
 `a320f50` sit inside that bracket and were not rendered individually; they are bounded by
 endpoints that agree bitwise, which is not the same as rendering them, and is said that way
 rather than claimed as proof.
+
+Going further back stops for two different reasons, and **the mass gate caught both**:
+
+| commit | when | what happens |
+|---|---|---|
+| `961a313` | 08-24 12:48 | `Chart::Latent` and `decoder::Latent` **do not exist**. No slice to render. |
+| `be478e1` | 08-24 13:27 | same — and this is the commit that *creates* the decoded-mass path. |
+| `30d713f` | 08-24 13:43 | chart exists, decodes to **`(0.31628, 0.48444, 0.19928)`** — gate fires, run refused. |
+| `45e7dcb` | 08-25 03:09 | same masses, same refusal. |
+| `030de1a` | 08-25 13:39 | gate passes. Earliest renderable state, and identical to everything through `483b630`. |
+
+`be478e1` cannot be the culprit for a further reason than timing: **it is the commit that
+introduced the latent chart's masses at all.** There is no earlier state in which this slice
+exists to be broken.
+
+`30d713f` and `45e7dcb` are not "this slice, rendered wrong" — they are a **different physical
+system**, decoded before the three corrections of `f4084de` landed. Rendering them would have
+produced a plausible-looking panel of the wrong problem, which is exactly the failure the gate
+exists to stop.
+
+### THE MASS PATH IS CLEAN AT HEAD, OVER 8388608 SYSTEMS
+
+`examples/mass_audit.rs`, output in `results/output/mass_audit.txt`. Built by
+`jitter::copies_with_path` with `evaluate_at`'s own arguments — `evaluate_at`'s next lines are
+`integrate_az_opts(c.s, &c.m, ..)` and `energy(.., &c.m, ..)`, so this is the integrator's input
+and not a parallel reconstruction of it.
+
+```text
+              case  masses (px 0)     max|dm| max|sum m-1|  max|sum p| max|sum m r|    m spread
+  config_stability 0.32735,0.42763    3.525e-6   1.110e-16   2.861e-17   2.124e-16     0.000e0
+      preset_shape 0.33333,0.33333     0.000e0     0.000e0     0.000e0   1.777e-16     0.000e0
+       preset_prho 0.33333,0.33333     0.000e0     0.000e0     0.000e0   5.914e-17     0.000e0
+    preset_plambda 0.33333,0.33333     0.000e0     0.000e0     0.000e0   5.914e-17     0.000e0
+   preset_shape_pl 0.33333,0.33333     0.000e0     0.000e0     0.000e0   1.777e-16     0.000e0
+```
+
+Every pixel, all 8 copies. `max|dm| = 3.5e-6` is the rounding of the expected constants as
+typed to 5 dp, not a discrepancy. **Total momentum is zero to `2.9e-17` and the COM is at the
+origin to `2.1e-16`** — the two are asserted separately, because zero momentum does not imply
+zero first moment and a construction that assumes a COM-centred input returns a drifting system
+without one. `m spread` is exactly zero across every footprint, which is what makes
+`evaluate_at`'s `copies[0].m` shortcut exact on a configuration chart rather than an
+approximation.
+
+**So the mass path is not the bug.** The one thing worth saying about that result is that an
+equal-mass control could not have produced it: on a preset every mass error is invisible by
+construction, so `config_stability` is the only row in that table carrying information.
+
+### THE HISTORY IS LINEAR — THERE IS NO BRANCH COMPARISON TO MAKE
+
+`git log --all --graph` restricted to `driver.rs` and `outcome.rs` is a **single straight line**
+from `b497fa2` to `c7bdece`. No merge commit in `f4084de..f7d2a31` touches `driver.rs`,
+`outcome.rs` or `pixel.rs` at all.
+
+* `dtau-step-control` and `overshoot-clamp` are **the same commit**, `f7d2a31` — two names for
+  one tip, not two divergent lines.
+* `closure-criterion` is `4b26466` and `escape-distance-gate` is `e53223d`; both are **ancestors**
+  of `f7d2a31` and both are already **merged into `origin/main`** (`66639b2`, PR #25).
+* Only `f7d2a31` itself is outstanding, as PR #26.
+* The single branch tip that is *not* an ancestor is `criterion-sweep` (`0e100e5`), whose `src/`
+  tree is **identical** to `84f9cbd` — the same work, landed under another name via
+  `sweep-onto-main`.
+* Local `main` reads `0c070e4` (08-25 18:10). That is a stale local ref, not a structural fact;
+  `origin/main` is `66639b2`.
+
+The screenshots, the committed `dtau_fix` renders and this bisect are all on that one line. **The
+walk did not need to become a branch comparison.**
+
+### TRIPLE COLLISION IS IMPLEMENTED AND ON `main`
+
+`src/outcome.rs` carries `State::is_triple`, `triple_ejection`, and the `>=2-pair` rule with its
+triangle-inequality argument — *"`detail` for a collision mask: the pair index for one pair, `3`
+for two or more"*. It is present at `0114be4`, `023c4ce` and `030de1a`, so it long predates the
+closure work, and it is in `origin/main`. Not a local prototype.
 
 The first pixel to move at all is at `077b092` — **347 flips, 0.03%**, and `chord p50` exactly
 zero, so the shape field does not move at all there. Everything before the escape work is one

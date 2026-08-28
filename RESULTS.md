@@ -4048,9 +4048,13 @@ post-fix against post-fix. What was never captured is the pre-fix *render*.
 
 ### 25.3 THERE IS NO EARLIER CANDIDATE, AND THE LARGEST MOVE IS NOT THE `dtau` FIX
 
-`f4084de` (08-25 18:02, the first correct latent chart port) through `483b630` (08-27 00:16) are
-**bitwise identical** on this slice — 34 hours and the whole scheduler/criterion run of 08-26,
-zero pixels moved. `0114be4` and `a320f50` lie inside that bracket and were not rendered
+`030de1a` (08-25 13:39) through `483b630` (08-27 00:16) are **bitwise identical** on this slice —
+34.5 hours and the whole scheduler/criterion run of 08-26, zero pixels moved. **Before that
+there is no slice at all**: `Chart::Latent` and `decoder::Latent` do not exist at `961a313` or
+`be478e1`, so the two leading candidates cannot have altered a chart that was not there — and
+`be478e1` is the commit that *creates* the decoded-mass path. At `30d713f` and `45e7dcb` the
+chart exists but decodes to `(0.31628, 0.48444, 0.19928)`, and **the mass gate fired and refused
+the run** rather than rendering a plausible panel of a different physical system. `0114be4` and `a320f50` lie inside that bracket and were not rendered
 individually; bounded endpoints that agree bitwise is not the same as rendering them, and it is
 said that way. The first pixel to move at all is `483b630 -> 077b092`: **347 flips, 0.03%**, with
 `chord p50` exactly zero, so the shape field does not move there either.
@@ -4059,6 +4063,34 @@ said that way. The first pixel to move at all is `483b630 -> 077b092`: **347 fli
 labels against the `dtau` fix's 33.22%, and the two escape commits together take the escape
 fraction from **0.676 to 0.262** and the bounded fraction from **0.054 to 0.369**. Any account
 of "the picture changed" that begins at the `dtau` work has already missed the bigger half.
+
+### 25.3b THE MASS PATH IS CLEAN AT HEAD, AND AN EQUAL-MASS CONTROL COULD NOT HAVE SAID SO
+
+`examples/mass_audit.rs` over every pixel and all `E+1` copies — **8388608 systems per case** —
+built by `jitter::copies_with_path` with `evaluate_at`'s own arguments, which is the integrator's
+input rather than a parallel reconstruction of it. On `config_stability`: `max|dm| 3.5e-6` (the
+rounding of the expected constants as typed), `max|sum m - 1| 1.1e-16`, **`max|sum m_i v_i|
+2.9e-17`**, **`max|sum m_i r_i| 2.1e-16`**. The last two are asserted separately because zero
+momentum does not imply zero first moment, and a construction that assumes a COM-centred input
+returns a drifting system without one. `m spread` across each footprint is exactly zero, so
+`evaluate_at`'s `copies[0].m` shortcut is exact on a configuration chart.
+
+The presets are in the table and carry no information: on an equal-mass slice every mass error is
+invisible by construction. `config_stability` is the only row that could have failed.
+
+### 25.3c THE HISTORY IS LINEAR OVER THE INTEGRATOR
+
+`git log --all --graph` restricted to `driver.rs` and `outcome.rs` is a **single straight line**,
+and no merge commit in `f4084de..f7d2a31` touches `driver.rs`, `outcome.rs` or `pixel.rs`.
+`dtau-step-control` and `overshoot-clamp` are **the same commit** `f7d2a31` — two names, one tip.
+`closure-criterion` (`4b26466`) and `escape-distance-gate` (`e53223d`) are ancestors of it and are
+**already merged into `origin/main`** (`66639b2`, PR #25); only `f7d2a31` is outstanding, as PR
+#26. The one non-ancestor tip, `criterion-sweep` (`0e100e5`), has a `src/` tree **identical** to
+`84f9cbd`. Local `main` at `0c070e4` is a stale ref, not a fork. **No branch comparison is
+needed.**
+
+And triple collision is implemented and on `main`: `State::is_triple`, `triple_ejection` and the
+`>=2-pair` rule are in `src/outcome.rs` at `0114be4` and earlier, long predating the closure work.
 
 ### 25.4 The bleaching is at `5cc8dec`, and the obvious statistic reads BACKWARDS
 

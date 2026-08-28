@@ -1429,3 +1429,33 @@ one template and **logs the fields that do not exist yet** (22, 23, 24, 26, 27, 
 walk). Both colour windows are fixed constants shared by the strip: an auto-ranged ramp per panel
 would stretch each commit's own p1-p99 to full scale, which on a question about bleaching
 manufactures or hides the thing being measured.
+
+**THE MASS GATE FIRED, AND WHAT IT CAUGHT WAS A DIFFERENT PHYSICAL SYSTEM WEARING THE SAME
+WINDOW.** Extending the bisect to 08-24 stops for two distinct reasons and the gate separates
+them: `Chart::Latent` and `decoder::Latent` **do not exist** at `961a313` or `be478e1`, so the
+two leading candidates cannot have altered a chart that was not there — and `be478e1` is the
+commit that *creates* the decoded-mass path, so there is no earlier state in which this slice
+exists to be broken. At `30d713f` and `45e7dcb` the chart exists but decodes to
+`(0.31628, 0.48444, 0.19928)` against the expected `(0.32735, 0.42763, 0.24502)`; rendering them
+would have produced a plausible panel of the wrong problem. `030de1a` (08-25 13:39) is the
+earliest renderable state and is **bitwise identical** to everything through `483b630`.
+
+**AND THE MASS PATH ITSELF IS CLEAN — 8388608 SYSTEMS, AND ONLY ONE ROW OF THE TABLE COULD HAVE
+FAILED.** `examples/mass_audit.rs` on every pixel and all `E+1` copies, built by
+`jitter::copies_with_path` with `evaluate_at`'s own arguments: `max|sum m_i v_i| = 2.9e-17` and
+`max|sum m_i r_i| = 2.1e-16` on `config_stability`. The two are asserted **separately**, because
+zero momentum does not imply zero first moment and a construction that assumes a COM-centred
+input returns a drifting system without one. The presets are in the table and carry nothing: on
+an equal-mass slice a mass error is invisible by construction, so an equal-mass control could
+not have produced this result. `m spread` across a footprint is exactly zero, which is what makes
+`copies[0].m` exact on a configuration chart rather than an approximation.
+
+**THE HISTORY IS LINEAR OVER THE INTEGRATOR, AND TWO "DIVERGENT BRANCHES" ARE ONE COMMIT.**
+`git log --all --graph` over `driver.rs` and `outcome.rs` is a single straight line; no merge in
+`f4084de..f7d2a31` touches `driver.rs`, `outcome.rs` or `pixel.rs`. `dtau-step-control` and
+`overshoot-clamp` are **the same commit** `f7d2a31`. `closure-criterion` and
+`escape-distance-gate` are ancestors of it and are already in `origin/main` (`66639b2`, PR #25).
+The one non-ancestor tip, `criterion-sweep`, has a `src/` tree **identical** to `84f9cbd`. Local
+`main` at `0c070e4` is a stale ref, not a fork — **check `origin/main` before reading a branch
+list as a divergence.** Triple collision is likewise not a missing prototype: `State::is_triple`,
+`triple_ejection` and the `>=2-pair` rule are in `src/outcome.rs` at `0114be4` and earlier.

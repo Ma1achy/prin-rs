@@ -1487,3 +1487,22 @@ message: it holds a detection provisional only when the detection came from an *
 and the render path runs at `escape_every = 0`, so there are none. The strip agrees — `077b092`
 moves **347 labels of 1048576 and not one shape vector** (`moved` 0, `chord p50` and `chord max`
 both exactly 0).
+
+**AN ARTEFACT CAN FAIL TO REPRODUCE AT ITS OWN COMMIT WITHOUT THE BUILD BEING
+NON-DETERMINISTIC — CHECK THE FILE'S mtime AGAINST THE REFLOG BEFORE SUSPECTING THE CODE.**
+`results/closure/config_stability_stop0_uniform.png` re-rendered at `220d928`, the commit that
+adds it, differs on **84.12% of pixels**; re-rendered at `4b26466` it is **bitwise identical**,
+both panels, every printed number to the digit. The reflog and the file mtime say why: HEAD sat
+at `4b26466` from 13:52 to 21:19 on 08-27, the PNG was written at **16:38**, and `220d928`
+committed it at 21:36 — **after `5cc8dec`, the `dtau` fix**. A pre-fix render committed into a
+post-fix tree. The magenta fraction is 0.0029 committed against 0.0001 at `220d928`, a factor of
+29, so anything using this file as a *before* was comparing pre-`dtau` against post-`dtau` and
+measuring §23 over again. **Commit renders in the same commit as the code that made them, or
+name the commit in the filename.**
+
+**AND THE HARNESS DIFF IS THE FIRST THING TO CLEAR, NOT THE LAST.** `220d928` also changed
+`closure_render.rs` by 13 lines in the same commit — `sub` becomes argument 4 and `tau` moves to
+5. That looks like exactly the kind of argument renumbering that silently changes a run, and it
+is **not** the cause: the committed invocation (`closure_render 1024 results`, from the log's own
+header) passes neither argument, so both take their defaults either way. Checking it first cost
+one `git show` and removed a whole candidate before any render was spent on it.

@@ -167,6 +167,48 @@ approximation.
 equal-mass control could not have produced it: on a preset every mass error is invisible by
 construction, so `config_stability` is the only row in that table carrying information.
 
+### THE SIX-COMMIT SET, AS ASKED — EIGHTEEN PANELS AT 1024^2
+
+`strip6_{uniform,outcome,drift}.png`, and the panels individually as `00_..05_`. Every parameter
+from the explicit config; the mass gate asserts before any pixel is integrated.
+
+```text
+   commit   nonfin      hot   escape  bounded   collis   drift p50   drift ramp
+  030de1a    17032   0.9206   0.6760   0.0541   0.2668   6.159e-01   1.08e-08 .. 4.42e+07
+  077b092    17032   0.9206   0.6763   0.0541   0.2665   6.159e-01   1.08e-08 .. 4.42e+07
+  e53223d     5450   0.9257   0.4899   0.1488   0.3604   2.107e+00   1.08e-08 .. 7.18e+07
+  4b26466    30109   0.9285   0.2618   0.3693   0.3632   2.290e+00   1.08e-08 .. 4.07e+07
+  5cc8dec      178   0.8558   0.2048   0.4475   0.3477   3.362e-03   1.07e-08 .. 4.36e+07
+  f7d2a31      178   0.8541   0.2017   0.4505   0.3477   3.021e-03   1.07e-08 .. 4.28e+07
+
+                 pair     flips     frac     moved     frac   chord p50   chord max
+     030de1a->077b092       347   0.0003         0   0.0000   0.000e+00   0.000e+00
+     077b092->e53223d    418868   0.3995    653458   0.6232   2.743e-01   2.000e+00
+     e53223d->4b26466    299211   0.2853    458488   0.4372   0.000e+00   2.000e+00
+     4b26466->5cc8dec    348314   0.3322    909089   0.8670   1.113e-01   2.000e+00
+     5cc8dec->f7d2a31    145651   0.1389    979642   0.9343   1.242e-02   2.000e+00
+```
+
+**The prediction in the brief is half right, and the half that fails is the important one.**
+`030de1a` and `077b092` do render as-good-as-identically — 347 label flips of 1048576, `moved`
+**0**, `chord p50` and `chord max` both exactly zero, so not one shape vector moves. And
+`e53223d` does differ sharply from both: 39.95% of labels flip, escape falls 0.676 -> 0.490,
+bounded triples 0.054 -> 0.149, `nonfin` falls 17032 -> 5450.
+
+But the **bleaching does not move there**. Local chroma contrast reads 0.01542, 0.01542, 0.01726
+across `030de1a`, `077b092`, `e53223d` — flat, then slightly *up* — and collapses to **0.00557**
+at `5cc8dec`. The label distribution and the texture are two effects at two different commits,
+and no single commit pins both.
+
+### THE HYPERRADIUS MEASUREMENT TRANSFERS BY BLOB IDENTITY, NOT BY INFERENCE
+
+`R = hyperradius(s0.r, m)` depends on exactly two files, and **`src/physics/decoder.rs` and
+`src/physics/energy.rs` are the same blob at all ten commits in the range** — `6c3f80c4ed` and
+`3c696004d6` at `030de1a`, `f4084de`, `84f9cbd`, `2596830`, `483b630`, `077b092`, `e53223d`,
+`4b26466`, `5cc8dec` and `f7d2a31`. So the audit below, taken at HEAD, *is* the measurement at
+`e53223d`, bit for bit. It was not re-run per commit because re-running it could not have
+returned a different number.
+
 ### THE `r_esc` UNIT ASSUMPTION HOLDS ON THIS SLICE — AND IT IS AN IDENTITY, NOT A `z0 = 0` COINCIDENCE
 
 The concern is that `EscapeRule::Distance`'s gate is `frac * R` with `R` the initial

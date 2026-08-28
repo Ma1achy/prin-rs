@@ -82,3 +82,76 @@ So the initial conditions **constrain** where the artefact can appear and do not
 fine structure inside those constraints comes from the dynamics, not from the ICs — which is the
 opposite of what the straight edges first suggested, and is why the class map was rendered rather
 than argued about.
+
+---
+
+# Are the white areas GEOMETRIC, or unresolved fractal lamination?
+
+The reading to test: *the white areas are geometric, sharp or jagged, they do not have normal
+fractal boundaries and self-similarity, and they interrupt the ribbons which then continue.*
+Both halves are measurable, and both come out the other way.
+
+## First, a mask that failed and how it failed
+
+The first attempt thresholded at `C < 0.045` and selected **dust** — 11640 components, largest
+211 px, horizontal run lengths of 2 px. A box dimension taken from that reads near 1 whatever the
+truth is, because a scatter of isolated pixels is not a boundary. *A difference can be small
+because both sides are right or because both are dead*, at the mask. Component sizes and run
+lengths are what caught it; the dimension number did not.
+
+## The white class HAS NO INTERIOR — and neither does it acquire one under magnification
+
+Euclidean distance transform: the largest disc that fits inside the region, and the fraction of
+the area surviving a `k x k` opening. A solid wedge has an inside; dense speckle does not, however
+solid it reads at viewing size.
+
+```text
+PANEL  1024^2 over the full window        cell width 1.245e-03
+                    mask    area  r p50  r p90  r max  open2  open3  open5  open9
+            pale C<0.045  0.0149   1.00   1.00   2.24  0.038  0.004  0.000  0.000
+             pale C<0.06  0.0481   1.00   1.00   4.00  0.137  0.028  0.003  0.000
+             pale C<0.08  0.1771   1.00   2.00   7.28  0.620  0.290  0.082  0.012
+      red band (control)  0.3207  32.25 105.00 191.64  0.973  0.959  0.936  0.915
+
+ZOOM   768^2 over a 1/8 window            cell width 2.076e-04   (6.0x finer)
+            pale C<0.045  0.0346   1.00   1.00   1.41  0.066  0.000  0.000  0.000
+             pale C<0.06  0.1027   1.00   1.00   2.83  0.258  0.049  0.000  0.000
+             pale C<0.08  0.3713   1.00   2.00  10.44  0.761  0.464  0.125  0.010
+      red band (control)  0.1866  15.00  47.52  69.00  0.899  0.831  0.768  0.733
+```
+
+**Every pale pixel is within one pixel of a coloured one, at both resolutions.** The median
+inscribed radius is `1.00 px` on the panel and `1.00 px` at 6x finer cell width; the *maximum*
+falls from 2.24 to 1.41. Nothing survives a 5x5 opening at either scale. The red band behaves the
+way a solid region does under magnification — its radius in pixels *shrinks* as the window
+narrows onto part of it.
+
+**A fixed-size geometric artefact would have grown 6x in pixels.** It did not. The structure
+refines exactly as fast as the grid, which is what an unresolved fractal set does and what a
+geometric one cannot.
+
+## And the render says the same thing directly
+
+`wedge_z8_uniform.png` — the top-right wedge at 6x finer cell width. What reads as a solid pale
+wedge with a sharp edge on the panel is **hundreds of parallel filaments**: alternating pale,
+salmon, blue and green laminae packing finer toward one side, with smooth curved boundaries and
+no polygonal edge anywhere in the frame. The salmon ribbon crosses the whole window continuously.
+
+So the appearance is **aliasing**: at the panel's cell width the lamination is finer than one
+sample, and a sub-pixel mixture of pale and coloured renders as a pale wash whose *density* — not
+whose boundary — changes over a few pixels. That is what produces an edge that looks sharp and
+straight while the set behind it has no interior at all. It is the standing raster result at a
+fifth site, one level down: not the image's raster, the sampling of the field.
+
+## What this does NOT settle
+
+It says the *appearance* identified is unresolved lamination rather than a geometric defect. It
+does **not** say there is no bug. The non-finite pixels are real failures and they remain — 138 in
+the zoomed window, `0.0002` of it against `0.0029` on the panel. They sit **inside** the laminated
+region, which is consistent with their being where the integration is hardest rather than a
+feature with an edge of its own.
+
+And this is **one** resolution step. A feature whose size is fixed in *chart* coordinates at
+around one panel cell would also stay one pixel wide. The falling maximum radius and the visible
+lamination together make that reading hard to sustain, but a second step would settle it and has
+not been run.

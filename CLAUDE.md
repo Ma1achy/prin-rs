@@ -1543,3 +1543,20 @@ initial conditions bound where the artefact can appear; the fine structure insid
 dynamical. **Read a hand-drawn mask's area before its statistics**: the digitised circles cover
 25.4% of the frame, so that row is mostly background and only the property-selected populations
 carry the signal.
+
+**THE PALE WEDGES HAVE NO INTERIOR, AND DO NOT ACQUIRE ONE UNDER 6x MAGNIFICATION.** Euclidean
+distance transform on `config_stability_stop0_uniform.png`: the pale class's median inscribed
+radius is **1.00 px** and **0.0%** survives a 5x5 opening, against the red band's **32.25 px** and
+**93.6%**. Re-rendered over a 1/8 window at 6x finer cell width the pale class reads **1.00 px**
+again and its *maximum* radius **falls** 2.24 -> 1.41, while the control shrinks the way a solid
+region does under magnification. **A fixed-size geometric artefact would have grown 6x in
+pixels.** The zoom render shows why: the "solid wedge with a sharp edge" is **hundreds of parallel
+laminae** with smooth curved boundaries and no polygonal edge. The appearance is sub-pixel
+aliasing — a mixture whose *density* changes over a few pixels, not a boundary — which is the
+raster lesson one level down, at the sampling of the field rather than the size of the image.
+
+**AND THE MASK THAT FAILED FAILED SILENTLY.** The first threshold (`C < 0.045`) selected dust:
+11640 components, largest 211 px, run lengths of 2. A box-counting dimension from that reads near
+1 whatever the truth is, because a scatter of isolated pixels is not a boundary — it would have
+"confirmed" a geometric edge. **Component sizes and run lengths caught it; the dimension number
+did not.** Check that a mask selects regions before measuring their boundaries.

@@ -1506,3 +1506,15 @@ name the commit in the filename.**
 is **not** the cause: the committed invocation (`closure_render 1024 results`, from the log's own
 header) passes neither argument, so both take their defaults either way. Checking it first cost
 one `git show` and removed a whole candidate before any render was spent on it.
+
+**THE IMAGE THE BLEACHING THREAD IS ABOUT IS 256x256, AND IT REPRODUCES BYTE FOR BYTE AT
+`4b26466`.** `results/closure/esgate_fixed/config_stability_stop0_uniform.png` — mtime 08-27
+15:20, inside the window where HEAD was `4b26466` (13:52 to 21:19) — is reproduced **bitwise, both
+panels**, by `closure_render 256 <root> config_stability` at that commit. **There is no
+uncommitted working-tree difference to hunt for**, and the build is deterministic across a fresh
+checkout and rebuild. It was committed at `220d928` (21:36), *after* `5cc8dec` landed at 21:19, so
+it is a pre-`dtau`-fix render sitting in a post-fix tree; the same command at `220d928` gives
+escape 0.0433 against the committed 0.0588. Its magenta fraction is 0.0030 against the 1024^2
+render's 0.0029 — same physics, quarter the linear raster — so *softness in an image is a raster
+size* now has a fourth site, and a magenta cluster of a few footprints reads as a **blob** at
+4x4 screen pixels per footprint.

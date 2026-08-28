@@ -87,6 +87,15 @@ fn dtau_mode_from_env() -> (DtauMode, &'static str) {
     }
 }
 
+/// The overshoot clamp, from the environment, for the same reason as `PRIN_DTAU_MODE`.
+fn clamp_from_env() -> (bool, &'static str) {
+    match std::env::var("PRIN_CLAMP_FINAL").unwrap_or_default().as_str() {
+        "0" | "off" | "false" => (false, "0"),
+        "" | "1" | "on" | "true" => (true, "1"),
+        other => panic!("PRIN_CLAMP_FINAL: expected 0|1, got {other}"),
+    }
+}
+
 /// Fixed physical length of one sync sub-interval; `n_sync` is derived from it so every
 /// horizon in the sweep runs at the same per-interval resolution. Mirrors `cases.py`.
 const SYNC_INTERVAL: f64 = 13.0 / 32.0;
@@ -102,6 +111,7 @@ fn dump_az(name: &str, t_max: f64, path: &str, lc_stable: bool) -> std::io::Resu
     let eta = 0.01f64;
     let max_steps = 30_000usize;
     let (dtau_mode, mode_name) = dtau_mode_from_env();
+    let (clamp_final, clamp_name) = clamp_from_env();
     let s = Slice::body_plane(3, 3, 1.0, 3.0, 0.05, 0);
 
     let f = File::create(path)?;
@@ -113,7 +123,7 @@ fn dump_az(name: &str, t_max: f64, path: &str, lc_stable: bool) -> std::io::Resu
     )?;
     writeln!(
         w,
-        "# t_max={t_max:?} n_sync={n_sync} eta={eta:?} max_steps={max_steps} masses=3,4,5 G=1 ens=0 dtau_mode={mode_name}"
+        "# t_max={t_max:?} n_sync={n_sync} eta={eta:?} max_steps={max_steps} masses=3,4,5 G=1 ens=0 dtau_mode={mode_name} clamp_final={clamp_name}"
     )?;
     let refs: Vec<String> = (0..n_sync).map(|k| format!("ref{k:02}")).collect();
     writeln!(
@@ -125,7 +135,7 @@ fn dump_az(name: &str, t_max: f64, path: &str, lc_stable: bool) -> std::io::Resu
     for i in 0..s.npix() {
         let o = az::integrate_az_opts(
             s.nominal::<f64>(i), &m, t_max, n_sync, eta, max_steps,
-            &az::reference_opts(None, lc_stable, dtau_mode),
+            &az::reference_opts(None, lc_stable, dtau_mode, clamp_final),
         );
         write!(w, "{i}")?;
         for k in 0..3 {

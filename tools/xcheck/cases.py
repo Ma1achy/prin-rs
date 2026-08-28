@@ -125,6 +125,19 @@ FTLE_PERT = [1.0, -2.0, 3.0, -4.0, 5.0, -6.0]
 AZ_HORIZONS = ["az_t0p5", "az_t1", "az_t2", "az_t4", "az_t8", "az_t13"]
 
 
+def clamp_final():
+    """The overshoot clamp, from `PRIN_CLAMP_FINAL`, defaulting to on.
+
+    The partner of `per-step-interval`; the same old-against-old / new-against-new argument
+    applies, and it is in the header for the same reason.
+    """
+    import os
+    v = os.environ.get("PRIN_CLAMP_FINAL", "") or "1"
+    if v not in ("0", "1"):
+        raise SystemExit(f"PRIN_CLAMP_FINAL: unexpected value {v!r}")
+    return v == "1"
+
+
 def dtau_mode():
     """The step-sizing mode, from `PRIN_DTAU_MODE`, defaulting to the shipped one.
 
@@ -162,6 +175,6 @@ def header_lines(name):
             f" cx={c['cx']} cy={c['cy']} half={c['half']} body={c['body']}",
             f"# t_max={c['t_max']} n_sync={c['n_sync']} eta={c['eta']}"
             f" max_steps={c['max_steps']} masses=3,4,5 G=1 ens=0"
-            f" dtau_mode={dtau_mode()}",
+            f" dtau_mode={dtau_mode()} clamp_final={'1' if clamp_final() else '0'}",
         ]
     return head + [f"# columns={c['columns']}"]

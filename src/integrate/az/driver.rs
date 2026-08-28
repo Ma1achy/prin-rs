@@ -269,6 +269,31 @@ pub struct AzOpts<'a, T> {
     /// How `dtau` is sized within an interval. See [`DtauMode`]; the default is the fix and
     /// [`DtauMode::FixedPerInterval`] is the behaviour every committed number was taken under.
     pub dtau_mode: DtauMode,
+    /// Clamp the **final** step of each sync interval so the state lands *on* the boundary
+    /// instead of past it. Default **on**; `false` is the behaviour every committed number
+    /// was taken under, kept for the same reason [`DtauMode::FixedPerInterval`] is.
+    ///
+    /// Without it the march overshoots — the loop exits on `s.t >= dt_left` — and only the
+    /// *clock* is corrected (`t += s.t.min(dt_left)`), while the Cartesian state written back
+    /// is the overshot one. That is a **first-order** error injected at every boundary. On the
+    /// Chenciner-Montgomery figure-eight it dominates the whole integration: measured over one
+    /// period at `n_sync = 32`, closure error `2.976e-3` against `3.595e-9` at `eta = 1e-3`, and
+    /// the convergence order across `eta in [0.02, 0.001]` **1.13 against 3.06**. Read the order,
+    /// not the error -- an error falls for many reasons; only the order says the leading term
+    /// changed.
+    ///
+    /// **It is the partner of [`DtauMode::PerStepInterval`] and must not ship without it.**
+    /// Under `FixedPerInterval` the overshoot is a fixed slice of fictitious time, so
+    /// neighbouring trajectories overshoot alike and the error is large but spatially *smooth*.
+    /// Under `PerStepInterval` the last step's size is a function of local `A*B`, so the
+    /// overshoot varies pixel to pixel — a spatially-varying error injected at every boundary.
+    /// Fixing the step control alone trades a smooth large error for a structured one.
+    ///
+    /// **The nested-arc banding this was first proposed to explain is NOT caused by it.** All
+    /// four arms carry it, including the one predating both changes (`RESULTS §24.8`), and under
+    /// outcome-class colouring it vanishes — a colouring artefact, per `RESULTS §21`. The defect
+    /// here is real and independently measured; it is not the cause of that appearance.
+    pub clamp_final_step: bool,
     /// Record the shape vector at every sync boundary, for the temporal accumulators (§5).
     ///
     /// Off by default: `n_sync` triples per copy is ~70x the size of a `PixelOut`, and it is
@@ -290,6 +315,7 @@ impl<T: Real> Default for AzOpts<'_, T> {
             escape_every: 0,
             escape_confirm: true,
             dtau_mode: DtauMode::default(),
+            clamp_final_step: true,
             keep_boundary_shapes: false,
         }
     }
@@ -331,7 +357,7 @@ pub fn integrate_az_lc<T: Real>(
     // costs nothing and changes no arithmetic — but nothing acts on them.
     integrate_az_opts(
         s0, m, t_max, n_sync, eta, max_steps,
-        &reference_opts(forced_refs, lc_stable, DtauMode::default()),
+        &reference_opts(forced_refs, lc_stable, DtauMode::default(), true),
     )
 }
 
@@ -347,6 +373,7 @@ pub fn reference_opts<T: Real>(
     forced_refs: Option<&[u8]>,
     lc_stable: bool,
     dtau_mode: DtauMode,
+    clamp_final_step: bool,
 ) -> AzOpts<'_, T> {
     AzOpts {
         forced_refs,
@@ -359,6 +386,7 @@ pub fn reference_opts<T: Real>(
         escape_every: 0,
         escape_confirm: true,
         dtau_mode,
+        clamp_final_step,
         keep_boundary_shapes: false,
     }
 }
@@ -371,6 +399,7 @@ pub fn reference_opts<T: Real>(
 #[inline]
 fn dtau_for_step<T: Real>(
     mode: DtauMode,
+    clamp_final: bool,
     eta: T,
     dt_left: T,
     dtau_entry: T,
@@ -389,6 +418,19 @@ fn dtau_for_step<T: Real>(
             eta * rem / ab
         }
         DtauMode::PerStepInterval => (eta * dt_left / ab).min(dtau_entry),
+    };
+    // Land ON the boundary rather than past it. `dt = A*B*dtau` to leading order, so
+    // `(dt_left - s.t)/ab` is the fictitious time still owed; `.min` makes this a one-sided
+    // reduction of the last step only and leaves every interior step untouched. **`ab` is the
+    // same floored product the mode used** -- recomputing it here would let the clamp and the
+    // step disagree. The landing is exact only to the accuracy with which `A*B` predicts the time
+    // increment over the step -- first order -- so the residual is `O(h^2)` per boundary and the
+    // measured global order is **3.06 under `FixedPerInterval` and 2.08 under `PerStepInterval`**,
+    // against 1.13 and 1.06 without. Not the stepper's own four, and stated rather than assumed.
+    let dtau = if clamp_final {
+        dtau.min((dt_left - s.t).max(T::zero()) / ab)
+    } else {
+        dtau
     };
     (dtau, ab_raw, floored)
 }
@@ -412,6 +454,7 @@ fn refine_escape_time<T: Real>(
     t_boundary: T,
     lc_stable: bool,
     mode: DtauMode,
+    clamp_final: bool,
     eta: T,
     at_entry: &mut bool,
 ) -> T {
@@ -439,8 +482,8 @@ fn refine_escape_time<T: Real>(
     // **The replay must step exactly as the march it is replaying.** A different step rule here
     // returns a `t_end` that is wrong for a reason that looks like a criterion result -- and the
     // escape criterion is precisely what this quantity is read as evidence about.
-    while s.is_finite() && s.t < dt_left && steps < REPLAY_MAX_STEPS {
-        let (h, _, _) = dtau_for_step(mode, eta, dt_left, dtau, &s);
+    while s.is_finite() && s.t < dt_left - land_tol(clamp_final, dt_left) && steps < REPLAY_MAX_STEPS {
+        let (h, _, _) = dtau_for_step(mode, clamp_final, eta, dt_left, dtau, &s);
         s = rk4::step(&sys, &s, e, h);
         steps += 1;
         if crate::outcome::unbound(&sys.to_cartesian(&s), m, b) {
@@ -453,6 +496,25 @@ fn refine_escape_time<T: Real>(
 /// Step ceiling for [`refine_escape_time`]. One sync interval at the driver's own `dtau` is
 /// `~1/eta` steps; this is far above that and exists only so a pathological replay terminates.
 const REPLAY_MAX_STEPS: usize = 100_000;
+
+/// The interval is complete once the state is within this of the boundary.
+///
+/// Zero without the clamp — the loop exits by *overshooting*, so any positive tolerance would
+/// change which step is the last one. With it the final step lands to the stepper's own order,
+/// and without a tolerance the residual would be paid for by a cascade of ever-tinier steps
+/// that cannot reach equality in floating point.
+///
+/// **Relative to `dt_left`, never absolute.** All times rescale by `alpha^{3/2}` under the
+/// project's scale gauge, so an absolute slack is a different tolerance at every scale — measured,
+/// it broke the bitwise scale-invariance test at `4.24e-15`.
+#[inline]
+fn land_tol<T: Real>(clamp_final: bool, dt_left: T) -> T {
+    if clamp_final {
+        dt_left * T::LAND_EPS_REL
+    } else {
+        T::zero()
+    }
+}
 
 /// The full entry point.
 #[allow(clippy::too_many_arguments)]
@@ -569,6 +631,9 @@ pub fn integrate_az_opts<T: Real>(
         prev_boundary = Some((cart, t, a, dtau));
 
         let mut steps = 0usize;
+        // Whether the march reached the boundary, as against breaking out non-finite or out of
+        // budget. Only then may the clock be set to the boundary exactly.
+        let mut landed = false;
         loop {
             // NaN >= x is false, so a non-finite trajectory never satisfies `done` and the
             // loop would burn the whole budget (measured 354 s against 3 s nominal).
@@ -577,7 +642,8 @@ pub fn integrate_az_opts<T: Real>(
             if bad {
                 finite = false;
             }
-            if s.t >= dt_left || bad {
+            if s.t >= dt_left - land_tol::<T>(opts.clamp_final_step, dt_left) || bad {
+                landed = !bad;
                 break;
             }
             if steps >= max_steps {
@@ -585,7 +651,8 @@ pub fn integrate_az_opts<T: Real>(
                 break;
             }
 
-            let (h, ab_raw, floored) = dtau_for_step(opts.dtau_mode, eta, dt_left, dtau, &s);
+            let (h, ab_raw, floored) =
+                dtau_for_step(opts.dtau_mode, opts.clamp_final_step, eta, dt_left, dtau, &s);
             if ab_raw.is_finite() && ab_raw < ab_min {
                 ab_min = ab_raw;
             }
@@ -663,10 +730,15 @@ pub fn integrate_az_opts<T: Real>(
         total_steps += steps;
 
         cart = sys.to_cartesian(&s);
-        // The overshoot past the boundary is clipped in the time bookkeeping only; the
-        // state written back is the overshot one. Sub-step interpolation is not done. This
-        // is the reference's behaviour and part of what the cross-check measures.
-        t += s.t.min(dt_left);
+        // Under `clamp_final_step` the state IS the boundary state to within `LAND_EPS_REL`, so the
+        // clock is set to the boundary exactly and the two cannot disagree. Without it, the
+        // overshoot past the boundary is clipped in the time bookkeeping *only* and the state
+        // written back is the overshot one -- the reference's behaviour, and a first-order error.
+        t += if landed && opts.clamp_final_step {
+            dt_left
+        } else {
+            s.t.min(dt_left)
+        };
 
         tight.push(crate::outcome::binary_id(&cart));
         // Computed unconditionally: it is ~20 flops against a whole RK4 interval, the closure
@@ -740,8 +812,8 @@ pub fn integrate_az_opts<T: Real>(
                 // with committed semantics and a cross-check measuring them.
                 let te = if matches!(rule, crate::outcome::EscapeRule::Closure(_)) {
                     refine_escape_time(
-                        m, &prev_boundary, b as usize, t, lc_stable, opts.dtau_mode, eta,
-                        &mut t_end_at_entry,
+                        m, &prev_boundary, b as usize, t, lc_stable, opts.dtau_mode,
+                        opts.clamp_final_step, eta, &mut t_end_at_entry,
                     )
                 } else {
                     t

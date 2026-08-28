@@ -86,6 +86,7 @@ fn main() {
                 t_max,
                 r_coll_frac: r_coll,
                 dtau_mode: mode,
+                clamp_final_step: true,
                 ..Default::default()
             };
             let t0 = std::time::Instant::now();

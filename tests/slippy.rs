@@ -146,6 +146,15 @@ fn camera_position_moves_the_ranking_and_never_the_veto() {
 }
 
 /// A pan changes the tree **only** once the bias is switched on. Before it, a pan is an identity.
+///
+/// **The pan distance is a measured fixture and it has moved once.** It was `0.04` against a
+/// `half_world` of `0.05`; under the boundary-overshoot clamp (`RESULTS §24`) near-field's tree
+/// is tamer -- 184 leaves, none of them `Split`, levels 2-4 all `Keep` and level 5 all
+/// `ScreenFloor` -- and a pan that small no longer changes any quad's relevance enough to move a
+/// decision. Measured across `{0.01, 0.02, 0.04, 0.06, 0.08, 0.10}`: the tree is identical under
+/// the bias out to `0.06` and differs from `0.08`, which is where the pan finally exceeds
+/// `half_world` and quads start leaving the viewport. **The control arm caught it**, as it has
+/// at every previous fixture move on this project -- the `assert_ne!`, not the property.
 #[test]
 fn a_pan_is_an_identity_until_camera_bias_is_switched_on() {
     let e = ens();
@@ -165,13 +174,16 @@ fn a_pan_is_an_identity_until_camera_bias_is_switched_on() {
         let (t, _) = scheduler::descend(1.0, 3.0, 0.05, 0, &cfg, &e, Precision::F64);
         t.leaves().map(|i| (t.nodes[i].level, t.nodes[i].decision)).collect::<Vec<_>>()
     };
+    // Larger than `half_world = 0.05`: below that the relevance difference does not survive to
+    // a decision on this tree. See the doc comment.
+    const PAN: f64 = 0.08;
     let a = run(1.0, None);
-    let b = run(1.04, None);
+    let b = run(1.0 + PAN, None);
     println!("no bias : {} vs {} leaves, identical {}", a.len(), b.len(), a == b);
     assert_eq!(a, b, "without the bias a pan must change nothing -- that is the standing result");
 
     let c = run(1.0, Some(0.0));
-    let d = run(1.04, Some(0.0));
+    let d = run(1.0 + PAN, Some(0.0));
     println!("with bias: {} vs {} leaves, identical {}", c.len(), d.len(), c == d);
     assert_ne!(c, d, "with the bias a pan must change the tree, or the term is not reaching it");
 }

@@ -48,6 +48,13 @@ pub struct EnsembleCfg {
     /// [`DtauMode::FixedPerInterval`]**, whose blow-up after a boundary-coincident encounter is
     /// what put the magenta clusters and their speckled halos into `config_stability`.
     pub dtau_mode: DtauMode,
+    /// Land the final RK4 step of each sync interval ON the boundary. Default true.
+    ///
+    /// **The partner of [`DtauMode::PerStepInterval`], and not separable from it in practice.**
+    /// Without it only the clock is clipped at the boundary while the overshot state is written
+    /// back -- a first-order error, spatially smooth under fixed `dtau` and spatially *varying*
+    /// under per-step `dtau`, because the last step's size then depends on local `A*B`.
+    pub clamp_final_step: bool,
     pub eta: f64,
     pub max_steps: usize,
     pub ref_policy: RefPolicy,
@@ -142,6 +149,7 @@ impl Default for EnsembleCfg {
             escape_every: 0,
             escape_confirm: true,
             dtau_mode: DtauMode::default(),
+            clamp_final_step: true,
             escape_rule: crate::outcome::EscapeRule::Closure(crate::outcome::CLOSURE_TAU),
             closure_k: 1,
             stop_on_escape: false,
@@ -447,6 +455,7 @@ pub fn evaluate_at<T: Real>(slice: &Slice, idx: usize, cfg: &EnsembleCfg, eta_v:
         escape_every: cfg.escape_every,
         escape_confirm: cfg.escape_confirm,
         dtau_mode: cfg.dtau_mode,
+        clamp_final_step: cfg.clamp_final_step,
         escape_rule: cfg.escape_rule.lift(),
         closure_k: cfg.closure_k,
         stop_on_escape: cfg.stop_on_escape,

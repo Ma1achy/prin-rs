@@ -1877,3 +1877,21 @@ Two cautions that came out of using it:
   one both fill the ramp. The window is printed beside every panel for that reason —
   `(9.885e-10, 3.624e5)` before against `(8.559e-10, 4.387e4)` after is the improvement, and neither
   image says it on its own.
+
+- **AND A DIAGNOSTIC FIELD IS SPECIFIC TO A CLASS OF DEFECT.** The boundary-overshoot bug
+  (`RESULTS §24`) is invisible to this panel. The clamp buys **24,000x** on the figure-eight
+  closure error and raises the convergence order from 1.13 to 3.06, while moving `near-field`'s
+  median energy drift **37x the wrong way** (1.5e-9 -> 5.6e-8) and the NumPy smoke median from
+  3.197e-9 to 4.047e-9. The overshoot displaces the state in *time*, and the AZ energy is nearly
+  stationary along the flow, so a time displacement barely registers in `|dE/E|`. Energy drift
+  finds a step that grew too large; it does not find a step that ended in the wrong place. Ask
+  what the diagnostic would say about the defect you are looking for *before* reading it as clean
+  -- the same question as *what would have to be true for this test to fire*, asked of an
+  instrument rather than an assertion.
+
+  For that class, the instrument is a **convergence order** on a system with a known exact answer.
+  The Chenciner-Montgomery figure-eight is exactly periodic, so `|state(T) - state(0)|` is a pure
+  error with no reference trajectory to integrate and no chaos to contaminate it, and it runs in
+  under a second. **Read the order, not the error** -- an error falls for many reasons; only the
+  order says the leading term changed.
+

@@ -77,6 +77,7 @@ fn main() {
 
     let opts = |ev: usize, stop: bool| AzOpts::<f64> {
         dtau_mode: prin_rs::integrate::az::DtauMode::default(),
+        clamp_final_step: true,
         forced_refs: None,
         lc_stable: true,
         r_coll_frac: 1e-3,

@@ -1240,6 +1240,86 @@ is now gap 1 at **all twenty-four** swept cells of `alpha_hi x tau x n`). Each t
 under test. Same session: `escape_matches_the_legacy_classifier` went vacuous because its arm stopped
 firing at `t = 20`. **The assertion that the test is exercised is the part that keeps working.**
 
+**THE `dtau` FIX SHIPPED WITHOUT ITS PARTNER, AND ON ITS OWN IT MADE THE IMAGES WORSE.** The march
+exits a sync interval by **overshooting** it and only the *clock* was corrected -- the Cartesian
+state written back was the overshot one. A first-order error at every boundary inside an RK4 march.
+Under `FixedPerInterval` `dtau` is constant across the interval, so the overshoot is a fixed slice
+of time, neighbouring trajectories overshoot alike and the error is large but spatially **smooth**.
+Under `PerStepInterval` the last step's size is a function of local `A*B`, so the overshoot becomes
+a function of local state and neighbouring pixels overshoot by different amounts -- a
+spatially-varying error. `AzOpts::clamp_final_step`
+(default **on**) lands the final step on the boundary; it is applied **after** `dtau_for_step`
+returns, so it composes with every mode rather than being a fourth one, and it reuses the **same
+floored `A*B`** the mode used. Measured at **1024^2**, the shipping resolution: under the clamp,
+switching `dtau_mode` moves the field **2.5x** less (chord p50 `1.113e-1` -> `4.367e-2`).
+**Neither change ships alone.**
+
+**AND THE COARSE GRID OVERSTATED THAT BY 26x -- the same defect as understating it, in the other
+direction.** On 48x48 the same ratio reads **66x** in `config_stability` and **316x** in
+`near-field`, because 2304 samples over the window are dominated by the tame majority while a
+million land in the chaotic population, where any step-control change diverges regardless. *Read
+it at the resolution that ships* now has both signs: §23's coarse grid understated a max eightfold;
+this one overstated a median twenty-six-fold. Per-trajectory statistics (drift, steps) do not have
+this problem; **no chord ratio may be quoted from a coarse grid.**
+
+**AND `moved` ORDERS THE PAIRS BACKWARDS.** At 1024^2 `B->D` moves the **most** pixels (0.9343) and
+displaces them the **least** (1.242e-2), while `A->B` moves the fewest (0.8671) and displaces them
+the most (1.113e-1); the whole table sits in 0.867-0.934. It counts pixels differing in the last
+bit, which on a chaotic field is a fact about the field. §23's 87% is that statistic -- correct, and
+answering a different question than it was read as answering. `chord p50` is the discriminator, and
+`chord max` is **2.000, antipodal, in every pair**.
+
+**AND THE APPEARANCE THAT PROMPTED IT WAS NOT CAUSED BY IT.** The nested-arc banding in
+`config_stability` is present in **all four arms**, including `fixed`+overshoot, which predates both
+changes; under outcome-class colouring arm D's arcs **vanish** while the region boundaries sharpen.
+So it is §21's standing result at a new site -- *the banding is a colouring artefact; the crisp
+edges are not* -- and the spatially-varying-overshoot mechanism, though real and measured, is not
+what draws them. What the two changes **do** remove is the magenta: 30109 -> 2071 (clamp alone) ->
+**178** (both), with `simfail` 0 throughout. *A finding read off a render is a finding about an
+appearance*: taking it seriously found a genuine first-order defect, and the defect was not the
+cause. Record both halves.
+
+**READ THE ORDER, NOT THE ERROR -- AND THE FIGURE-EIGHT IS THE INSTRUMENT.** Chenciner-Montgomery
+is exactly periodic, so `|state(T) - state(0)|` is a pure error with no reference trajectory and no
+chaos, in under a second. Convergence order across `eta in [0.02, 0.001]` at `n_sync = 32`:
+`fixed+overshoot` **1.13**, `perstep+overshoot` **1.06**, `fixed+clamp` **3.06**,
+`perstep+clamp` **2.08**; the error at `eta = 1e-3` falls **827,000x**. The per-rung two-point
+estimates are noise -- `fixed+clamp` runs 2.34, 2.58, 1.36, 6.49 -- so quote the endpoint slope.
+**`perstep+clamp` lands at 2, not 3**, because the clamp sizes the last step from the
+*instantaneous* `A*B`, a first-order predictor of the time increment, so the landing residual is
+`O(h^2)`; stated rather than smoothed.
+
+**A DIAGNOSTIC FIELD IS SPECIFIC TO A CLASS OF DEFECT, AND ENERGY DRIFT IS BLIND TO THIS ONE.**
+The clamp buys 24,000x on the figure-eight while moving `near-field`'s median drift **37x the WRONG
+way** (1.5e-9 -> 5.6e-8) and the NumPy smoke median 3.197e-9 -> 4.047e-9. The overshoot displaces
+the state in *time* and the AZ energy is nearly stationary along the flow. *Render the diagnostic
+field, not the science field* is right and incomplete: ask what the diagnostic would say about the
+defect you are hunting **before** reading it as clean. What the drift table does confirm is the
+prediction's last clause -- D beats B, `drift p99` 6.077e5 -> 2.881e4 in `deep interior`.
+
+**AN ABSOLUTE TOLERANCE IN A SCALE-INVARIANT CODE IS A BUG, AND THE BITWISE GAUGE TEST IS WHAT
+CATCHES IT.** The clamp's landing test first used `T::SYNC_EPS` absolute; all times rescale by
+`alpha^{3/2}`, so at `alpha = 0.25` the same slack is 8x wider in relative terms and a rescaled twin
+lands one step earlier. `shape_spread_is_invariant_under_the_scale_symmetry` asserts **bitwise**
+equality and fired at `4.24e-15`. `Real::LAND_EPS_REL` is relative to `dt_left`. Related: the
+relative tolerance also gives the Zeno mode a floor -- `PerStepRemaining` now *completes*, after
+`ln(1/eps)/eta ~ 3200` steps per interval against a nominal ~100, and the test that asserted it
+stalls read as a failure until it was pinned to `clamp_final_step: false`.
+
+**`config_stability` IS RESOLVED AT THE SHIPPING SETTINGS; `deep interior` IS NOT AND NEVER WILL
+BE.** Arm D at `eta`, `eta/2`, `eta/4`: `config_stability`'s median inter-rung displacement falls
+**4.98x per halving** from `2.1e-5` on a diameter-2 sphere, consistent with order 2.08, and
+`near-field` 4.01x. Horizon 50 was a live worry and is not the answer. `deep interior` falls 8.6x
+but from `4.7e-2` with `chord max = 1.999` -- antipodal -- at every rung: chaotic divergence over
+`t = 13`, which no step size buys off. A difference can be large because the physics is.
+
+**A FIXTURE THAT HAS TO BE MEASURED ONCE HAS TO BE MEASURED EVERY TIME THE PHYSICS MOVES -- now
+four times.** The clamp flattened `near-field`'s scheduler tree (184 leaves, no `Split`, levels 2-4
+`Keep` and level 5 `ScreenFloor`), so `a_pan_is_an_identity_until_camera_bias_is_switched_on` stopped
+firing: a pan of `0.04` against `half_world = 0.05` no longer moved any decision. Measured across
+`{0.01 .. 0.10}`, the tree first differs at **0.08**, where the pan exceeds `half_world`. Re-pinned.
+**The control arm caught it, not the property under test** -- as at every previous move.
+
 ---
 
 ## SMOKE TEST

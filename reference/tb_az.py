@@ -173,22 +173,57 @@ def choose_reference(r):
 DTAU_MODES = ('fixed', 'per-step-remaining', 'per-step-interval')
 DTAU_MODE_DEFAULT = 'per-step-interval'
 
+# Land the FINAL step of each sync interval ON the boundary rather than past it. Ported from
+# `src/integrate/az/driver.rs::AzOpts::clamp_final_step`, and it is the PARTNER of
+# 'per-step-interval', not an independent knob.
+#
+# Without it the march exits by OVERSHOOTING (`s.t >= dt_left`) and only the clock is clipped
+# (`t += min(s.t, dt_left)`) -- the Cartesian state written back is the overshot one. That is a
+# first-order error injected at every boundary. Under 'fixed' dtau is constant across the
+# interval, so the overshoot is a fixed slice of time and neighbouring trajectories overshoot
+# alike: large, but spatially SMOOTH. Under 'per-step-interval' the last step's size depends on
+# local A*B, so the overshoot varies from trajectory to trajectory -- a spatially-varying error.
+# Shipping the step-control fix alone trades a smooth large error for a structured one.
+#
+# NOTE: the nested-arc banding this was first proposed to explain is NOT caused by it -- it is
+# present in all four arms, including the one that predates both changes. See RESULTS.md §24.8.
+# The defect is real and independently measured (convergence order 1.13 -> 3.06 on the
+# Chenciner-Montgomery figure-eight); it is not the cause of that appearance.
+#
+# EVERY committed NumPy number in the corpus was taken with clamp_final=False.
+CLAMP_FINAL_DEFAULT = True
 
-def _dtau_for_step(mode, eta, dt_left, dtau_entry, s):
+# The interval is complete once the state is within this FRACTION of dt_left of the boundary.
+# Zero without the clamp -- there the loop exits by overshooting and any positive tolerance would
+# change which step is last. With it, the landing is exact only to the stepper's own order and
+# equality is not reachable in floating point.
+#
+# RELATIVE, never absolute: all times rescale by alpha^{3/2} under the project's scale gauge, so
+# an absolute slack is a different tolerance at every scale.
+LAND_EPS_REL = 1e-14
+
+
+def _dtau_for_step(mode, eta, dt_left, dtau_entry, s, clamp_final=CLAMP_FINAL_DEFAULT):
     """(A*B) recomputed from the CURRENT state. Mirrors `dtau_for_step` in driver.rs."""
     A = np.maximum(np.einsum('sk,sk->s', s[:, 0:2], s[:, 0:2]), 1e-300)
     B = np.maximum(np.einsum('sk,sk->s', s[:, 4:6], s[:, 4:6]), 1e-300)
     if mode == 'fixed':
-        return dtau_entry
-    if mode == 'per-step-remaining':
-        return eta*np.maximum(dt_left - s[:, 8], 0.0)/(A*B)
-    if mode == 'per-step-interval':
-        return np.minimum(eta*dt_left/(A*B), dtau_entry)
-    raise ValueError(f"dtau_mode: expected one of {DTAU_MODES}, got {mode!r}")
+        dtau = np.broadcast_to(np.asarray(dtau_entry, float), A.shape)
+    elif mode == 'per-step-remaining':
+        dtau = eta*np.maximum(dt_left - s[:, 8], 0.0)/(A*B)
+    elif mode == 'per-step-interval':
+        dtau = np.minimum(eta*dt_left/(A*B), dtau_entry)
+    else:
+        raise ValueError(f"dtau_mode: expected one of {DTAU_MODES}, got {mode!r}")
+    if clamp_final:
+        # A*B is the SAME floored product the mode used -- recomputing it would let the clamp
+        # and the step disagree. `.min` makes this a one-sided reduction of the last step only.
+        dtau = np.minimum(dtau, np.maximum(dt_left - s[:, 8], 0.0)/(A*B))
+    return dtau
 
 
 def integrate_az(r0, v0, t_max, n_sync=32, eta=0.02, max_steps=8000, M=None,
-                 dtau_mode=DTAU_MODE_DEFAULT):
+                 dtau_mode=DTAU_MODE_DEFAULT, clamp_final=CLAMP_FINAL_DEFAULT):
     Mv = tb.M if M is None else M
     n = r0.shape[0]
     r = r0.copy(); v = v0.copy()
@@ -224,10 +259,13 @@ def integrate_az(r0, v0, t_max, n_sync=32, eta=0.02, max_steps=8000, M=None,
                 # loop would burn the entire max_steps budget (measured: 354 s vs ~3 s nominal).
                 # Treat non-finite as done: it is excluded by the drift gate downstream anyway.
                 bad = ~np.isfinite(s).all(axis=1)
-                done = (s[:, 8] >= dt_left) | bad
+                tol = dt_left*LAND_EPS_REL if clamp_final else 0.0
+                landed = s[:, 8] >= dt_left - tol
+                done = landed | bad
                 if done.all():
                     break
-                h = (_dtau_for_step(dtau_mode, eta, dt_left, dtau, s)*(~done)).astype(float)[:, None]
+                h = (_dtau_for_step(dtau_mode, eta, dt_left, dtau, s, clamp_final)
+                     * (~done)).astype(float)[:, None]
                 k1 = sysm.deriv(s, E)
                 k2 = sysm.deriv(s + 0.5*h*k1, E)
                 k3 = sysm.deriv(s + 0.5*h*k2, E)
@@ -240,7 +278,14 @@ def integrate_az(r0, v0, t_max, n_sync=32, eta=0.02, max_steps=8000, M=None,
 
             rc, vc = sysm.to_cartesian(s)
             r[sel] = rc; v[sel] = vc
-            t[sel] = t[sel] + np.minimum(s[:, 8], dt_left)
+            # Under the clamp the state IS the boundary state to within LAND_EPS_REL, so the clock
+            # is set to the boundary exactly and state and time cannot disagree. A trajectory
+            # that went non-finite has not landed and keeps the clipped clock.
+            landed = np.isfinite(s).all(axis=1) & (s[:, 8] >= dt_left - (dt_left*LAND_EPS_REL if clamp_final else 0.0))
+            if clamp_final:
+                t[sel] = np.where(landed, t_target, t[sel] + np.minimum(s[:, 8], dt_left))
+            else:
+                t[sel] = t[sel] + np.minimum(s[:, 8], dt_left)
 
     drift = np.abs((tb.energy(r, v, 0.0) - E0)/np.maximum(np.abs(E0), 1e-30))
     return dict(r=r, v=v, drift=drift, dmin=dmin, t=t, switches=switches)

@@ -629,6 +629,7 @@ fn the_shape_accumulators_survive_ragged_per_copy_records() {
         closure_k: 1,
         stop_on_escape: true,
         keep_boundary_shapes: true,
+        keep_drift_hist: false,
         stop_on_event: true,
         refine_flagged: false,
         ..Default::default()

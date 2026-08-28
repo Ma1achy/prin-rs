@@ -92,6 +92,7 @@ fn main() {
         closure_k: 1,
         stop_on_escape: stop,
         keep_boundary_shapes: false,
+        keep_drift_hist: false,
     };
 
     let mut cases: Vec<Case> = Vec::new();

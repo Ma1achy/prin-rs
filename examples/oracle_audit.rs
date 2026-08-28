@@ -117,6 +117,7 @@ fn main() {
         closure_k: 1,
         stop_on_escape: true,
         keep_boundary_shapes: true,
+        keep_drift_hist: false,
         ..Default::default()
     };
     let full = ((1usize << (2 * (levels + 1))) - 1) / 3;

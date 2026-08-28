@@ -108,6 +108,12 @@ pub struct AzOut<T> {
     /// or it silently reads short. `stats::event_class_at` already does, with `tight.get(k)`
     /// and a terminal fallback.
     pub boundary_shapes: Vec<[T; 3]>,
+    /// Energy drift at each completed sync boundary, when `AzOpts::keep_drift_hist` is set.
+    ///
+    /// Same cadence and same index as [`Self::refs`], so `refs[k] != refs[k-1]` selects exactly
+    /// the boundaries at which the Levi-Civita registration was re-derived, and the paired
+    /// increment `drift_hist[k] - drift_hist[k-1]` is what that switch cost.
+    pub drift_hist: Vec<T>,
     /// Whether the **escape condition holds** at each completed sync boundary.
     ///
     /// Not "has escaped": the instantaneous candidacy, sampled on the same cadence as
@@ -300,6 +306,14 @@ pub struct AzOpts<'a, T> {
     /// reduced and dropped inside one footprint's evaluation, so the peak cost is one
     /// footprint's worth rather than the tree's.
     pub keep_boundary_shapes: bool,
+    /// Record `|E(t) - E(0)| / |E(0)|` at every sync boundary.
+    ///
+    /// Off by default and gated for the same reason as [`Self::keep_boundary_shapes`]: it is a
+    /// diagnostic, and a production run should not pay for it. It exists to answer one question
+    /// the aggregate `drift` cannot -- whether drift arrives **at** the reference-body switches
+    /// or accumulates smoothly between them. `AzOut::refs` already carries the switch record at
+    /// this same cadence, so the two series line up index for index.
+    pub keep_drift_hist: bool,
 }
 
 impl<T: Real> Default for AzOpts<'_, T> {
@@ -317,6 +331,7 @@ impl<T: Real> Default for AzOpts<'_, T> {
             dtau_mode: DtauMode::default(),
             clamp_final_step: true,
             keep_boundary_shapes: false,
+            keep_drift_hist: false,
         }
     }
 }
@@ -388,6 +403,7 @@ pub fn reference_opts<T: Real>(
         dtau_mode,
         clamp_final_step,
         keep_boundary_shapes: false,
+        keep_drift_hist: false,
     }
 }
 
@@ -542,6 +558,7 @@ pub fn integrate_az_opts<T: Real>(
     let mut tie_ratio = Vec::with_capacity(n_sync);
     let mut boundary_shapes: Vec<[T; 3]> =
         Vec::with_capacity(if opts.keep_boundary_shapes { n_sync } else { 0 });
+    let mut drift_hist: Vec<T> = Vec::with_capacity(if opts.keep_drift_hist { n_sync } else { 0 });
     let mut total_steps = 0usize;
     let mut finite = true;
     let mut budget_exhausted = false;
@@ -747,6 +764,10 @@ pub fn integrate_az_opts<T: Real>(
         if opts.keep_boundary_shapes {
             boundary_shapes.push(n_now);
         }
+        if opts.keep_drift_hist {
+            let ek = energy::energy(&cart.r, &cart.v, m, T::zero());
+            drift_hist.push(((ek - e0) / e0.abs().max(T::DRIFT_FLOOR)).abs());
+        }
         // The closure window reads only the two ENDS — `buf[-1]` and `buf[0]` in the reference,
         // never the interior — so a ring buffer of `kw + 1` is the whole state it needs.
         nbuf.push_back(n_now);
@@ -852,6 +873,7 @@ pub fn integrate_az_opts<T: Real>(
         ab_min,
         ab_floored,
         boundary_shapes,
+        drift_hist,
         steps: total_steps,
         finite,
         budget_exhausted,

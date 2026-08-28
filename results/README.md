@@ -801,6 +801,30 @@ stationary along the flow, so the clamp buys 24,000× on the figure-eight closur
 `near-field`'s median drift 37× the *wrong* way. The instrument for this class is a convergence
 order, not a field: `examples/overshoot.rs` §1. See `../NOTES.md` §14 and `../RESULTS.md` §24.
 
+## `timeline/` — the commit walk, from `results/timeline/harness/run.sh`
+
+Eight commits from before the escape work to `f7d2a31`, the same slice rendered at each, laid
+out as `strip_{uniform,outcome,drift}.png`. The harness is **regenerated per commit** from one
+template so every `EnsembleCfg` field is an explicit literal and an absent field is logged
+rather than silently defaulted — the generated sources are kept in `harness/`, and they are the
+record of what was pinned. Colour windows are fixed constants shared by the whole strip; each
+panel's own auto-range is printed beside it.
+
+Four null controls pass **bitwise**, including `4b26466 -> 71de13f` (the user's named "true
+before" touches no `src/`) and `f7d2a31 -> HEAD working tree` (the switch instrumentation
+changes no number). `results/timeline/README.md` carries the tables; the headline is that the
+largest label move in the range is the **escape** commit `077b092 -> e53223d` at 39.95%, not the
+`dtau` fix at 33.22%, and that the bleaching is a **3.1x collapse of local chroma contrast** at
+`5cc8dec` with lag-1 coherence *rising* through it.
+
+## `switch/` — reference-body switching, from `examples/switch_study.rs`
+
+Switch count and first-switch time as their own panels, on `config_stability` and the three
+presets, with `keep_drift_hist` on so the drift series and `AzOut::refs` share one cadence.
+`results/switch/README.md` carries the four measurements. The one to read is the paired
+increment: within a trajectory, the drift increment at a boundary where the reference **changed**
+exceeds the increment where it **held** on 82.7%-99.0% of pixels in every slice tested.
+
 ## A note on raster sizes
 
 Everything generated in this build is **1024²** (figures are 1400×800; budget side-by-sides are

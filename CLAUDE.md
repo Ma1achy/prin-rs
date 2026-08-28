@@ -1366,3 +1366,66 @@ share the nominal copy's reference?
 
 The flag governs **cross-copy sharing only** — not freezing the reference across time. Freezing
 across time would break AZ outright.
+
+**THE BLEACHING IS A LOSS OF TEXTURE, AND EVERY OBVIOUS STATISTIC READS IT BACKWARDS.** "The pale
+regions grew" measures as median OKLab lightness **falling** (0.796 -> 0.843 -> 0.614 across the
+walk) and the strictly white population falling monotonically 0.0179 -> 0.0150 — the panel gets
+*darker and more saturated*. What the eye reads is those regions going **flat**. The statistic
+that matches is local contrast, the 5x5 s.d. of chroma, and it collapses **3.1x at `5cc8dec` and
+nowhere else** (0.01542, 0.01726, 0.01735, **0.00557**, 0.00461). **And what left was the
+incoherent component**: lag-1 chroma coherence *rises* 0.62 -> 0.70 in the same step, and on the
+55.5% of the frame at least 8 px from any pre-fix magenta the fall is the same 2.9x. A texture
+that vanishes while what remains becomes more coherent was noise, not structure — *amplitude
+cannot tell a small real signal from noise; coherence can*, now at a third site.
+
+**`nonfin` IS THE WRONG DENOMINATOR FOR "TEN TIMES MORE CHANGED THAN WAS BROKEN".** Median energy
+drift before the `dtau` fix is **2.2905 — 229% of the total energy** at the median pixel. The
+frame was NaN on 2.87% and quantitatively meaningless on most of the rest, so against a **682x**
+fall in median drift, 33% of labels changing is a small number. The flips are enriched 2.22x on
+the pre-fix magenta pixels and 1.36x at 16 px, but that set is 2.87% of the frame — **~94% of the
+flips are outside it**, which is what a correct fix looks like here.
+
+**THE TIMELINE HAS ONE STATE FROM 08-25 TO 08-27, AND THE BIGGEST MOVE IS THE ESCAPE COMMIT.**
+`f4084de` through `483b630` are **bitwise identical** over 1048576 pixels — 34 hours, the whole
+08-26 scheduler run, zero pixels. `077b092 -> e53223d` then flips **39.95%** of labels against the
+`dtau` fix's 33.22%, and the two escape commits take escape 0.676 -> 0.262 and bounded
+0.054 -> 0.369. The screenshots being reasoned from sit at `4b26466`, **after** both, so the state
+treated as original already contains the largest label move in the range. Four null controls pass
+bitwise, including `4b26466 == 71de13f` (the named "true before" touches no `src/`) and
+`FixedPerInterval` reproducing `71de13f` exactly — so the flag *is* a faithful reconstruction of
+the pre-fix commit and those comparisons were not post-fix against post-fix.
+
+**`hot` FALLS WITH `eta`; THE LABELS DO NOT CONVERGE.** `hot` 0.8750 -> 0.4871 and median drift
+9.027e-3 -> 7.281e-7 over an 8x refinement — **12400x**, order ~4.5, so truncation and not a wrong
+equation, and the 86% is the threshold sitting far below this slice's bulk. But escape fraction
+moves monotonically `0.2016 -> 0.1171` with no sign of settling and `chord max` is **2.000,
+antipodal, at every rung**. At horizon 50 the *shape* field converges (`chord p50` falls ~6x per
+halving) and the *classification* does not.
+
+**IT IS NOT HOW OFTEN THE REFERENCE SWITCHES, IT IS HOW OFTEN NEIGHBOURS SWITCH DIFFERENTLY.**
+`config_stability` switches **21x** as often as `preset_prho` (5.717 against 0.270 over 32
+boundaries), but count alone does not order the slices — `preset_plambda` switches *more* than
+`preset_shape` and carries **70x fewer** sharp gradients, because its switches all fall at one
+boundary and neighbours switch together. The ordering quantity is the fraction of neighbour pairs
+with differing switch history: **58.4% / 13.6% / 5.1% / 1.6%** against gradient densities 0.0537 /
+0.0212 / 0.0003 / 0.0006. The alignment test reads **3.43x** (against 1.69x from the `t = 0`
+proxy) with a **shifted control at 0.65x** — none of it is smoothness. And the paired increment
+inside one trajectory has the switch boundary above the hold boundary on **82.7-99.0%** of pixels
+in all four slices. The confound is that a switch coincides with fast deformation; the argument
+against is `preset_prho`, quiescent, where switches still cost four orders more than holds.
+**The reference is already chosen once per SYNC BOUNDARY, never per step**, so that remedy is the
+shipped behaviour.
+
+**THE COLLISION-CADENCE CANDIDATE POINTS THE OTHER WAY.** The median physical RK4 step on this
+slice is **9.6e-3** against the reference's `dtMacro = 0.002`, so **the reference samples collision
+about five times more often in physical time than prin-rs does**. `total_substeps` is summed over
+all `E+1` copies, and dividing by the raw sum understates the step **eightfold** — which is the
+whole difference between "prin-rs tests far more often" and the truth.
+
+**A BISECT HARNESS MUST BE REGENERATED PER COMMIT, AND AN ABSENT FIELD IS THE SIGNAL.** Defaults
+are exactly what changed across a range like this, so a harness checked out with the code measures
+the defaults. `results/timeline/harness/run.sh` emits the `EnsembleCfg` literal field by field from
+one template and **logs the fields that do not exist yet** (22, 23, 24, 26, 27, 28, 29 across the
+walk). Both colour windows are fixed constants shared by the strip: an auto-ranged ramp per panel
+would stretch each commit's own p1-p99 to full scale, which on a question about bleaching
+manufactures or hides the thing being measured.

@@ -1518,3 +1518,28 @@ escape 0.0433 against the committed 0.0588. Its magenta fraction is 0.0030 again
 render's 0.0029 — same physics, quarter the linear raster — so *softness in an image is a raster
 size* now has a fourth site, and a magenta cluster of a few footprints reads as a **blob** at
 4x4 screen pixels per footprint.
+
+**THE CIRCLED WEDGES ARE HIERARCHICAL ICs WITH THE HEAVIEST AND LIGHTEST BODIES FAR APART — AND
+THEY ARE *NOT* NEAR AN ARGMAX DEGENERACY.** Measured on the ICs alone, which need no integration:
+the magenta and dense-pale populations both order `d(0,1) < d(0,2) < d(1,2)` with **`d(1,2)`'s
+10th percentile at 1.84 against the frame's 1.42** — the small-separation tail is gone — and
+`tightest == (1,2)` occurs on **0.07% of the magenta against 28.9% of the frame, a 413x
+depletion**. With `m = (0.32735, 0.42763, 0.24502)` that is the heaviest and lightest body as the
+wide pair. Alongside: aspect 1.57 against 1.43, larger `alpha` (tighter inner pair), and **|Lz|
+about 60% of the frame median**.
+
+**The near-degeneracy hypothesis is refuted by the sign, not merely unsupported.** If these were
+the pixels where AZ's `argmax` is a coin flip the tie statistics would be enriched; they are
+**depleted ~2.5x** (`d[2nd]/d[longest] > 0.95` on 0.0825 against 0.2132). And `ic_class.png` — the
+reference body and tightest pair over the whole frame — is a **smooth six-sector pinwheel meeting
+at one point**, which is where the straight edges in the chart plane come from and which does
+**not** draw the wedges. *A finding read off a wireframe is a finding about an appearance*, at the
+IC layer: the straight edges suggested a discrete IC boundary, and rendering the boundary showed
+it is somewhere else.
+
+**And the class constrains without drawing.** `P(magenta | reference=0 and tightest=(0,1))` is
+**0.0070** against a base rate of 0.0029 — a 2.4x lift on a class holding 22% of the frame. The
+initial conditions bound where the artefact can appear; the fine structure inside them is
+dynamical. **Read a hand-drawn mask's area before its statistics**: the digitised circles cover
+25.4% of the frame, so that row is mostly background and only the property-selected populations
+carry the signal.

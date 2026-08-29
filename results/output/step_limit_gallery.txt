@@ -1,0 +1,38 @@
+    Finished `release` profile [optimized] target(s) in 0.09s
+     Running `target/release/examples/step_limit_gallery 384 results`
+STEP-CONTROL GALLERY, 384^2. Every colour window is taken from the BASELINE and
+reused for every mode -- an auto-ranged ramp per panel would manufacture the
+difference it is meant to show.
+
+
+================ config_stability ================
+config: production + 4 override(s): t_max=50.0 (production 13.0), n_sync=125 (production 32), r_coll_frac=0.005 (production 0.001), refine_flagged=false (production true)
+
+                                mode      secs     err p99    err>10   steps p50  overshoot    nonfin
+                     None (baseline)     309.9    1.543e10    0.1114     1.054e5       2587         5
+    B  Predictive f=0.02  <- SHIPPED     361.9     1.159e0    0.0001     1.072e5          0         0
+                    A  Reject f=0.02    1112.6     1.453e0    0.0001     1.835e5          0         0
+    C  AbGrowth f=2  (bitwise inert)     314.3    1.543e10    0.1114     1.054e5       2587         5
+  D  Global f=0.25  (the dumb control)    1216.2     1.229e8    0.0754     4.213e5        643         0
+
+================ preset_shape ================
+config: production + 1 override(s): refine_flagged=false (production true)
+
+                                mode      secs     err p99    err>10   steps p50  overshoot    nonfin
+                     None (baseline)      40.0    1.067e11    0.0712     3.013e3       2241         5
+    B  Predictive f=0.02  <- SHIPPED      42.7     1.080e0    0.0001     3.032e3          0         0
+                    A  Reject f=0.02     210.7     2.909e5    0.0234     1.557e4          0         0
+    C  AbGrowth f=2  (bitwise inert)      41.9    1.067e11    0.0712     3.013e3       2241         5
+  D  Global f=0.25  (the dumb control)     195.9     4.829e8    0.0481     1.180e4        422         0
+
+================ deep_interior ================
+config: production + 1 override(s): refine_flagged=false (production true)
+
+                                mode      secs     err p99    err>10   steps p50  overshoot    nonfin
+                     None (baseline)      56.3     3.707e2    0.0373     1.079e4        262         0
+    B  Predictive f=0.02  <- SHIPPED     231.1     1.000e0    0.0000     4.731e4          0         0
+                    A  Reject f=0.02     513.2     1.000e0    0.0000     1.055e5          0         0
+    C  AbGrowth f=2  (bitwise inert)      48.3     3.707e2    0.0373     1.079e4        262         0
+  D  Global f=0.25  (the dumb control)     223.6     1.051e0    0.0038     4.292e4          0         0
+
+Wrote results/step_control/gallery/ -- one directory per region, plus README.md and per-panel sidecars.

@@ -1,0 +1,5 @@
+    Finished `release` profile [optimized] target(s) in 0.18s
+     Running `target/release/examples/residual_probe 384 results`
+config_stability 384^2
+config: production + 4 override(s): t_max=50.0 (production 13.0), n_sync=125 (production 32), r_coll_frac=0.005 (production 0.001), refine_flagged=false (production true)
+

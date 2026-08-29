@@ -1,0 +1,11 @@
+image=results/step_control/gallery/preset_shape/4_global_drift.png
+config=production + 3 override(s): step_limit=Global (production Predictive), step_limit_f=0.25 (production 0.02), refine_flagged=false (production true)
+res=384x384
+case=preset_shape
+mode=D  Global f=0.25  (the dumb control)
+step_limit=Global
+step_limit_f=0.25
+window=(0,0,3)
+spread ramp=(1.700766e-5,4.706922e-1)  <- taken from the BASELINE and shared
+drift ramp=(1e-12,1e2)  <- fixed constant
+errhot threshold=10  <- fixed

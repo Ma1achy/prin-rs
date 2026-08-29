@@ -1,0 +1,226 @@
+128x128 per box, t_max 50, r_coll 0.005, n_sync 125, eta 1e-2, escape rule Closure(1e-3).
+`detail` decoded: on the collision arm it is the PAIR; on the escape arm it is the
+reference's escaping-body index -- the LOWEST FIRING INDEX, not necessarily the body
+that physically leaves. Transcribed, and said here because this table reads it.
+
+================ B1  (128x128 = 16384 px, 82.2s) ================
+  OUTCOME   escape 0.3238  collision 0.3911  bounded 0.2852  running 0.0000  nonfinite 0.0003  simfail 0.0000
+  CLASS     escape triple 0.2961 | bounded 0.2852 | collision (0,1) 0.2507 | collision (0,2) 0.0768 | collision (1,2) 0.0634 | escape body 0 0.0273 |
+  TIGHTEST PAIR at the last boundary (binary_id)  (0,1) 0.3659  (0,2) 0.2243  (1,2) 0.4098
+  DRIFT     p50 5.564e1  p90 1.308e5  p99 7.395e8  max 9.241e13   frac>1e-6 0.8542   gamma p50 6.849e-1
+  COST      steps/copy p50 10832  p90 16100  max 16666   (nominal ~12500)
+  TIMING    t_end p10 1.572  p50 9.200  p90 50.000   frozen (t_end<t_max) 0.7125   on a sync boundary 0.6089
+  APPROACH  d_min_true p10 2.025e-3  p50 4.394e-3   d_min_ref p50 4.582e-3   frac < r_coll 0.6470
+  SWITCHES  count p50 3  p90 22  max 99   never 0.0412   t_first p50 1.200   jump switch/hold p50 3.052e-10 / 5.684e-13
+  SPREAD    shape p50 2.818e-1  p90 4.733e-1   event p50 2.857e-1   error_ratio p50 1143988.146  p99 21200236471227.629
+  ICs       d(0,1) 1.7709  d(0,2) 1.5417  d(1,2) 1.8803   alpha 0.7039  beta 1.8716   Lz -0.1049  E0 -0.1148  K/|U| 0.3856
+            AZ reference at t=0  body0 1.000 body1 0.000 body2 0.000   tightest at t=0  (0,1) 0.000 (0,2) 1.000 (1,2) 0.000
+
+================ B2  (128x128 = 16384 px, 65.2s) ================
+  OUTCOME   escape 0.3496  collision 0.4240  bounded 0.2264  running 0.0000  nonfinite 0.0004  simfail 0.0000
+  CLASS     escape triple 0.3236 | collision (0,1) 0.2540 | bounded 0.2264 | collision (0,2) 0.0919 | collision (1,2) 0.0778 | escape body 0 0.0259 |
+  TIGHTEST PAIR at the last boundary (binary_id)  (0,1) 0.3942  (0,2) 0.2418  (1,2) 0.3640
+  DRIFT     p50 1.206e2  p90 2.491e6  p99 1.649e9  max 1.983e14   frac>1e-6 0.8121   gamma p50 8.661e-1
+  COST      steps/copy p50 9708  p90 16830  max 19401   (nominal ~12500)
+  TIMING    t_end p10 1.564  p50 7.200  p90 50.000   frozen (t_end<t_max) 0.7717   on a sync boundary 0.5759
+  APPROACH  d_min_true p10 2.018e-3  p50 4.232e-3   d_min_ref p50 4.392e-3   frac < r_coll 0.7444
+  SWITCHES  count p50 3  p90 23  max 104   never 0.1366   t_first p50 1.200   jump switch/hold p50 1.166e-7 / 1.452e-12
+  SPREAD    shape p50 3.287e-1  p90 4.742e-1   event p50 4.286e-1   error_ratio p50 2522820.484  p99 44047952088934.328
+  ICs       d(0,1) 1.7087  d(0,2) 1.6109  d(1,2) 1.9126   alpha 0.7444  beta 1.8445   Lz -0.1053  E0 -0.1145  K/|U| 0.3862
+            AZ reference at t=0  body0 1.000 body1 0.000 body2 0.000   tightest at t=0  (0,1) 0.022 (0,2) 0.978 (1,2) 0.000
+
+================ B3  (128x128 = 16384 px, 148.8s) ================
+  OUTCOME   escape 0.3943  collision 0.0402  bounded 0.5654  running 0.0000  nonfinite 0.0000  simfail 0.0000
+  CLASS     bounded 0.5654 | escape body 0 0.3718 | collision (0,2) 0.0394 | escape body 1 0.0226 | collision (0,1) 0.0006 | collision (1,2) 0.0002 |
+  TIGHTEST PAIR at the last boundary (binary_id)  (0,1) 0.0010  (0,2) 0.9930  (1,2) 0.0060
+  DRIFT     p50 9.963e-4  p90 3.665e-2  p99 1.966e0  max 3.276e2   frac>1e-6 0.9576   gamma p50 2.598e-4
+  COST      steps/copy p50 17785  p90 19510  max 22746   (nominal ~12500)
+  TIMING    t_end p10 16.400  p50 50.000  p90 50.000   frozen (t_end<t_max) 0.4321   on a sync boundary 0.9482
+  APPROACH  d_min_true p10 7.429e-3  p50 2.484e-2   d_min_ref p50 2.484e-2   frac < r_coll 0.0446
+  SWITCHES  count p50 24  p90 70  max 120   never 0.0000   t_first p50 2.000   jump switch/hold p50 4.832e-8 / 1.234e-9
+  SPREAD    shape p50 7.975e-4  p90 1.418e-3   event p50 0.000e0   error_ratio p50 4.458  p99 22705.027
+  ICs       d(0,1) 1.6221  d(0,2) 2.0591  d(1,2) 1.6685   alpha 0.7978  beta 1.3646   Lz -0.1898  E0 -0.1160  K/|U| 0.3831
+            AZ reference at t=0  body0 0.000 body1 1.000 body2 0.000   tightest at t=0  (0,1) 0.942 (0,2) 0.000 (1,2) 0.058
+
+================ B4  (128x128 = 16384 px, 146.9s) ================
+  OUTCOME   escape 0.3046  collision 0.0361  bounded 0.6594  running 0.0000  nonfinite 0.0000  simfail 0.0000
+  CLASS     bounded 0.6594 | escape body 0 0.2753 | escape triple 0.0292 | collision (1,2) 0.0136 | collision (0,2) 0.0134 | collision (0,1) 0.0091 |
+  TIGHTEST PAIR at the last boundary (binary_id)  (0,1) 0.1611  (0,2) 0.0521  (1,2) 0.7868
+  DRIFT     p50 4.137e-5  p90 2.806e-1  p99 1.283e4  max 5.289e10   frac>1e-6 0.7594   gamma p50 8.559e-6
+  COST      steps/copy p50 16908  p90 19701  max 23334   (nominal ~12500)
+  TIMING    t_end p10 12.400  p50 50.000  p90 50.000   frozen (t_end<t_max) 0.3384   on a sync boundary 0.9639
+  APPROACH  d_min_true p10 6.298e-3  p50 2.698e-2   d_min_ref p50 2.730e-2   frac < r_coll 0.0798
+  SWITCHES  count p50 25  p90 76  max 122   never 0.0000   t_first p50 1.200   jump switch/hold p50 1.518e-8 / 4.555e-10
+  SPREAD    shape p50 1.330e-3  p90 1.031e-2   event p50 0.000e0   error_ratio p50 1.051  p99 423411033.527
+  ICs       d(0,1) 1.5819  d(0,2) 2.0091  d(1,2) 1.7639   alpha 0.8216  beta 1.4607   Lz -0.1714  E0 -0.1158  K/|U| 0.3836
+            AZ reference at t=0  body0 0.000 body1 1.000 body2 0.000   tightest at t=0  (0,1) 1.000 (0,2) 0.000 (1,2) 0.000
+
+================ B5  (128x128 = 16384 px, 44.6s) ================
+  OUTCOME   escape 0.0428  collision 0.7800  bounded 0.1771  running 0.0000  nonfinite 0.0000  simfail 0.0000
+  CLASS     collision (1,2) 0.7659 | bounded 0.1771 | escape triple 0.0347 | collision (0,1) 0.0116 | escape body 0 0.0082 | collision (0,2) 0.0025 |
+  TIGHTEST PAIR at the last boundary (binary_id)  (0,1) 0.0367  (0,2) 0.0161  (1,2) 0.9471
+  DRIFT     p50 6.830e-1  p90 7.627e3  p99 3.723e7  max 1.161e13   frac>1e-6 0.9247   gamma p50 2.418e-3
+  COST      steps/copy p50 988  p90 20452  max 21412   (nominal ~12500)
+  TIMING    t_end p10 1.581  p50 1.606  p90 50.000   frozen (t_end<t_max) 0.8211   on a sync boundary 0.2200
+  APPROACH  d_min_true p10 9.848e-4  p50 3.376e-3   d_min_ref p50 5.457e-3   frac < r_coll 0.8385
+  SWITCHES  count p50 2  p90 5  max 64   never 0.0000   t_first p50 0.800   jump switch/hold p50 1.389e-9 / 5.816e-6
+  SPREAD    shape p50 4.362e-3  p90 2.662e-1   event p50 0.000e0   error_ratio p50 5616.350  p99 1783524556922.106
+  ICs       d(0,1) 1.6291  d(0,2) 1.8938  d(1,2) 1.8038   alpha 0.7935  beta 1.5747   Lz -0.1515  E0 -0.1143  K/|U| 0.3866
+            AZ reference at t=0  body0 0.000 body1 1.000 body2 0.000   tightest at t=0  (0,1) 1.000 (0,2) 0.000 (1,2) 0.000
+
+================ B6  (128x128 = 16384 px, 94.0s) ================
+  OUTCOME   escape 0.2131  collision 0.3683  bounded 0.4185  running 0.0000  nonfinite 0.0001  simfail 0.0000
+  CLASS     bounded 0.4185 | collision (0,2) 0.2714 | escape triple 0.1329 | collision (1,2) 0.0956 | escape body 0 0.0803 | collision (0,1) 0.0013 |
+  TIGHTEST PAIR at the last boundary (binary_id)  (0,1) 0.0640  (0,2) 0.3226  (1,2) 0.6134
+  DRIFT     p50 1.284e-3  p90 3.995e2  p99 1.013e7  max 1.796e11   frac>1e-6 0.7231   gamma p50 4.111e-4
+  COST      steps/copy p50 13690  p90 19755  max 21610   (nominal ~12500)
+  TIMING    t_end p10 1.489  p50 17.200  p90 50.000   frozen (t_end<t_max) 0.5794   on a sync boundary 0.6315
+  APPROACH  d_min_true p10 3.861e-3  p50 5.208e-3   d_min_ref p50 5.575e-3   frac < r_coll 0.4869
+  SWITCHES  count p50 3  p90 26  max 109   never 0.0000   t_first p50 0.400   jump switch/hold p50 5.112e-11 / 8.230e-11
+  SPREAD    shape p50 1.187e-3  p90 4.531e-1   event p50 0.000e0   error_ratio p50 3.970  p99 298567359261.095
+  ICs       d(0,1) 1.5572  d(0,2) 1.9204  d(1,2) 1.8661   alpha 0.8361  beta 1.5927   Lz -0.1450  E0 -0.1158  K/|U| 0.3836
+            AZ reference at t=0  body0 0.000 body1 1.000 body2 0.000   tightest at t=0  (0,1) 1.000 (0,2) 0.000 (1,2) 0.000
+
+================ B7  (128x128 = 16384 px, 31.9s) ================
+  OUTCOME   escape 0.1849  collision 0.7608  bounded 0.0543  running 0.0000  nonfinite 0.0001  simfail 0.0000
+  CLASS     collision (0,2) 0.7181 | escape triple 0.1696 | bounded 0.0543 | collision (0,1) 0.0293 | escape body 0 0.0153 | collision (1,2) 0.0127 |
+  TIGHTEST PAIR at the last boundary (binary_id)  (0,1) 0.1115  (0,2) 0.8064  (1,2) 0.0822
+  DRIFT     p50 1.191e-6  p90 4.681e6  p99 2.434e10  max 3.282e15   frac>1e-6 0.6209   gamma p50 1.214e-8
+  COST      steps/copy p50 824  p90 11549  max 18431   (nominal ~12500)
+  TIMING    t_end p10 1.740  p50 1.802  p90 11.200   frozen (t_end<t_max) 0.9445   on a sync boundary 0.2391
+  APPROACH  d_min_true p10 2.033e-3  p50 4.132e-3   d_min_ref p50 4.251e-3   frac < r_coll 0.9109
+  SWITCHES  count p50 1  p90 4  max 103   never 0.0000   t_first p50 1.200   jump switch/hold p50 1.784e-10 / 1.117e-12
+  SPREAD    shape p50 3.988e-4  p90 4.684e-1   event p50 0.000e0   error_ratio p50 1.000  p99 327409827531870.812
+  ICs       d(0,1) 1.4458  d(0,2) 2.1159  d(1,2) 1.8236   alpha 0.8991  beta 1.4041   Lz -0.1783  E0 -0.1202  K/|U| 0.3748
+            AZ reference at t=0  body0 0.000 body1 1.000 body2 0.000   tightest at t=0  (0,1) 1.000 (0,2) 0.000 (1,2) 0.000
+
+================ B8  (128x128 = 16384 px, 45.9s) ================
+  OUTCOME   escape 0.3672  collision 0.5776  bounded 0.0552  running 0.0000  nonfinite 0.0003  simfail 0.0000
+  CLASS     collision (0,2) 0.4778 | escape triple 0.3424 | collision (0,1) 0.0649 | bounded 0.0552 | collision (1,2) 0.0344 | escape body 0 0.0245 |
+  TIGHTEST PAIR at the last boundary (binary_id)  (0,1) 0.2527  (0,2) 0.5395  (1,2) 0.2078
+  DRIFT     p50 1.117e2  p90 2.504e7  p99 4.994e10  max 4.997e15   frac>1e-6 0.8487   gamma p50 9.628e-1
+  COST      steps/copy p50 6750  p90 12736  max 19910   (nominal ~12500)
+  TIMING    t_end p10 1.996  p50 2.400  p90 17.670   frozen (t_end<t_max) 0.9423   on a sync boundary 0.4224
+  APPROACH  d_min_true p10 1.317e-3  p50 3.592e-3   d_min_ref p50 3.890e-3   frac < r_coll 0.8719
+  SWITCHES  count p50 3  p90 5  max 98   never 0.0000   t_first p50 1.200   jump switch/hold p50 1.698e-7 / 1.568e-12
+  SPREAD    shape p50 3.065e-1  p90 4.736e-1   event p50 2.857e-1   error_ratio p50 981062.828  p99 605337392486684.000
+  ICs       d(0,1) 1.3755  d(0,2) 2.1688  d(1,2) 1.8484   alpha 0.9372  beta 1.3686   Lz -0.1832  E0 -0.1234  K/|U| 0.3686
+            AZ reference at t=0  body0 0.000 body1 1.000 body2 0.000   tightest at t=0  (0,1) 1.000 (0,2) 0.000 (1,2) 0.000
+
+================ B9  (128x128 = 16384 px, 69.5s) ================
+  OUTCOME   escape 0.4229  collision 0.3495  bounded 0.2275  running 0.0000  nonfinite 0.0005  simfail 0.0001
+  CLASS     escape triple 0.3792 | collision (1,2) 0.2365 | bounded 0.2275 | collision (0,1) 0.0629 | collision (0,2) 0.0496 | escape body 0 0.0432 |
+  TIGHTEST PAIR at the last boundary (binary_id)  (0,1) 0.5380  (0,2) 0.1437  (1,2) 0.3182
+  DRIFT     p50 3.836e2  p90 6.071e6  p99 7.979e9  max 1.351e14   frac>1e-6 1.0000   gamma p50 1.042e0
+  COST      steps/copy p50 9698  p90 18272  max 19713   (nominal ~12500)
+  TIMING    t_end p10 1.632  p50 7.600  p90 50.000   frozen (t_end<t_max) 0.7694   on a sync boundary 0.6505
+  APPROACH  d_min_true p10 1.243e-3  p50 3.653e-3   d_min_ref p50 4.041e-3   frac < r_coll 0.7946
+  SWITCHES  count p50 2  p90 58  max 119   never 0.0723   t_first p50 1.600   jump switch/hold p50 2.081e-7 / 3.605e-12
+  SPREAD    shape p50 4.018e-1  p90 4.803e-1   event p50 5.714e-1   error_ratio p50 2568232.125  p99 67151678021078.523
+  ICs       d(0,1) 1.2999  d(0,2) 1.9073  d(1,2) 2.1221   alpha 0.9771  beta 1.7908   Lz -0.0887  E0 -0.1271  K/|U| 0.3618
+            AZ reference at t=0  body0 1.000 body1 0.000 body2 0.000   tightest at t=0  (0,1) 1.000 (0,2) 0.000 (1,2) 0.000
+
+================ B10  (128x128 = 16384 px, 45.7s) ================
+  OUTCOME   escape 0.4567  collision 0.4133  bounded 0.1299  running 0.0000  nonfinite 0.0008  simfail 0.0000
+  CLASS     escape triple 0.3821 | collision (1,2) 0.1987 | collision (0,1) 0.1713 | bounded 0.1299 | escape body 0 0.0745 | collision (0,2) 0.0430 |
+  TIGHTEST PAIR at the last boundary (binary_id)  (0,1) 0.4623  (0,2) 0.1824  (1,2) 0.3553
+  DRIFT     p50 5.227e3  p90 7.867e7  p99 3.859e10  max 7.974e14   frac>1e-6 1.0000   gamma p50 1.671e0
+  COST      steps/copy p50 9678  p90 13656  max 20440   (nominal ~12500)
+  TIMING    t_end p10 1.590  p50 4.800  p90 50.000   frozen (t_end<t_max) 0.8655   on a sync boundary 0.5865
+  APPROACH  d_min_true p10 1.078e-3  p50 3.091e-3   d_min_ref p50 4.342e-3   frac < r_coll 0.8336
+  SWITCHES  count p50 2  p90 15  max 121   never 0.1272   t_first p50 1.600   jump switch/hold p50 6.300e-6 / 9.095e-12
+  SPREAD    shape p50 4.210e-1  p90 4.855e-1   event p50 5.714e-1   error_ratio p50 45410450.106  p99 358497339422901.688
+  ICs       d(0,1) 1.3411  d(0,2) 1.7867  d(1,2) 2.1676   alpha 0.9555  beta 1.9214   Lz -0.0624  E0 -0.1256  K/|U| 0.3645
+            AZ reference at t=0  body0 1.000 body1 0.000 body2 0.000   tightest at t=0  (0,1) 1.000 (0,2) 0.000 (1,2) 0.000
+
+================ P1  (128x128 = 16384 px, 96.1s) ================
+  OUTCOME   escape 0.0120  collision 0.3937  bounded 0.5944  running 0.0000  nonfinite 0.0000  simfail 0.0000
+  CLASS     bounded 0.5944 | collision (1,2) 0.3458 | collision (0,1) 0.0479 | escape body 0 0.0101 | escape body 1 0.0019 |
+  TIGHTEST PAIR at the last boundary (binary_id)  (0,1) 0.6542  (0,2) 0.0000  (1,2) 0.3458
+  DRIFT     p50 1.944e-5  p90 6.038e-2  p99 4.617e0  max 1.709e1   frac>1e-6 0.6121   gamma p50 2.408e-6
+  COST      steps/copy p50 17263  p90 19673  max 20524   (nominal ~12500)
+  TIMING    t_end p10 1.446  p50 50.000  p90 50.000   frozen (t_end<t_max) 0.4055   on a sync boundary 0.6052
+  APPROACH  d_min_true p10 4.663e-3  p50 6.806e-3   d_min_ref p50 6.806e-3   frac < r_coll 0.3977
+  SWITCHES  count p50 8  p90 29  max 121   never 0.1842   t_first p50 0.400   jump switch/hold p50 1.337e-11 / 7.066e-12
+  SPREAD    shape p50 4.020e-4  p90 2.127e-3   event p50 0.000e0   error_ratio p50 1.001  p99 62758.720
+  ICs       d(0,1) 1.8023  d(0,2) 1.8260  d(1,2) 1.6287   alpha 0.6826  beta 1.5237   Lz -0.1664  E0 -0.1139  K/|U| 0.3875
+            AZ reference at t=0  body0 0.000 body1 0.779 body2 0.221   tightest at t=0  (0,1) 0.000 (0,2) 0.000 (1,2) 1.000
+
+================ P2  (128x128 = 16384 px, 170.2s) ================
+  OUTCOME   escape 0.0848  collision 0.0793  bounded 0.8358  running 0.0000  nonfinite 0.0000  simfail 0.0000
+  CLASS     bounded 0.8358 | escape body 0 0.0775 | collision (0,2) 0.0308 | collision (1,2) 0.0288 | collision (0,1) 0.0197 | escape body 1 0.0067 |
+  TIGHTEST PAIR at the last boundary (binary_id)  (0,1) 0.2586  (0,2) 0.6085  (1,2) 0.1329
+  DRIFT     p50 4.781e-6  p90 4.684e-4  p99 2.370e-2  max 2.636e9   frac>1e-6 0.6457   gamma p50 8.862e-7
+  COST      steps/copy p50 16154  p90 19874  max 20684   (nominal ~12500)
+  TIMING    t_end p10 28.400  p50 50.000  p90 50.000   frozen (t_end<t_max) 0.1635   on a sync boundary 0.9170
+  APPROACH  d_min_true p10 4.762e-3  p50 4.406e-2   d_min_ref p50 4.441e-2   frac < r_coll 0.1150
+  SWITCHES  count p50 17  p90 79  max 121   never 0.0000   t_first p50 2.000   jump switch/hold p50 9.864e-10 / 6.742e-11
+  SPREAD    shape p50 1.681e-3  p90 1.486e-2   event p50 0.000e0   error_ratio p50 1.000  p99 873.722
+  ICs       d(0,1) 1.6376  d(0,2) 2.0007  d(1,2) 1.7023   alpha 0.7884  beta 1.4319   Lz -0.1782  E0 -0.1151  K/|U| 0.3850
+            AZ reference at t=0  body0 0.000 body1 1.000 body2 0.000   tightest at t=0  (0,1) 0.992 (0,2) 0.000 (1,2) 0.008
+
+================ P3  (128x128 = 16384 px, 93.3s) ================
+  OUTCOME   escape 0.0834  collision 0.4354  bounded 0.4812  running 0.0000  nonfinite 0.0000  simfail 0.0000
+  CLASS     bounded 0.4812 | collision (1,2) 0.4285 | escape body 0 0.0833 | collision (0,1) 0.0056 | collision (0,2) 0.0013 | escape triple 0.0001 |
+  TIGHTEST PAIR at the last boundary (binary_id)  (0,1) 0.5298  (0,2) 0.0033  (1,2) 0.4669
+  DRIFT     p50 2.529e-5  p90 6.494e-3  p99 2.692e1  max 2.515e8   frac>1e-6 0.8430   gamma p50 2.599e-6
+  COST      steps/copy p50 13808  p90 15849  max 21264   (nominal ~12500)
+  TIMING    t_end p10 1.614  p50 40.754  p90 50.000   frozen (t_end<t_max) 0.5181   on a sync boundary 0.5646
+  APPROACH  d_min_true p10 2.598e-3  p50 1.846e-2   d_min_ref p50 2.495e-2   frac < r_coll 0.4562
+  SWITCHES  count p50 11  p90 82  max 122   never 0.0000   t_first p50 1.200   jump switch/hold p50 4.048e-8 / 3.796e-9
+  SPREAD    shape p50 1.056e-3  p90 6.622e-3   event p50 0.000e0   error_ratio p50 1.001  p99 982435.940
+  ICs       d(0,1) 1.6135  d(0,2) 1.9481  d(1,2) 1.7780   alpha 0.8029  beta 1.5176   Lz -0.1617  E0 -0.1148  K/|U| 0.3855
+            AZ reference at t=0  body0 0.000 body1 1.000 body2 0.000   tightest at t=0  (0,1) 1.000 (0,2) 0.000 (1,2) 0.000
+
+================ P4  (128x128 = 16384 px, 112.0s) ================
+  OUTCOME   escape 0.2392  collision 0.1639  bounded 0.5969  running 0.0000  nonfinite 0.0000  simfail 0.0000
+  CLASS     bounded 0.5969 | escape triple 0.2004 | collision (0,2) 0.1375 | escape body 0 0.0385 | collision (0,1) 0.0170 | collision (1,2) 0.0095 |
+  TIGHTEST PAIR at the last boundary (binary_id)  (0,1) 0.1862  (0,2) 0.2732  (1,2) 0.5406
+  DRIFT     p50 5.424e-4  p90 4.342e2  p99 8.463e4  max 1.483e12   frac>1e-6 0.7045   gamma p50 3.494e-5
+  COST      steps/copy p50 14815  p90 15264  max 19441   (nominal ~12500)
+  TIMING    t_end p10 2.119  p50 50.000  p90 50.000   frozen (t_end<t_max) 0.4010   on a sync boundary 0.8358
+  APPROACH  d_min_true p10 3.580e-3  p50 8.367e-3   d_min_ref p50 9.623e-3   frac < r_coll 0.3834
+  SWITCHES  count p50 15  p90 34  max 109   never 0.0000   t_first p50 1.200   jump switch/hold p50 4.649e-11 / 3.727e-13
+  SPREAD    shape p50 5.732e-3  p90 4.563e-1   event p50 0.000e0   error_ratio p50 2.037  p99 1056084206.414
+  ICs       d(0,1) 1.4308  d(0,2) 2.1781  d(1,2) 1.7828   alpha 0.9073  beta 1.3215   Lz -0.1938  E0 -0.1214  K/|U| 0.3724
+            AZ reference at t=0  body0 0.000 body1 1.000 body2 0.000   tightest at t=0  (0,1) 1.000 (0,2) 0.000 (1,2) 0.000
+
+================ P5  (128x128 = 16384 px, 81.5s) ================
+  OUTCOME   escape 0.6531  collision 0.3022  bounded 0.0447  running 0.0000  nonfinite 0.0004  simfail 0.0001
+  CLASS     escape triple 0.6018 | collision (0,2) 0.2067 | collision (0,1) 0.0676 | escape body 0 0.0508 | bounded 0.0447 | collision (1,2) 0.0264 |
+  TIGHTEST PAIR at the last boundary (binary_id)  (0,1) 0.3173  (0,2) 0.3762  (1,2) 0.3065
+  DRIFT     p50 4.301e3  p90 1.879e8  p99 1.568e11  max 3.282e15   frac>1e-6 0.9698   gamma p50 2.419e0
+  COST      steps/copy p50 9982  p90 12804  max 19351   (nominal ~12500)
+  TIMING    t_end p10 1.867  p50 7.600  p90 15.200   frozen (t_end<t_max) 0.9519   on a sync boundary 0.6976
+  APPROACH  d_min_true p10 9.713e-4  p50 3.694e-3   d_min_ref p50 4.717e-3   frac < r_coll 0.7585
+  SWITCHES  count p50 3  p90 5  max 115   never 0.0000   t_first p50 1.200   jump switch/hold p50 1.802e-7 / 3.411e-13
+  SPREAD    shape p50 4.360e-1  p90 4.850e-1   event p50 5.714e-1   error_ratio p50 49425329.078  p99 2055403210179802.250
+  ICs       d(0,1) 1.4007  d(0,2) 2.1289  d(1,2) 1.8586   alpha 0.9237  beta 1.4130   Lz -0.1751  E0 -0.1220  K/|U| 0.3714
+            AZ reference at t=0  body0 0.000 body1 1.000 body2 0.000   tightest at t=0  (0,1) 1.000 (0,2) 0.000 (1,2) 0.000
+
+================ P6  (128x128 = 16384 px, 100.5s) ================
+  OUTCOME   escape 0.1887  collision 0.3966  bounded 0.4147  running 0.0000  nonfinite 0.0000  simfail 0.0000
+  CLASS     bounded 0.4147 | collision (0,2) 0.2977 | escape triple 0.1215 | collision (1,2) 0.0732 | escape body 0 0.0629 | collision (0,1) 0.0256 |
+  TIGHTEST PAIR at the last boundary (binary_id)  (0,1) 0.0941  (0,2) 0.7421  (1,2) 0.1639
+  DRIFT     p50 1.147e-1  p90 3.472e2  p99 4.159e6  max 4.889e11   frac>1e-6 0.9894   gamma p50 3.217e-2
+  COST      steps/copy p50 13408  p90 18734  max 20205   (nominal ~12500)
+  TIMING    t_end p10 5.587  p50 34.780  p90 50.000   frozen (t_end<t_max) 0.5840   on a sync boundary 0.6015
+  APPROACH  d_min_true p10 3.306e-3  p50 4.715e-3   d_min_ref p50 4.742e-3   frac < r_coll 0.6092
+  SWITCHES  count p50 10  p90 37  max 113   never 0.0000   t_first p50 0.800   jump switch/hold p50 1.476e-11 / 2.941e-13
+  SPREAD    shape p50 5.398e-3  p90 4.508e-1   event p50 0.000e0   error_ratio p50 109.760  p99 48648435461.003
+  ICs       d(0,1) 1.3805  d(0,2) 2.0810  d(1,2) 1.9193   alpha 0.9345  beta 1.4947   Lz -0.1577  E0 -0.1225  K/|U| 0.3703
+            AZ reference at t=0  body0 0.000 body1 1.000 body2 0.000   tightest at t=0  (0,1) 1.000 (0,2) 0.000 (1,2) 0.000
+
+================ FRAME  (128x128 = 16384 px, 102.7s) ================
+  OUTCOME   escape 0.0403  collision 0.4305  bounded 0.5292  running 0.0000  nonfinite 0.0001  simfail 0.0000
+  CLASS     bounded 0.5292 | collision (0,1) 0.1625 | collision (0,2) 0.1409 | collision (1,2) 0.1271 | escape triple 0.0294 | escape body 0 0.0104 |
+  TIGHTEST PAIR at the last boundary (binary_id)  (0,1) 0.4377  (0,2) 0.2546  (1,2) 0.3077
+  DRIFT     p50 4.251e-7  p90 4.631e-2  p99 8.866e6  max 1.968e12   frac>1e-6 0.4298   gamma p50 6.715e-8
+  COST      steps/copy p50 12771  p90 17401  max 21057   (nominal ~12500)
+  TIMING    t_end p10 1.626  p50 50.000  p90 50.000   frozen (t_end<t_max) 0.4705   on a sync boundary 0.5694
+  APPROACH  d_min_true p10 3.302e-3  p50 4.688e-3   d_min_ref p50 4.712e-3   frac < r_coll 0.5936
+  SWITCHES  count p50 11  p90 47  max 121   never 0.0648   t_first p50 1.600   jump switch/hold p50 8.405e-12 / 9.012e-13
+  SPREAD    shape p50 7.328e-3  p90 4.571e-1   event p50 0.000e0   error_ratio p50 1.000  p99 10387191569.882
+  ICs       d(0,1) 1.5825  d(0,2) 1.9884  d(1,2) 1.7871   alpha 0.8248  beta 1.4883   Lz -0.1662  E0 -0.1196  K/|U| 0.3760
+            AZ reference at t=0  body0 0.290 body1 0.596 body2 0.114   tightest at t=0  (0,1) 0.583 (0,2) 0.129 (1,2) 0.289
+

@@ -1,0 +1,4 @@
+B10 at 256^2, cell 5.201e-4
+
+  refine off  123s  drift p50 2.094e3  max 3.506e15   error_ratio p50 3.2943e7   spread_shape p50 3.905e-1   nonfin 60   esc 0.4645 col 0.4099 bnd 0.1255   ramp (3.15e-4,4.97e-1)
+  refine  on  1216s  drift p50 4.156e-4  max 5.965e-2   error_ratio p50 2.1340e0   spread_shape p50 3.208e-4   nonfin 0   esc 0.0021 col 0.8596 bnd 0.1384   ramp (5.81e-5,1.86e-2)

@@ -1589,3 +1589,35 @@ observation survives its test, which the lamination reading did not.
 **AND THE FOURIER TEST ON THE INTERIOR WAS VACUOUS AS RUN.** The window is 99.3% pale, so the
 transform measures the sparse perforation rather than the structure. Reported rather than dropped;
 it needs a window straddling the edge.
+
+**THE RENDER HARNESSES DISABLE THE REPAIR PASS, AND `results/README.md` ASSERTS THE OPPOSITE.**
+`EnsembleCfg::default()` has `refine_flagged: true` — BRIEF §2.5's remedy for the `eta` cliff,
+re-integrating pixels whose `error_ratio` exceeds 10 at `eta/4`. **62 files under `examples/` set
+it to `false`**, including every render harness. Measured on `config_stability`, one field changed:
+`error_ratio` p99 **1.039e10 -> 35.6**, drift p99 **8.87e6 -> 1.64e-2**, drift max **1.97e12 ->
+6.74e-2**, **non-finite 30109 -> 0**, escape fraction **0.0403 -> 0.0067**, with **11.1% of the
+slice re-integrated**. The pale patches are `spread_shape` saturating at 0.39 because the copies
+diverged to garbage. `src/bin/prin.rs` is **unaffected** — it takes the default and prints the
+before/after drift.
+
+**THE OVERRIDE WAS CORRECT WHERE IT WAS BORN AND SPREAD BY COPY.** `c03fc85` introduced it in the
+same commit as the pass itself, with a rationale that still stands: experiments must characterise
+the *unrepaired* kernel, and f32/f64 comparisons must not flag different pixel sets. That commit
+also wrote **"the `render-*.txt` runs have it ON"** — the invariant. Over six days the line was
+copied from experiment harnesses into render harnesses (`closure_render` at `71de13f`, 08-27
+13:02), no commit message arguing for it, and `results/README.md:190` still asserts renders have it
+on. **A convention that outlived its justification, never re-examined at the boundary it was meant
+to stop at.** Same shape as `k_frac = 1.0` shipping as the default: *a configuration that silently
+reproduces the old behaviour needs a guard, not a convention* — and none of these harnesses even
+print the flag.
+
+**THE MEDIAN IS BLIND TO IT; `error_ratio`'s TAIL IS NOT.** Slice-wide drift p50 moves
+`4.251e-7 -> 2.560e-7`, essentially nothing, while p99 moves eight orders. A render checked on a
+median would pass. That is why it survived six days and why the statistic that exists to flag
+undetermined pixels is the one to read.
+
+**AND NOT EVERY MARKED REGION IS THE BUG.** Of sixteen sampled: six read `error_ratio` p50
+`9.8e5`-`4.9e7` and are the fault; ten read `1.001`-`2.0` and their pale structure is **real**.
+The broken set runs at **4.7x-11.3x the nominal step rate** — working harder, not stepping coarser
+— with `d_min` `3.1e-3`-`4.4e-3` against `r_coll = 5e-3`. `steps/copy` alone conflates a big step
+with a short run; **the step RATE is the honest measure** and it reverses the reading.

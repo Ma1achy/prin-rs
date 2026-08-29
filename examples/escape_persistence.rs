@@ -76,6 +76,8 @@ fn main() {
     let dt_sync = t_max / n_sync as f64;
 
     let opts = |ev: usize, stop: bool| AzOpts::<f64> {
+        step_limit: prin_rs::integrate::az::StepLimit::None,
+        step_limit_f: 0.0,
         dtau_mode: prin_rs::integrate::az::DtauMode::default(),
         clamp_final_step: true,
         forced_refs: None,

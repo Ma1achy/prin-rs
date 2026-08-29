@@ -2,15 +2,27 @@
 
 use prin_rs::ensemble::pixel::{evaluate, EnsembleCfg};
 use prin_rs::grid;
+use prin_rs::integrate::az::StepLimit;
 
-/// **Refinement off.** These tests compare spread estimators *on damaged pixels*, and the
-/// second pass exists precisely to repair those — with it on there is nothing left to separate,
-/// and the test would pass by having no subject rather than by the estimator working. Both
-/// tests below need the unrefined population; `refined_pixels_are_repaired` covers the other
-/// side.
+/// **Refinement off, AND `StepLimit::None`.** These tests compare spread estimators *on damaged
+/// pixels*, and both mechanisms exist precisely to remove those — with either on there is nothing
+/// left to separate, and the test would pass by having no subject rather than by the estimator
+/// working.
+///
+/// The step-limit pin was added when `StepLimit::Predictive` became the default and both tests
+/// here failed. **They failed correctly**: `refined_pixels_are_repaired` fell over on its own
+/// `n_ref > 0` guard — *nothing was flagged, so this test has no subject* — which is the
+/// assertion written to catch exactly this. That the per-step limit deletes the damaged
+/// population outright is the strongest corroboration in the suite of what
+/// `results/step_control/README.md` measures; it is recorded here rather than worked around,
+/// and the pin is what keeps these two tests measuring the estimator they are about.
 fn render(size: usize) -> Vec<prin_rs::ensemble::pixel::PixelOut> {
     let s = grid::region("near-field", size, size, 0.05).unwrap();
-    let cfg = EnsembleCfg { refine_flagged: false, ..Default::default() };
+    let cfg = EnsembleCfg {
+        refine_flagged: false,
+        step_limit: StepLimit::None,
+        ..Default::default()
+    };
     (0..s.npix()).map(|i| evaluate::<f64>(&s, i, &cfg)).collect()
 }
 
@@ -127,8 +139,14 @@ const HEALTHY_MAX: f64 = 10.0;
 #[test]
 fn refined_pixels_are_repaired() {
     let s = grid::region("near-field", 32, 32, 0.05).unwrap();
-    let off = EnsembleCfg { refine_flagged: false, ..Default::default() };
-    let on = EnsembleCfg::default();
+    // Both arms on `StepLimit::None`: this test is about the refinement pass, and under the
+    // shipped per-step limit there is no flagged population for it to act on. See the module note.
+    let off = EnsembleCfg {
+        refine_flagged: false,
+        step_limit: StepLimit::None,
+        ..Default::default()
+    };
+    let on = EnsembleCfg { step_limit: StepLimit::None, ..Default::default() };
     let a: Vec<_> = (0..s.npix()).map(|i| evaluate::<f64>(&s, i, &off)).collect();
     let b: Vec<_> = (0..s.npix()).map(|i| evaluate::<f64>(&s, i, &on)).collect();
 

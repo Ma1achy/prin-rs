@@ -39,7 +39,7 @@
 use super::jitter::Scheme;
 use super::pixel::EnsembleCfg;
 use crate::decode::Path;
-use crate::integrate::az::{driver::DtauMode, reference_body::RefPolicy};
+use crate::integrate::az::{driver::DtauMode, driver::StepLimit, reference_body::RefPolicy};
 use crate::outcome::EscapeRule;
 use crate::physics::ftle::FtleOpts;
 
@@ -62,6 +62,8 @@ pub enum Override {
     EscapeConfirm(bool),
     DtauMode(DtauMode),
     ClampFinalStep(bool),
+    StepLimit(StepLimit),
+    StepLimitF(f64),
     Eta(f64),
     MaxSteps(usize),
     RefPolicy(RefPolicy),
@@ -98,6 +100,8 @@ impl Override {
             Override::EscapeConfirm(v) => c.escape_confirm = v,
             Override::DtauMode(v) => c.dtau_mode = v,
             Override::ClampFinalStep(v) => c.clamp_final_step = v,
+            Override::StepLimit(v) => c.step_limit = v,
+            Override::StepLimitF(v) => c.step_limit_f = v,
             Override::Eta(v) => c.eta = v,
             Override::MaxSteps(v) => c.max_steps = v,
             Override::RefPolicy(v) => c.ref_policy = v,
@@ -142,7 +146,8 @@ impl EnsembleCfg {
         // Exhaustive on purpose. Do not add `..`.
         let EnsembleCfg {
             n_extra, jitter_frac, jitter_scheme, seed, t_max, n_sync, escape_rule, closure_k,
-            stop_on_escape, escape_every, escape_confirm, dtau_mode, clamp_final_step, eta,
+            stop_on_escape, escape_every, escape_confirm, dtau_mode, clamp_final_step,
+            step_limit, step_limit_f, eta,
             max_steps, ref_policy, lc_stable, r_coll_frac, stop_on_event, refine_flagged,
             refine_threshold, refine_eta_factor, refine_max_passes, decode_path,
             keep_copy_outcomes, keep_copy_shapes, keep_boundary_shapes, keep_drift_hist, ftle,
@@ -171,6 +176,8 @@ impl EnsembleCfg {
         cmp!("escape_confirm", escape_confirm, p.escape_confirm);
         cmp!("dtau_mode", dtau_mode, p.dtau_mode);
         cmp!("clamp_final_step", clamp_final_step, p.clamp_final_step);
+        cmp!("step_limit", step_limit, p.step_limit);
+        cmp!("step_limit_f", step_limit_f, p.step_limit_f);
         cmp!("eta", eta, p.eta);
         cmp!("max_steps", max_steps, p.max_steps);
         cmp!("ref_policy", ref_policy, p.ref_policy);

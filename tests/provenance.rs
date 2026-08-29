@@ -71,3 +71,27 @@ fn named_overrides_and_literals_agree() {
     let b = EnsembleCfg { refine_flagged: false, t_max: 50.0, ..Default::default() };
     assert_eq!(a.provenance(), b.provenance());
 }
+
+/// The new step-control fields declare themselves like every other. Added when `StepLimit`
+/// landed — and the exhaustive destructure in `overrides_vs_production` **failed the build**
+/// until they were, which is the guard doing exactly what it exists for rather than a
+/// convention being remembered.
+#[test]
+fn the_step_control_fields_are_declared() {
+    use prin_rs::integrate::az::StepLimit;
+    // `Predictive` at `f = 0.02` IS production, so overriding to it must report **nothing** --
+    // and the first cut of this test asserted two overrides and failed the moment the default
+    // changed. That is the mechanism working: a declaration is a difference from production, not
+    // a restatement of it.
+    let same = EnsembleCfg::production()
+        .with_overrides(&[Override::StepLimit(StepLimit::Predictive), Override::StepLimitF(0.02)]);
+    assert!(same.is_production(), "overriding to the production value is not an override");
+
+    let c = EnsembleCfg::production()
+        .with_overrides(&[Override::StepLimit(StepLimit::None), Override::StepLimitF(0.1)]);
+    let ov = c.overrides_vs_production();
+    assert_eq!(ov.len(), 2, "got {ov:?}");
+    assert!(c.provenance().contains("step_limit=None"));
+    assert!(c.provenance().contains("step_limit_f=0.1"));
+    assert!(c.provenance().contains("production Predictive"), "the replaced value is carried");
+}

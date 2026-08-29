@@ -67,6 +67,12 @@ because two are empty and one is full.
     3.906e-5     1.000e0     1.000e0    5.826e-5   3.922e-14    +0.00     2.400e5   1.562e-5
 ```
 
+**This is characterisation, not a remedy.** A global `eta/256` pays 256x everywhere for a local
+failure and does not survive a live playhead; it is used as the **ground truth** in
+`results/step_control/` rather than as a candidate. What it establishes — and this is worth the
+run on its own — is that the failure is ordinary under-resolution: not a wrong equation, not a
+saturating cap, not a threshold.
+
 Median `error_ratio` **2.13e5 -> 1.000** and median drift **8.6e1 -> 3.9e-14**, thirteen orders.
 The p90 converges too. The control sits at 1.000 throughout. The `+0.00` at the last rung is not
 a floor: 1.000 is `error_ratio`'s *converged* value, since `sigma_E(t) -> sigma_E(0)` under exact
@@ -83,7 +89,8 @@ it* — is **wrong for this port**. Refining `eta` clears it completely.
   NEVER cleared: 0 of 128 (0.0000)
 ```
 
-**82.0% clear by the third pass**, so ~18% survive the shipped ladder — which is the p99 = 35.6
+A fourth pass is `refine_flagged` again and is a **batch** mechanism for the same reason, so this
+row too is characterisation. **82.0% clear by the third pass**, so ~18% survive the shipped ladder — which is the p99 = 35.6
 tail, exactly. The repair pass converges; it is stopped one rung early. `refine_max_passes = 5`
 clears all 128 of this sample. That is a different claim from "the pass does not repair", and the
 run was built to be able to make either.

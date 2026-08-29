@@ -55,6 +55,12 @@ pub struct EnsembleCfg {
     /// back -- a first-order error, spatially smooth under fixed `dtau` and spatially *varying*
     /// under per-step `dtau`, because the last step's size then depends on local `A*B`.
     pub clamp_final_step: bool,
+
+    /// Which per-step limit bounds the step. See [`crate::integrate::az::StepLimit`].
+    pub step_limit: crate::integrate::az::StepLimit,
+    /// The limit's parameter. Its meaning is **per mode** and deliberately not shared -- see
+    /// [`crate::integrate::az::AzOpts::step_limit_f`].
+    pub step_limit_f: f64,
     pub eta: f64,
     pub max_steps: usize,
     pub ref_policy: RefPolicy,
@@ -157,6 +163,19 @@ impl EnsembleCfg {
             escape_confirm: true,
             dtau_mode: DtauMode::default(),
             clamp_final_step: true,
+            // **B, and the measurement decided it.** At `f = 0.02` on three regions it takes
+            // `error_ratio` p99 from `7.1e9` to `1.109`, the fraction above the flag threshold
+            // from 0.1110 to **0.0000**, and the overshoot count from **634 to 0** -- for
+            // **+1.9% of the steps**. `Reject` costs +77% and plateaus above 1.0 on
+            // `preset_shape`; `AbGrowth` is bitwise inert here; `Global` at 4x the work still
+            // leaves 153 overshoots. See `results/step_control/README.md`.
+            //
+            // **The committed corpus was taken under `StepLimit::None` and does not reproduce
+            // bitwise under this default.** That is the cost of the change and it is stated
+            // rather than discovered: `EnsembleCfg::provenance` now names the setting in every
+            // header, and `reference_opts` pins `None` so the NumPy cross-check is unaffected.
+            step_limit: crate::integrate::az::StepLimit::Predictive,
+            step_limit_f: 0.02,
             escape_rule: crate::outcome::EscapeRule::Closure(crate::outcome::CLOSURE_TAU),
             closure_k: 1,
             stop_on_escape: false,
@@ -378,6 +397,17 @@ pub struct PixelOut {
     /// Largest **physical** step any copy took. The direct read on a step-control cliff:
     /// `ab_min` says the denominator was small, this says how far the step went because of it.
     pub dt_max: f64,
+    /// **THE TRIPWIRE, summed over copies.** Steps after which the interval-local clock passed
+    /// `2 * dt_left`. `dt > dt_left` is a bug, not a condition to handle, and this is the count
+    /// that has to be zero. It was `2.209e128` on one step and undetected for six days because
+    /// nothing asserted it.
+    pub n_overshoot: u64,
+    /// Steps retried under `StepLimit::Reject`, summed over copies. Zero under every other mode.
+    pub n_retry: u64,
+    /// A copy exhausted the retry budget: **undetermined**, never discarded, and counted apart
+    /// from `budget_exhausted` so one failure swapped for another is visible.
+    pub retry_exhausted: bool,
+
     /// Steps at `PerStepInterval`'s entry-sizing cap, summed over copies. The second
     /// advance-anyway site — the mode wanted a larger step and was refused, so the interval is
     /// crossed in more steps than the mode chose, bounded ultimately by `max_steps`.
@@ -511,6 +541,8 @@ pub fn evaluate_at<T: Real>(slice: &Slice, idx: usize, cfg: &EnsembleCfg, eta_v:
         escape_confirm: cfg.escape_confirm,
         dtau_mode: cfg.dtau_mode,
         clamp_final_step: cfg.clamp_final_step,
+        step_limit: cfg.step_limit,
+        step_limit_f: cfg.step_limit_f,
         escape_rule: cfg.escape_rule.lift(),
         closure_k: cfg.closure_k,
         stop_on_escape: cfg.stop_on_escape,
@@ -835,6 +867,9 @@ pub fn evaluate_at<T: Real>(slice: &Slice, idx: usize, cfg: &EnsembleCfg, eta_v:
             .filter(|x| x.is_finite())
             .fold(0.0, f64::max),
         n_cap_hits: outs.iter().map(|o| o.n_cap_hits as u64).sum(),
+        n_overshoot: outs.iter().map(|o| o.n_overshoot as u64).sum(),
+        n_retry: outs.iter().map(|o| o.n_retry as u64).sum(),
+        retry_exhausted: outs.iter().any(|o| o.retry_exhausted),
         budget_exhausted: outs.iter().any(|o| o.budget_exhausted),
         copy_shapes: if cfg.keep_copy_shapes {
             shapes

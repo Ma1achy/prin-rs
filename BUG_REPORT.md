@@ -1,6 +1,7 @@
 # BUG REPORT — the render harnesses disable the repair pass, and the committed panels carry the fault
 
-**Status:** confirmed, reproduced, cause located, **not** fixed — and see §0, which changes what
+**Status:** confirmed, reproduced, cause located, **fixed** — see §11. The propagation
+defect of §2–§7 is separate and is a *discrepancy*, not the defect — and see §0, which changes what
 this report is about. The propagation defect is real and is a *discrepancy between renders and
 production*. It is **not** the defect that draws the artefact.
 **Found:** 2026-08-29, while diagnosing pale/magenta patches on `config_stability`.
@@ -42,6 +43,14 @@ with a step it knows is too coarse, and the cap's boundary is a sharp edge in IC
   clear**. Refining `eta` does clear it, contrary to the prediction.
 - **§8's `error_ratio p99 = 35.6` is the pass count, not a mechanism.** 82.0% of flagged pixels
   clear by rung 3 — the shipped `refine_max_passes` — so ~18% survive, which is that tail exactly.
+
+**BOTH OF THOSE ARE CHARACTERISATION, NOT REMEDIES, AND MUST NOT BE READ AS THE FIX.** A global
+`eta/256` pays **256x everywhere** for a failure that is local, and a fourth refinement pass is
+`refine_flagged` again — re-integration from `t = 0`, which a live playhead cannot do. Their value
+is diagnostic and it is large: *`eta/256` brings every flagged pixel to `error_ratio` 1.000* is
+what proves this is ordinary under-resolution and not a wrong equation, a saturating cap, or a
+threshold. That is why `eta/256` is used as the **ground truth** in §11's comparison rather than
+as a candidate in it. **Only a per-step mechanism survives contact with marching.**
 - **And the plumbing found a real advance-anyway defect, at a site nothing named.** One RK4 step
   advanced the physical clock by up to **`2.209e128`** against a sync interval of `0.4`. `1e128`
   is finite so the divergence guard passes; `s.t >= dt_left` is satisfied by 128 orders so the
@@ -324,3 +333,41 @@ Every harness above prints its config as a `provenance` line and, where it write
   is `INFINITY`), plus a tame-region negative control.
 - `src/integrate/az/driver.rs::step_control_tests` — **the `T::TINY` floor fires at f64 and the
   march advances anyway**, with a healthy-state negative control and a mode control for the cap.
+
+
+---
+
+## 11. THE FIX — a predictive per-step limit, `results/step_control/README.md`
+
+Four candidates behind `StepLimit`, measured rather than argued. **B wins outright.**
+
+```text
+   config_stability, 192^2      steps p50      err p99   err>10   overshoot
+   None (baseline)                1.033e5      7.108e9   0.1110         634
+   Predictive f=0.02              1.053e5        1.109   0.0000           0   <- +1.9%
+   Reject     f=0.02              1.832e5        1.205   0.0000           0   <- +77%
+   AbGrowth   f=2                 1.033e5      7.108e9   0.1110         634   <- bitwise inert
+   Global     f=0.25              4.134e5      9.066e7   0.0767         153   <- +300%, FAILS
+```
+
+`dtau <= f*d_min/(|v_rel|_max*A*B)` — one divide, no trial step, no retry, no branch, from values
+`phys_from_state` already returns. Shipped as production at `f = 0.02`.
+
+- **The dumb control does not fix it at four times the cost.** `Global` still leaves 153
+  overshoots. A uniform `eta` cut cannot bound a step whose size is set by local geometry.
+- **A is not GPU-viable**: at the parameter it needs, **every warp contains a retrying lane**
+  (1.0000, both dispatch shapes; worst lane 5.2M retries), and it **plateaus above 1.0** on
+  `preset_shape` where 39 of 96 pixels exhaust the retry budget.
+- **C was already shipped** — `DtauMode::PerStepInterval` is an `A*B` growth clamp at `C = 1`.
+- **The cap can now be removed** and that is reported, not done: a second corpus-invalidating
+  change belongs in its own measurement.
+- **Read `steps`, not `secs`** — under load 85–100 the winning row timed faster than the baseline
+  while doing more work.
+
+`cargo test --release` **256 passed, 0 failed**; xcheck **4/4** (`reference_opts` pins `None`).
+Three tests failed when the default changed and **every one failed correctly** — the limit deletes
+the damaged population those characterisation tests are about. They are pinned to `StepLimit::None`
+with that reason recorded.
+
+**The committed corpus was taken under `None` and does not reproduce bitwise under this default.**
+Stated rather than discovered: `provenance()` names the setting in every header and sidecar.

@@ -155,3 +155,71 @@ And this is **one** resolution step. A feature whose size is fixed in *chart* co
 around one panel cell would also stay one pixel wide. The falling maximum radius and the visible
 lamination together make that reading hard to sustain, but a second step would settle it and has
 not been run.
+
+---
+
+# CORRECTION: the first zoom was in the wrong place, and the answer changes
+
+`zoom_boxes.png` draws both boxes on the panel with the circles. **The first zoom (red box) was
+not on a wedge.** `wedge_zoom.rs` wrote `cy = cy0 + (2*(1-fv) - 1)*half0`, flipping the vertical
+axis: `Slice::axis` runs low-to-high with index and `save_rect` writes rows in buffer order, so
+PNG row 0 is the **minimum** `v` and fractional `v` from the top maps straight to the axis with no
+flip. The render landed at `fv = 0.75` instead of `0.25` — half a frame away.
+
+**Caught by the pixels, not by re-reading the code.** Cropping the panel at both candidates and
+comparing against the render gives RMS **39.6** at `fv = 0.75` against **85.5** at `fv = 0.25`.
+
+It still landed inside a circled region — 99.6% of the box lies in the lower-right ellipse — but
+on the **striated salmon band**, not on a pale wedge core. So `striated_band_z8_uniform.png` is a
+true measurement of the wrong feature.
+
+## The wedge core, targeted by measurement rather than by eye
+
+The second box is placed at the maximum of local pale density inside the top-right ellipse —
+fractional `(0.8657, 0.3296)`, where a 64x64 window is 4.81% magenta against the frame's 0.29%.
+`wedge_core_z8_uniform.png`.
+
+**It does not dissolve.** At 6x finer cell width the wedge is still a large coherent pale region:
+one connected component of **178486 px, 30% of the frame**, and a 192x192 interior window that is
+**99.3% pale**. The striated band at the same magnification broke into hundreds of filaments; this
+did not.
+
+## And my "no interior anywhere" statistic was measuring the wrong thing
+
+```text
+                            render       cell    area  r p50  r p90  r max  open5
+          PANEL full window 1024^2  1.245e-03  0.0510   1.00   1.00   4.12  0.003
+    ZOOM 1 - striated band (wrong)  2.076e-04  0.1030   1.00   1.00   2.83  0.000
+           ZOOM 2 - the WEDGE CORE  2.076e-04  0.1127   1.00   1.00   2.00  0.000
+```
+
+The distance transform reads `r p50 = 1.00` at the wedge core too — while the region is 30% of the
+frame and 99.3% solid. **A distance transform on a PERFORATED region reads the same as on dust**:
+the wedge is riddled with isolated non-pale pixels, so no disc of radius 2 fits anywhere, and the
+statistic cannot tell a sponge from a cloud. **Component size is what separates them, and it was
+in the output the whole time.** The earlier conclusion — *the white class has no interior* — is
+withdrawn for the wedge cores. It stands for the striated halo around them.
+
+## The edge is straight, and by a wide margin
+
+Total-least-squares line fit to the region's left boundary, against the red band's boundary in the
+**same** image as the control:
+
+```text
+  PALE edge   621 rows   slope -0.5228 px/row   RMS residual  4.28 px   max |dev|  17.7 px
+  RED  edge   186 rows   slope -1.1485 px/row   RMS residual 42.05 px   max |dev| 178.4 px
+```
+
+**Ten times straighter than the ribbon boundary beside it**, and it stays straight at 6x
+magnification. That is the observation, and it survives the test.
+
+## What is still not settled
+
+The Fourier test on the interior is **vacuous as run** and is reported rather than quietly
+dropped: the window is 99.3% pale, so the transform is measuring the sparse perforation and not
+the structure. It needs a window straddling the edge, not the interior.
+
+And a straight edge in the chart plane is **not by itself a bug**: `ic_class.png` shows the AZ
+reference-body partition is a six-sector pinwheel whose edges are straight lines. Whether the
+wedge boundary coincides with one of those, or with something else, is the next measurement and
+has not been made.

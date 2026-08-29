@@ -56,10 +56,14 @@ fn main() {
     let chart = Chart::Latent { z0, q1, q2 };
     let (cx0, cy0, half0) = (2.0 * PAN.0 - 1.0 + ZOOM, 2.0 * PAN.1 - 1.0 + ZOOM, ZOOM);
 
-    // `Slice::axis` runs low-to-high with index, and `decode_pos` uses `idx / nx` for the row, so
-    // fractional v measured from the TOP of the saved image maps to `1 - v` on the axis.
+    // `Slice::axis` runs low-to-high with index and `save_rect` writes rows in buffer order, so
+    // PNG row 0 is the MINIMUM `v`: fractional `v` measured from the top of the saved image maps
+    // straight to the axis fraction, with no flip. The first cut of this file wrote `1 - fv` and
+    // rendered a window half a frame away from the one it named -- caught by cropping the panel
+    // at both candidates and comparing against the render (RMS 39.6 against 85.5), not by
+    // re-reading the code.
     let cx = cx0 + (2.0 * fu - 1.0) * half0;
-    let cy = cy0 + (2.0 * (1.0 - fv) - 1.0) * half0;
+    let cy = cy0 + (2.0 * fv - 1.0) * half0;
     let half = half0 / zoom;
     let (t_max, r_coll) = (50.0, 0.005);
     let n_sync = (t_max / WINDOW).round().max(4.0) as usize;

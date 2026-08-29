@@ -1544,7 +1544,9 @@ dynamical. **Read a hand-drawn mask's area before its statistics**: the digitise
 25.4% of the frame, so that row is mostly background and only the property-selected populations
 carry the signal.
 
-**THE PALE WEDGES HAVE NO INTERIOR, AND DO NOT ACQUIRE ONE UNDER 6x MAGNIFICATION.** Euclidean
+**WITHDRAWN, AND THE REPLACEMENT IS BELOW — the zoom it rested on was half a frame from where it
+was said to be.** ~~**THE PALE WEDGES HAVE NO INTERIOR, AND DO NOT ACQUIRE ONE UNDER 6x
+MAGNIFICATION.**~~ Euclidean
 distance transform on `config_stability_stop0_uniform.png`: the pale class's median inscribed
 radius is **1.00 px** and **0.0%** survives a 5x5 opening, against the red band's **32.25 px** and
 **93.6%**. Re-rendered over a 1/8 window at 6x finer cell width the pale class reads **1.00 px**
@@ -1560,3 +1562,30 @@ raster lesson one level down, at the sampling of the field rather than the size 
 1 whatever the truth is, because a scatter of isolated pixels is not a boundary — it would have
 "confirmed" a geometric edge. **Component sizes and run lengths caught it; the dimension number
 did not.** Check that a mask selects regions before measuring their boundaries.
+
+**A ZOOM HARNESS FLIPPED THE VERTICAL AXIS AND RENDERED HALF A FRAME AWAY FROM WHERE IT SAID.**
+`Slice::axis` runs low-to-high with index and `save_rect` writes rows in buffer order, so PNG row
+0 is the **minimum** `v`: fractional `v` from the top of a saved panel maps straight to the axis
+with **no flip**. `wedge_zoom.rs` wrote `1 - fv` and landed at 0.75 instead of 0.25. **Caught by
+the pixels, not by re-reading the code** — cropping the panel at both candidates and comparing
+against the render gives RMS 39.6 against 85.5. Draw the box on the source image and check it
+before reading anything off a sub-window render.
+
+**A DISTANCE TRANSFORM ON A PERFORATED REGION READS THE SAME AS ON DUST.** The corrected zoom puts
+the wedge core at one connected component of **178486 px, 30% of the frame, 99.3% pale in a 192^2
+interior window** — and its median inscribed radius is still **1.00 px** with 0% surviving a 5x5
+opening, because isolated non-pale pixels riddle it. The statistic cannot tell a sponge from a
+cloud; **component size can, and it was in the same output**. So *the white class has no interior*
+is **withdrawn for the wedge cores** and stands only for the striated halo around them.
+
+**THE WEDGE EDGE IS STRAIGHT AND STAYS STRAIGHT AT 6x — TEN TIMES STRAIGHTER THAN THE RIBBON
+BESIDE IT.** Total-least-squares fit to the boundary: pale edge **RMS 4.28 px over 621 rows**
+(max deviation 17.7) against the red band's **42.05 px over 186 rows** (max 178.4) in the same
+image. The striated band dissolved into hundreds of filaments under the same magnification; the
+wedge core did not. **A straight edge in the chart plane is not by itself a bug** — `ic_class.png`
+shows the AZ reference-body partition is a six-sector pinwheel with straight edges — but the
+observation survives its test, which the lamination reading did not.
+
+**AND THE FOURIER TEST ON THE INTERIOR WAS VACUOUS AS RUN.** The window is 99.3% pale, so the
+transform measures the sparse perforation rather than the structure. Reported rather than dropped;
+it needs a window straddling the edge.

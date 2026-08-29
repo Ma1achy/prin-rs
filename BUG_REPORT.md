@@ -1,9 +1,54 @@
 # BUG REPORT — the render harnesses disable the repair pass, and the committed panels carry the fault
 
-**Status:** confirmed, reproduced, cause located, not yet fixed.
+**Status:** confirmed, reproduced, cause located, **not** fixed — and see §0, which changes what
+this report is about. The propagation defect is real and is a *discrepancy between renders and
+production*. It is **not** the defect that draws the artefact.
 **Found:** 2026-08-29, while diagnosing pale/magenta patches on `config_stability`.
 **Severity:** every committed render made by an `examples/*_render.rs` harness is affected.
 The production binary `prin` is **not** affected.
+
+---
+
+## 0. WHAT THIS REPORT IS NOT — read before §7
+
+`refine_flagged` re-integrates a whole trajectory from `t = 0` at finer `eta` **after the fact**.
+Principia marches a live playhead: there is nothing to re-integrate *from*, and a pixel bad at
+`t = 30` cannot be repaired at `t = 30.1` without redoing thirty time units. **It is a batch-only
+workaround with no live-path analogue.**
+
+So the reading inverts. The render harnesses with `refine_flagged: false` were showing the
+**unmasked kernel**; `prin.rs`, on the default, has been hiding the same defect behind the repair.
+Closing the propagation gap **closes a discrepancy, not the defect** — and doing it first would
+switch off the diagnostic that revealed it. §7 is rewritten accordingly and is still not applied.
+
+**One qualification, and it does not contradict the above.** The renders are honest about the
+*kernel* and remain invalid as *science images*: `spread_shape` saturates because the copies
+diverged to garbage, and the terminal class is reclassified (escape `0.4645 -> 0.0021` in `B10`).
+`_drift.png` is where the unmasked kernel is legible; `_uniform.png` is not. Both are true.
+
+### What was measured instead — `results/saturation/README.md`
+
+The proposal was a **saturation** boundary: a substep cap engages, the wrapper advances anyway
+with a step it knows is too coarse, and the cap's boundary is a sharp edge in IC space.
+
+- **`AzOut::ab_floored` and `ab_min` were computed on every march and read by nothing.** They
+  stopped one layer below `PixelOut`, so no render, dump, criterion or test could see the floor
+  fire. Now plumbed, with `dt_max` and `n_cap_hits`.
+- **The saturation hypothesis is refuted in all three forms this port has**: `ab_floored`
+  `0.000000`, `budget_exhausted` `0.000000`, and `n_cap_hits > 0` on **every pixel of 262144** —
+  saturated, lift exactly `1.000` by arithmetic.
+- **The cliff is a SLOPE.** Over four decades of `eta` the flagged population converges
+  completely: median `error_ratio` `2.13e5 -> 1.000`, drift `8.6e1 -> 3.9e-14`, **0 of 128 fail to
+  clear**. Refining `eta` does clear it, contrary to the prediction.
+- **§8's `error_ratio p99 = 35.6` is the pass count, not a mechanism.** 82.0% of flagged pixels
+  clear by rung 3 — the shipped `refine_max_passes` — so ~18% survive, which is that tail exactly.
+- **And the plumbing found a real advance-anyway defect, at a site nothing named.** One RK4 step
+  advanced the physical clock by up to **`2.209e128`** against a sync interval of `0.4`. `1e128`
+  is finite so the divergence guard passes; `s.t >= dt_left` is satisfied by 128 orders so the
+  march records a clean landing; and `t += dt_left` then corrects the **clock** to the boundary
+  while keeping the **state** from `1e128` time units later. The clamp cannot un-take the step,
+  and `t` is clamped on both branches — so the overshoot was invisible in every recorded quantity
+  until `dt_max` existed. An unbounded step with no acceptance test, not a cap.
 
 ---
 
@@ -149,36 +194,133 @@ tested; nothing fires when a render harness copies the line.
 - **`src/bin/xcheck.rs`** — the cross-check compares against the numpy reference, which has no
   refinement pass; turning it off there is required.
 
-## 7. Proposed fix — not applied
+## 7. The remedy — a DISCREPANCY fix, not a defect fix, and still not applied
 
-1. **Restore the invariant.** Every `examples/*render*.rs` and gallery harness takes
-   `refine_flagged` from `EnsembleCfg::default()`, or exposes it as an argument defaulting to on.
-2. **Guard it**, on the model of `scheduler::assert_not_uniform_in_disguise`: a render that writes
-   into `results/` with `refine_flagged: false` and a non-trivial `error_ratio` tail should refuse.
-   *A configuration that silently reproduces the old behaviour needs a guard, not a convention* is
-   already a standing rule in this project — this is the same defect at a second site.
-3. **Print the flag with every render**, as `prin` already does. None of the affected harnesses
-   record `refine_flagged` in their stdout or in the PNG's companion text, which is why six days
-   of renders carry it invisibly.
-4. **Re-render the committed corpus**, or label it. The cost is real: ~10x on a badly affected
-   window, ~3x over this slice.
-5. **Correct `results/README.md:190`**, which currently asserts the opposite of the truth.
+**Read §0 first.** None of the below repairs the artefact. It makes renders and production agree,
+and it makes any future disagreement impossible to introduce silently. Those are worth having on
+their own terms and they are not the same thing as a fix.
 
-## 8. What this does NOT explain
+### 7.1 The architecture, which is the part that matters — DONE
 
-- `error_ratio` p99 is **35.6** after refinement, not 1.0. A tail is still unresolved after three
-  passes at `eta/4`. The cliff is steeper than the current `refine_max_passes` reaches.
-- Ten of the sixteen marked regions are sound and their structure is real. The pale wedge in `B4`
-  survives refinement and is not this bug.
-- The escape fraction moving `0.0403 -> 0.0067` over the slice means the terminal classification
-  was substantially wrong before, not merely the colouring. Any result read off the outcome panel
-  for this slice needs re-checking.
+`prin` and every harness constructed `EnsembleCfg` **independently**: production took
+`::default()`, harnesses wrote their own struct literals. **There was no single source of truth**,
+so "the production config" existed nowhere — it was whatever `default()` happened to return, and
+**111 literal sites** could disagree with it. The failure was never that someone chose `false`; it
+is that **nothing recorded the choice**, so it propagated by copy through five commits and six
+days invisibly.
+
+`src/ensemble/provenance.rs`:
+
+- `EnsembleCfg::production()` is the one literal; `Default` delegates to it.
+- `Override` is a **named** value per field, one variant per field, so
+  `production().with_overrides(&[Override::RefineFlagged(false)])` declares what it changes.
+- `overrides_vs_production()` **derives** the list by diffing, so a config declares itself
+  *however it was built* — including all 111 existing literals, and including any future one whose
+  author forgets. A hand-maintained list can itself go stale, which is the same class of failure
+  this exists to stop; the derived diff cannot.
+- Both the diff and `Override::apply` destructure and match **exhaustively, no `..`, no `_` arm**.
+  Adding a field to `EnsembleCfg` breaks the build until it is handled. A mechanism reporting "no
+  overrides" because it does not know about a field is the original defect, one level up.
+- `provenance()` renders it for a header, and reads `production` — not an empty string — when
+  there are none. A blank field and an absent field look the same in a log.
+- `output::provenance_sidecar` writes `<stem>.cfg.txt` beside a panel. **This is where the six
+  days lived**: the `.raw` and `.prnq` dumps have carried a full settings header since they were
+  written; the PNGs carried nothing and the harnesses printed nothing.
+
+It works as intended on first use — `cliff_ladder`'s own header now reads:
+
+```text
+config: production + 4 override(s): t_max=50.0 (production 13.0), n_sync=125 (production 32),
+        r_coll_frac=0.005 (production 0.001), refine_flagged=false (production true)
+```
+
+`tests/provenance.rs` holds five properties, including the one that matters most: **a plain struct
+literal still declares itself**, because the 111 legacy sites were never going to be rewritten in
+one go and a mechanism that only declares configs someone remembered to annotate would have missed
+every one of them.
+
+### 7.2 Still to do
+
+1. Render and gallery harnesses take `production()` with no `RefineFlagged` override. The
+   experiment and precision harnesses (`c03fc85`'s original set) and `xcheck` **keep** theirs — it
+   is correct there. `closure_render` and `saturation_mask` now print and sidecar their config;
+   the other 25 PNG-writing harnesses in §8's table do not yet.
+2. Re-render the committed corpus, or label it. Cost is ~3x over this slice, ~10x on a badly
+   affected window.
+3. Correct `results/README.md:190`, which still asserts renders have refinement on.
+4. **`refine_max_passes = 3` stops one rung early** (§0). Raising it is a cost decision, not a
+   correctness one, and it belongs to whoever owns the render budget.
+
+## 8. What this does NOT explain, and what the reclassification touches
+
+- **`error_ratio` p99 is 35.6 after three passes** — **explained** in §0. 82.0% of flagged pixels
+  clear by rung 3, so ~18% survive the shipped ladder. Not a floor: the ladder converges
+  completely by rung 4, and `NEVER cleared` is `0 of 128`.
+- **Ten of the sixteen marked regions are sound and their structure is real. The pale wedge in
+  `B4` survives refinement and is not this bug.** This must stay prominent or the next
+  investigation starts from a false premise. §0's independent check qualifies it rather than
+  confirming it: `B4` reads `err>10` at **0.3163** against a frame baseline of **0.1111** — three
+  times the frame, but far below the broken set's 0.60-0.98. "Sound" means *not this fault*, not
+  *unflagged*.
+- **The escape fraction moving `0.0403 -> 0.0067`** is a six-fold change in terminal
+  classification, not merely in colouring. Anything read off the outcome panel for this slice
+  needs re-checking.
+
+### The corpus in scope
+
+**21 harnesses** carry `refine_flagged: false` **and** write PNGs; **19 of those read terminal
+class, `t_end` or the event class**. `spread_event` reads the event class, so the criterion corpus
+is in scope. This lists the harnesses, not the individual committed files — a file-level audit
+needs a re-render to be worth anything.
+
+| harness | writes into `results/` | reads terminal |
+|---|---|---|
+| `adaptive_render` | yes | class |
+| `banding_render` | yes | class,t_end |
+| `between_vs_within` | yes | class |
+| `bivariate_colour` | yes | - |
+| `box_panels` | no | class,t_end |
+| `chart_gallery` | yes | class,t_end,event |
+| `closure_render` | yes | class,t_end |
+| `colour_check` | yes | class,t_end,event |
+| `criterion_metric` | yes | class,t_end |
+| `dtau_render` | yes | class |
+| `escape_gate_render` | yes | class,t_end |
+| `overshoot_render` | yes | class |
+| `pan_sequence` | yes | class |
+| `preset_control` | yes | class,event |
+| `saturation_mask` | yes | class |
+| `slice_gallery` | yes | class |
+| `slice_refined` | yes | class |
+| `ssaa_resolve` | yes | class |
+| `switch_study` | no | class |
+| `wedge_zoom` | no | class |
+| `zoom_sequence` | yes | - |
+
+Not affected: `src/bin/prin.rs` (takes the default), the experiment and precision harnesses (their
+override is correct), and `src/bin/xcheck.rs` (the numpy reference has no refinement pass).
 
 ## 9. Reproduce
 
 ```sh
-cargo run --release --example slice_refined 384 on  <out>   # refinement on
-cargo run --release --example slice_refined 384 off <out>   # as committed
-cargo run --release --example refine_ab 256 0.942 0.789 0.0522 B10 <out>   # one box, both arms
-cargo run --release --example box_report 128 all off        # the sixteen-region table
+# the saturation check and the eta ladder -- results/saturation/README.md
+cargo run --release --example saturation_mask 512 results     # 1087 s
+cargo run --release --example cliff_ladder   256 5 128 results #  336 s
+
+# the refinement A/B -- results/refine_bug/
+cargo run --release --example slice_refined 384 on  <out>
+cargo run --release --example slice_refined 384 off <out>
+cargo run --release --example refine_ab 192 0.942 0.789 0.0522 B10 <out>
 ```
+
+Every harness above prints its config as a `provenance` line and, where it writes a panel, a
+`<stem>.cfg.txt` sidecar beside it.
+
+## 10. Tests holding this
+
+- `tests/provenance.rs` — five properties of the single-source-of-truth mechanism.
+- `tests/saturation_plumbing.rs` — `dt_max`, `ab_min` and `n_cap_hits` reach the payload and carry
+  values that could not be defaults (an unplumbed `dt_max` is exactly `0.0`, an unplumbed `ab_min`
+  is `INFINITY`), plus a tame-region negative control.
+- `src/integrate/az/driver.rs::step_control_tests` — **the `T::TINY` floor fires at f64 and the
+  march advances anyway**, with a healthy-state negative control and a mode control for the cap.

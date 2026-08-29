@@ -1621,3 +1621,73 @@ undetermined pixels is the one to read.
 The broken set runs at **4.7x-11.3x the nominal step rate** — working harder, not stepping coarser
 — with `d_min` `3.1e-3`-`4.4e-3` against `r_coll = 5e-3`. `steps/copy` alone conflates a big step
 with a short run; **the step RATE is the honest measure** and it reverses the reading.
+
+**A STICKY BIT THAT NOTHING READS IS INDISTINGUISHABLE FROM ONE THAT NEVER FIRES.**
+`AzOut::ab_floored` and `ab_min` were computed on every march since they were added and read by
+**nothing** — `pixel.rs` never touched either, so they stopped one layer below `PixelOut` and no
+render, dump, criterion or test could see the `T::TINY` floor fire. The floor is a genuine
+*advance-anyway* site: unlike `budget_exhausted`, which is terminal, it divides by a fabricated
+denominator and the run continues. Now plumbed with `dt_max` and `n_cap_hits`. The test that
+earns its place asserts the floor **fires** on a constructed degenerate state and that the step is
+finite — `(1e-200)^2` underflows at f64, so the doubly-degenerate hole is open at both precisions
+and the floor is load-bearing rather than decorative.
+
+**THE SATURATION HYPOTHESIS IS REFUTED IN ALL THREE FORMS THIS PORT HAS, AND ONE OF THE THREE
+COULD NOT HAVE ANSWERED.** `config_stability` at 1024²-equivalent settings, 512²: `ab_floored`
+**0.000000**, `budget_exhausted` **0.000000**, `n_cap_hits > 0` on **every pixel of 262144**. The
+third is saturated, so its lift against `error_ratio > 10` is **exactly 1.000 by arithmetic** —
+which is why the frame base rate is printed above the lift table. `capped` firing everywhere is
+routine and not a fault: it fires whenever `A*B` falls below its interval-entry value, i.e. every
+time bodies approach mid-interval. `principia_integrator_contract.md`'s `substep_bucket`/`N_sub`/
+`N_max`/descriptor bit 5 **do not exist in this port** — that is the GLSL app's contract, and the
+question has to be asked in this codebase's own terms.
+
+**THE CLIFF IS A SLOPE, AND `error_ratio p99 = 35.6` IS THE PASS COUNT.** Over four decades of
+`eta` the flagged population converges completely: median `error_ratio` **2.13e5 -> 1.000**, drift
+**8.6e1 -> 3.9e-14**, p90 **3.39e9 -> 1.000**, with the control flat at 1.000 throughout. **0 of
+128 fail to clear.** The `+0.00` slope at the last rung is not a floor — 1.000 is `error_ratio`'s
+*converged* value, since `sigma_E(t) -> sigma_E(0)` under exact dynamics, and a statistic
+normalised to 1 can never reach an arithmetic floor beneath it. **82.0% clear by rung 3**, the
+shipped `refine_max_passes`, so ~18% survive — that tail *is* the p99. The pass converges and is
+stopped one rung early; "the repair does not repair" is a different claim and the run was built to
+be able to make either.
+
+**A SINGLE RK4 STEP ADVANCED THE PHYSICAL CLOCK BY 2.209e128 AGAINST A SYNC INTERVAL OF 0.4, AND
+THE MARCH RECORDED A CLEAN LANDING.** `dt_max` — the largest physical step as an actual `s.t`
+difference across one step — reads p99 **1.263e43** and max **2.209e128** on `error_ratio > 10`
+pixels against a nominal `4.0e-3`, and p99 **1.874e-2** on the rest. The acceptance path is code,
+not inference: `1e128` is finite so the `is_finite` guard passes; `s.t >= dt_left - land_tol` is
+satisfied by 128 orders so `landed = true`; and `t += dt_left` then corrects the **clock** to the
+boundary while keeping the **state** reached at `s.t = 1e128`. **The clamp corrects the clock and
+cannot un-take the step**, and `t` is clamped on both branches — so the overshoot was invisible in
+every recorded quantity until `dt_max` existed. An *unbounded step with no acceptance test*, not a
+cap, and curable by `eta`. The remedy shape is a step-acceptance test — reject and retry when the
+taken increment exceeds its own remaining interval — which is local and needs no re-integration,
+so unlike `refine_flagged` it has a live-playhead analogue.
+
+**A SETTING COPIED FROM A CONTEXT WHERE IT WAS CORRECT INTO ONE WHERE IT IS NOT, INVISIBLE BECAUSE
+NOTHING PRINTS IT.** Second instance after `k_frac = 1.0`. `refine_flagged: false` was introduced
+at `c03fc85` **correctly**, in experiment and precision harnesses, in the same commit that wrote
+the invariant *"the `render-*.txt` runs have it ON"*; over six days it was copied into render
+harnesses one file at a time with no commit message arguing for it, reaching `closure_render` at
+`71de13f`. **The failure was never the choice; it is that nothing recorded the choice.** The
+architectural cause is that there was no single source of truth at all — `prin` and 111 literal
+sites each constructed `EnsembleCfg` independently, so "the production config" existed nowhere.
+`EnsembleCfg::production` is now the one literal, `Override` is a named value per field, and
+`overrides_vs_production` **derives** the declaration by diffing so a config declares itself
+however it was built — a hand-maintained list can go stale, which is the same failure one level
+up. Both the diff and `Override::apply` are exhaustive with no `..` and no `_` arm, so adding a
+field breaks the build until it is handled. `output::provenance_sidecar` puts it beside every
+panel: the `.raw` and `.prnq` dumps have carried a full settings header since they were written —
+**the PNGs were the blind spot, and so was harness stdout.**
+
+**`refine_flagged` IS A BATCH-ONLY WORKAROUND AND HAS NO LIVE-PATH ANALOGUE.** It re-integrates a
+whole trajectory from `t = 0` at finer `eta` after the fact. Under a live playhead there is
+nothing to re-integrate *from* — a pixel bad at `t = 30` cannot be repaired at `t = 30.1` without
+redoing thirty time units. So the reading of the propagation bug inverts: the render harnesses
+were showing the **unmasked kernel** and `prin.rs`, on the default, has been hiding the same
+defect behind the repair. Closing the propagation gap **closes a discrepancy, not the defect** —
+and doing it first switches off the diagnostic that revealed it. The renders are still not valid
+*science images*, because `spread_shape` saturates on diverged copies and the terminal class is
+reclassified; `_drift.png` is where the unmasked kernel is legible and `_uniform.png` is not.
+Both halves are true and the report states both.

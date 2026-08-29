@@ -141,8 +141,11 @@ pub struct EnsembleCfg {
     pub refine_max_passes: u8,
 }
 
-impl Default for EnsembleCfg {
-    fn default() -> Self {
+impl EnsembleCfg {
+    /// **The one source of truth.** Every other config in the project is this plus a recorded
+    /// list of named departures -- see [`crate::ensemble::provenance`], which exists because
+    /// there was no such thing for six days and 111 literal sites disagreed with it silently.
+    pub fn production() -> Self {
         Self {
             n_extra: 7, // E + 1 = 8, per BRIEF §3
             jitter_frac: 0.5,
@@ -175,6 +178,12 @@ impl Default for EnsembleCfg {
             ftle_dt: 1e-4,
             decode_path: Path::DirectF64,
         }
+    }
+}
+
+impl Default for EnsembleCfg {
+    fn default() -> Self {
+        Self::production()
     }
 }
 
@@ -355,6 +364,28 @@ pub struct PixelOut {
     /// known. The event class is defined at every playhead. Building the between-footprint arm
     /// on `outcome` would be that regression at a new level, so the class is carried instead.
     pub event_class: u8,
+
+    /// **Saturation: any copy advanced with `A` or `B` clamped to `T::TINY`.**
+    ///
+    /// `AzOut::ab_floored` was written on every march and read by nothing — it stopped one layer
+    /// below the payload, so no render, dump, criterion or test could see the floor fire. This is
+    /// the *advance-anyway* site: unlike `budget_exhausted` it is not terminal, the step is taken
+    /// with a fabricated denominator and the run continues. **A sticky bit that nothing reads is
+    /// indistinguishable from one that never fires.**
+    pub ab_floored: bool,
+    /// Smallest raw `A*B` over the copies, **before** the floor. The quantity `dtau` divides by.
+    pub ab_min: f64,
+    /// Largest **physical** step any copy took. The direct read on a step-control cliff:
+    /// `ab_min` says the denominator was small, this says how far the step went because of it.
+    pub dt_max: f64,
+    /// Steps at `PerStepInterval`'s entry-sizing cap, summed over copies. The second
+    /// advance-anyway site — the mode wanted a larger step and was refused, so the interval is
+    /// crossed in more steps than the mode chose, bounded ultimately by `max_steps`.
+    pub n_cap_hits: u64,
+    /// Any copy ended by exhausting `max_steps`. **Terminal, not saturation** — the march breaks
+    /// and the run stops. Carried beside the other two so the three stop reasons are separable:
+    /// `budget_exhausted` ends a run, `ab_floored` and `n_cap_hits` let it continue under-resolved.
+    pub budget_exhausted: bool,
 
     /// Integrator substeps summed over the `E+1` copies — the cost side of a cost-aware
     /// priority. `AzOut::steps` was computed on every march and never read; ranking by
@@ -792,6 +823,19 @@ pub fn evaluate_at<T: Real>(slice: &Slice, idx: usize, cfg: &EnsembleCfg, eta_v:
         copy_outcomes: if cfg.keep_copy_outcomes { packed.clone() } else { Vec::new() },
         event_class: stats::event_class_at(&outs[0].tight, packed[0], cfg.n_sync - 1),
         total_substeps: outs.iter().map(|o| o.steps as u64).sum(),
+        ab_floored: outs.iter().any(|o| o.ab_floored),
+        ab_min: outs
+            .iter()
+            .map(|o| o.ab_min.to_f64().unwrap())
+            .filter(|x| x.is_finite())
+            .fold(f64::INFINITY, f64::min),
+        dt_max: outs
+            .iter()
+            .map(|o| o.dt_max.to_f64().unwrap())
+            .filter(|x| x.is_finite())
+            .fold(0.0, f64::max),
+        n_cap_hits: outs.iter().map(|o| o.n_cap_hits as u64).sum(),
+        budget_exhausted: outs.iter().any(|o| o.budget_exhausted),
         copy_shapes: if cfg.keep_copy_shapes {
             shapes
                 .iter()

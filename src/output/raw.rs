@@ -45,6 +45,7 @@ pub fn write<W: Write>(
          ref_policy={:?} lc_stable={} precision={} eps=0\n\
          r_coll_frac={} escape_rule={:?} closure_k={} stop_on_escape={} dtau_mode={:?} clamp_final={} stop_on_event={} refine_flagged={} refine_threshold={} refine_eta_factor={} refine_max_passes={}\n\
          chart={} decode_path={}\n\
+         provenance={}\n\
          chart_params={}\n\
          fields={}\n",
         slice.nx, slice.ny, slice.cx, slice.cy, slice.half, slice.body,
@@ -53,7 +54,12 @@ pub fn write<W: Write>(
         cfg.ref_policy, cfg.lc_stable, precision,
         cfg.r_coll_frac, cfg.escape_rule, cfg.closure_k, cfg.stop_on_escape, cfg.dtau_mode, cfg.clamp_final_step, cfg.stop_on_event,
         cfg.refine_flagged, cfg.refine_threshold, cfg.refine_eta_factor, cfg.refine_max_passes,
-        slice.chart.name(), cfg.decode_path.name(), slice.chart.params(),
+        slice.chart.name(), cfg.decode_path.name(),
+        // Every field above is already here; this line is the SUMMARY -- what a reader has to
+        // notice rather than reconstruct. The `.raw` dumps were never the blind spot: the PNGs
+        // were, and they carry no header at all. See `provenance_sidecar`.
+        cfg.provenance(),
+        slice.chart.params(),
         FIELDS.join(","),
     );
     w.write_all(&(header.len() as u32).to_le_bytes())?;

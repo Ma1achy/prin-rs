@@ -159,7 +159,18 @@ pub struct AzOut<T> {
     /// caught by the explicit `is_finite` test and *not* by the floor the guard is named for.
     pub ab_min: T,
     /// Whether either factor was ever clamped to `T::TINY`. Says which guard did the work.
+    ///
+    /// **This is an advance-anyway site**: the step is taken with a denominator the code knows is
+    /// fabricated, and nothing terminates. Read it as saturation, not as a warning.
     pub ab_floored: bool,
+    /// Largest **physical** step taken over the whole run, as an actual `s.t` difference.
+    ///
+    /// `ab_min` records the worst denominator; this records the step it produced. A step-control
+    /// cliff shows here and in no other recorded quantity.
+    pub dt_max: T,
+    /// Steps taken at `PerStepInterval`'s `.min(dtau_entry)` cap -- the mode asked for a larger
+    /// step than the interval's entry sizing and was refused. The landing clamp is excluded.
+    pub n_cap_hits: u32,
     /// Time of the first terminating event, or the time reached if none fired. Distinct from
     /// `t` only when `stop_on_event` is off, where the run continues past the event.
     pub t_end: T,
@@ -407,11 +418,31 @@ pub fn reference_opts<T: Real>(
     }
 }
 
+/// What [`dtau_for_step`] decided, and the two things it decided *despite*.
+///
+/// Returned as a struct rather than a tuple because two of the four fields exist only to be
+/// recorded: **an advance-anyway site with no telemetry is indistinguishable from one that never
+/// fires**, and both of these advance with a step the code knows is not the one it asked for.
+#[derive(Clone, Copy)]
+pub(crate) struct StepSize<T> {
+    /// The fictitious step actually taken.
+    pub dtau: T,
+    /// `A*B` **before** the `T::TINY` floor.
+    pub ab_raw: T,
+    /// Either factor was clamped to `T::TINY`, so `dtau` divides by a fabricated denominator
+    /// and the step advances anyway.
+    pub floored: bool,
+    /// `PerStepInterval`'s `.min(dtau_entry)` bound, and only that one -- **not** the landing
+    /// clamp, which is a deliberate one-sided reduction of the final step. When this binds the
+    /// mode wanted a *larger* step than the interval's entry sizing and was refused it.
+    pub capped: bool,
+}
+
 /// The step size for the *next* RK4 step, given the interval's entry sizing and the current
 /// regularised state.
 ///
-/// Returns `(dtau_now, ab_raw, floored)` -- `ab_raw` is `A*B` **before** the `T::TINY` floor,
-/// which is what the blow-up is a function of and what the `TINY` report reads.
+/// `ab_raw` is `A*B` **before** the `T::TINY` floor, which is what the blow-up is a function of
+/// and what the `TINY` report reads.
 #[inline]
 fn dtau_for_step<T: Real>(
     mode: DtauMode,
@@ -420,12 +451,13 @@ fn dtau_for_step<T: Real>(
     dt_left: T,
     dtau_entry: T,
     s: &super::state::AzState<T>,
-) -> (T, T, bool) {
+) -> StepSize<T> {
     let a = s.a();
     let b = s.b();
     let ab_raw = a * b;
     let floored = a < T::TINY || b < T::TINY;
     let ab = a.max(T::TINY) * b.max(T::TINY);
+    let mut capped = false;
     let dtau = match mode {
         DtauMode::FixedPerInterval => dtau_entry,
         // `rem`, not `dt_left`: geometric decay, kept so the measurement can show it.
@@ -433,7 +465,11 @@ fn dtau_for_step<T: Real>(
             let rem = (dt_left - s.t).max(T::zero());
             eta * rem / ab
         }
-        DtauMode::PerStepInterval => (eta * dt_left / ab).min(dtau_entry),
+        DtauMode::PerStepInterval => {
+            let want = eta * dt_left / ab;
+            capped = want > dtau_entry;
+            want.min(dtau_entry)
+        }
     };
     // Land ON the boundary rather than past it. `dt = A*B*dtau` to leading order, so
     // `(dt_left - s.t)/ab` is the fictitious time still owed; `.min` makes this a one-sided
@@ -448,7 +484,7 @@ fn dtau_for_step<T: Real>(
     } else {
         dtau
     };
-    (dtau, ab_raw, floored)
+    StepSize { dtau, ab_raw, floored, capped }
 }
 
 /// Refine an escape's `t_end` by **replaying** the sync interval it fired in.
@@ -499,7 +535,7 @@ fn refine_escape_time<T: Real>(
     // returns a `t_end` that is wrong for a reason that looks like a criterion result -- and the
     // escape criterion is precisely what this quantity is read as evidence about.
     while s.is_finite() && s.t < dt_left - land_tol(clamp_final, dt_left) && steps < REPLAY_MAX_STEPS {
-        let (h, _, _) = dtau_for_step(mode, clamp_final, eta, dt_left, dtau, &s);
+        let h = dtau_for_step(mode, clamp_final, eta, dt_left, dtau, &s).dtau;
         s = rk4::step(&sys, &s, e, h);
         steps += 1;
         if crate::outcome::unbound(&sys.to_cartesian(&s), m, b) {
@@ -562,6 +598,10 @@ pub fn integrate_az_opts<T: Real>(
     let mut total_steps = 0usize;
     let mut finite = true;
     let mut budget_exhausted = false;
+    // Recording only. `dt_max` is the largest physical step any interval took; `n_cap_hits`
+    // counts steps at `PerStepInterval`'s entry-sizing cap. Neither changes a trajectory.
+    let mut dt_max = T::zero();
+    let mut n_cap_hits = 0u32;
     let mut events = Events::default();
     let mut t_end: Option<T> = None;
     // An in-loop escape awaiting confirmation at the next boundary. See `AzOpts::escape_confirm`.
@@ -668,14 +708,22 @@ pub fn integrate_az_opts<T: Real>(
                 break;
             }
 
-            let (h, ab_raw, floored) =
-                dtau_for_step(opts.dtau_mode, opts.clamp_final_step, eta, dt_left, dtau, &s);
-            if ab_raw.is_finite() && ab_raw < ab_min {
-                ab_min = ab_raw;
+            let ss = dtau_for_step(opts.dtau_mode, opts.clamp_final_step, eta, dt_left, dtau, &s);
+            if ss.ab_raw.is_finite() && ss.ab_raw < ab_min {
+                ab_min = ss.ab_raw;
             }
-            ab_floored |= floored;
-            s = rk4::step(&sys, &s, e, h);
+            ab_floored |= ss.floored;
+            n_cap_hits += ss.capped as u32;
+            // The PHYSICAL increment, taken as a difference rather than as `A*B*dtau`: the
+            // latter is the first-order predictor, and the whole question is how far the step
+            // actually went. `s.t` is the interval-local clock, so this is a clean difference.
+            let t_before = s.t;
+            s = rk4::step(&sys, &s, e, ss.dtau);
             steps += 1;
+            let dt_took = s.t - t_before;
+            if dt_took.is_finite() && dt_took > dt_max {
+                dt_max = dt_took;
+            }
 
             let (r1, r2, _, _) = sys.phys_from_state(&s);
             let d1 = r1.norm();
@@ -872,6 +920,8 @@ pub fn integrate_az_opts<T: Real>(
         t_end_at_entry,
         ab_min,
         ab_floored,
+        dt_max,
+        n_cap_hits,
         boundary_shapes,
         drift_hist,
         steps: total_steps,
@@ -909,4 +959,73 @@ pub fn integrate_with_policy<T: Real>(
         _ => None,
     };
     integrate_az(s0, m, t_max, n_sync, eta, max_steps, forced)
+}
+
+#[cfg(test)]
+mod step_control_tests {
+    use super::*;
+    use crate::Vec2;
+
+    fn state(u1: f64, u2: f64) -> super::super::state::AzState<f64> {
+        super::super::state::AzState {
+            u1: Vec2::new(u1, 0.0),
+            p1: Vec2::new(0.0, 0.0),
+            u2: Vec2::new(u2, 0.0),
+            p2: Vec2::new(0.0, 0.0),
+            t: 0.0,
+        }
+    }
+
+    /// **The floor fires, and the step is taken anyway.**
+    ///
+    /// This is the advance-anyway site the saturation question is about, and the test has to show
+    /// both halves: that `floored` is set, *and* that the returned step is a usable finite number
+    /// rather than a terminal. `ab_raw` is exactly zero here — `(1e-200)^2` underflows at f64, so
+    /// the doubly-degenerate hole is open at **both** precisions and not only f32 — which is what
+    /// makes the floor load-bearing rather than decorative: without it `dtau` would be `inf`.
+    #[test]
+    fn the_tiny_floor_fires_and_the_march_advances_anyway() {
+        let s = state(1e-200, 1e-200);
+        assert_eq!(s.a(), 0.0, "underflow is the premise of this test");
+        let ss = dtau_for_step(DtauMode::PerStepInterval, false, 0.01, 1.0, 1e-3, &s);
+        assert!(ss.floored, "the floor must report itself");
+        assert_eq!(ss.ab_raw, 0.0);
+        assert!(ss.dtau.is_finite(), "the step is taken anyway -- that is the whole point");
+    }
+
+    /// The negative control. A guard that always fires passes as easily as one that never does.
+    #[test]
+    fn a_healthy_state_does_not_report_the_floor() {
+        let ss = dtau_for_step(DtauMode::PerStepInterval, false, 0.01, 1.0, 1e-3, &state(1.0, 1.0));
+        assert!(!ss.floored);
+        assert!(ss.ab_raw > 0.0);
+    }
+
+    /// `capped` is `PerStepInterval`'s entry-sizing bound and **only** that one.
+    ///
+    /// Under `FixedPerInterval` there is no cap to hit, so the same state must report `false` —
+    /// otherwise the counter would be reading the mode rather than the step.
+    #[test]
+    fn the_cap_is_reported_only_where_it_exists() {
+        // `A*B` has fallen below its entry value, so the mode wants a larger step than entry.
+        let s = state(0.1, 0.1);
+        let (eta, dt_left, dtau_entry) = (0.01, 1.0, 0.01f64);
+        let want = eta * dt_left / (s.a() * s.b());
+        assert!(want > dtau_entry, "the premise: the mode asks for more than entry sizing");
+
+        let per = dtau_for_step(DtauMode::PerStepInterval, false, eta, dt_left, dtau_entry, &s);
+        assert!(per.capped);
+        assert_eq!(per.dtau, dtau_entry, "capped means held AT entry, not near it");
+
+        let fixed = dtau_for_step(DtauMode::FixedPerInterval, false, eta, dt_left, dtau_entry, &s);
+        assert!(!fixed.capped, "there is no cap under FixedPerInterval to hit");
+    }
+
+    /// And it does **not** fire when the mode gets the step it asked for.
+    #[test]
+    fn the_cap_does_not_fire_when_the_step_is_granted() {
+        let s = state(3.0, 3.0);
+        let ss = dtau_for_step(DtauMode::PerStepInterval, false, 0.01, 1.0, 1.0, &s);
+        assert!(!ss.capped);
+    }
 }

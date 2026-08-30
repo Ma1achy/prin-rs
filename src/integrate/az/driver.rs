@@ -1625,3 +1625,104 @@ pub fn integrate_softref<T: Real>(
         finite,
     }
 }
+
+/// What [`branch_jump`] measured at one chart-switching event.
+#[derive(Clone, Copy, Debug)]
+pub struct BranchJump<T> {
+    /// The boundary was reached and both charts integrated. `false` means no measurement, not a
+    /// measurement of zero.
+    pub ok: bool,
+    /// `||Phi_i(x_n) - Phi_j(x_n)||` over positions — the jump crossing the argmax surface
+    /// injects, at the same incoming Cartesian state.
+    pub delta_chart: T,
+    /// The same interval, same chart, at `eta` against `eta/2`: the ORDINARY local step error.
+    /// The normaliser, and the whole point — `ref_tie -> 1` says where a discontinuity *can*
+    /// occur and says nothing about its amplitude.
+    pub delta_step: T,
+    /// Second-longest over longest at the entry state: distance to the selector's surface.
+    pub ref_tie: T,
+    /// The argmax winner and the runner-up.
+    pub ref_win: usize,
+    pub ref_alt: usize,
+}
+
+/// **How large a perturbation does crossing the argmax surface actually inject?**
+///
+/// March normally to sync boundary `n`, then from that one Cartesian state integrate the *same*
+/// interval under both the chosen reference and the runner-up, and measure the difference. The
+/// normaliser is the ordinary local step error — the same interval, same chart, at `eta` against
+/// `eta/2` — so the answer is a ratio: *the chart jump is N times the step error*.
+///
+/// This is the amplitude that `ref_tie` cannot give. Together they are the mechanism:
+/// `d_i - d_j -> 0` locates the surface, `delta_chart / delta_step` says the jump is real and
+/// how big, and chaotic amplification over the remaining `t_max - t_n` does the rest.
+///
+/// A ratio near 1 would mean crossing the surface costs no more than an ordinary step, and the
+/// selector is then a symptom rather than a seed.
+#[allow(clippy::too_many_arguments)]
+pub fn branch_jump<T: Real>(
+    s0: Cart<T>,
+    m: &[T; 3],
+    t_max: T,
+    n_sync: usize,
+    eta: T,
+    max_steps: usize,
+    opts: &AzOpts<T>,
+    n: usize,
+) -> BranchJump<T> {
+    let none = BranchJump {
+        ok: false,
+        delta_chart: T::nan(),
+        delta_step: T::nan(),
+        ref_tie: T::nan(),
+        ref_win: 0,
+        ref_alt: 0,
+    };
+    if n >= n_sync {
+        return none;
+    }
+    let mut cart = s0;
+    for k in 0..n {
+        let t = t_max * T::lit(k as f64 / n_sync as f64);
+        let dt_left = t_max * T::lit((k + 1) as f64 / n_sync as f64) - t;
+        let a = super::reference_body::choose_reference(&cart.r);
+        match march_interval(&cart, m, a, dt_left, eta, max_steps, opts) {
+            Some(c) => cart = c,
+            None => return none,
+        }
+    }
+
+    // The two candidate charts at the entry state: the longest side and the runner-up.
+    let d = crate::physics::newton::pair_dists(&cart.r);
+    let mut idx = [0usize, 1, 2];
+    idx.sort_by(|&a, &b| d[b].partial_cmp(&d[a]).unwrap_or(std::cmp::Ordering::Equal));
+    let (win, alt) = (crate::physics::THIRD[idx[0]], crate::physics::THIRD[idx[1]]);
+    let ref_tie = d[idx[1]] / d[idx[0]].max(T::TINY);
+
+    let t = t_max * T::lit(n as f64 / n_sync as f64);
+    let dt_left = t_max * T::lit((n + 1) as f64 / n_sync as f64) - t;
+
+    let dist = |a: &Cart<T>, b: &Cart<T>| -> T {
+        (0..3)
+            .map(|i| (a.r[i] - b.r[i]).norm_sq())
+            .fold(T::zero(), |x, y| x + y)
+            .sqrt()
+    };
+
+    let two = T::lit(2.0);
+    match (
+        march_interval(&cart, m, win, dt_left, eta, max_steps, opts),
+        march_interval(&cart, m, alt, dt_left, eta, max_steps, opts),
+        march_interval(&cart, m, win, dt_left, eta / two, max_steps * 2, opts),
+    ) {
+        (Some(a), Some(b), Some(a2)) => BranchJump {
+            ok: true,
+            delta_chart: dist(&a, &b),
+            delta_step: dist(&a, &a2),
+            ref_tie,
+            ref_win: win,
+            ref_alt: alt,
+        },
+        _ => none,
+    }
+}

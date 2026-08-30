@@ -470,3 +470,68 @@ fn the_march_reverses() {
     println!("  drift out {:.2e}, back {:.2e}", fwd.drift, back.drift);
     assert!(err < 1e-6, "the reversal did not recover the initial conditions: {err:e}");
 }
+
+/// **Does a FROZEN reference body make AZ label-dependent?** The discriminator for the negative
+/// above.
+///
+/// The covariance test found AZ label-covariant, so Heggie's §3 remark does not reproduce in that
+/// form. The candidate explanation is that this AZ **re-chooses its reference body at every sync
+/// boundary** — so a poor initial labelling is discarded at the first boundary and never costs
+/// anything again, and the contrast he drew would only be visible against an AZ whose reference
+/// is fixed at the start.
+///
+/// `forced_refs` freezes it. Under a label permutation, forcing the same *index* selects a
+/// different *physical* body, so this asks precisely what a bad initial choice costs when the
+/// march cannot correct it. Heggie is run through the identical permutation as the control: it
+/// has no reference to freeze, so it must not move whatever is done here.
+///
+/// **Measured: free 3.23e-15, frozen 3.41e-6 — a factor of 1.06e9.** Confirmed. The irony is now
+/// measured rather than argued: **the re-registration that causes the wedges is the same
+/// mechanism that makes this AZ insensitive to its initial labelling.** Heggie's contrast is
+/// real and is against a fixed-reference AZ; this port already spends the cost that buys it off,
+/// and the wedges are what it spends.
+#[test]
+fn a_frozen_reference_body_is_what_makes_az_label_dependent() {
+    let m = burrau::masses::<f64>();
+    let s0 = burrau::state::<f64>();
+    let (t_max, n_sync, eta) = (6.0, 64, 1e-4);
+    let perms = [[0usize, 2, 1], [1, 0, 2], [1, 2, 0], [2, 0, 1], [2, 1, 0]];
+    let frozen = vec![0u8; n_sync];
+
+    let base_free = az::integrate_az(s0, &m, t_max, n_sync, eta, 20_000_000, None);
+    let base_frozen =
+        az::integrate_az(s0, &m, t_max, n_sync, eta, 20_000_000, Some(&frozen));
+    let base_hg = integrate_hg(
+        s0, &m, t_max, n_sync, eta, 20_000_000,
+        &HgOpts { step_limit_f: 0.0, ..opts() },
+    );
+
+    let (mut free, mut froz, mut hgw) = (0.0f64, 0.0f64, 0.0f64);
+    for p in perms {
+        let (sp, mp) = permute(&s0, &m, p);
+        let a_free = az::integrate_az(sp, &mp, t_max, n_sync, eta, 20_000_000, None);
+        let a_froz =
+            az::integrate_az(sp, &mp, t_max, n_sync, eta, 20_000_000, Some(&frozen));
+        let h = integrate_hg(
+            sp, &mp, t_max, n_sync, eta, 20_000_000,
+            &HgOpts { step_limit_f: 0.0, ..opts() },
+        );
+        for i in 0..3 {
+            free = free.max((a_free.state.r[i] - base_free.state.r[p[i]]).norm());
+            froz = froz.max((a_froz.state.r[i] - base_frozen.state.r[p[i]]).norm());
+            hgw = hgw.max((h.state.r[i] - base_hg.state.r[p[i]]).norm());
+        }
+    }
+    println!("Burrau to t = {t_max}, over all five non-identity label permutations:");
+    println!("  AZ, reference re-chosen every boundary : {free:.3e}   switches {}", base_free.switches);
+    println!("  AZ, reference FROZEN at index 0        : {froz:.3e}");
+    println!("  Heggie (no reference to freeze)        : {hgw:.3e}");
+    println!("  frozen/free = {:.3e}", froz / free.max(1e-300));
+    assert!(hgw < 1e-12, "Heggie moved under relabelling: {hgw:e}");
+    assert!(
+        froz > free * 1e3,
+        "freezing the reference did NOT make AZ label-dependent (frozen {froz:e} against free \
+         {free:e}), so re-registration is not what erases Heggie's contrast and the explanation \
+         on record for that negative is wrong"
+    );
+}

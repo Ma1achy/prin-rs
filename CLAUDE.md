@@ -1832,3 +1832,13 @@ is exactly quadratic in the momenta, so `q_dot` is exactly differenced at any st
 amplified by `1/h`. At `h = 1` it reads **1.9e-13** with the mutation arm still at 4.9e-1. Same
 shape as `Gamma*` being exactly differenced, one level down: ask what order the function is in the
 variable **before** choosing the step, and a small step is not the conservative choice.
+
+**AND THE NEGATIVE RESOLVES INTO THE ARGUMENT: RE-REGISTRATION IS *WHY* THIS AZ IS
+LABEL-INSENSITIVE.** Freezing the reference body with `forced_refs` and re-running the same five
+label permutations: **free 3.227e-15, frozen 3.411e-6 — a factor of 1.06e9**, on a run whose free
+arm switches reference only 4 times in 64 boundaries. So Heggie's §3 contrast is real and is drawn
+against a **fixed-reference** AZ; this port does not exhibit it because it already pays the price
+that buys it off, and **the wedges are that price**. Robustness against a bad initial pick and a
+discontinuity across neighbouring pixels are the same mechanism seen from two sides. The quote
+still cannot be cited as covariance — that reading is refuted at 3.2e-15 — but the property behind
+it is live, and this is the discriminating measurement rather than the plausible story.

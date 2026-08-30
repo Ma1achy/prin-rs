@@ -54,10 +54,13 @@
 //! Heggie is 1-based; this module is 0-based. His `q_1 = q_2' - q_3'` is `q[0] = r[1] - r[2]`.
 //! Every cyclic formula uses `(j, k) = cyc(i)`, which is his `(i+1, i+2)`.
 
+pub mod driver;
 pub mod hamiltonian;
+pub mod rk4;
 pub mod state;
 pub mod system;
 
+pub use driver::{integrate_hg, HgDtauMode, HgOpts, HgOut};
 pub use hamiltonian::HgTime;
 pub use state::HgState;
 pub use system::HgSystem;

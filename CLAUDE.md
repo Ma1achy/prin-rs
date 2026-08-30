@@ -1792,3 +1792,43 @@ state, and checking it only where `Q_3 = Q_4 = 0` would leave the two out-of-pla
 dimensions it agrees to **4.1e-10**, and restricted it equals `2 L(Q)^T` **exactly** while the
 transposed block differs by **8.0**. Same shape as the standing `shape_pl` result: an index
 assertion alone passes on a transposition, so the negative control is the test.
+
+**HEGGIE'S COLLISION RESULT IS PAIR-INDEPENDENT TO THE DIGIT, AND THAT IS THE GLOBALITY AS A
+NUMBER.** The two-body radial collision run three times, once per pair: `d_min = 5.422e-27` and
+**39455 steps, identical for all three**, with drift 4.4e-15 / 3.8e-15 / 4.9e-15. AZ's version of
+this test must first assert that the colliding pair is one of the two *regularised* ones — if the
+geometry put it on the third side the test would measure nothing — and its acceptance is
+`d_min < 1e-10`. Seventeen orders, and no configuration-dependent preamble. A Heggie
+implementation that passed for one pair and not the others would be AZ wearing a different name,
+which is what makes the three-way form the test rather than a repetition of it.
+
+**HEGGIE IS NOT MORE EXPENSIVE HERE, AND HIS OWN 1.6x IS PER STEP AND NOT PER TRAJECTORY.**
+Burrau to `t = 6` at `eta = 1e-4`: **677,714 steps against AZ's 683,748, a ratio of 0.99**, with
+drift **2.95e-14 against 2.69e-13** and the two trajectories agreeing to 5.4e-10. His §3 quotes
+~1.6x *computing time per step* because `Gamma*` has more terms — that is a FLOPs statement and
+survives; the step **count** does not follow it, because the step size is set by the time
+transformation and `dt = R1R2R3 dtau` is not `dt = A B dtau`. Quote the two separately.
+
+**THE CONVERGENCE ORDER IS 2.40 CLAMPED AND 1.03 UNCLAMPED, so `clamp_final_step` is a
+correctness property on this integrator too.** Figure-eight closure across `eta in [0.02, 0.001]`:
+`1.23e-5 -> 9.22e-9` clamped, `4.61e-2 -> 2.08e-3` unclamped. AZ reads 2.08 and 1.06 on the same
+fixture. The unclamped arm is the control and it is what makes the clamped number mean anything —
+without it, second order could be the stepper rather than the landing.
+
+**THE LABEL-INDEPENDENCE QUOTE DOES NOT REPRODUCE AS COVARIANCE, AND IT IS A MOTIVATING QUOTE FOR
+THE PORT.** Heggie §3: *"the success of the time-reversals ... does not depend on any judicious
+choice for the initial labelling of the bodies, which is the case with the method of Aarseth and
+Zare."* Measured over all five non-identity label permutations of Burrau to `t = 6`: Heggie
+**1.76e-14**, **AZ 3.23e-15** — AZ is *better*. Relabelling is physically empty and AZ's reference
+body is chosen from geometry, so both are covariant; what Heggie describes is his own Table III
+setup, where AZ needs the bodies labelled so the regularised pairs are the ones that close. That
+is a statement about setting a run up, not about covariance. The argument for this port rests on
+the **re-registration count**, which is measured, and not on this sentence.
+
+**AND THE SAME "WHAT ORDER IS IT IN THIS VARIABLE" QUESTION DECIDES THE FD STEP TWICE.** Eq. (6)
+is exactly quadratic in the momenta, so `q_dot` is exactly differenced at any step — but at
+`h = 1e-6` the difference cancels a `-m_j m_k/|q_i|` term that is *independent of `p`* and reaches
+`1e3` when a separation is small, and the test read **1.6e-7**, entirely that cancellation
+amplified by `1/h`. At `h = 1` it reads **1.9e-13** with the mutation arm still at 4.9e-1. Same
+shape as `Gamma*` being exactly differenced, one level down: ask what order the function is in the
+variable **before** choosing the step, and a small step is not the conservative choice.

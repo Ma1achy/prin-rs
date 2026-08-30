@@ -1931,3 +1931,39 @@ Two hypotheses were refuted on the way, both by measurements that looked like th
 them: the reference point (`|h0 - e0|/|e0| = 2.2e-16`, negligible) and the `sum q_i` constraint
 (`|cart - enl| = 0` exactly). Both diagnostics started from the returned state and so were blind to
 the one thing that had changed.
+
+**HEGGIE FIXES AZ's WORST DECILE ON 100% OF ITS PIXELS BY 3.28 DECADES, AND THE WHOLE-FRAME MEDIAN
+SHOWS 1.14x.** `config_stability` at 256^2, unmasked kernel, both integrators under the same
+predictive limit and the same step budget. Gain `= log10(drift_AZ/drift_HG)` conditioned on **AZ's
+own drift decile**:
+
+```
+    d0 [2.9e-11,2.9e-9]   gain p50 -1.21   frac better 0.232
+    d4 [2.5e-8, 4.8e-8]   gain p50 -0.06   frac better 0.487
+    d7 [3.2e-7, 1.3e-6]   gain p50 +1.48   frac better 0.917
+    d8 [1.3e-6, 9.5e-6]   gain p50 +1.59   frac better 0.996
+    d9 [9.5e-6, 9.3e-4]   gain p50 +3.28   frac better 1.000
+```
+
+Two real, opposite, spatially separated effects: **1900x on the damaged decile with zero
+exceptions**, and ~16x the other way on the tame decile where drift is already 1e-10. A median over
+both is the one statistic guaranteed to show nothing, and it read 4.240e-8 against 4.824e-8. The
+quantile ladder was not enough either — it says the distribution moved and cannot say **where**.
+What answers it is the **gain map**, an image: `log10(drift_AZ/drift_HG)` on a FIXED symmetric
+diverging ramp, blue where Heggie is lower. 59.9% of the frame better, 42.4% by over a decade, in
+coherent arms.
+
+**And two aggregates were quoted as locating structure in the same ten minutes.** `err>10 = 7` was
+read as "the wedges are gone under AZ" — a **count** cannot locate anything — and `drift p50` as
+"Heggie changes nothing" on a frame that is visibly inhomogeneous. The eye reached the right answer
+first, because the structure is spatial and every statistic reached for was not. *Never conclude
+"no effect" from an aggregate without the per-pixel distribution* now has a fourth site, and this
+one was self-inflicted immediately after invoking the rule's sibling about renders.
+
+**`refine_flagged` MASKS THE COMPARISON ENTIRELY, AND THE SIDECAR IS WHAT CAUGHT IT.** The first
+`integrator_gallery` render used `EnsembleCfg::production()`, which has the repair pass **on**, and
+`config_stability` showed no wedges under EITHER integrator — a clean Heggie panel that said
+nothing, because the AZ panel was clean too. Caught by reading the panel's own `.cfg.txt`, where
+`refine_flagged` was absent from the override list and therefore at its production value. Always
+render the comparison with the repair pass **off**: it is batch-only, it has no live-playhead
+analogue, and it removes the very population the comparison is about.

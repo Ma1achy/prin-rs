@@ -169,6 +169,15 @@ pub struct AzOut<T> {
     /// whether `spread_event` may latch — a running max would make a near-tie permanent and
     /// it would never clear. See NOTES §5.
     pub tie_ratio: Vec<T>,
+    /// Second-**longest** over **longest** pair separation, at each completed sync boundary.
+    ///
+    /// Distinct from [`AzOut::tie_ratio`], which is about the two *tightest* pairs and decides
+    /// which binary is which. This one is about the two *longest*, and it is the quantity
+    /// `choose_reference` turns on: the reference is `THIRD[argmax d]`, so it flips exactly where
+    /// the longest side changes identity — where this ratio reaches 1. It is the coordinate of
+    /// the chart-switching surface, and the two must not be confused: reading `tie_ratio` for
+    /// this question would measure the wrong pair entirely.
+    pub ref_tie: Vec<T>,
     /// The **shape vector at each completed sync boundary**, when
     /// `AzOpts::keep_boundary_shapes` is set; empty otherwise.
     ///
@@ -825,6 +834,7 @@ pub fn integrate_az_opts<T: Real>(
     let mut tight = Vec::with_capacity(n_sync);
     let mut escape_flags = Vec::with_capacity(n_sync);
     let mut tie_ratio = Vec::with_capacity(n_sync);
+    let mut ref_tie = Vec::with_capacity(n_sync);
     let mut boundary_shapes: Vec<[T; 3]> =
         Vec::with_capacity(if opts.keep_boundary_shapes { n_sync } else { 0 });
     let mut drift_hist: Vec<T> = Vec::with_capacity(if opts.keep_drift_hist { n_sync } else { 0 });
@@ -1126,6 +1136,9 @@ pub fn integrate_az_opts<T: Real>(
             let mut d = crate::physics::newton::pair_dists(&cart.r);
             d.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
             tie_ratio.push(d[1] / d[0].max(T::TINY));
+            // Ascending, so `d[2]` is the longest and `d[1]` the second: 1 is a tie for the
+            // LONGEST side, which is where the reference flips.
+            ref_tie.push(d[1] / d[2].max(T::TINY));
         }
 
         // Instantaneous candidacy at this boundary, recorded whether or not it has already
@@ -1203,6 +1216,7 @@ pub fn integrate_az_opts<T: Real>(
         refs,
         tight,
         tie_ratio,
+        ref_tie,
         escape_flags,
         closure_hist,
         unbound_flags,

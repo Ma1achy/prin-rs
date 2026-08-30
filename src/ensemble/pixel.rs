@@ -421,6 +421,10 @@ pub struct PixelOut {
     /// differs-or-not mask saturates — measured base rate 0.72 on `config_stability` — and a
     /// saturated mask has a lift near 1 whatever it explains.
     pub ref_path: Vec<u8>,
+    /// Second-longest over longest separation at each boundary, nominal copy. Empty unless
+    /// [`EnsembleCfg::keep_ref_path`] is set. **1.0 is a tie for the longest side**, which is
+    /// exactly where `choose_reference` flips — the coordinate of the chart-switching surface.
+    pub ref_tie_path: Vec<f64>,
     /// FNV-1a hash of the **nominal copy's reference-body sequence** over the sync boundaries.
     ///
     /// `switches` counts how often the reference changed; this identifies *which path* it took.
@@ -900,6 +904,11 @@ pub fn evaluate_at<T: Real>(slice: &Slice, idx: usize, cfg: &EnsembleCfg, eta_v:
         n_overshoot: outs.iter().map(|o| o.n_overshoot as u64).sum(),
         n_retry: outs.iter().map(|o| o.n_retry as u64).sum(),
         ref_path: if cfg.keep_ref_path { outs[0].refs.clone() } else { Vec::new() },
+        ref_tie_path: if cfg.keep_ref_path {
+            outs[0].ref_tie.iter().map(|x| x.to_f64().unwrap()).collect()
+        } else {
+            Vec::new()
+        },
         ref_path_hash: {
             // FNV-1a over the nominal copy's reference sequence. Nominal only: the copies are a
             // sampling of the cell and mixing their paths would blur the very boundary this

@@ -411,6 +411,19 @@ pub struct AzOpts<'a, T> {
     pub clamp_final_step: bool,
     /// Which per-step limit bounds the step. See [`StepLimit`].
     pub step_limit: StepLimit,
+    /// **Hysteresis on the reference-body choice.** `0` is the plain `argmax`.
+    ///
+    /// The selector normally switches the instant another pair becomes the longest. With
+    /// `eps > 0` it keeps the current reference until a rival exceeds the current reference's
+    /// own opposite side by a factor `1 + eps`, so the switching surface **moves** and small
+    /// perturbations no longer flip the chart back and forth.
+    ///
+    /// It is an intervention, not a proposed default: every trajectory remains a legitimate
+    /// integration, but the itinerary is now path-dependent and the NumPy cross-check pins
+    /// `0`. Its purpose is a falsifiable picture — **if the rendered wedges are chart-selection
+    /// artefacts, displacing the surfaces displaces them; if they are dynamical, the field is
+    /// invariant and only the itinerary changes.**
+    pub ref_hysteresis: f64,
     /// How the competing constraints are combined. See [`StepBlend`].
     pub step_blend: StepBlend,
     /// The soft-minimum exponent. `1.0` is the harmonic form; large is the hard `min`.
@@ -443,6 +456,7 @@ impl<T: Real> Default for AzOpts<'_, T> {
             forced_refs: None,
             step_limit: StepLimit::None,
             step_limit_f: 0.0,
+            ref_hysteresis: 0.0,
             step_blend: StepBlend::Min,
             blend_p: 4.0,
             lc_stable: true,
@@ -519,6 +533,7 @@ pub fn reference_opts<T: Real>(
         forced_refs,
         step_limit: StepLimit::None,
         step_limit_f: 0.0,
+        ref_hysteresis: 0.0,
         step_blend: StepBlend::Min,
         blend_p: 4.0,
         lc_stable,
@@ -893,7 +908,25 @@ pub fn integrate_az_opts<T: Real>(
         // bounds the first time the shared policy met a terminating run.)
         let a = match forced_refs.and_then(|f| f.get(kk)) {
             Some(&f) => f as usize,
-            None => choose_reference(&cart.r),
+            None => {
+                let want = choose_reference(&cart.r);
+                // Hysteresis: hold the current reference until a rival beats **its** opposite
+                // side by `1 + eps`. `THIRD[k] = 2 - k`, so the pair opposite reference `p` is
+                // index `2 - p`. At `eps = 0` this is the plain argmax, bitwise.
+                match prev_ref {
+                    Some(p) if opts.ref_hysteresis > 0.0 && p != want => {
+                        let d = crate::physics::newton::pair_dists(&cart.r);
+                        let cur = d[2 - p];
+                        let rival = d[0].max(d[1]).max(d[2]);
+                        if rival > cur * (T::one() + T::lit(opts.ref_hysteresis)) {
+                            want
+                        } else {
+                            p
+                        }
+                    }
+                    _ => want,
+                }
+            }
         };
         refs.push(a as u8);
         if let Some(p) = prev_ref {

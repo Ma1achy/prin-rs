@@ -61,6 +61,9 @@ pub struct EnsembleCfg {
     /// The limit's parameter. Its meaning is **per mode** and deliberately not shared -- see
     /// [`crate::integrate::az::AzOpts::step_limit_f`].
     pub step_limit_f: f64,
+    /// Hysteresis on the reference-body choice; `0` is the plain argmax. See
+    /// [`crate::integrate::az::AzOpts::ref_hysteresis`]. An intervention, not a default.
+    pub ref_hysteresis: f64,
     /// How the competing step constraints combine. See [`crate::integrate::az::StepBlend`].
     pub step_blend: crate::integrate::az::StepBlend,
     /// The soft-minimum exponent; `1.0` is the harmonic form, large is the hard `min`.
@@ -184,6 +187,7 @@ impl EnsembleCfg {
             step_limit: crate::integrate::az::StepLimit::Predictive,
             step_limit_f: 0.02,
             // `Min` until the measurement says otherwise. See `results/step_control/edges`.
+            ref_hysteresis: 0.0,
             step_blend: crate::integrate::az::StepBlend::Min,
             blend_p: 4.0,
             escape_rule: crate::outcome::EscapeRule::Closure(crate::outcome::CLOSURE_TAU),
@@ -577,6 +581,7 @@ pub fn evaluate_at<T: Real>(slice: &Slice, idx: usize, cfg: &EnsembleCfg, eta_v:
         step_limit_f: cfg.step_limit_f,
         step_blend: cfg.step_blend,
         blend_p: cfg.blend_p,
+        ref_hysteresis: cfg.ref_hysteresis,
         escape_rule: cfg.escape_rule.lift(),
         closure_k: cfg.closure_k,
         stop_on_escape: cfg.stop_on_escape,

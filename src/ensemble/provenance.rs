@@ -64,6 +64,7 @@ pub enum Override {
     ClampFinalStep(bool),
     StepLimit(StepLimit),
     StepLimitF(f64),
+    RefHysteresis(f64),
     StepBlend(StepBlend),
     BlendP(f64),
     Eta(f64),
@@ -105,6 +106,7 @@ impl Override {
             Override::ClampFinalStep(v) => c.clamp_final_step = v,
             Override::StepLimit(v) => c.step_limit = v,
             Override::StepLimitF(v) => c.step_limit_f = v,
+            Override::RefHysteresis(v) => c.ref_hysteresis = v,
             Override::StepBlend(v) => c.step_blend = v,
             Override::BlendP(v) => c.blend_p = v,
             Override::Eta(v) => c.eta = v,
@@ -153,7 +155,7 @@ impl EnsembleCfg {
         let EnsembleCfg {
             n_extra, jitter_frac, jitter_scheme, seed, t_max, n_sync, escape_rule, closure_k,
             stop_on_escape, escape_every, escape_confirm, dtau_mode, clamp_final_step,
-            step_limit, step_limit_f, step_blend, blend_p, eta,
+            step_limit, step_limit_f, ref_hysteresis, step_blend, blend_p, eta,
             max_steps, ref_policy, lc_stable, r_coll_frac, stop_on_event, refine_flagged,
             refine_threshold, refine_eta_factor, refine_max_passes, decode_path,
             keep_copy_outcomes, keep_copy_shapes, keep_boundary_shapes, keep_drift_hist,
@@ -185,6 +187,7 @@ impl EnsembleCfg {
         cmp!("clamp_final_step", clamp_final_step, p.clamp_final_step);
         cmp!("step_limit", step_limit, p.step_limit);
         cmp!("step_limit_f", step_limit_f, p.step_limit_f);
+        cmp!("ref_hysteresis", ref_hysteresis, p.ref_hysteresis);
         cmp!("step_blend", step_blend, p.step_blend);
         cmp!("blend_p", blend_p, p.blend_p);
         cmp!("eta", eta, p.eta);

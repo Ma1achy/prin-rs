@@ -1,0 +1,28 @@
+    Finished `release` profile [optimized] target(s) in 0.02s
+     Running `target/release/examples/wedge_edge 256 results`
+config_stability 256^2
+config: production + 5 override(s): t_max=50.0 (production 13.0), n_sync=125 (production 32), r_coll_frac=0.005 (production 0.001), refine_flagged=false (production true), keep_ref_path=true (production false)
+
+== DOES THE WEDGE OUTLINE LIE ON THE EARLY SWITCHING LINES? ==
+hot = drift > p75; the outline is where hot meets not-hot. **The early set is small
+(0.0553 of the frame), which is what gives this pairing power where every earlier
+candidate sat at 25-72% and had a lift near 1 by arithmetic.**
+
+               switching set dilate   base rate P(set | outline)      lift
+     first_k <= 4 (straight)      0      0.0553          0.1009     1.825
+                                  1      0.1749          0.2330     1.333
+                                  2      0.2787          0.3370     1.209
+                 first_k 5-9      0      0.1398          0.1515     1.083
+                                  1      0.3525          0.4089     1.160
+                                  2      0.4849          0.5641     1.163
+               first_k 10-24      0      0.3554          0.4519     1.271
+                                  1      0.6323          0.7996     1.265
+                                  2      0.7168          0.8840     1.233
+               first_k >= 25      0      0.1274          0.1862     1.461
+                                  1      0.3523          0.4813     1.366
+                                  2      0.4846          0.6221     1.284
+        any k (the old mask)      0      0.6780          0.8904     1.313
+                                  1      0.7659          0.9479     1.238
+                                  2      0.8247          0.9611     1.165
+
+Wrote results/step_control/wedge_edge/ -- hot_outline, early_switch_lines, overlay (white = both).

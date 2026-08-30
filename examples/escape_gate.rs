@@ -77,6 +77,9 @@ fn sample(chart: &Chart, body: usize, cx: f64, cy: f64, half: f64, n: usize)
 // `Distance(r_esc)` (all three), so `Distance(0.0)` is still the ungated all-bodies cell.
 fn opts(r_coll: f64, r_esc: f64, all: bool, ev: usize, stop: bool) -> AzOpts<'static, f64> {
     AzOpts {
+        // Zero, the shipped default. These runs are about the escape criterion; hysteresis
+        // changes WHICH reference body is chosen at a boundary and would vary a second thing.
+        ref_hysteresis: 0.0,
         step_limit: prin_rs::integrate::az::StepLimit::None,
         step_blend: prin_rs::integrate::az::StepBlend::Min,
         blend_p: 4.0,

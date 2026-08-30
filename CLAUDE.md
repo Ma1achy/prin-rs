@@ -1761,3 +1761,34 @@ global `eta/256` pays 256x everywhere for a local failure. Their value is diagno
 large — *`eta/256` brings every flagged pixel to `error_ratio` 1.000* is what proves this is
 ordinary under-resolution rather than a wrong equation, a saturating cap or a threshold, which is
 why it is the **ground truth** in the comparison and not a candidate in it.
+
+**`Gamma*` IS DEGREE SIX JOINTLY AND AT MOST QUADRATIC IN EACH SINGLE COMPONENT, SO THE `h^2` FD
+TEST HAS NO SUBJECT.** `R_i = Q_ix^2 + Q_iy^2` enters every term of Heggie's `Gamma*` at most
+linearly and `W_i = L(Q_i)P_i` is linear in each argument, so the third derivative with respect to
+any one coordinate is **identically zero** — and that is exactly what central differencing
+truncates at. Measured: median FD error **3.3e-16 at `h = 1.0`**, a hundred-per-cent perturbation
+of every component, **rising** as `h` falls at the `1/h` roundoff law (29x over 128x). A floor at
+every reachable step, not a slope. AZ's version of the same test works only because its `Gamma`
+carries `A B m_b m_c/|R3|`, which has third derivatives in abundance. **Asserting "no truncation"
+alone would be asserting the harness produces small numbers**, which a broken harness does equally
+well — so the replacement carries a control arm that adds a deliberately cubic term and requires
+the same harness over the same states to recover `0.25`, which it does **at every rung**. The
+transferable form: when a test ported from a sibling cannot be written, ask what property of the
+new object removed its subject before weakening the threshold.
+
+**THE `1/m` RISK HEGGIE WARNS ABOUT IS NOT LIVE ON THIS CORPUS, AND THE BOUND OVERSTATES IT BY
+ORDERS.** `Gamma*` carries `1/m_1, 1/m_2, 1/m_3` and Heggie §4 says Eq. (21) is inapplicable if a
+mass vanishes — a risk the Heggie port introduces that AZ never had. `Chart::Latent` saturates its
+logits at `MU_MAX = 5`, which admits masses of order `e^-10`. Measured over 2,097,152 systems at
+512^2, every pixel and all `E+1` copies: `config_stability` reads **`min m = 0.245`, `max 1/m =
+4.08`, mass ratio 1.745**, presets exactly `1/3` and `3`. The saturation bound is a statement about
+the chart family; the windows actually rendered sit nowhere near it. `examples/heggie_mass_floor.rs`
+is read-only and integrates nothing.
+
+**HEGGIE'S Eq. (18) IS VERIFIED AS THE JACOBIAN OF Eq. (17) IN FULL 3D, NOT ON THE PLANAR SLICE.**
+The planar reduction `A_i = 2 L(Q_i)^T` is the one step of the transcription the paper does not
+state, and checking it only where `Q_3 = Q_4 = 0` would leave the two out-of-plane columns untested
+— which is what makes the reduction a claim rather than a definition. Finite-differenced in four
+dimensions it agrees to **4.1e-10**, and restricted it equals `2 L(Q)^T` **exactly** while the
+transposed block differs by **8.0**. Same shape as the standing `shape_pl` result: an index
+assertion alone passes on a transposition, so the negative control is the test.

@@ -1,6 +1,7 @@
 //! Trajectory integration.
 
 pub mod az;
+pub mod heggie;
 pub mod leapfrog;
 
 use crate::physics::Cart;

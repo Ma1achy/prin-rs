@@ -21,6 +21,17 @@
 //! `Predictive` is this defect; one that is damaged under both is something else and is worth
 //! knowing separately.
 //!
+//! # Resumable
+//!
+//! Checkpointed **per case**, which is the natural unit here: 34 cases x 2 arms at 512^2 is hours,
+//! and losing it whole to an interruption is an experiment-design fault rather than bad luck. Both
+//! arms of a case are written together — half a case is not a row. Re-running the same command
+//! resumes; the key carries the resolution and the two arms' configs, and a differing key
+//! **refuses** rather than mixing two experiments.
+//!
+//! Panels are re-rendered on resume rather than checkpointed: they are a few seconds of colouring
+//! against minutes of integration, and storing them would double the checkpoint for nothing.
+//!
 //! Args: `res root`.
 
 use rayon::prelude::*;
@@ -28,6 +39,7 @@ use rayon::prelude::*;
 use prin_rs::ensemble::pixel::{self, EnsembleCfg, PixelOut};
 use prin_rs::grid::{self, Chart, Slice};
 use prin_rs::integrate::az::StepLimit;
+use prin_rs::output::ckpt::Ckpt;
 use prin_rs::output::colour::Scalar;
 use prin_rs::output::{adaptive, colour};
 
@@ -111,12 +123,49 @@ fn main() {
         "over Pred", "verdict"
     );
 
+    let key = format!(
+        "defect_survey res={res} none={} pred={}",
+        EnsembleCfg { refine_flagged: false, ..Default::default() }.provenance(),
+        EnsembleCfg {
+            refine_flagged: false,
+            step_limit: StepLimit::Predictive,
+            step_limit_f: 0.02,
+            ..Default::default()
+        }
+        .provenance()
+    );
+    let ck_path = format!("{root}/output/defect_survey_{res}.ckpt");
+    let (mut ck, done) = match Ckpt::open(&ck_path, &key) {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!("checkpoint: {e}");
+            std::process::exit(1);
+        }
+    };
+    println!("  checkpoint {ck_path}: {} cases already done\n", done.len());
+
     let mut n_damaged = 0usize;
     let mut n_other = 0usize;
     let mut n_panels = 0usize;
     let mut n_clean = 0usize;
     let mut lines: Vec<String> = Vec::new();
-    for (name, sl) in cases {
+    for (ci, (name, sl)) in cases.into_iter().enumerate() {
+        // A completed case replays from its stored row. **The panels are not replayed** -- a
+        // resumed run that printed a row without its panels would read as fully rendered, so a
+        // restored case says so in its own line.
+        if let Some(b) = done.get(&(ci as u64)) {
+            let line = String::from_utf8_lossy(b).to_string();
+            println!("{line}   [restored]");
+            if line.contains("THIS") {
+                n_damaged += 1;
+            } else if line.contains("OTHER") {
+                n_other += 1;
+            } else {
+                n_clean += 1;
+            }
+            lines.push(line);
+            continue;
+        }
         let run = |lim: StepLimit, f: f64| -> Vec<PixelOut> {
             let cfg = EnsembleCfg {
                 refine_flagged: false,
@@ -207,6 +256,7 @@ fn main() {
             a.0, b.0, a.1, b.1, a.2, b.2
         );
         println!("{line}");
+        let _ = ck.put(ci as u64, line.as_bytes());
         lines.push(line);
     }
 

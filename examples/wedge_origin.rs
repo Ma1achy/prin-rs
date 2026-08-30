@@ -31,6 +31,14 @@
 //! the previous one. A chain of pairwise comparisons can shrink while the sequence walks steadily
 //! away, which would read as convergence and be the opposite.
 //!
+//! # Resumable
+//!
+//! Every rung is checkpointed **per row**, so a kill costs at most one row rather than the whole
+//! pass — the `eta/16` arm is ~80 minutes at 256^2 and was lost three times as one indivisible
+//! block. Re-running the same command resumes; the checkpoint is keyed on the full config
+//! provenance plus resolution, and **refuses to resume under different settings** rather than
+//! mixing two experiments.
+//!
 //! Args: `res root`.
 
 use rayon::prelude::*;
@@ -38,6 +46,7 @@ use rayon::prelude::*;
 use prin_rs::ensemble::pixel::{self, EnsembleCfg, PixelOut};
 use prin_rs::grid::{self, Chart};
 use prin_rs::outcome::{EscapeRule, CLOSURE_TAU};
+use prin_rs::output::ckpt::Ckpt;
 
 const WINDOW: f64 = 0.4;
 
@@ -109,11 +118,93 @@ fn main() {
     let sl = grid::Slice::body_plane(res, res, cx, cy, half, 0).with_chart(chart);
     println!("config_stability {res}^2\nconfig: {}\n", cfg.provenance());
 
+    // The checkpoint key. **Everything that changes a number goes in it**: a key that omits a
+    // swept parameter is the `criterion_sweep` filename bug at a new site, where six rows landed
+    // on one stem and the last writer won.
+    let key = format!("wedge_origin res={res} {}", cfg.provenance());
+    let ck_path = format!("{root}/output/wedge_origin_{res}.ckpt");
+    let ck = std::sync::Mutex::new(match Ckpt::open(&ck_path, &key) {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!("checkpoint: {e}");
+            std::process::exit(1);
+        }
+    });
+    {
+        let n = ck.lock().unwrap().1.len();
+        println!("checkpoint {ck_path}: {n} rows already done\n");
+    }
+
+    // Per-pixel record: the few scalars the analysis reads, then the reference itinerary.
+    // `f64` first at a fixed offset so the byte layout needs no framing.
+    let n_sync = cfg.n_sync;
+    let enc = |p: &PixelOut| -> Vec<u8> {
+        let mut v = Vec::with_capacity(4 * 8 + n_sync);
+        for x in [p.energy_drift_max, p.spread_shape, p.ensemble_spread, p.t_end] {
+            v.extend_from_slice(&x.to_le_bytes());
+        }
+        let mut path = p.ref_path.clone();
+        path.resize(n_sync, 255); // 255 marks "this trajectory ended early", not a body index
+        v.extend_from_slice(&path);
+        v
+    };
+    let dec = |b: &[u8]| -> PixelOut {
+        let g = |k: usize| f64::from_le_bytes(b[k * 8..k * 8 + 8].try_into().unwrap());
+        PixelOut {
+            energy_drift_max: g(0),
+            spread_shape: g(1),
+            ensemble_spread: g(2),
+            t_end: g(3),
+            ref_path: b[32..32 + n_sync].to_vec(),
+            ..Default::default()
+        }
+    };
+
+    // Rung index `r` and row `y` share one id space, so one file covers the whole experiment.
+    let run_rung = |r: u64, eta: f64| -> Vec<PixelOut> {
+        let mut out: Vec<Option<PixelOut>> = vec![None; sl.npix()];
+        {
+            let done = &ck.lock().unwrap().1;
+            for y in 0..res {
+                if let Some(b) = done.get(&(r * res as u64 + y as u64)) {
+                    for x in 0..res {
+                        let w = b.len() / res;
+                        out[y * res + x] = Some(dec(&b[x * w..(x + 1) * w]));
+                    }
+                }
+            }
+        }
+        let todo: Vec<usize> = (0..res).filter(|&y| out[y * res].is_none()).collect();
+        // Rows are computed in parallel and written as they land; the checkpoint is append-only
+        // and keyed by id, so out-of-order completion is not a hazard.
+        let rows: Vec<(usize, Vec<PixelOut>)> = todo
+            .par_iter()
+            .map(|&y| {
+                let v: Vec<PixelOut> = (0..res)
+                    .map(|x| pixel::evaluate_at::<f64>(&sl, y * res + x, &cfg, eta))
+                    .collect();
+                (y, v)
+            })
+            .collect();
+        for (y, v) in rows {
+            let mut bytes = Vec::new();
+            for p in &v {
+                bytes.extend_from_slice(&enc(p));
+            }
+            let _ = ck.lock().unwrap().0.put(r * res as u64 + y as u64, &bytes);
+            for (x, p) in v.into_iter().enumerate() {
+                out[y * res + x] = Some(p);
+            }
+        }
+        out.into_iter().map(|o| o.unwrap()).collect()
+    };
     let run = |eta: f64| -> Vec<PixelOut> {
-        (0..sl.npix())
-            .into_par_iter()
-            .map(|k| pixel::evaluate_at::<f64>(&sl, k, &cfg, eta))
-            .collect()
+        let r = match eta {
+            e if (e - cfg.eta).abs() < 1e-18 => 0u64,
+            e if (e - cfg.eta / 4.0).abs() < 1e-18 => 1,
+            _ => 2,
+        };
+        run_rung(r, eta)
     };
 
     // --- 4. which fields carry the structure? ---------------------------------------------

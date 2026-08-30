@@ -6,6 +6,7 @@ pub mod plot;
 pub mod qcache;
 pub mod raw;
 pub mod apng;
+pub mod ckpt;
 pub mod colour;
 pub mod fcache;
 pub mod gifout;

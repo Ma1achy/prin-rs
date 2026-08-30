@@ -28,6 +28,8 @@ use rayon::prelude::*;
 use prin_rs::ensemble::pixel::{self, EnsembleCfg, PixelOut};
 use prin_rs::grid::{self, Chart, Slice};
 use prin_rs::integrate::az::StepLimit;
+use prin_rs::output::colour::Scalar;
+use prin_rs::output::{adaptive, colour};
 
 fn arg<T: std::str::FromStr>(i: usize, d: T) -> T {
     std::env::args().nth(i).and_then(|s| s.parse().ok()).unwrap_or(d)
@@ -39,6 +41,27 @@ fn q(v: &mut Vec<f64>, p: f64) -> f64 {
     }
     v.sort_by(|a, b| a.partial_cmp(b).unwrap());
     v[(((v.len() - 1) as f64) * p).round() as usize]
+}
+
+/// Inferno, fixed window, shared by every panel in the survey. **Not auto-ranged**: 34 cases
+/// each stretched to their own p1-p99 would make a clean chart and a damaged one look alike,
+/// which is the one thing this survey exists to distinguish.
+const DLO: f64 = 1e-12;
+const DHI: f64 = 1e2;
+
+fn ramp(x: f64) -> [u8; 3] {
+    const S: [[f64; 3]; 5] = [
+        [0.0, 0.0, 0.015], [0.34, 0.06, 0.43], [0.72, 0.21, 0.33],
+        [0.98, 0.55, 0.04], [0.99, 1.0, 0.64],
+    ];
+    let t = x.clamp(0.0, 1.0) * 4.0;
+    let i = (t.floor() as usize).min(3);
+    let f = t - i as f64;
+    let mut o = [0u8; 3];
+    for k in 0..3 {
+        o[k] = (255.0 * (S[i][k] * (1.0 - f) + S[i + 1][k] * f)).clamp(0.0, 255.0) as u8;
+    }
+    o
 }
 
 fn stats(px: &[PixelOut]) -> (f64, f64, u64, f64, f64) {
@@ -90,6 +113,8 @@ fn main() {
 
     let mut n_damaged = 0usize;
     let mut n_other = 0usize;
+    let mut n_panels = 0usize;
+    let mut n_clean = 0usize;
     let mut lines: Vec<String> = Vec::new();
     for (name, sl) in cases {
         let run = |lim: StepLimit, f: f64| -> Vec<PixelOut> {
@@ -104,13 +129,16 @@ fn main() {
                 .map(|k| pixel::evaluate::<f64>(&sl, k, &cfg))
                 .collect()
         };
-        let a = stats(&run(StepLimit::None, 0.0));
-        let b = stats(&run(StepLimit::Predictive, 0.02));
+        let pa = run(StepLimit::None, 0.0);
+        let pb = run(StepLimit::Predictive, 0.02);
+        let a = stats(&pa);
+        let b = stats(&pb);
         // A single flagged pixel of 16384 is 6.1e-5, so the cut is at that scale rather than at
         // exactly zero: "damaged" has to mean more than one pixel or every chaotic slice qualifies.
         let dmg = a.0 > 1e-3 || a.2 > 0;
         let fixed = b.0 <= 1e-3 && b.2 == 0;
         let verdict = if !dmg {
+            n_clean += 1;
             "clean"
         } else if fixed {
             n_damaged += 1;
@@ -119,6 +147,61 @@ fn main() {
             n_other += 1;
             "OTHER"
         };
+        // **Panels only for the damaged cases, both arms.** 34 cases x 2 arms x 2 panels at
+        // 512^2 is ~55 MB of PNG, most of it identical black; the clean cases are fully
+        // described by their row. The count of what is NOT written is printed below, because a
+        // silently partial gallery reads as full coverage.
+        if dmg {
+            let slug = name.replace('/', "_").replace(' ', "_");
+            let d = format!("{root}/step_control/survey");
+            let _ = std::fs::create_dir_all(&d);
+            for (arm, v) in [("none", &pa), ("pred", &pb)] {
+                let drift: Vec<u8> = v
+                    .iter()
+                    .flat_map(|p| {
+                        if p.energy_drift_max.is_finite() && p.energy_drift_max > 0.0 {
+                            ramp(
+                                (p.energy_drift_max.log10() - DLO.log10())
+                                    / (DHI.log10() - DLO.log10()),
+                            )
+                        } else if p.energy_drift_max == 0.0 {
+                            ramp(0.0)
+                        } else {
+                            [255, 0, 255]
+                        }
+                    })
+                    .collect();
+                let hot: Vec<u8> = v
+                    .iter()
+                    .flat_map(|p| {
+                        if p.error_ratio > 10.0 { [255u8, 255, 255] } else { [12, 12, 16] }
+                    })
+                    .collect();
+                for (suf, buf) in [("drift", &drift), ("errhot", &hot)] {
+                    let path = format!("{d}/{slug}_{arm}_{suf}.png");
+                    let _ = adaptive::save_rect(&path, res, res, buf);
+                    let _ = prin_rs::output::provenance_sidecar(
+                        &path,
+                        &EnsembleCfg {
+                            refine_flagged: false,
+                            step_limit: if arm == "none" {
+                                StepLimit::None
+                            } else {
+                                StepLimit::Predictive
+                            },
+                            step_limit_f: if arm == "none" { 0.0 } else { 0.02 },
+                            ..Default::default()
+                        },
+                        &format!(
+                            "res={res}x{res}\ncase={name}\narm={arm}\nfield={suf}\n\
+                             drift ramp=({DLO:e},{DHI:e})  <- FIXED, shared by every case\n\
+                             errhot threshold=10  <- fixed\n"
+                        ),
+                    );
+                }
+            }
+            n_panels += 4;
+        }
         let line = format!(
             "  {name:>34} {:>10.4} {:>10.4} {:>11.3e} {:>11.3e} {:>10} {:>10} {verdict:>9}",
             a.0, b.0, a.1, b.1, a.2, b.2
@@ -130,7 +213,13 @@ fn main() {
     println!(
         "\n== SUMMARY ==\n\
          damaged under `None` and clean under `Pred`: {n_damaged}\n\
-         damaged under both (a DIFFERENT problem):    {n_other}\n\n\
+         damaged under both (a DIFFERENT problem):    {n_other}\n\
+         clean, and therefore NOT rendered:            {n_clean}\n\
+         panels written:                               {n_panels}  (4 per damaged case)\n\n\
+         **Panels are written for damaged cases only**, both arms, on a FIXED drift ramp shared\n\
+         by every case -- 34 auto-ranged panels would make a clean chart and a damaged one look\n\
+         alike, which is what this survey exists to tell apart. The clean count is printed so a\n\
+         partial gallery cannot read as full coverage.\n\n\
          **`overshoot` is the sharper column than `err>10`.** A step that carries the interval\n\
          clock past twice its interval is unambiguous; `err>10` is a threshold on a ratio and a\n\
          chaotic slice can sit near it for honest reasons. Where the two disagree, read the\n\

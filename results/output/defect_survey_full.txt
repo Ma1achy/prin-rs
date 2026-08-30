@@ -1,5 +1,4 @@
-   Compiling prin-rs v0.1.0 (/Users/malachy/src/principia-rs-test)
-    Finished `release` profile [optimized] target(s) in 5.03s
+    Finished `release` profile [optimized] target(s) in 0.20s
      Running `target/release/examples/defect_survey 512 results`
 512^2, t_max = 13, r_coll = 1e-3 -- the corpus's own settings.
 

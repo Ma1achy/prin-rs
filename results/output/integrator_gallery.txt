@@ -1,0 +1,27 @@
+warning: variable does not need to be mutable
+   --> examples/integrator_gallery.rs:256:17
+    |
+256 |             let mut er: Vec<f64> =
+    |                 ----^^
+    |                 |
+    |                 help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+   --> examples/integrator_gallery.rs:385:29
+    |
+385 |                         let mut g: Vec<f64> = (0..dpx.len())
+    |                             ----^
+    |                             |
+    |                             help: remove this `mut`
+
+warning: `prin-rs` (example "integrator_gallery") generated 2 warnings (run `cargo fix --example "integrator_gallery" -p prin-rs` to apply 2 suggestions)
+    Finished `release` profile [optimized] target(s) in 0.14s
+     Running `target/release/examples/integrator_gallery 256 results all 400000 0`
+256^2, both integrators, shared colour windows, max_steps=400000, refine_flagged=false.
+
+  **The UNMASKED kernel.** This is what a live playhead gets: the repair pass
+  re-integrates from t = 0 and has no live analogue.
+
+                  case  int  drift p50  drift p99    err p99  err>10  nonfin  budget  escape    coll    secs

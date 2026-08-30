@@ -48,6 +48,24 @@
 //! Raised to 400,000 for **both** arms — the same knob for both, or the budget becomes a hidden
 //! difference between them — and `budget` is printed so it can be seen to be zero.
 //!
+//! # TWO PASSES PER CASE, because the science field and the diagnostic want opposite settings
+//!
+//! The science panels need termination **on** — the outcome class *is* the physics being
+//! displayed. The drift panel needs it **off**, because a trajectory stopped by `stop_on_event` is
+//! parked AT a close approach, and the Cartesian energy there is a cancellation of two enormous
+//! terms. Measured on `far`: turning termination on moves AZ's drift `2.59e-13 -> 2.13e-12` (8x)
+//! and Heggie's `2.93e-12 -> 7.87e-8` (27000x), while Heggie's *regularised* drift stays at
+//! `1.08e-11`. The readout is being measured, not the integrator — and reading it as an integrator
+//! result said "Heggie is 560x worse on deep interior" when running it untruncated says Heggie is
+//! **14x better** there.
+//!
+//! Heggie suffers it more because its reconstruction is longer: regularised -> enlarged (dividing
+//! by `2 R_i`, three times) -> Cartesian through the mass-weighted differences of Eqs. (10)/(12).
+//! AZ's `phys_from_state` divides once. Same physics, more cancellation.
+//!
+//! So: `_uniform` and `_outcome` come from the science pass, `_drift` and `_gain` from the
+//! diagnostic pass, and each panel's sidecar says which.
+//!
 //! # `refine_flagged` is an explicit argument, and it must be, because it hides the question
 //!
 //! The repair pass re-integrates flagged pixels from `t = 0` at finer `eta`. Rendered with it
@@ -166,6 +184,21 @@ fn main() {
         if only != "all" && only != c.name {
             continue;
         }
+        // **Resume from the artefacts themselves.** Twenty-eight cases is ~40 minutes as one
+        // indivisible block, which is larger than the shortest interruption to expect -- the
+        // experiment-design fault this project has now made three times. The panels are the
+        // checkpoint: the gain map is the last thing written for a case, so its presence means
+        // that case finished. Delete the directory to force a re-render; nothing is resumed
+        // across a code change, because nothing here can detect one.
+        let done = format!(
+            "{dir}/{}_heggie{}_gain.png",
+            c.name,
+            if repair { "" } else { "_norepair" }
+        );
+        if std::path::Path::new(&done).exists() {
+            println!("  {:>20}  (already rendered, skipping)", c.name);
+            continue;
+        }
         let n_sync = (c.t_max / 0.4).round().max(4.0) as usize;
         let sl = grid::Slice::body_plane(res, res, c.cx, c.cy, c.half, c.body).with_chart(c.chart);
         let m_here = grid::decode_state(&c.chart, c.body, c.cx, c.cy).m;
@@ -179,27 +212,41 @@ fn main() {
         let mut az_drift: Option<Vec<f64>> = None;
 
         for integ in [Integrator::Az, Integrator::Heggie] {
-            let ens = EnsembleCfg::production().with_overrides(&[
-                Override::TMax(c.t_max),
-                Override::NSync(n_sync),
-                Override::RCollFrac(c.r_coll),
-                Override::EscapeRule(EscapeRule::Closure(CLOSURE_TAU)),
-                Override::ClosureK(1),
-                Override::Integrator(integ),
-                Override::MaxSteps(max_steps),
-                Override::RefineFlagged(repair),
-            ]);
+            let base_ov = |r_coll: f64, stop: bool| {
+                vec![
+                    Override::TMax(c.t_max),
+                    Override::NSync(n_sync),
+                    Override::RCollFrac(r_coll),
+                    Override::EscapeRule(EscapeRule::Closure(CLOSURE_TAU)),
+                    Override::ClosureK(1),
+                    Override::Integrator(integ),
+                    Override::MaxSteps(max_steps),
+                    Override::RefineFlagged(repair),
+                    Override::StopOnEvent(stop),
+                ]
+            };
+            // The SCIENCE pass: termination on, because the outcome class is the physics.
+            let ens = EnsembleCfg::production().with_overrides(&base_ov(c.r_coll, true));
             let t0 = std::time::Instant::now();
             let px: Vec<PixelOut> = (0..sl.npix())
                 .into_par_iter()
                 .map(|k| pixel::evaluate::<f64>(&sl, k, &ens))
                 .collect();
+            // The DIAGNOSTIC pass: nothing terminates, so every trajectory reaches `t_max` and
+            // the drift is the integrator's own error rather than the conditioning of a readout
+            // taken at a close approach.
+            let dens = EnsembleCfg::production().with_overrides(&base_ov(0.0, false));
+            let dpx: Vec<PixelOut> = (0..sl.npix())
+                .into_par_iter()
+                .map(|k| pixel::evaluate::<f64>(&sl, k, &dens))
+                .collect();
             let secs = t0.elapsed().as_secs_f64();
 
             let mut dr: Vec<f64> =
-                px.iter().map(|p| p.energy_drift_max).filter(|x| x.is_finite()).collect();
-            let nonfin = px.len() - dr.len();
-            let budget = px.iter().filter(|p| p.budget_exhausted).count();
+                dpx.iter().map(|p| p.energy_drift_max).filter(|x| x.is_finite()).collect();
+            let nonfin = dpx.len() - dr.len();
+            let budget =
+                px.iter().chain(dpx.iter()).filter(|p| p.budget_exhausted).count();
             // Carried SEPARATELY: `t_end` termination is not escape, and conflating them
             // contradicts a standing result while appearing to agree with it.
             let term = px.iter().filter(|p| p.t_end < c.t_max - 1e-9).count();
@@ -207,9 +254,9 @@ fn main() {
             // is what the repair pass exists to bring down. The median is blind to it: the pass
             // moves p50 4.251e-7 -> 2.560e-7 and p99 eight orders.
             let mut er: Vec<f64> =
-                px.iter().map(|p| p.error_ratio).filter(|x| x.is_finite()).collect();
+                dpx.iter().map(|p| p.error_ratio).filter(|x| x.is_finite()).collect();
             let er99 = q(&mut er.clone(), 0.99);
-            let hot = px.iter().filter(|p| p.error_ratio > 10.0).count();
+            let hot = dpx.iter().filter(|p| p.error_ratio > 10.0).count();
             let esc = px.iter().filter(|p| p.state == 0).count();
             let coll = px.iter().filter(|p| p.state == 2).count();
 
@@ -246,6 +293,8 @@ fn main() {
             for p in &px {
                 sbuf.extend_from_slice(&colour::rgb(p, Scalar::ShapeSpread, &sites, lo, hi));
                 obuf.extend_from_slice(&png::outcome_rgb(p));
+            }
+            for p in &dpx {
                 dbuf.extend_from_slice(&colour::drift_rgb(p, DLO, DHI));
             }
             let stem = format!(
@@ -267,7 +316,9 @@ fn main() {
                     &format!(
                         "res={res}x{res}\ncase={}\nintegrator={}\nfield={suffix}\n\
                          shape window=({lo:e},{hi:e}) taken from the AZ arm and SHARED\n\
-                         drift ramp=({DLO:e},{DHI:e}) FIXED across every case and integrator\n",
+                         drift ramp=({DLO:e},{DHI:e}) FIXED across every case and integrator\n\
+                         pass: uniform/outcome from the SCIENCE run (termination on);\n\
+                         drift/gain from the DIAGNOSTIC run (r_coll=0, stop_on_event=false)\n",
                         c.name,
                         integ.name()
                     ),
@@ -278,7 +329,7 @@ fn main() {
                 Integrator::Az => {
                     az_shapes = Some(px.iter().map(|p| p.shape_vec).collect());
                     az_state = Some(px.iter().map(|p| p.state).collect());
-                    az_drift = Some(px.iter().map(|p| p.energy_drift_max).collect());
+                    az_drift = Some(dpx.iter().map(|p| p.energy_drift_max).collect());
                 }
                 Integrator::Heggie => {
                     // **The panel that answers "where", which no quantile can.**
@@ -295,7 +346,7 @@ fn main() {
                     if let Some(a) = &az_drift {
                         const G: f64 = 4.0;
                         let mut gbuf = Vec::with_capacity(px.len() * 3);
-                        for (i, p) in px.iter().enumerate() {
+                        for (i, p) in dpx.iter().enumerate() {
                             let (x, y) = (a[i], p.energy_drift_max);
                             let px3 = if !x.is_finite() || !y.is_finite() || x <= 0.0 || y <= 0.0 {
                                 [255u8, 0, 255]
@@ -331,9 +382,9 @@ fn main() {
                         );
                         // How much of the frame moved, and by how much. Reported as a
                         // DISTRIBUTION over pixels, not a single number.
-                        let mut g: Vec<f64> = (0..px.len())
-                            .filter(|&i| a[i] > 0.0 && px[i].energy_drift_max > 0.0)
-                            .map(|i| (a[i] / px[i].energy_drift_max).log10())
+                        let mut g: Vec<f64> = (0..dpx.len())
+                            .filter(|&i| a[i] > 0.0 && dpx[i].energy_drift_max > 0.0)
+                            .map(|i| (a[i] / dpx[i].energy_drift_max).log10())
                             .filter(|x| x.is_finite())
                             .collect();
                         let better = g.iter().filter(|x| **x > 0.0).count() as f64 / g.len() as f64;
@@ -367,14 +418,14 @@ fn main() {
                         );
                         for d in 0..10 {
                             let (lo, hi) = (cut(d as f64 / 10.0), cut((d + 1) as f64 / 10.0));
-                            let mut gg: Vec<f64> = (0..px.len())
+                            let mut gg: Vec<f64> = (0..dpx.len())
                                 .filter(|&i| {
                                     a[i] >= lo
                                         && a[i] <= hi
                                         && a[i] > 0.0
-                                        && px[i].energy_drift_max > 0.0
+                                        && dpx[i].energy_drift_max > 0.0
                                 })
-                                .map(|i| (a[i] / px[i].energy_drift_max).log10())
+                                .map(|i| (a[i] / dpx[i].energy_drift_max).log10())
                                 .filter(|x| x.is_finite())
                                 .collect();
                             if gg.is_empty() {

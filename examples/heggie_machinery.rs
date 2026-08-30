@@ -40,7 +40,15 @@
 //! reported: if it moves the field, the harness can see boundary sensitivity and a Heggie null is
 //! informative; if it moves nothing, the null might be the harness.
 //!
-//! Args: `res root max_steps`.
+//! # Resumable
+//!
+//! Ten arms at 256^2 is ~40 minutes as one indivisible block, and this run was killed after two
+//! of them. That is an experiment-design fault, not bad luck — the same one `output::ckpt` was
+//! written for. Each arm's per-pixel result is checkpointed as it completes, so an invocation
+//! does what it can and the next resumes; the key carries every swept setting, so a checkpoint
+//! written under different settings **refuses to resume** rather than mixing the two.
+//!
+//! Args: `res root max_steps`. Re-run until it prints the whole table.
 
 use rayon::prelude::*;
 
@@ -49,6 +57,7 @@ use prin_rs::ensemble::pixel::EnsembleCfg;
 use prin_rs::grid::{self, Chart};
 use prin_rs::integrate::az::{self, AzOpts};
 use prin_rs::integrate::heggie::{integrate_hg, HgOpts};
+use prin_rs::output::ckpt::Ckpt;
 use prin_rs::physics::Ic;
 
 const WINDOW: f64 = 0.4;
@@ -62,6 +71,31 @@ const DHI: f64 = 1e2;
 /// quarter of the field was dead rather than because the field did not move. Raised until the
 /// `budget` column reads zero, and the column is printed so the reader can see that it does.
 const MAX_STEPS_DEFAULT: usize = 400_000;
+
+/// Per-pixel results as bytes. Fixed-width and little-endian: the checkpoint is a scratch file
+/// for one machine and one run, not an interchange format, and the key already refuses a resume
+/// under different settings.
+fn encode(v: &[(f64, f64, bool)]) -> Vec<u8> {
+    let mut b = Vec::with_capacity(v.len() * 17);
+    for (d, s, x) in v {
+        b.extend_from_slice(&d.to_le_bytes());
+        b.extend_from_slice(&s.to_le_bytes());
+        b.push(*x as u8);
+    }
+    b
+}
+
+fn decode(b: &[u8]) -> Vec<(f64, f64, bool)> {
+    b.chunks_exact(17)
+        .map(|c| {
+            (
+                f64::from_le_bytes(c[0..8].try_into().unwrap()),
+                f64::from_le_bytes(c[8..16].try_into().unwrap()),
+                c[16] != 0,
+            )
+        })
+        .collect()
+}
 
 fn arg<T: std::str::FromStr>(i: usize, d: T) -> T {
     std::env::args().nth(i).and_then(|s| s.parse().ok()).unwrap_or(d)
@@ -195,9 +229,29 @@ fn main() {
     let mut base_az: Option<(Vec<bool>, Vec<f64>)> = None;
     let mut base_hg: Option<(Vec<bool>, Vec<f64>)> = None;
 
-    for (label, arm, ns, eta) in arms {
-        let out: Vec<(f64, f64, bool)> =
-            copies.par_iter().map(|cs| pixel(cs, arm, ns, eta, max_steps)).collect();
+    // The key carries every setting this harness varies. A key that omits a swept parameter is
+    // the `criterion_sweep` filename bug at a new site.
+    let key = format!(
+        "heggie_machinery v1 res={res} t_max={T_MAX} eta={eta0} max_steps={max_steps} n0={n0}\n{}",
+        cfg.provenance()
+    );
+    let ck_path = format!("{dir}/arms.ckpt");
+    let (mut ck, have) = Ckpt::open(&ck_path, &key).expect("checkpoint");
+    if !have.is_empty() {
+        println!("  resuming: {} of {} arms already computed\n", have.len(), arms.len());
+    }
+
+    for (ai, (label, arm, ns, eta)) in arms.iter().enumerate() {
+        let (label, arm, ns, eta) = (label.clone(), *arm, *ns, *eta);
+        let out: Vec<(f64, f64, bool)> = match have.get(&(ai as u64)) {
+            Some(b) => decode(b),
+            None => {
+                let v: Vec<(f64, f64, bool)> =
+                    copies.par_iter().map(|cs| pixel(cs, arm, ns, eta, max_steps)).collect();
+                ck.put(ai as u64, &encode(&v)).expect("checkpoint write");
+                v
+            }
+        };
         let n = out.len();
 
         let lg = |x: f64| if x.is_finite() && x > 0.0 { x.log10() } else { DHI.log10() };

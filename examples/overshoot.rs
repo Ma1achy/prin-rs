@@ -67,6 +67,8 @@ const ARMS: [(&str, DtauMode, bool); 4] = [
 fn opts<'a>(mode: DtauMode, clamp: bool, r_coll: f64) -> AzOpts<'a, f64> {
     AzOpts {
         step_limit: prin_rs::integrate::az::StepLimit::None,
+        step_blend: prin_rs::integrate::az::StepBlend::Min,
+        blend_p: 4.0,
         step_limit_f: 0.0,
         r_coll_frac: r_coll,
         // Nothing terminal. A run stopped early has a shorter step count and a smaller drift for

@@ -39,7 +39,7 @@
 use super::jitter::Scheme;
 use super::pixel::EnsembleCfg;
 use crate::decode::Path;
-use crate::integrate::az::{driver::DtauMode, driver::StepLimit, reference_body::RefPolicy};
+use crate::integrate::az::{driver::DtauMode, driver::StepLimit, driver::StepBlend, reference_body::RefPolicy};
 use crate::outcome::EscapeRule;
 use crate::physics::ftle::FtleOpts;
 
@@ -64,6 +64,8 @@ pub enum Override {
     ClampFinalStep(bool),
     StepLimit(StepLimit),
     StepLimitF(f64),
+    StepBlend(StepBlend),
+    BlendP(f64),
     Eta(f64),
     MaxSteps(usize),
     RefPolicy(RefPolicy),
@@ -79,6 +81,7 @@ pub enum Override {
     KeepCopyShapes(bool),
     KeepBoundaryShapes(bool),
     KeepDriftHist(bool),
+    KeepRefPath(bool),
     Ftle(Option<FtleOpts>),
     FtleDt(f64),
 }
@@ -102,6 +105,8 @@ impl Override {
             Override::ClampFinalStep(v) => c.clamp_final_step = v,
             Override::StepLimit(v) => c.step_limit = v,
             Override::StepLimitF(v) => c.step_limit_f = v,
+            Override::StepBlend(v) => c.step_blend = v,
+            Override::BlendP(v) => c.blend_p = v,
             Override::Eta(v) => c.eta = v,
             Override::MaxSteps(v) => c.max_steps = v,
             Override::RefPolicy(v) => c.ref_policy = v,
@@ -117,6 +122,7 @@ impl Override {
             Override::KeepCopyShapes(v) => c.keep_copy_shapes = v,
             Override::KeepBoundaryShapes(v) => c.keep_boundary_shapes = v,
             Override::KeepDriftHist(v) => c.keep_drift_hist = v,
+            Override::KeepRefPath(v) => c.keep_ref_path = v,
             Override::Ftle(v) => c.ftle = v,
             Override::FtleDt(v) => c.ftle_dt = v,
         }
@@ -147,10 +153,11 @@ impl EnsembleCfg {
         let EnsembleCfg {
             n_extra, jitter_frac, jitter_scheme, seed, t_max, n_sync, escape_rule, closure_k,
             stop_on_escape, escape_every, escape_confirm, dtau_mode, clamp_final_step,
-            step_limit, step_limit_f, eta,
+            step_limit, step_limit_f, step_blend, blend_p, eta,
             max_steps, ref_policy, lc_stable, r_coll_frac, stop_on_event, refine_flagged,
             refine_threshold, refine_eta_factor, refine_max_passes, decode_path,
-            keep_copy_outcomes, keep_copy_shapes, keep_boundary_shapes, keep_drift_hist, ftle,
+            keep_copy_outcomes, keep_copy_shapes, keep_boundary_shapes, keep_drift_hist,
+            keep_ref_path, ftle,
             ftle_dt,
         } = self;
 
@@ -178,6 +185,8 @@ impl EnsembleCfg {
         cmp!("clamp_final_step", clamp_final_step, p.clamp_final_step);
         cmp!("step_limit", step_limit, p.step_limit);
         cmp!("step_limit_f", step_limit_f, p.step_limit_f);
+        cmp!("step_blend", step_blend, p.step_blend);
+        cmp!("blend_p", blend_p, p.blend_p);
         cmp!("eta", eta, p.eta);
         cmp!("max_steps", max_steps, p.max_steps);
         cmp!("ref_policy", ref_policy, p.ref_policy);
@@ -193,6 +202,7 @@ impl EnsembleCfg {
         cmp!("keep_copy_shapes", keep_copy_shapes, p.keep_copy_shapes);
         cmp!("keep_boundary_shapes", keep_boundary_shapes, p.keep_boundary_shapes);
         cmp!("keep_drift_hist", keep_drift_hist, p.keep_drift_hist);
+        cmp!("keep_ref_path", keep_ref_path, p.keep_ref_path);
         cmp!("ftle", ftle, p.ftle);
         cmp!("ftle_dt", ftle_dt, p.ftle_dt);
         out

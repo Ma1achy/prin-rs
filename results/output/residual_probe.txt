@@ -1,5 +1,60 @@
-    Finished `release` profile [optimized] target(s) in 0.18s
+    Finished `release` profile [optimized] target(s) in 0.10s
      Running `target/release/examples/residual_probe 384 results`
 config_stability 384^2
 config: production + 4 override(s): t_max=50.0 (production 13.0), n_sync=125 (production 32), r_coll_frac=0.005 (production 0.001), refine_flagged=false (production true)
 
+residual err>10: 18 of 147456 (0.000122)
+
+      x     y   err_ratio       drift      d_min d_min/rcoll    3rd sep     state  detail disagree nonfin floored
+    283    41     1.005e1    9.133e-4   4.630e-3     0.9260    1.862e0 Some(Collision)       2       5      0   false
+    272    74     1.278e1    6.606e-4   4.595e-3     0.9191    1.806e0 Some(Bounded)       0       7      0   false
+    273    77     1.026e1    4.382e-4   4.657e-3     0.9313    1.801e0 Some(Collision)       1       6      0   false
+    269    87     1.320e1    4.345e-4   4.469e-3     0.8938    1.783e0 Some(Collision)       0       5      0   false
+    266    94     2.985e1    6.710e-4   4.560e-3     0.9119    1.770e0 Some(Collision)       0       3      0   false
+    261   102     4.302e1    4.012e-4   4.465e-3     0.8929    1.765e0 Some(Collision)       2       5      0   false
+    262   104     5.585e1    6.599e-4   4.529e-3     0.9057    1.770e0 Some(Bounded)       0       7      0   false
+    258   105     6.213e1    4.566e-4   4.798e-3     0.9596    1.765e0 Some(Bounded)       0       2      0   false
+    259   106     2.971e1    2.713e-4   4.913e-3     0.9827    1.768e0 Some(Collision)       2       6      0   false
+    256   110     1.505e1    1.890e-4   4.659e-3     0.9317    1.769e0 Some(Collision)       1       7      0   false
+    256   113     4.486e1    7.275e-4   4.430e-3     0.8861    1.773e0 Some(Collision)       2       3      0   false
+    258   114     3.514e1    6.819e-4   4.539e-3     0.9077    1.778e0 Some(Collision)       0       6      0   false
+    256   116     3.311e1    6.607e-4   4.515e-3     0.9030    1.778e0 Some(Collision)       0       5      0   false
+    257   116     1.096e1    2.445e-4   4.509e-3     0.9017    1.780e0 Some(Collision)       1       7      0   false
+    257   117     2.971e1    6.772e-4   4.983e-3     0.9966    1.781e0 Some(Bounded)       0       1      0   false
+    254   122     1.264e1    3.150e-4   4.692e-3     0.9384    1.783e0 Some(Collision)       0       7      0   false
+    246   132     1.510e1    7.413e-4   4.664e-3     0.9327    1.808e0 Some(Bounded)       0       3      0   false
+    243   138     1.117e1    6.827e-4   4.533e-3     0.9067    1.822e0 Some(Bounded)       0       5      0   false
+
+== DOES IT CONVERGE? ==
+A triple collision is a genuine singularity AZ does not remove, so `error_ratio` will
+NOT fall with `eta`. Ordinary under-resolution will. **This is the whole question**, and
+it is the project's own diagnostic signature: a quantity that does not converge under
+refinement is measuring the sampling rather than the system.
+
+      x     y          eta        eta/4       eta/16       eta/64    verdict
+    283    41      1.005e1      8.707e0      7.512e0      1.000e0   resolves
+    272    74      1.278e1      1.113e1      8.794e0      4.809e0      STUCK
+    273    77      1.026e1      9.784e0      8.209e0      5.126e0      STUCK
+    269    87      1.320e1      1.224e1      1.045e1      5.916e0      STUCK
+    266    94      2.985e1      2.951e1      2.479e1      1.768e1      STUCK
+    261   102      4.302e1      4.358e1      3.804e1      1.000e0   resolves
+    262   104      5.585e1      5.533e1      4.736e1      3.211e1      STUCK
+    258   105      6.213e1      5.976e1      5.119e1      1.000e0   resolves
+    259   106      2.971e1      2.172e1      7.589e0      1.000e0   resolves
+    256   110      1.505e1      1.265e1      8.039e0      1.000e0   resolves
+    256   113      4.486e1      4.121e1      3.932e1      1.000e0   resolves
+    258   114      3.514e1      3.555e1      3.002e1      1.000e0   resolves
+    256   116      3.311e1      3.263e1      2.745e1      1.000e0   resolves
+    257   116      1.096e1      9.793e0      7.148e0      1.000e0   resolves
+    257   117      2.971e1      3.004e1      2.754e1      1.000e0   resolves
+    254   122      1.264e1      1.175e1      9.547e0      1.000e0   resolves
+    246   132      1.510e1      1.385e1      1.283e1      1.000e0   resolves
+    243   138      1.117e1      1.021e1      9.144e0      1.000e0   resolves
+
+  resolves at eta/64: 13   stuck: 5
+
+A STUCK pixel is not a defect. `error_ratio` exists to say *this pixel is not data*, and
+a trajectory that passes arbitrarily close to a triple collision is a measurement
+outcome, not missing data -- the no-discard rule. A pixel that RESOLVES is ordinary
+under-resolution and `f` could be tightened, at a cost the table in
+`results/step_control/README.md` prices.

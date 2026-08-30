@@ -92,6 +92,8 @@ fn sample(chart: &Chart, body: usize, cx: f64, cy: f64, half: f64, n: usize)
 fn opts(r_coll: f64, rule: EscapeRule<f64>, k: usize, stop_esc: bool) -> AzOpts<'static, f64> {
     AzOpts {
         step_limit: prin_rs::integrate::az::StepLimit::None,
+        step_blend: prin_rs::integrate::az::StepBlend::Min,
+        blend_p: 4.0,
         step_limit_f: 0.0,
         dtau_mode: prin_rs::integrate::az::DtauMode::default(),
         clamp_final_step: true,

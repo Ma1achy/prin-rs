@@ -1,0 +1,25 @@
+    Finished `release` profile [optimized] target(s) in 0.07s
+     Running `target/release/examples/wedge_origin 256 results`
+config_stability 256^2
+config: production + 5 override(s): t_max=50.0 (production 13.0), n_sync=125 (production 32), r_coll_frac=0.005 (production 0.001), refine_flagged=false (production true), keep_ref_path=true (production false)
+
+nominal pass 309.5s
+
+== 4. IS THE STRUCTURE IN THE FIELD THAT SHIPS? ==
+  Ratio of median |grad log10 field| ACROSS a cell boundary to INSIDE a cell. A large
+ratio means the reference partition draws that field's edges; ~1 means it does not.
+`drift` is the error field and is the comparison, not the subject.
+
+Cell boundaries cover 0.7458 of the frame.
+
+               field   inside cell  across bound    ratio
+    energy_drift_max       0.05770       0.18668    3.235
+        spread_shape       0.07651       0.18704    2.445
+     ensemble_spread       0.07652       0.21193    2.769
+               t_end       0.00540       0.00000    0.000
+
+== 2. DO THE CELLS CONVERGE UNDER REFINEMENT? ==
+  The itinerary is compared to the FINEST rung, never to the previous one: a chain of
+pairwise comparisons can shrink while the sequence walks steadily away, which reads as
+convergence and is its opposite.
+

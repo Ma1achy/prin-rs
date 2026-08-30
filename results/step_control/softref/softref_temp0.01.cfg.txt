@@ -1,0 +1,6 @@
+image=results/step_control/softref/softref_temp0.01.png
+config=production + 4 override(s): t_max=50.0 (production 13.0), n_sync=125 (production 32), r_coll_frac=0.005 (production 0.001), refine_flagged=false (production true)
+res=256x256
+case=config_stability
+softref_temp=0.01
+NOTE: nominal copy only, no events, no outcome

@@ -6,6 +6,16 @@
 //!
 //! # The candidates, and the discriminator for each
 //!
+//! **MEASURED, AND IT IS NONE OF THESE.** All 18 residual pixels at 384^2 have **exactly one**
+//! pair below `r_coll`, `d_min` between `4.43e-3` and `4.98e-3` against `r_coll = 5e-3` — a
+//! *grazing* binary encounter, with the third body 350x further away — energy drift of only
+//! `2e-4` to `9e-4`, no `ab_floored`, no non-finite copy, and terminal states split between
+//! `Collision` and `Bounded`. They form a contiguous diagonal filament in the chart plane, not a
+//! scatter. **`error_ratio` is a spread ACROSS COPIES, and here the copies straddle the collision
+//! threshold** — some collide, some do not — so they stop in genuinely different states and their
+//! energies differ for a physical reason rather than a numerical one. `n_outcome_disagree` is the
+//! column that shows it, which is why it replaced the pair count.
+//!
 //! ```text
 //!   triple collision      >=2 pairs below r_coll -- AZ regularises the two pairs adjacent to
 //!                         the reference body and the triple singularity is NOT removable, so
@@ -76,8 +86,8 @@ fn main() {
 
     println!(
         "  {:>5} {:>5} {:>11} {:>11} {:>10} {:>10} {:>10} {:>9} {:>7} {:>7} {:>6} {:>7}",
-        "x", "y", "err_ratio", "drift", "d_min", "2nd sep", "3rd sep", "state", "detail",
-        "n<rcoll", "nonfin", "floored"
+        "x", "y", "err_ratio", "drift", "d_min", "d_min/rcoll", "3rd sep", "state", "detail",
+        "disagree", "nonfin", "floored"
     );
     for &i in &bad {
         let p = &px[i];
@@ -87,20 +97,19 @@ fn main() {
         d.sort_by(|a, b| a.partial_cmp(b).unwrap());
         // How many pairs came within `r_coll` over the whole march -- the >=2-pair rule is the
         // project's triple test, and `d_min_true` is the tightest any pair reached.
-        let n_close = (p.d_min_true < r_coll) as usize;
         println!(
-            "  {:>5} {:>5} {:>11.3e} {:>11.3e} {:>10.3e} {:>10.3e} {:>10.3e} {:>9} {:>7} \
+            "  {:>5} {:>5} {:>11.3e} {:>11.3e} {:>10.3e} {:>10.4} {:>10.3e} {:>9} {:>7} \
              {:>7} {:>6} {:>7}",
             i % res,
             i / res,
             p.error_ratio,
             p.energy_drift_max,
             p.d_min_true,
-            d[1],
+            p.d_min_true / r_coll,
             d[2],
             format!("{:?}", State::from_bits(p.state)),
             p.detail,
-            n_close,
+            p.n_outcome_disagree,
             p.n_nonfinite,
             p.ab_floored,
         );

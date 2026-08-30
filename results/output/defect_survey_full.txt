@@ -1,0 +1,14 @@
+   Compiling prin-rs v0.1.0 (/Users/malachy/src/principia-rs-test)
+    Finished `release` profile [optimized] target(s) in 5.03s
+     Running `target/release/examples/defect_survey 512 results`
+512^2, t_max = 13, r_coll = 1e-3 -- the corpus's own settings.
+
+`None` is the kernel every committed number was taken under; `Pred` is the shipped
+`StepLimit::Predictive` at f = 0.02. **A case damaged under None and clean under Pred is
+THIS defect. Damaged under both is something else** and is flagged.
+
+                                case err>10 None err>10 Pred err p99 None err p99 Pred  over None  over Pred   verdict
+                   region/near-field     0.0021     0.0000     1.006e0     1.000e0        506          0      THIS
+                    region/mid-field     0.0000     0.0000     1.000e0     1.000e0          0          0     clean
+                          region/far     0.0000     0.0000     1.000e0     1.000e0          0          0     clean
+                   region/body2 core     0.0034     0.0000     1.127e0     1.000e0         77          0      THIS

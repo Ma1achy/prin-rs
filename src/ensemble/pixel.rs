@@ -61,6 +61,10 @@ pub struct EnsembleCfg {
     /// The limit's parameter. Its meaning is **per mode** and deliberately not shared -- see
     /// [`crate::integrate::az::AzOpts::step_limit_f`].
     pub step_limit_f: f64,
+    /// How the competing step constraints combine. See [`crate::integrate::az::StepBlend`].
+    pub step_blend: crate::integrate::az::StepBlend,
+    /// The soft-minimum exponent; `1.0` is the harmonic form, large is the hard `min`.
+    pub blend_p: f64,
     pub eta: f64,
     pub max_steps: usize,
     pub ref_policy: RefPolicy,
@@ -121,6 +125,9 @@ pub struct EnsembleCfg {
     /// below can be formed. Off by default; it is a diagnostic and costs an energy evaluation
     /// per boundary.
     pub keep_drift_hist: bool,
+    /// Keep the nominal copy's reference-body sequence on each `PixelOut`. ~`n_sync` bytes per
+    /// pixel, so off by default.
+    pub keep_ref_path: bool,
     /// Also run the nominal copy through the Benettin/diffusion accumulators, for the
     /// production colouring's lightness field. `None` skips it entirely.
     ///
@@ -176,6 +183,9 @@ impl EnsembleCfg {
             // header, and `reference_opts` pins `None` so the NumPy cross-check is unaffected.
             step_limit: crate::integrate::az::StepLimit::Predictive,
             step_limit_f: 0.02,
+            // `Min` until the measurement says otherwise. See `results/step_control/edges`.
+            step_blend: crate::integrate::az::StepBlend::Min,
+            blend_p: 4.0,
             escape_rule: crate::outcome::EscapeRule::Closure(crate::outcome::CLOSURE_TAU),
             closure_k: 1,
             stop_on_escape: false,
@@ -193,6 +203,7 @@ impl EnsembleCfg {
             keep_copy_shapes: false,
             keep_boundary_shapes: false,
             keep_drift_hist: false,
+            keep_ref_path: false,
             ftle: None,
             ftle_dt: 1e-4,
             decode_path: Path::DirectF64,
@@ -402,6 +413,23 @@ pub struct PixelOut {
     /// that has to be zero. It was `2.209e128` on one step and undetected for six days because
     /// nothing asserted it.
     pub n_overshoot: u64,
+    /// The nominal copy's reference-body sequence, one entry per sync boundary. Empty unless
+    /// [`EnsembleCfg::keep_ref_path`] is set.
+    ///
+    /// The graded form of [`PixelOut::ref_path_hash`]: the hash says *whether* two neighbours
+    /// took different paths, this says **how many boundaries they differ at**. A binary
+    /// differs-or-not mask saturates — measured base rate 0.72 on `config_stability` — and a
+    /// saturated mask has a lift near 1 whatever it explains.
+    pub ref_path: Vec<u8>,
+    /// FNV-1a hash of the **nominal copy's reference-body sequence** over the sync boundaries.
+    ///
+    /// `switches` counts how often the reference changed; this identifies *which path* it took.
+    /// The standing result is that the count alone does not order the slices — *it is not how
+    /// often the reference switches, it is how often NEIGHBOURS switch differently* — and a count
+    /// cannot answer that, because two neighbours can switch equally often at different
+    /// boundaries. Comparing hashes makes "these two pixels took different reference paths" an
+    /// exact test rather than a proxy.
+    pub ref_path_hash: u64,
     /// Steps retried under `StepLimit::Reject`, summed over copies. Zero under every other mode.
     pub n_retry: u64,
     /// A copy exhausted the retry budget: **undetermined**, never discarded, and counted apart
@@ -543,6 +571,8 @@ pub fn evaluate_at<T: Real>(slice: &Slice, idx: usize, cfg: &EnsembleCfg, eta_v:
         clamp_final_step: cfg.clamp_final_step,
         step_limit: cfg.step_limit,
         step_limit_f: cfg.step_limit_f,
+        step_blend: cfg.step_blend,
+        blend_p: cfg.blend_p,
         escape_rule: cfg.escape_rule.lift(),
         closure_k: cfg.closure_k,
         stop_on_escape: cfg.stop_on_escape,
@@ -869,6 +899,18 @@ pub fn evaluate_at<T: Real>(slice: &Slice, idx: usize, cfg: &EnsembleCfg, eta_v:
         n_cap_hits: outs.iter().map(|o| o.n_cap_hits as u64).sum(),
         n_overshoot: outs.iter().map(|o| o.n_overshoot as u64).sum(),
         n_retry: outs.iter().map(|o| o.n_retry as u64).sum(),
+        ref_path: if cfg.keep_ref_path { outs[0].refs.clone() } else { Vec::new() },
+        ref_path_hash: {
+            // FNV-1a over the nominal copy's reference sequence. Nominal only: the copies are a
+            // sampling of the cell and mixing their paths would blur the very boundary this
+            // exists to locate.
+            let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+            for &r in &outs[0].refs {
+                h ^= r as u64;
+                h = h.wrapping_mul(0x1000_0000_01b3);
+            }
+            h
+        },
         retry_exhausted: outs.iter().any(|o| o.retry_exhausted),
         budget_exhausted: outs.iter().any(|o| o.budget_exhausted),
         copy_shapes: if cfg.keep_copy_shapes {

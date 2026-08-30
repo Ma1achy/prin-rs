@@ -1,0 +1,22 @@
+    Finished `release` profile [optimized] target(s) in 0.17s
+     Running `target/release/examples/soft_reference 256 results`
+config_stability 256^2, NOMINAL COPY ONLY (this integrator carries no ensemble, no
+events and no outcome -- a blended state has no single terminal class, and inventing one
+would put a discontinuity back in by another door).
+config: production + 4 override(s): t_max=50.0 (production 13.0), n_sync=125 (production 32), r_coll_frac=0.005 (production 0.001), refine_flagged=false (production true)
+
+      temp      secs    rough p50    rough p90    drift p50    drift p99   arms/bound    nonfin
+      0.00      25.8       0.1478       1.3323     1.898e-8     4.087e-4       1.0000    0.0000
+      0.01      42.8       0.4468       1.8062     5.171e-8     4.958e-4       1.6769    0.0000
+      0.03      50.7       0.4608       1.7821     9.827e-8     6.481e-4       1.8771    0.0000
+      0.10      55.6       0.4314       1.8049     3.945e-7     1.746e-3       2.1724    0.0000
+      0.30      75.2       0.2866       1.8672     6.146e-6     3.111e-2       2.9998    0.0001
+
+HOW TO READ THIS
+
+`temp = 0` is exact argmax and is the reference row. **Roughness is the median
+|grad log10 drift| -- a per-pixel number, not an image impression** (base 0.1478).
+
+A win is roughness DOWN with drift FLAT and `arms/bound` near 1. Roughness down with
+drift up is a trade, not a fix: blending two approximations is not itself a solution of
+the ODE. `arms/bound` near 2 means the tie shell is not thin and this is two integrators.

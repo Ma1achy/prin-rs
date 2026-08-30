@@ -1,0 +1,8 @@
+image=results/step_control/survey/chart_preset_prho_h1_none_drift.png
+config=production + 3 override(s): step_limit=None (production Predictive), step_limit_f=0.0 (production 0.02), refine_flagged=false (production true)
+res=512x512
+case=chart/preset_prho_h1
+arm=none
+field=drift
+drift ramp=(1e-12,1e2)  <- FIXED, shared by every case
+errhot threshold=10  <- fixed

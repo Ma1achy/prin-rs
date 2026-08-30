@@ -1,0 +1,31 @@
+    Finished `release` profile [optimized] target(s) in 0.13s
+     Running `target/release/examples/branch_jump 192 400 results`
+config_stability 192^2
+config: production + 5 override(s): t_max=50.0 (production 13.0), n_sync=125 (production 32), r_coll_frac=0.005 (production 0.001), refine_flagged=false (production true), keep_ref_path=true (production false)
+
+itinerary pass 74.3s
+
+  48113 neighbour pairs diverge; measuring 400 (cap 400).
+  **The cap is printed because a silently truncated set reads as full coverage.**
+
+                  population       n    dr_chart     dr_step   R_pos p50   R_pos p90  R_vel p50 dt_mismatch    ref_tie
+     at the first divergence     400   6.664e-11   3.680e-11     1.250e0     3.666e0   8.831e-1    4.818e-7     0.9855
+                             time-mismatch displacement / dr_chart p50 4.968e3 p90 1.601e5;  raw/corrected p50 6234.5000
+       control: a non-switch     400   8.869e-12   9.582e-12     1.065e0     3.453e0   8.829e-1    3.221e-7     0.8768
+                             time-mismatch displacement / dr_chart p50 5.850e3 p90 4.803e5;  raw/corrected p50 8061.9745
+
+HOW TO READ THIS
+
+**RATIO is the finding.** Near 1 means crossing the selector's surface costs no more
+than an ordinary step, and the argmax is a SYMPTOM -- the trajectories had already
+diverged and the geometry followed. Far above 1 means it is a SEED: a jump the dynamics
+then amplifies over the remaining horizon.
+
+Read it against the control row, never alone. And `dchart` alone is unreadable: a large
+number on a violent interval and a small one on a quiet interval say the same thing,
+which is why the local step error is the normaliser.
+
+**And read the confound line before the ratio.** If the time-mismatch displacement is a
+material fraction of `dr_chart`, the arms were compared at different physical times and
+the difference is partly the time transformations rather than the charts. `raw/corrected`
+near 1 means the correction changed nothing and the comparison was clean anyway.

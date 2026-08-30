@@ -16,10 +16,17 @@ const MAX_STEPS: usize = 30_000;
 fn run(s: Cart<f64>, m: &[f64; 3], t_max: f64, n_sync: usize, mode: DtauMode)
     -> prin_rs::integrate::az::AzOut<f64>
 {
+    run_clamped(s, m, t_max, n_sync, mode, true)
+}
+
+fn run_clamped(
+    s: Cart<f64>, m: &[f64; 3], t_max: f64, n_sync: usize, mode: DtauMode, clamp: bool,
+) -> prin_rs::integrate::az::AzOut<f64> {
     let o = AzOpts::<f64> {
         stop_on_event: false,
         stop_on_escape: false,
         dtau_mode: mode,
+        clamp_final_step: clamp,
         ..Default::default()
     };
     integrate_az_opts(s, m, t_max, n_sync, ETA, MAX_STEPS, &o)
@@ -97,12 +104,18 @@ fn the_modes_agree_to_roundoff_where_ab_is_flat() {
 /// approached geometrically and never completed. The tell is not the drift -- a stalled
 /// trajectory has a *beautiful* drift, five orders better than either real mode -- it is that
 /// `t` never advances. This is the test that stops that number being read as accuracy.
+///
+/// **Pinned to `clamp_final_step: false`, and that is the point rather than a convenience.** The
+/// clamp's landing tolerance is relative, so the geometric approach does eventually cross it --
+/// after `ln(1/LAND_EPS_REL)/eta ~ 3200` steps per interval against a nominal ~100. Under the
+/// clamp the mode therefore *completes*, at 30x the cost, and this test read as a failure when
+/// the clamp landed. It is still Zeno; it is Zeno with a floor under it.
 #[test]
 fn per_step_remaining_stalls_rather_than_integrating() {
     let m = burrau::masses::<f64>();
     let s = grid::Slice::body_plane(1, 1, 1.0, 3.0, 0.0, 0).nominal::<f64>(0);
     let n_sync = 33;
-    let o = run(s, &m, 13.0, n_sync, DtauMode::PerStepRemaining);
+    let o = run_clamped(s, &m, 13.0, n_sync, DtauMode::PerStepRemaining, false);
     assert!(o.budget_exhausted, "PerStepRemaining should exhaust its step budget");
     // It completes at most the first interval and then never satisfies `s.t >= dt_left`.
     assert!(
@@ -111,13 +124,26 @@ fn per_step_remaining_stalls_rather_than_integrating() {
          first interval",
         o.t
     );
-    let ok = run(s, &m, 13.0, n_sync, DtauMode::PerStepInterval);
+    let ok = run_clamped(s, &m, 13.0, n_sync, DtauMode::PerStepInterval, false);
     assert!(!ok.budget_exhausted && (ok.t - 13.0).abs() < 1e-9, "the control must complete");
     // And the trap it sets: its drift looks *better* than the mode that actually ran.
     assert!(
         o.drift < ok.drift,
         "the stalled mode is expected to show a smaller drift than the completed one -- that is \
          the whole reason `t/t_max` is printed beside it"
+    );
+    // Under the clamp it completes -- and the cost is the finding. Asserted so that "the Zeno
+    // mode is fine now" cannot be read off the completion alone.
+    let clamped = run_clamped(s, &m, 13.0, n_sync, DtauMode::PerStepRemaining, true);
+    assert!(
+        (clamped.t - 13.0).abs() < 1e-9,
+        "with the relative landing tolerance the geometric decay does terminate"
+    );
+    assert!(
+        clamped.steps > 20 * ok.steps,
+        "and it costs orders more steps to do it: {} against {}",
+        clamped.steps,
+        ok.steps
     );
 }
 

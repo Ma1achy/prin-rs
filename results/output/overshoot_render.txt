@@ -1,0 +1,57 @@
+1024^2, one sample per pixel. TWO knobs, FOUR cells -- `dtau_mode` and
+`clamp_final_step`. Everything else is `closure_render`'s, the settings the committed
+images were made under.
+
+`nonfin` is the magenta count; `simfail` the budget-exhausted count, separate on
+purpose. `hot` is the fraction above 1e-6 energy drift -- the speckle. `ramp` is each
+panel's own auto-range window and belongs with the image.
+
+PROVENANCE: the four `config_stability` arms and the pair table below come from ONE run
+(`... config_stability overshoot_fix ABCD`), so the pairs are exact. The four presets were
+rendered in a separate arm-D pass -- ~15 minutes per arm at 1024^2, and a run that has to
+repeat finished work will not be run. Arms A and B reproduce `dtau_fix`'s `fixoff` and
+`fixon` rows exactly, and A->B reproduces RESULTS §23's render exactly (909184 moved,
+median 1.113e-1, 348314 labels), which is what says the two runs are one measurement.
+
+    config_stability arm A   747.5s  escape 0.2618 collision 0.3632  nonfin   30109  simfail       0  hot 0.9285  spread ramp (6.850e-5, 4.955e-1)  drift ramp (1.079e-8, 4.071e7)
+    config_stability arm B   864.3s  escape 0.2048 collision 0.3477  nonfin     178  simfail       0  hot 0.8558  spread ramp (6.830e-5, 4.954e-1)  drift ramp (1.075e-8, 4.364e7)
+    config_stability arm C   755.6s  escape 0.2415 collision 0.3605  nonfin    2071  simfail       0  hot 0.9257  spread ramp (5.519e-5, 4.953e-1)  drift ramp (1.082e-8, 4.828e7)
+    config_stability arm D   870.9s  escape 0.2017 collision 0.3477  nonfin     178  simfail       0  hot 0.8541  spread ramp (5.705e-5, 4.955e-1)  drift ramp (1.074e-8, 4.277e7)
+                      pair comparisons (chord on the shape sphere, diameter 2):
+                        A->B  moved   909184 (0.8671)  median 1.113e-1  max 2.000e0  labels flipped 348314
+                        C->D  moved   914569 (0.8722)  median 4.367e-2  max 2.000e0  labels flipped 301906
+                        B->D  moved   979644 (0.9343)  median 1.242e-2  max 2.000e0  labels flipped 145651
+                        A->C  moved   973512 (0.9284)  median 6.284e-2  max 2.000e0  labels flipped 291427
+                        A->D  moved   973739 (0.9286)  median 1.294e-1  max 2.000e0  labels flipped 353310
+
+        preset_shape arm D   325.3s  escape 0.0194 collision 0.8012  nonfin      42  simfail       0  hot 0.1743  spread ramp (1.786e-5, 4.682e-1)  drift ramp (5.504e-10, 3.342e3)
+
+         preset_prho arm D   806.9s  escape 0.9901 collision 0.0041  nonfin       0  simfail       0  hot 0.0116  spread ramp (1.334e-6, 1.978e-2)  drift ramp (1.245e-13, 2.375e-8)
+
+      preset_plambda arm D   611.9s  escape 0.4022 collision 0.4343  nonfin       0  simfail       0  hot 0.0034  spread ramp (1.525e-8, 1.970e-2)  drift ramp (3.805e-12, 8.176e-9)
+
+     preset_shape_pl arm D   503.4s  escape 0.3192 collision 0.4850  nonfin       0  simfail       0  hot 0.0456  spread ramp (1.472e-6, 2.146e-2)  drift ramp (1.494e-11, 1.120e-4)
+
+HOW TO READ THIS
+
+THE PREDICTION, stated so it can fail: the stacked-crescent banding in the green and
+blue mid-field of `_uniform` is PRESENT in arm B and GONE in arm D; arm C is smooth too
+and probably smoother than A; the white regions do not grow further and ideally shrink
+back toward A; magenta stays at arm B's level, near zero, because that was the `dtau`
+fix and it stands; and drift improves in D over B, not merely over A.
+
+If the crescents survive in arm D, that is a THIRD mechanism and it is worth knowing
+immediately rather than explaining.
+
+MEASURED, AND THE FIRST CLAUSE FAILED. The crescents are present in ALL FOUR arms,
+including A, which predates both changes -- so neither knob draws them. Under
+outcome-class colouring arm D's arcs vanish entirely while the region boundaries
+sharpen, which is RESULTS §21's standing result at a new site: the banding is a
+colouring artefact, the crisp edges are not. Every other clause held, and the magenta
+ran 30109 -> 2071 (clamp alone) -> 178 (both). See RESULTS §24.8.
+
+AND READ THE PAIR TABLE AT THIS RESOLUTION, NOT AT 48x48. The interaction ratio
+(A->B against C->D) is 2.5x here and 66x on the coarse grid -- the coarse grid is
+dominated by the tame majority while a million samples land in the chaotic population.
+`moved` orders the pairs BACKWARDS against `median`: B->D moves the most pixels and
+displaces them the least. See RESULTS §24.6.

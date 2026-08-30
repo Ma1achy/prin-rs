@@ -39,6 +39,15 @@ pub trait Real:
     const DRIFT_FLOOR: Self;
     /// Slack in the sync-boundary time test. Reference: `1e-15`.
     const SYNC_EPS: Self;
+    /// **Relative** slack in the landing test under `clamp_final_step`, as a fraction of the
+    /// interval's own `dt_left`.
+    ///
+    /// Relative, not absolute, and the scale-gauge test is what says so. Under the project's
+    /// scale symmetry all times rescale by `alpha^{3/2}`; an absolute slack does not, so at
+    /// `alpha = 0.25` the same tolerance is 8x wider in relative terms and a trajectory can land
+    /// one step earlier than its rescaled twin. `shape_spread_is_invariant_under_the_scale_symmetry`
+    /// asserts **bitwise** equality and caught it at `4.24e-15`.
+    const LAND_EPS_REL: Self;
     /// Distance floor in the escape test. Reference: `1e-12`.
     const DIST_FLOOR: Self;
     /// Distance floor in the legacy classifier. Reference: `1e-9`.
@@ -52,6 +61,7 @@ impl Real for f64 {
     const TINY: Self = 1e-300;
     const DRIFT_FLOOR: Self = 1e-30;
     const SYNC_EPS: Self = 1e-15;
+    const LAND_EPS_REL: Self = 1e-14;
     const DIST_FLOOR: Self = 1e-12;
     const CLASSIFY_FLOOR: Self = 1e-9;
 
@@ -68,6 +78,7 @@ impl Real for f32 {
     const DRIFT_FLOOR: Self = 1e-30;
     // f32 eps is ~1.19e-7, and at t ~ 13 the ulp is ~1e-6. A 1e-15 slack is no slack at all.
     const SYNC_EPS: Self = 1e-6;
+    const LAND_EPS_REL: Self = 1e-5;
     const DIST_FLOOR: Self = 1e-12;
     const CLASSIFY_FLOOR: Self = 1e-9;
 

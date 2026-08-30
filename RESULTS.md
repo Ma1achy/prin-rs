@@ -3756,6 +3756,269 @@ signature looks like.
 
 ---
 
+## 24. The boundary overshoot: the `dtau` fix shipped without its partner
+
+`§23` fixed how `dtau` is *sized* and left untouched how the interval *ends*. The two are not
+separable, and shipping the first alone made the images worse while the drift numbers improved.
+
+### 24.1 The mechanism, and why it interacts
+
+The march exits a sync interval by **overshooting** it — the loop condition was `s.t >= dt_left`
+— and only the *clock* was corrected:
+
+```rust
+// The overshoot past the boundary is clipped in the time bookkeeping only; the
+// state written back is the overshot one. Sub-step interpolation is not done.
+t += s.t.min(dt_left);
+```
+
+The Cartesian state handed to the next interval is the overshot one. That is a **first-order**
+error injected at every one of `n_sync` boundaries, inside an RK4 march.
+
+Under `FixedPerInterval` `dtau` is constant across the interval, so the overshoot is a fixed slice
+of fictitious time: every trajectory in a neighbourhood overshoots by roughly the same amount. The
+error is large but spatially **smooth** — it displaces the picture without breaking it.
+
+Under `PerStepInterval` the final step's size is a function of the local `A*B`, so the overshoot
+becomes **a function of local state** and neighbouring pixels overshoot by different amounts. A
+spatially-varying error injected at every boundary is measurably worse than a smooth one, and
+§24.4 and §24.6 measure exactly that.
+
+**The nested-arc appearance that prompted this was NOT produced by it.** §24.8 renders all four
+arms and the arcs are present in every one, including the arm that predates both changes. The
+defect is real and independently measured; it is not the cause of that picture. The rest of this
+section reports the defect. Read §24.8 before attributing any appearance to it.
+
+### 24.2 The four arms
+
+```text
+  A  dtau fixed      + overshoot present   the original committed behaviour
+  B  dtau per-step   + overshoot present   what §23 shipped
+  C  dtau fixed      + overshoot clamped
+  D  dtau per-step   + overshoot clamped   the default from here
+```
+
+Two knobs, four cells. Rendering only the diagonal would show a difference and say nothing about
+which knob produced it, and the claim being made is specifically about the cross terms.
+
+### 24.3 The fix
+
+`AzOpts::clamp_final_step`, default **on**, applied after `dtau_for_step` returns so it composes
+with every `DtauMode` rather than being a fourth mode:
+
+```rust
+let dtau = if clamp_final {
+    dtau.min((dt_left - s.t).max(T::zero()) / ab)
+} else { dtau };
+```
+
+`ab` is **the same floored product the mode already computed**. Recomputing it would let the clamp
+and the step disagree.
+
+**The landing tolerance is RELATIVE to `dt_left`, and an absolute one is a bug the suite caught.**
+All times rescale by `alpha^{3/2}` under the project's scale gauge, so an absolute slack is a
+different tolerance at every scale: at `alpha = 0.25` the same `1e-15` is eight times wider in
+relative terms and a rescaled twin can land one step earlier. `gauge_invariance::
+shape_spread_is_invariant_under_the_scale_symmetry` asserts **bitwise** equality and fired at
+`4.24e-15`. `Real::LAND_EPS_REL` is `1e-14` at f64 and `1e-5` at f32.
+
+### 24.4 The convergence order — the cheapest confirmation, and it is the ORDER that matters
+
+Chenciner–Montgomery figure-eight, equal masses, integrated over exactly one period,
+`n_sync = 32` fixed so the number of boundaries is the same at every `eta`. `closure` is the max
+component difference between the state at `T` and the state at `0` — a pure error measure with no
+reference trajectory and no chaotic amplification.
+
+| arm | `eta = 0.02` | `0.01` | `0.005` | `0.002` | `0.001` | **order** |
+|---|---|---|---|---|---|---|
+| A `fixed` + overshoot | 8.665e-2 | 3.473e-2 | 1.975e-2 | 7.884e-3 | 2.976e-3 | **1.13** |
+| B `per-step` + overshoot | 4.681e-2 | 2.182e-2 | 9.191e-3 | 4.082e-3 | 1.950e-3 | **1.06** |
+| C `fixed` + clamp | 3.420e-5 | 6.735e-6 | 1.123e-6 | 3.241e-7 | 3.595e-9 | **3.06** |
+| D `per-step` + clamp | 7.212e-5 | 1.805e-5 | 4.500e-6 | 6.885e-7 | 1.435e-7 | **2.08** |
+
+**An error falls for many reasons; only the order says the leading term changed.** First-order to
+roughly third, and the error at `eta = 0.001` falls **827,000x** (A → C).
+
+**D lands at 2, not at C's 3, and that is stated rather than smoothed.** The clamp sizes the final
+step from the *instantaneous* `A*B`, which predicts the time increment to first order, so the
+landing residual is `O(h^2)` per boundary — and where that residual overshoots, the tolerance
+accepts it rather than paying another step. Under `FixedPerInterval` the entry `dtau` is a better
+predictor of the whole interval and the residual is smaller. Two is ample against one; three would
+be better and is not what this implementation gives.
+
+**Read the per-rung columns as noise.** Each is a two-point estimate over a factor of two and C's
+run 2.34, 2.58, 1.36, 6.49. The endpoint slope across the decade is the measurement.
+
+### 24.5 ENERGY DRIFT IS NEARLY BLIND TO THIS DEFECT
+
+The diagnostic field that found §23's bug **cannot find this one.**
+
+| case | arm | drift p50 | drift p99 | hot | nonfin | budget | steps p50 |
+|---|---|---|---|---|---|---|---|
+| near-field | A | 1.515e-9 | 2.428e-6 | 0.0113 | 0 | 0 | 3961 |
+| near-field | B | 1.233e-9 | 2.427e-7 | 0.0082 | 0 | 0 | 4311 |
+| near-field | C | 5.555e-8 | 1.768e-6 | 0.0135 | 0 | 0 | 4064 |
+| near-field | D | **1.125e-9** | **2.168e-7** | **0.0061** | 0 | 0 | 4375 |
+| deep interior | A | 2.094e-1 | 3.364e6 | 0.9206 | 42 | 3 | 4725 |
+| deep interior | B | 1.613e-4 | 6.077e5 | 0.7799 | 15 | 1 | 5427 |
+| deep interior | C | 1.824e-1 | 1.783e6 | 0.9193 | 45 | 2 | 4721 |
+| deep interior | D | 1.960e-4 | **2.881e4** | 0.7808 | 17 | **0** | 5451 |
+| config_stability | A | 2.549e-6 | 5.789e3 | 0.5621 | 7 | 0 | 13995 |
+| config_stability | B | 8.083e-8 | 6.233e3 | 0.3056 | 5 | 1 | 15308 |
+| config_stability | C | 2.065e-6 | 4.190e3 | 0.5473 | 4 | 0 | 14114 |
+| config_stability | D | 8.688e-8 | **2.151e3** | 0.3090 | 7 | 1 | 15392 |
+
+`48x48` nominal trajectories, `eta = 1e-2`, nothing terminal.
+
+**A → C moves the median drift 37x the WRONG WAY in near-field** (1.5e-9 to 5.6e-8) while the same
+change buys 24,000x on the figure-eight. The overshoot displaces the state in *time*, and the AZ
+energy is nearly stationary along the flow, so a time displacement barely registers in `|dE/E|`.
+The NumPy smoke test says the same: median drift 3.197e-9 → 4.047e-9 under the clamp at `fixed`.
+
+**The generalisation, and it is the correction to §23's own lesson.** *Render the diagnostic field,
+not the science field* is right, and incomplete: **a diagnostic field is specific to a class of
+defect.** Energy drift finds a step that grew too large. It does not find a step that ended in the
+wrong place. Ask what the diagnostic would say about the defect you are looking for before reading
+it as clean.
+
+What the drift table *does* confirm is the prediction's last clause: **D improves on B**, not merely
+on A — `drift p99` 6.077e5 → 2.881e4 in `deep interior` (21x) and 6233 → 2151 in `config_stability`
+(2.9x), with `budget` 1 → 0 and 1 → 1. The clamp is not paid for in step budget: `steps p50` rises
+0.3–1.5% from B to D.
+
+### 24.6 HOW MUCH OF THE FIELD MOVES — and THE TWO RESOLUTIONS DISAGREE BY 26x
+
+Chord between final shape vectors, on a sphere of diameter 2. **At 1024², the shipping
+resolution**, all four arms in one run so the pairs are exact:
+
+| pair | moved | frac | chord p50 | chord max | labels flipped |
+|---|---|---|---|---|---|
+| A→B | 909184 | 0.8671 | **1.113e-1** | 2.000e0 | 348314 |
+| C→D | 914569 | 0.8722 | **4.367e-2** | 2.000e0 | 301906 |
+| B→D | 979644 | 0.9343 | 1.242e-2 | 2.000e0 | 145651 |
+| A→C | 973512 | 0.9284 | 6.284e-2 | 2.000e0 | 291427 |
+| A→D | 973739 | 0.9286 | 1.294e-1 | 2.000e0 | 353310 |
+
+**A→B reproduces §23's render exactly** — 909184 moved, median 1.113e-1, 348314 labels — which is
+what says this run and that one are the same measurement.
+
+**THE INTERACTION IS REAL AND FAR SMALLER THAN THE 48x48 GRID SAID.** Under the clamp, switching
+`dtau_mode` moves the field **2.5x** less (A→B 1.113e-1 against C→D 4.367e-2). On the 48x48 grid
+the same ratio read **66x** in `config_stability` and **316x** in `near-field`:
+
+| case | resolution | A→B chord p50 | C→D chord p50 | ratio |
+|---|---|---|---|---|
+| `config_stability` | 48x48 | 1.565e-2 | 2.374e-4 | **66x** |
+| `config_stability` | **1024²** | 1.113e-1 | 4.367e-2 | **2.5x** |
+| `near-field` | 48x48 | 1.854e-2 | 5.876e-5 | 316x |
+
+**Quote the 1024² number.** The standing rule is *read the max and the moved count at the
+resolution that ships*, and it applies to the median too — for the opposite reason to last time. In
+§23 the coarse grid **understated** the effect eightfold; here it **overstates** the improvement
+twenty-six-fold, because 2304 samples over the same window are dominated by the tame majority
+while a million samples land squarely in the chaotic population, where any change to the step
+control diverges regardless. Both directions are the same defect: a grid coarse enough to miss the
+population that matters.
+
+The 48x48 rows in §24.5 stand as they are — drift is a per-trajectory statistic and does not have
+this problem — but **no chord ratio should be quoted from them.**
+
+**`moved` ORDERS THE PAIRS BACKWARDS.** B→D moves the *most* pixels (0.9343) and displaces them the
+*least* (1.242e-2); A→B moves the fewest (0.8671) and displaces them the most (1.113e-1). It counts
+pixels differing in the last bit, which on a chaotic field is a fact about the field and not about
+the change — the whole table sits in 0.867–0.934, and its ordering is the reverse of the magnitude
+one. The 87% figure §23 reported is that statistic; it is a real and correct number that answers a
+different question than the one it was read as answering. **`chord p50` is the discriminator.**
+
+`chord max` is **2.000 — antipodal — in every pair**, which is the same statement one level up:
+somewhere on a million-pixel chaotic slice, two step controls put a trajectory on opposite poles of
+the shape sphere. That is not evidence about either change.
+
+### 24.7 IS THE SLICE RESOLVED AT ALL? — arm D at `eta`, `eta/2`, `eta/4`
+
+| case | pair | moved | chord p50 | chord max | drift p50 |
+|---|---|---|---|---|---|
+| near-field | 1.00e-2 → 5.00e-3 | 2304 | 2.116e-5 | 9.982e-4 | 7.001e-11 |
+| near-field | 5.00e-3 → 2.50e-3 | 2304 | **5.272e-6** | 1.678e-5 | 4.358e-12 |
+| deep interior | 1.00e-2 → 5.00e-3 | 2287 | 4.709e-2 | 1.999e0 | 6.839e-6 |
+| deep interior | 5.00e-3 → 2.50e-3 | 2290 | **5.505e-3** | 1.999e0 | 2.924e-7 |
+| config_stability | 1.00e-2 → 5.00e-3 | 2299 | 2.119e-5 | 1.996e0 | 4.584e-9 |
+| config_stability | 5.00e-3 → 2.50e-3 | 2304 | **4.254e-6** | 1.990e0 | 2.640e-10 |
+
+**`config_stability` IS resolved at the shipping settings, and the ratio says so quantitatively.**
+The median displacement falls **4.98x for a 2x step reduction** — consistent with §24.4's order
+2.08 — and its absolute level at `eta = 1e-2` is `2e-5` on a diameter-2 sphere, one part in
+100,000. Horizon 50 was a live worry; it is not the answer here. `near-field` falls 4.01x, the same
+story.
+
+**`deep interior` does not converge in any useful sense and never will.** Its chord median falls
+8.6x but from `4.7e-2`, and its max sits at 1.999 — antipodal — at every rung. That is chaotic
+divergence over `t = 13`, not a discretisation artefact, and no step size buys it off. The
+distinction matters: *a difference can be small because both sides are right or because both are
+dead*, and here it is large because the physics is.
+
+### 24.8 THE RENDERS — THE PREDICTION FAILS ON ITS MAIN CLAUSE
+
+`examples/overshoot_render.rs`, 1024², one sample per pixel, `results/overshoot_fix/`. Panels are
+`<case>_arm{A,B,C,D}_{uniform,outcome,drift}.png`. `results/dtau_fix/` is the "before" for this
+comparison and is untouched.
+
+| arm | escape | collision | **nonfin** | simfail | hot | spread ramp | drift ramp |
+|---|---|---|---|---|---|---|---|
+| A `fixed` + overshoot | 0.2618 | 0.3632 | **30109** | 0 | 0.9285 | (6.850e-5, 4.955e-1) | (1.079e-8, 4.071e7) |
+| B `per-step` + overshoot | 0.2048 | 0.3477 | **178** | 0 | 0.8558 | (6.830e-5, 4.954e-1) | (1.075e-8, 4.364e7) |
+| C `fixed` + clamp | 0.2415 | 0.3605 | **2071** | 0 | 0.9257 | (5.519e-5, 4.953e-1) | (1.082e-8, 4.828e7) |
+| D `per-step` + clamp | 0.2017 | 0.3477 | **178** | 0 | 0.8541 | (5.705e-5, 4.955e-1) | (1.074e-8, 4.277e7) |
+
+**Arms A and B reproduce `dtau_fix`'s `fixoff` and `fixon` rows exactly** — 30109 and 178
+non-finite, ramps identical to four digits. The new flag does not leak into the old paths and the
+comparison is clean by construction.
+
+**The prediction, clause by clause:**
+
+| clause | verdict |
+|---|---|
+| the stacked-crescent banding in the green and blue mid-field of `_uniform` **disappears in D** and is present in B | **FAILS** |
+| arm C is smooth too, and probably smoother than A | holds — magenta 30109 → 2071, speckle largely gone |
+| the white regions do not grow further, ideally shrinking toward A | holds — extent unchanged; A's pale regions are the *noisiest* |
+| magenta stays at arm B's level, near zero | **holds exactly** — 178 = 178 |
+| drift improves in D over B, not merely over A | holds — `drift p99` 6.077e5 → 2.881e4 in `deep interior` (§24.5) |
+
+**THE CRESCENTS ARE PRESENT IN ALL FOUR ARMS, INCLUDING THE ONE THAT PREDATES BOTH CHANGES.** The
+dark-green wedge left of centre carries the same stacked chevrons in A, B, C and D; the lower-right
+blue band carries the same nested arcs in all four. Neither knob causes the banding and neither
+removes it. **The mechanism proposed for it in §24.1 — a spatially-varying overshoot whose
+accumulated level sets are nested arcs — is not what produces these.** That mechanism is real, and
+§24.4 and §24.6 measure it; it is not the cause of this appearance.
+
+**What the arcs are, as far as this measures.** Under outcome-class colouring arm D's arcs **vanish
+entirely**, and the region boundaries survive and sharpen into solid blocks with genuinely
+fractal-mixed zones between them. That is §21's standing result at a new site: *the banding is a
+colouring artefact; the crisp edges are not.* Whether it is the **same** mechanism — closure's
+`t_end` being irreducibly quantised to the boundary cadence — is **not tested here and is not
+claimed.** What is established is narrower and firmer: the arcs live in the continuous field's
+ramp, they predate both knobs, and no step-control change touches them.
+
+**A → D is still the whole case for the pair.** A's outcome panel is shredded — magenta swathes
+through the red bands and salt-and-pepper everywhere; D's is solid. And the attribution splits
+cleanly: the `dtau` fix removes the magenta (30109 → 178, and 2071 → 178 on top of the clamp), the
+clamp removes most of what is left on its own (30109 → 2071), and **neither touches the arcs**.
+
+**The presets at arm D, against `dtau_fix`'s `fixon`:** non-finite `preset_prho` 1 → 0,
+`preset_plambda` 0 → 0, `preset_shape_pl` 1 → 0, and **`preset_shape` 27 → 42**. The one that rises
+is the chart whose undetermined pixels are already on record as *the chart, not the grid* — triple
+collisions, stable across resolution, zero `SimFailed` at every grid size. 42 of 1,048,576 is
+0.004%, and it is the instrument reporting rather than a fault. `simfail` is 0 on all four presets
+under both arms, so nothing was traded.
+
+*A finding read off a wireframe is a finding about an appearance* — the standing rule — and this is
+the same at a render. The appearance was taken seriously, it produced a real and independently
+measurable defect (§24.4, first order to third), and it turned out not to be the cause of the
+appearance that prompted it. Both halves are worth recording.
+
+
+---
+
 ## 13. Reproducing any of this
 
 **Two of these commands were wrong, and only running them found it.** The `pan_sequence` line said
@@ -3859,7 +4122,11 @@ Every table above comes from a committed example. Raw output for all of them is 
 | §23.11 the mode-discrimination tests | `cargo test --release --test dtau_step_control` — four tests, each naming the configuration in which it fires |
 | §23.10 the cross-check, three ways | `cargo test --release --test xcheck -- --ignored` and again with `PRIN_DTAU_MODE=fixed`. The mode is in the TSV header and `compare.py` asserts headers match, so a mismatched pair is refused rather than compared |
 | §23 renders | `cargo run --release --example dtau_render -- 1024 results all dtau_fix` — writes `results/dtau_fix/`, **never** over the committed "before" set. Args are `res root only sub`; `only` filters to one case |
-| the reference smoke test | `reference/README.md`. `fixed` reproduces the committed pre-fix file bitwise at `3.1966735584829495e-09`; the fix gives `4.462793760861922e-10`. The number the README used to quote, `3.892633125701676e-09`, does not reproduce on the unmodified committed reference either |
+| §24.4-24.7 the overshoot measurement | `cargo run --release --example overshoot -- 48` — stdout only, `results/output/overshoot.txt`. §1 is the figure-eight and needs no grid; it runs in under a second and is the cheapest confirmation the clamp works |
+| §24 the clamp tests | `cargo test --release --test overshoot_clamp` — three tests, each carrying the control arm that says it could have failed |
+| §24 renders | `cargo run --release --example overshoot_render -- 1024 results all overshoot_fix` — writes `results/overshoot_fix/`, **never** over `results/dtau_fix/`, which is this comparison's "before". Args are `res root only sub arms`; `arms` is a subset of `ABCD`, so an interrupted run resumes rather than repeating ~15 min per arm. **The pair table needs all four arms in ONE run** — `... 1024 results config_stability overshoot_fix ABCD` — and must be read at 1024², never at 48x48 (§24.6) |
+| §24.3 the cross-check under both knobs | `PRIN_DTAU_MODE=per-step-interval PRIN_CLAMP_FINAL=1 cargo test --release --test xcheck -- --ignored`, and again with `fixed`/`0`. Both read **4/4 PASS**. A deliberately mismatched pair is refused by `compare.py`'s header assertion, which now carries `clamp_final` as well as `dtau_mode` |
+| the reference smoke test | `reference/README.md`. it now runs **all four arms**. `fixed`+overshoot reproduces the committed pre-fix file bitwise at `3.1966735584829495e-09`; the four read `3.197e-9`, `4.463e-10`, `4.047e-9`, `4.153e-10` — and the clamp moves the median *up* under `fixed`, which is §24.5's point about the drift field being blind to this defect. The number the README used to quote, `3.892633125701676e-09`, does not reproduce on the unmodified committed reference either |
 | §21.6 persistence and precedence | `cargo run --release --example escape_persistence -- 48 13 32` |
 | the signal audit against the DP labels | `cargo run --release --example signal_audit -- 7 8 1e-4 13 <scratch>` (~2 h; it enables the FTLE march, which is ~2.5x a plain build. **Point it at a scratch root**) |
 | §20.6 firing the bound assert cheaply | `cargo run --release --example criterion_metric -- 4 8 1e-4 13 /tmp/scratch` |

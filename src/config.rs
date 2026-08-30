@@ -133,6 +133,7 @@ pub fn parse(args: &[String]) -> Result<Config, String> {
                     )),
                 };
             }
+            "--no-clamp-final" => c.ens.clamp_final_step = false,
             "--no-stop" => c.ens.stop_on_event = false,
             "--no-refine" => c.ens.refine_flagged = false,
             "--refine-threshold" => { c.ens.refine_threshold = get(i)?.parse().map_err(|e| format!("{e}"))?; i += 1; }

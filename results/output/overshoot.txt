@@ -1,0 +1,104 @@
+== 1. THE FIGURE-EIGHT -- CONVERGENCE ORDER ==
+Chenciner-Montgomery at equal masses, integrated over exactly one period
+(T = 6.32591398), n_sync = 32 fixed so the number of boundaries -- and so the
+number of overshoots -- is the same at every `eta`. `closure` is the max component
+difference between the state at T and the state at 0.
+
+**READ THE ORDER, NOT THE ERROR.** An error falls for many reasons; only the order says
+the leading term changed. Without the clamp the overshoot is O(h) and dominates an RK4
+march; with it, the boundary contributes at the stepper's own order.
+
+arm                         eta      closure        drift    order     steps
+A fixed   +overshoot     0.0200    8.6653e-2    1.478e-10       --      1604
+A fixed   +overshoot     0.0100    3.4729e-2    7.835e-12     1.32      3196
+A fixed   +overshoot     0.0050    1.9753e-2    4.570e-13     0.81      6385
+A fixed   +overshoot     0.0020    7.8836e-3    1.294e-14     1.00     15949
+A fixed   +overshoot     0.0010    2.9757e-3    3.105e-15     1.41     31887
+A fixed   +overshoot    overall                               1.13          
+
+B perstep +overshoot     0.0200    4.6813e-2    8.947e-11       --      1625
+B perstep +overshoot     0.0100    2.1815e-2    5.098e-12     1.10      3242
+B perstep +overshoot     0.0050    9.1914e-3    2.976e-13     1.25      6476
+B perstep +overshoot     0.0020    4.0819e-3    1.035e-15     0.89     16182
+B perstep +overshoot     0.0010    1.9496e-3    5.348e-15     1.07     32357
+B perstep +overshoot    overall                               1.06          
+
+C fixed   +clamp         0.0200    3.4198e-5    1.062e-10       --      1626
+C fixed   +clamp         0.0100    6.7346e-6    6.730e-12     2.34      3218
+C fixed   +clamp         0.0050    1.1230e-6    4.180e-13     2.58      6404
+C fixed   +clamp         0.0020    3.2405e-7    4.002e-14     1.36     15966
+C fixed   +clamp         0.0010    3.5952e-9    4.313e-15     6.49     31910
+C fixed   +clamp        overall                               3.06          
+
+D perstep +clamp         0.0200    7.2120e-5    7.322e-11       --      1644
+D perstep +clamp         0.0100    1.8051e-5    4.573e-12     2.00      3258
+D perstep +clamp         0.0050    4.4997e-6    2.931e-13     2.00      6490
+D perstep +clamp         0.0020    6.8845e-7    1.898e-14     2.05     16196
+D perstep +clamp         0.0010    1.4352e-7    1.846e-14     2.26     32372
+D perstep +clamp        overall                               2.08          
+
+== 2. DRIFT AND NON-FINITE, PER ARM ==
+48x48 nominal trajectories per case at eta = 1e-2, nothing terminal.
+`hot` is the fraction above 1e-6. `budget` is the step-budget exhaustion count and
+is SEPARATE from `nonfin` on purpose: a change that swapped one failure for the other
+would have moved the magenta count and fixed nothing.
+
+case               arm                      drift p50   drift p99      hot   nonfin   budget  steps p50
+near-field         A fixed   +overshoot      1.515e-9    2.428e-6   0.0113        0        0       3961
+near-field         B perstep +overshoot      1.233e-9    2.427e-7   0.0082        0        0       4311
+near-field         C fixed   +clamp          5.555e-8    1.768e-6   0.0135        0        0       4063
+near-field         D perstep +clamp          1.125e-9    2.168e-7   0.0061        0        0       4374
+
+deep interior      A fixed   +overshoot      2.094e-1     3.364e6   0.9206       42        3       4725
+deep interior      B perstep +overshoot      1.613e-4     6.077e5   0.7799       15        1       5427
+deep interior      C fixed   +clamp          1.824e-1     1.783e6   0.9193       43        2       4721
+deep interior      D perstep +clamp          1.960e-4     2.881e4   0.7808       18        0       5451
+
+config_stability   A fixed   +overshoot      2.549e-6     5.789e3   0.5621        7        0      13995
+config_stability   B perstep +overshoot      8.083e-8     6.233e3   0.3056        5        1      15308
+config_stability   C fixed   +clamp          2.063e-6     4.190e3   0.5473        4        1      14111
+config_stability   D perstep +clamp          8.688e-8     2.011e3   0.3090        8        1      15388
+
+== 3. HOW MUCH OF THE FIELD MOVES BETWEEN ARMS ==
+Chord between final shape vectors, over the unit sphere (diameter 2). **A CONVERGED
+INTEGRATION DOES NOT MOVE MOST OF A FIELD ON A STEP-CONTROL CHANGE.** The A->B figure
+is the red flag; if the clamp is doing what it claims, C->D is much smaller. `undef`
+counts pixels with no shape under one arm or the other -- not moved, absent.
+
+case               pair              moved     frac    undef   chord p50   chord max
+near-field         A->B               2304   1.0000        0    1.854e-2    1.455e-1
+near-field         C->D               2304   1.0000        0    5.876e-5    6.885e-2
+near-field         B->D               2304   1.0000        0    1.760e-2    3.319e-2
+near-field         A->C               2304   1.0000        0    3.709e-2    1.644e-1
+near-field         A->D               2304   1.0000        0    3.731e-2    1.645e-1
+
+deep interior      A->B               2271   0.9857       33     1.002e0     1.998e0
+deep interior      C->D               2267   0.9839       37    8.348e-1     2.000e0
+deep interior      B->D               2283   0.9909       21    1.659e-1     2.000e0
+deep interior      A->C               2255   0.9787       49     1.058e0     2.000e0
+deep interior      A->D               2271   0.9857       33     1.039e0     2.000e0
+
+config_stability   A->B               2295   0.9961        7    1.565e-2     1.999e0
+config_stability   C->D               2297   0.9970        6    2.374e-4     1.997e0
+config_stability   B->D               2296   0.9965        8    1.192e-2     1.989e0
+config_stability   A->C               2295   0.9961        9    2.456e-2     1.997e0
+config_stability   A->D               2294   0.9957       10    2.589e-2     1.969e0
+
+== 4. IS THIS SLICE RESOLVED AT ALL? ==
+Arm D at eta, eta/2, eta/4. **If the image keeps moving as the step falls, no single
+bug is the answer** -- the slice is unresolved at these settings and every render from
+it is a picture of the discretisation as much as of the physics. Horizon 50 is close to
+the f64 predictability horizon for this system, so this is a live possibility rather
+than a formality. The figure to watch is whether `chord p50` FALLS between the rungs.
+
+case               pair                  moved     frac   chord p50   chord max   drift p50
+near-field         1.00e-2->5.00e-3       2304   1.0000    2.116e-5    9.982e-4   7.001e-11
+near-field         5.00e-3->2.50e-3       2304   1.0000    5.272e-6    1.678e-5   4.358e-12
+
+deep interior      1.00e-2->5.00e-3       2287   0.9926    4.709e-2     1.999e0    6.839e-6
+deep interior      5.00e-3->2.50e-3       2290   0.9939    5.505e-3     1.999e0    2.924e-7
+
+config_stability   1.00e-2->5.00e-3       2299   0.9978    2.119e-5     1.996e0    4.584e-9
+config_stability   5.00e-3->2.50e-3       2304   1.0000    4.254e-6     1.990e0   2.640e-10
+
+DONE

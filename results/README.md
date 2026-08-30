@@ -765,6 +765,42 @@ window is where the magnitude lives.
 The committed renders elsewhere in this directory are the **"before"** for every claim §23 makes
 and are not touched by this run.
 
+## `overshoot_fix/` — the four arms, from `examples/overshoot_render.rs`
+
+```
+cargo run --release --example overshoot_render -- 1024 results all overshoot_fix
+```
+
+`<case>_arm{A,B,C,D}_{uniform,outcome,drift}.png`, 1024². **Two knobs, four cells:**
+
+```text
+  A  dtau fixed      + overshoot present   the original committed behaviour
+  B  dtau per-step   + overshoot present   what `dtau_fix/` shipped
+  C  dtau fixed      + overshoot clamped
+  D  dtau per-step   + overshoot clamped   the default from here
+```
+
+Rendering only the diagonal would show a difference and say nothing about which knob produced it,
+and the claim is specifically about the cross terms. `config_stability` carries all four; the four
+presets are arm D only.
+
+**Read `RESULTS.md` §24.8 before attributing any appearance to the step control.** The nested-arc
+banding these panels were made to test is present in **all four arms**, including `armA`, which
+predates both changes — so neither knob draws it, and under outcome-class colouring arm D's arcs
+vanish while the region boundaries sharpen. What the two changes do remove is the magenta:
+`armA` 30109 non-finite pixels, `armC` 2071, `armB` and `armD` **178**, with `simfail` 0 throughout.
+`armA` and `armB` reproduce `dtau_fix/`'s `fixoff` and `fixon` exactly, which is what makes the
+comparison clean.
+
+`dtau_fix/`'s images are the **"before"** for this comparison and are not touched by this run,
+exactly as the committed renders were the "before" for that one.
+
+**Note which panel can and cannot see this defect.** `_drift.png` found the `dtau` blow-up and is
+close to blind here — the overshoot displaces the state in *time* and the AZ energy is nearly
+stationary along the flow, so the clamp buys 24,000× on the figure-eight closure error while moving
+`near-field`'s median drift 37× the *wrong* way. The instrument for this class is a convergence
+order, not a field: `examples/overshoot.rs` §1. See `../NOTES.md` §14 and `../RESULTS.md` §24.
+
 ## A note on raster sizes
 
 Everything generated in this build is **1024²** (figures are 1400×800; budget side-by-sides are

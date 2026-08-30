@@ -391,6 +391,7 @@ fn escape_every_moves_t_end_off_the_sync_boundary_and_is_inert_at_zero() {
     let dt_sync = t_max / n_sync as f64;
     let opts = |ev: usize| AzOpts::<f64> {
         dtau_mode: prin_rs::integrate::az::DtauMode::default(),
+        clamp_final_step: true,
         forced_refs: None,
         lc_stable: true,
         r_coll_frac: 1e-3,
@@ -481,6 +482,7 @@ fn escape_confirm_cuts_transients_and_keeps_genuine_escapes() {
     let (t_max, n_sync) = (13.0f64, 32usize);
     let opts = |confirm: bool| AzOpts::<f64> {
         dtau_mode: prin_rs::integrate::az::DtauMode::default(),
+        clamp_final_step: true,
         forced_refs: None,
         lc_stable: true,
         r_coll_frac: 1e-3,

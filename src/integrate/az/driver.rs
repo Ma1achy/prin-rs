@@ -1451,8 +1451,18 @@ pub struct SoftRefOut<T> {
     pub finite: bool,
 }
 
-/// One sync interval under one reference body. `None` on a non-finite state or an exhausted
-/// budget — those are outcomes the caller must see, not values to substitute for.
+/// One sync interval under one reference body, returning the endpoint **and the interval-local
+/// physical time it actually reached**.
+///
+/// The achieved time is not `dt_left`. The landing clamp sizes the final step from the
+/// *instantaneous* `A*B`, a first-order predictor of the time increment, so the landing residual
+/// is `O(h^2)` — which is exactly why the measured convergence order is 2.08 and not 3.06. Two
+/// charts have different `A*B` and therefore land at *different* physical times, and comparing
+/// their endpoints without accounting for that would manufacture a difference out of the time
+/// transformations themselves. Callers must have the number to correct or to report.
+///
+/// `None` on a non-finite state or an exhausted budget — those are outcomes the caller must see,
+/// not values to substitute for.
 ///
 /// `StepLimit::Reject` is **not** supported here and is treated as no limit: a retry loop makes
 /// the arm's cost depend on its own rejections, which would confound the arm-count column that
@@ -1465,7 +1475,7 @@ fn march_interval<T: Real>(
     eta: T,
     max_steps: usize,
     opts: &AzOpts<T>,
-) -> Option<Cart<T>> {
+) -> Option<(Cart<T>, T)> {
     let (ab, bb, cb) = triple(a);
     let sys = if opts.lc_stable {
         AzSystem::new(ab, bb, cb, *m)
@@ -1504,7 +1514,7 @@ fn march_interval<T: Real>(
         s = rk4::step(&sys, &s, e, ss.dtau);
         steps += 1;
     }
-    Some(sys.to_cartesian(&s))
+    Some((sys.to_cartesian(&s), s.t))
 }
 
 /// **A softmax over the reference-body choice, instead of an argmax.**
@@ -1591,7 +1601,7 @@ pub fn integrate_softref<T: Real>(
             }
             let a = crate::physics::THIRD[j];
             match march_interval(&cart, m, a, dt_left, eta, max_steps, opts) {
-                Some(c) => {
+                Some((c, _)) => {
                     arms += 1;
                     let wj = w[j] / live;
                     for i in 0..3 {
@@ -1627,18 +1637,35 @@ pub fn integrate_softref<T: Real>(
 }
 
 /// What [`branch_jump`] measured at one chart-switching event.
+///
+/// **Position and velocity are reported separately, never as one norm.** They are dimensionally
+/// different, so a combined Euclidean norm is arbitrary unless phase space has been explicitly
+/// non-dimensionalised, which it has not been here.
 #[derive(Clone, Copy, Debug)]
 pub struct BranchJump<T> {
-    /// The boundary was reached and both charts integrated. `false` means no measurement, not a
+    /// The boundary was reached and every arm integrated. `false` means no measurement, not a
     /// measurement of zero.
     pub ok: bool,
-    /// `||Phi_i(x_n) - Phi_j(x_n)||` over positions — the jump crossing the argmax surface
-    /// injects, at the same incoming Cartesian state.
-    pub delta_chart: T,
-    /// The same interval, same chart, at `eta` against `eta/2`: the ORDINARY local step error.
-    /// The normaliser, and the whole point — `ref_tie -> 1` says where a discontinuity *can*
-    /// occur and says nothing about its amplitude.
-    pub delta_step: T,
+    /// `|| r_win - r_alt ||` at a **common physical time** — the jump crossing the argmax surface.
+    pub dr_chart: T,
+    /// `|| v_win - v_alt ||` at the same common time.
+    pub dv_chart: T,
+    /// The same interval, same chart, `eta` against `eta/2`: the ORDINARY local step error, and
+    /// the normaliser. Without it an absolute jump is unreadable — a large number on a violent
+    /// interval and a small one on a quiet interval say the same thing.
+    pub dr_step: T,
+    pub dv_step: T,
+    /// **The confound, measured rather than assumed.** The two charts land at different physical
+    /// times because the landing residual is `O(h^2)` and `A*B` differs between them. This is
+    /// `|t_win - t_alt|`.
+    pub dt_mismatch: T,
+    /// `|| r_win - r_alt ||` **without** the common-time correction. If this differs materially
+    /// from `dr_chart`, the time mismatch was doing the work and the raw comparison would have
+    /// manufactured a branch discrepancy out of the time transformations themselves.
+    pub dr_raw: T,
+    /// Largest speed at the endpoint — with `dt_mismatch`, the displacement the mismatch alone
+    /// could explain.
+    pub speed: T,
     /// Second-longest over longest at the entry state: distance to the selector's surface.
     pub ref_tie: T,
     /// The argmax winner and the runner-up.
@@ -1672,8 +1699,13 @@ pub fn branch_jump<T: Real>(
 ) -> BranchJump<T> {
     let none = BranchJump {
         ok: false,
-        delta_chart: T::nan(),
-        delta_step: T::nan(),
+        dr_chart: T::nan(),
+        dv_chart: T::nan(),
+        dr_step: T::nan(),
+        dv_step: T::nan(),
+        dt_mismatch: T::nan(),
+        dr_raw: T::nan(),
+        speed: T::nan(),
         ref_tie: T::nan(),
         ref_win: 0,
         ref_alt: 0,
@@ -1687,7 +1719,7 @@ pub fn branch_jump<T: Real>(
         let dt_left = t_max * T::lit((k + 1) as f64 / n_sync as f64) - t;
         let a = super::reference_body::choose_reference(&cart.r);
         match march_interval(&cart, m, a, dt_left, eta, max_steps, opts) {
-            Some(c) => cart = c,
+            Some((c, _)) => cart = c,
             None => return none,
         }
     }
@@ -1702,11 +1734,25 @@ pub fn branch_jump<T: Real>(
     let t = t_max * T::lit(n as f64 / n_sync as f64);
     let dt_left = t_max * T::lit((n + 1) as f64 / n_sync as f64) - t;
 
-    let dist = |a: &Cart<T>, b: &Cart<T>| -> T {
-        (0..3)
-            .map(|i| (a.r[i] - b.r[i]).norm_sq())
-            .fold(T::zero(), |x, y| x + y)
-            .sqrt()
+    // Separate norms, per the note on `BranchJump`.
+    let dr = |a: &Cart<T>, b: &Cart<T>| -> T {
+        (0..3).map(|i| (a.r[i] - b.r[i]).norm_sq()).fold(T::zero(), |x, y| x + y).sqrt()
+    };
+    let dv = |a: &Cart<T>, b: &Cart<T>| -> T {
+        (0..3).map(|i| (a.v[i] - b.v[i]).norm_sq()).fold(T::zero(), |x, y| x + y).sqrt()
+    };
+    // **Bring an arm to the common target time.** The landing residual is `O(h^2)` and differs
+    // between charts, so the arms stop at different physical times; a first-order drift by the
+    // endpoint velocity removes that, and its own error is `O(dt^2 * accel)` with `dt ~ h^2`,
+    // i.e. `O(h^4)` — far below what is being measured. The uncorrected value is returned too,
+    // so the size of the correction is visible rather than trusted.
+    let to_time = |c: &Cart<T>, reached: T, target: T| -> Cart<T> {
+        let d = target - reached;
+        let mut o = *c;
+        for i in 0..3 {
+            o.r[i] = o.r[i] + o.v[i] * d;
+        }
+        o
     };
 
     let two = T::lit(2.0);
@@ -1715,14 +1761,29 @@ pub fn branch_jump<T: Real>(
         march_interval(&cart, m, alt, dt_left, eta, max_steps, opts),
         march_interval(&cart, m, win, dt_left, eta / two, max_steps * 2, opts),
     ) {
-        (Some(a), Some(b), Some(a2)) => BranchJump {
-            ok: true,
-            delta_chart: dist(&a, &b),
-            delta_step: dist(&a, &a2),
-            ref_tie,
-            ref_win: win,
-            ref_alt: alt,
-        },
+        (Some((a, ta)), Some((b, tb)), Some((a2, ta2))) => {
+            let (ca, cb) = (to_time(&a, ta, dt_left), to_time(&b, tb, dt_left));
+            let ca2 = to_time(&a2, ta2, dt_left);
+            let speed = (0..3)
+                .map(|i| a.v[i].norm_sq().sqrt())
+                .fold(T::zero(), |x, y| if y > x { y } else { x });
+            BranchJump {
+                ok: true,
+                dr_chart: dr(&ca, &cb),
+                dv_chart: dv(&ca, &cb),
+                // The step-error normaliser gets the SAME common-time treatment, or the two
+                // would be measured under different conventions and the ratio would be a
+                // comparison of methods rather than of magnitudes.
+                dr_step: dr(&ca, &ca2),
+                dv_step: dv(&ca, &ca2),
+                dt_mismatch: (ta - tb).abs(),
+                dr_raw: dr(&a, &b),
+                speed,
+                ref_tie,
+                ref_win: win,
+                ref_alt: alt,
+            }
+        }
         _ => none,
     }
 }

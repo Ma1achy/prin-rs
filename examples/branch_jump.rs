@@ -6,9 +6,19 @@
 //! interval under **both** the chosen chart and the runner-up:
 //!
 //! ```text
-//!   delta_chart = || Phi_win(x_n) - Phi_alt(x_n) ||
-//!   delta_step  = || Phi_win(x_n) at eta  -  Phi_win(x_n) at eta/2 ||
+//!   dr_chart = || r_win(x_n) - r_alt(x_n) ||      at a COMMON PHYSICAL TIME
+//!   dr_step  = || r_win at eta - r_win at eta/2 ||   same treatment, same convention
 //! ```
+//!
+//! **Position and velocity are reported separately**, never as one norm: they are dimensionally
+//! different and a combined Euclidean norm is arbitrary unless phase space has been explicitly
+//! non-dimensionalised, which it has not been.
+//!
+//! **And the arms are compared at the same physical time, not after equal fictitious-time
+//! increments.** The landing residual is `O(h^2)` and `A*B` differs between charts, so the two
+//! arms stop at different `t`; without correcting for it the time transformations manufacture a
+//! branch discrepancy on their own. `dt_mismatch` and the uncorrected `dr_raw` are both printed,
+//! so the size of the confound is visible rather than trusted.
 //!
 //! **The ratio is the finding.** `delta_step` is the ordinary local truncation error of that same
 //! interval in that same chart, so `delta_chart / delta_step` answers: *is the chart jump larger
@@ -122,8 +132,8 @@ fn main() {
         sample.len()
     );
 
-    let measure = |set: &[(usize, usize)]| -> (Vec<f64>, Vec<f64>, Vec<f64>) {
-        let out: Vec<(f64, f64, f64)> = set
+    let measure = |set: &[(usize, usize)]| -> Vec<prin_rs::integrate::az::BranchJump<f64>> {
+        set
             .par_iter()
             .filter_map(|&(i, k)| {
                 let (x, y) = sl.decode_pos(i);
@@ -131,18 +141,13 @@ fn main() {
                 let b = az::branch_jump::<f64>(
                     st.s, &st.m, cfg.t_max, cfg.n_sync, cfg.eta, cfg.max_steps, &opts, k,
                 );
-                if b.ok && b.delta_step > 0.0 && b.delta_chart.is_finite() {
-                    Some((b.delta_chart, b.delta_step, b.ref_tie))
+                if b.ok && b.dr_step > 0.0 && b.dr_chart.is_finite() {
+                    Some(b)
                 } else {
                     None
                 }
             })
-            .collect();
-        (
-            out.iter().map(|o| o.0).collect(),
-            out.iter().map(|o| o.1).collect(),
-            out.iter().map(|o| o.2).collect(),
-        )
+            .collect()
     };
 
     // THE CONTROL: the same pixels, at a boundary where the itinerary does NOT diverge.
@@ -154,20 +159,38 @@ fn main() {
         .collect();
 
     println!(
-        "  {:>26} {:>12} {:>12} {:>12} {:>12} {:>10}",
-        "population", "dchart p50", "dstep p50", "RATIO p50", "RATIO p90", "ref_tie p50"
+        "  {:>26} {:>7} {:>11} {:>11} {:>11} {:>11} {:>10} {:>11} {:>10}",
+        "population", "n", "dr_chart", "dr_step", "R_pos p50", "R_pos p90", "R_vel p50",
+        "dt_mismatch", "ref_tie"
     );
     for (name, set) in [("at the first divergence", &sample), ("control: a non-switch", &control)] {
-        let (dc, ds, rt) = measure(set);
-        let mut ratio: Vec<f64> =
-            dc.iter().zip(ds.iter()).map(|(a, b)| a / b).filter(|x| x.is_finite()).collect();
+        let b = measure(set);
+        let col = |f: &dyn Fn(&prin_rs::integrate::az::BranchJump<f64>) -> f64| -> Vec<f64> {
+            b.iter().map(|x| f(x)).filter(|x| x.is_finite()).collect()
+        };
+        let mut rp = col(&|x| x.dr_chart / x.dr_step);
+        let mut rv = col(&|x| x.dv_chart / x.dv_step);
         println!(
-            "  {name:>26} {:>12.3e} {:>12.3e} {:>12.3e} {:>12.3e} {:>10.4}",
-            q(&mut dc.clone(), 0.5),
-            q(&mut ds.clone(), 0.5),
-            q(&mut ratio.clone(), 0.5),
-            q(&mut ratio, 0.9),
-            q(&mut rt.clone(), 0.5)
+            "  {name:>26} {:>7} {:>11.3e} {:>11.3e} {:>11.3e} {:>11.3e} {:>10.3e} {:>11.3e} {:>10.4}",
+            b.len(),
+            q(&mut col(&|x| x.dr_chart), 0.5),
+            q(&mut col(&|x| x.dr_step), 0.5),
+            q(&mut rp.clone(), 0.5),
+            q(&mut rp, 0.9),
+            q(&mut rv, 0.5),
+            q(&mut col(&|x| x.dt_mismatch), 0.5),
+            q(&mut col(&|x| x.ref_tie), 0.5),
+        );
+        // The confound, made checkable: how much of the raw jump was the time mismatch?
+        let mut expl = col(&|x| (x.speed * x.dt_mismatch) / x.dr_chart.max(f64::MIN_POSITIVE));
+        let mut raw = col(&|x| x.dr_raw / x.dr_chart.max(f64::MIN_POSITIVE));
+        println!(
+            "  {:>26} time-mismatch displacement / dr_chart p50 {:.3e} p90 {:.3e};  \
+             raw/corrected p50 {:.4}",
+            "",
+            q(&mut expl.clone(), 0.5),
+            q(&mut expl, 0.9),
+            q(&mut raw, 0.5)
         );
     }
 
@@ -179,6 +202,10 @@ fn main() {
          then amplifies over the remaining horizon.\n\n\
          Read it against the control row, never alone. And `dchart` alone is unreadable: a large\n\
          number on a violent interval and a small one on a quiet interval say the same thing,\n\
-         which is why the local step error is the normaliser."
+         which is why the local step error is the normaliser.\n\n\
+         **And read the confound line before the ratio.** If the time-mismatch displacement is a\n\
+         material fraction of `dr_chart`, the arms were compared at different physical times and\n\
+         the difference is partly the time transformations rather than the charts. `raw/corrected`\n\
+         near 1 means the correction changed nothing and the comparison was clean anyway."
     );
 }

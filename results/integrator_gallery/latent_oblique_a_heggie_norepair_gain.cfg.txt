@@ -1,0 +1,7 @@
+image=results/integrator_gallery/latent_oblique_a_heggie_norepair_gain.png
+config=production + 4 override(s): n_sync=33 (production 32), max_steps=400000 (production 30000), integrator=Heggie (production Az), refine_flagged=false (production true)
+res=256x256
+case=latent_oblique_a
+field=gain
+log10(drift_AZ/drift_HG), FIXED symmetric range +/-4 decades
+blue = Heggie lower, red = AZ lower, grey = equal, magenta = undetermined

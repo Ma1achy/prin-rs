@@ -1,0 +1,10 @@
+image=results/integrator_gallery/plane_00deg_heggie_norepair_drift.png
+config=production + 4 override(s): n_sync=33 (production 32), max_steps=400000 (production 30000), integrator=Heggie (production Az), refine_flagged=false (production true)
+res=256x256
+case=plane_00deg
+integrator=heggie
+field=drift
+shape window=(5.713510030743365e-6,1.1767464431676658e-4) taken from the AZ arm and SHARED
+drift ramp=(1e-12,1e2) FIXED across every case and integrator
+pass: uniform/outcome from the SCIENCE run (termination on);
+drift/gain from the DIAGNOSTIC run (r_coll=0, stop_on_event=false)

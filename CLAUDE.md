@@ -2009,3 +2009,28 @@ and wide, no pair ever approaches, so there is no unregularised third side to re
 longer reconstruction chain costs a constant with nothing bought back. **Outcome labels agree on
 0 of 65536 pixels in every region** and 55 of 65536 on `config_stability`: two independently
 derived regularisations of the same physics, agreeing.
+
+**THE FULL GALLERY: HEGGIE WINS 31 OF 32 CASES, AND `err>10` RUNS 3916 AGAINST 73.** 256^2,
+diagnostic pass, `refine_flagged` off, same predictive limit and step budget on both sides, 32
+cases -- `config_stability`, the five Burrau regions, and every chart in the gallery. **And the 73
+are not Heggie's**: every one falls in a case where AZ reports the *same* count (`latent_mass`
+9->9, `latent_oblique_a` 14->14, `mass_simplex` 38->38, `latent_mass_h3` 2->2). Those are chart
+properties -- non-finite `shape_vec` from a genuine triple collision, the instrument reporting
+rather than a fault. **Every integration failure clears completely**: 423, 438, 703, 2222, 33, and
+eight smaller, all to zero.
+
+The standout is `preset_shape_h1`: AZ `drift p50 = 2.479e-6` with **2222 not-data pixels**, Heggie
+`7.835e-11` with **zero**, gain **+4.42 decades**. That is the chart already on record as the one
+case where the refinement criterion fails outright -- 16 leaves against a complete 4096, widest
+dynamic range in the set -- so the hardest chart for the scheduler is also the one the integrator
+change helps most.
+
+**`far` IS THE ONLY AZ WIN, AND THE MECHANISM STORY FOR IT IS WRONG.** `frac better 0.000` -- all
+65536 pixels, a flat 0.7-0.9 decades. It was written up as fitting the mechanism ("smooth and wide,
+no pair approaches, nothing to regularise"), and the gallery refutes that: `latent_shape` sits at
+`5.34e-13` and is tamer still, and Heggie takes it on **100%** of pixels by 1.81 decades. The one
+distinguishing feature left is **scale** -- `far` spans body positions to 13 units where the latent
+charts sit at `R = 1` by algebraic identity, and `Gamma*` is degree six in the coordinates where
+AZ's `Gamma` is linear in `A` and `B`. That is a **conditioning** story, not an invariance one, so
+it is not excluded by the gauge test reading exactly `0.000e0`. **Unmeasured, and labelled as a
+guess.**

@@ -1,0 +1,10 @@
+image=results/integrator_gallery/burrau_nu_k_heggie_norepair_outcome.png
+config=production + 4 override(s): n_sync=33 (production 32), max_steps=400000 (production 30000), integrator=Heggie (production Az), refine_flagged=false (production true)
+res=256x256
+case=burrau_nu_k
+integrator=heggie
+field=outcome
+shape window=(1.9436760619113164e-6,1.632695984695375e-1) taken from the AZ arm and SHARED
+drift ramp=(1e-12,1e2) FIXED across every case and integrator
+pass: uniform/outcome from the SCIENCE run (termination on);
+drift/gain from the DIAGNOSTIC run (r_coll=0, stop_on_event=false)

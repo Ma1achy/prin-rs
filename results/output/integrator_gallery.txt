@@ -25,3 +25,105 @@ warning: `prin-rs` (example "integrator_gallery") generated 2 warnings (run `car
   re-integrates from t = 0 and has no live analogue.
 
                   case  int  drift p50  drift p99    err p99  err>10  nonfin  budget  escape    coll    secs
+      config_stability   az   4.209e-8   1.434e-3    2.731e0     423       0       1     447   29499   342.8
+                            p01 4.161e-10  p10 2.214e-9  p25 7.395e-9  p50 4.209e-8  p75 6.237e-7  p90 1.336e-5  max 3.798e7
+      config_stability heggie  9.038e-10   6.440e-7    1.000e0       0       0       1     446   29508   561.7
+                            p01 1.373e-11  p10 6.541e-11  p25 2.123e-10  p50 9.038e-10  p75 4.516e-9  p90 2.550e-8  max 2.992e-4
+                            gain decades: p10 0.05  p50 1.67  p90 4.21  max 15.16   frac better 0.9076   frac >1 decade 0.6904
+                            AZ drift decile -> gain (decades, + means Heggie lower):
+                              d0 [5.56e-11,2.21e-9]  n   6555  gain p50   0.66  frac better 0.754
+                              d1 [2.21e-9,5.09e-9]  n   6554  gain p50   0.93  frac better 0.854
+                              d2 [5.09e-9,1.04e-8]  n   6555  gain p50   1.13  frac better 0.878
+                              d3 [1.04e-8,2.03e-8]  n   6554  gain p50   1.23  frac better 0.877
+                              d4 [2.03e-8,4.21e-8]  n   6555  gain p50   1.31  frac better 0.879
+                              d5 [4.21e-8,9.06e-8]  n   6554  gain p50   1.47  frac better 0.899
+                              d6 [9.06e-8,3.29e-7]  n   6555  gain p50   2.13  frac better 0.953
+                              d7 [3.29e-7,1.57e-6]  n   6554  gain p50   2.68  frac better 0.984
+                              d8 [1.57e-6,1.34e-5]  n   6555  gain p50   3.58  frac better 0.998
+                              d9 [1.34e-5,3.80e7]  n   6554  gain p50   4.74  frac better 1.000
+      config_stability  AZ vs HG: chord p50 2.663e-5  max 1.995e0  labels differ 55/65536 (0.0008)
+            near-field   az  6.446e-11  1.087e-10    1.000e0       0       0       0       0    1579   224.5
+                            p01 1.268e-12  p10 5.524e-12  p25 1.106e-11  p50 6.446e-11  p75 7.915e-11  p90 9.720e-11  max 1.170e-10
+            near-field heggie  1.451e-11  1.665e-11    1.000e0       0       0       0       0    1579   163.6
+                            p01 1.191e-11  p10 1.251e-11  p25 1.315e-11  p50 1.451e-11  p75 1.578e-11  p90 1.627e-11  max 1.683e-11
+                            gain decades: p10 -0.46  p50 0.71  p90 0.82  max 0.87   frac better 0.6656   frac >1 decade 0.0000
+                            AZ drift decile -> gain (decades, + means Heggie lower):
+                              d0 [2.19e-13,5.52e-12]  n   6555  gain p50  -0.64  frac better 0.000
+                              d1 [5.52e-12,9.40e-12]  n   6554  gain p50  -0.35  frac better 0.000
+                              d2 [9.40e-12,1.29e-11]  n   6555  gain p50  -0.15  frac better 0.000
+                              d3 [1.29e-11,2.17e-11]  n   6554  gain p50   0.04  frac better 0.656
+                              d4 [2.17e-11,6.45e-11]  n   6555  gain p50   0.67  frac better 1.000
+                              d5 [6.45e-11,7.19e-11]  n   6554  gain p50   0.74  frac better 1.000
+                              d6 [7.19e-11,7.67e-11]  n   6555  gain p50   0.76  frac better 1.000
+                              d7 [7.67e-11,8.45e-11]  n   6554  gain p50   0.78  frac better 1.000
+                              d8 [8.45e-11,9.72e-11]  n   6555  gain p50   0.80  frac better 1.000
+                              d9 [9.72e-11,1.17e-10]  n   6554  gain p50   0.82  frac better 1.000
+            near-field  AZ vs HG: chord p50 7.897e-6  max 4.008e-5  labels differ 0/65536 (0.0000)
+             mid-field   az  6.000e-10  9.094e-10    1.000e0       0       0       0       0   65536   151.0
+                            p01 2.908e-10  p10 3.356e-10  p25 4.189e-10  p50 6.000e-10  p75 6.935e-10  p90 7.449e-10  max 1.216e-9
+             mid-field heggie  1.203e-11  2.311e-10    1.000e0       0       0       0       0   65536   109.4
+                            p01 8.180e-12  p10 1.025e-11  p25 1.088e-11  p50 1.203e-11  p75 2.234e-11  p90 3.407e-11  max 1.316e-8
+                            gain decades: p10 0.99  p50 1.70  p90 1.85  max 2.00   frac better 0.9921   frac >1 decade 0.8977
+                            AZ drift decile -> gain (decades, + means Heggie lower):
+                              d0 [2.65e-10,3.36e-10]  n   6555  gain p50   0.77  frac better 0.921
+                              d1 [3.36e-10,3.85e-10]  n   6554  gain p50   1.10  frac better 1.000
+                              d2 [3.85e-10,4.55e-10]  n   6555  gain p50   1.27  frac better 1.000
+                              d3 [4.55e-10,5.19e-10]  n   6554  gain p50   1.47  frac better 1.000
+                              d4 [5.19e-10,6.00e-10]  n   6555  gain p50   1.69  frac better 1.000
+                              d5 [6.00e-10,6.28e-10]  n   6554  gain p50   1.72  frac better 1.000
+                              d6 [6.28e-10,6.66e-10]  n   6555  gain p50   1.80  frac better 1.000
+                              d7 [6.66e-10,7.20e-10]  n   6554  gain p50   1.80  frac better 1.000
+                              d8 [7.20e-10,7.45e-10]  n   6555  gain p50   1.83  frac better 1.000
+                              d9 [7.45e-10,1.22e-9]  n   6554  gain p50   1.92  frac better 1.000
+             mid-field  AZ vs HG: chord p50 2.681e-6  max 1.201e-5  labels differ 0/65536 (0.0000)
+                   far   az  2.824e-13  3.449e-13    1.000e0       0       0       0       0   65536   169.7
+                            p01 2.347e-13  p10 2.545e-13  p25 2.673e-13  p50 2.824e-13  p75 2.986e-13  p90 3.147e-13  max 4.295e-13
+                   far heggie  2.189e-12  2.234e-12    1.000e0       0       0       0       0   65536   121.3
+                            p01 2.155e-12  p10 2.170e-12  p25 2.179e-12  p50 2.189e-12  p75 2.201e-12  p90 2.212e-12  max 2.286e-12
+                            gain decades: p10 -0.94  p50 -0.89  p90 -0.84  max -0.71   frac better 0.0000   frac >1 decade 0.0000
+                            AZ drift decile -> gain (decades, + means Heggie lower):
+                              d0 [1.96e-13,2.55e-13]  n   6555  gain p50  -0.95  frac better 0.000
+                              d1 [2.55e-13,2.64e-13]  n   6554  gain p50  -0.93  frac better 0.000
+                              d2 [2.64e-13,2.71e-13]  n   6555  gain p50  -0.91  frac better 0.000
+                              d3 [2.71e-13,2.77e-13]  n   6554  gain p50  -0.90  frac better 0.000
+                              d4 [2.77e-13,2.82e-13]  n   6555  gain p50  -0.89  frac better 0.000
+                              d5 [2.82e-13,2.88e-13]  n   6554  gain p50  -0.89  frac better 0.000
+                              d6 [2.88e-13,2.95e-13]  n   6555  gain p50  -0.88  frac better 0.000
+                              d7 [2.95e-13,3.03e-13]  n   6554  gain p50  -0.87  frac better 0.000
+                              d8 [3.03e-13,3.15e-13]  n   6555  gain p50  -0.85  frac better 0.000
+                              d9 [3.15e-13,4.29e-13]  n   6554  gain p50  -0.83  frac better 0.000
+                   far  AZ vs HG: chord p50 2.728e-7  max 8.677e-7  labels differ 0/65536 (0.0000)
+            body2_core   az  7.316e-11  1.272e-10    1.000e0       0       0       0       0   11615   219.7
+                            p01 5.656e-13  p10 3.655e-12  p25 8.815e-12  p50 7.316e-11  p75 9.329e-11  p90 1.096e-10  max 2.363e-10
+            body2_core heggie  1.459e-11  2.965e-11    1.000e0       0       0       0       0   11615   161.2
+                            p01 1.035e-11  p10 1.166e-11  p25 1.278e-11  p50 1.459e-11  p75 1.673e-11  p90 1.918e-11  max 1.274e-10
+                            gain decades: p10 -0.61  p50 0.71  p90 0.88  max 1.26   frac better 0.6485   frac >1 decade 0.0013
+                            AZ drift decile -> gain (decades, + means Heggie lower):
+                              d0 [6.14e-14,3.65e-12]  n   6555  gain p50  -0.87  frac better 0.000
+                              d1 [3.65e-12,6.79e-12]  n   6554  gain p50  -0.46  frac better 0.000
+                              d2 [6.79e-12,1.12e-11]  n   6555  gain p50  -0.23  frac better 0.009
+                              d3 [1.12e-11,2.42e-11]  n   6554  gain p50   0.01  frac better 0.536
+                              d4 [2.42e-11,7.32e-11]  n   6555  gain p50   0.72  frac better 0.941
+                              d5 [7.32e-11,8.03e-11]  n   6554  gain p50   0.79  frac better 1.000
+                              d6 [8.03e-11,8.85e-11]  n   6555  gain p50   0.80  frac better 1.000
+                              d7 [8.85e-11,9.82e-11]  n   6554  gain p50   0.81  frac better 1.000
+                              d8 [9.82e-11,1.10e-10]  n   6555  gain p50   0.82  frac better 1.000
+                              d9 [1.10e-10,2.36e-10]  n   6554  gain p50   0.81  frac better 1.000
+            body2_core  AZ vs HG: chord p50 7.948e-6  max 2.739e-4  labels differ 0/65536 (0.0000)
+         deep_interior   az   1.345e-9   8.580e-5    1.686e0     438       0      41       0   64570   503.5
+                            p01 1.348e-10  p10 4.102e-10  p25 7.031e-10  p50 1.345e-9  p75 2.576e-9  p90 7.211e-9  max 1.863e11
+         deep_interior heggie  9.298e-10   4.078e-7    1.001e0       0       0     199       0   64570   285.6
+                            p01 3.234e-11  p10 1.603e-10  p25 3.333e-10  p50 9.298e-10  p75 3.853e-9  p90 2.016e-8  max 3.227e-4
+                            gain decades: p10 -1.15  p50 0.15  p90 1.24  max 18.91   frac better 0.5713   frac >1 decade 0.1454
+                            AZ drift decile -> gain (decades, + means Heggie lower):
+                              d0 [1.42e-11,4.10e-10]  n   6555  gain p50  -0.37  frac better 0.230
+                              d1 [4.10e-10,6.09e-10]  n   6554  gain p50  -0.04  frac better 0.479
+                              d2 [6.09e-10,8.02e-10]  n   6555  gain p50   0.02  frac better 0.514
+                              d3 [8.02e-10,1.05e-9]  n   6554  gain p50  -0.01  frac better 0.497
+                              d4 [1.05e-9,1.35e-9]  n   6555  gain p50   0.12  frac better 0.557
+                              d5 [1.35e-9,1.71e-9]  n   6554  gain p50   0.25  frac better 0.614
+                              d6 [1.71e-9,2.23e-9]  n   6555  gain p50   0.24  frac better 0.615
+                              d7 [2.23e-9,3.13e-9]  n   6554  gain p50   0.22  frac better 0.603
+                              d8 [3.13e-9,7.21e-9]  n   6555  gain p50   0.44  frac better 0.693
+                              d9 [7.21e-9,1.86e11]  n   6554  gain p50   1.78  frac better 0.910
+         deep_interior  AZ vs HG: chord p50 4.497e-6  max 2.681e-3  labels differ 0/65536 (0.0000)

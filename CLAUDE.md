@@ -1967,3 +1967,45 @@ nothing, because the AZ panel was clean too. Caught by reading the panel's own `
 `refine_flagged` was absent from the override list and therefore at its production value. Always
 render the comparison with the repair pass **off**: it is batch-only, it has no live-playhead
 analogue, and it removes the very population the comparison is about.
+
+**`stop_on_event` CONTAMINATED THE DRIFT DIAGNOSTIC AND PRODUCED FIVE WRONG CONCLUSIONS IN A
+ROW.** A trajectory stopped by an event is parked **at** a close approach, and the Cartesian energy
+there is a cancellation of two enormous terms. Measured on `far`, termination off -> on: AZ
+`2.588e-13 -> 2.129e-12` (**8x**), Heggie `2.925e-12 -> 7.872e-8` (**27000x**), while Heggie's
+`drift_reg` stays at `1.081e-11`. **The readout was being measured, not the integrator.** Heggie
+suffers it more because its reconstruction is longer -- regularised -> enlarged (dividing by
+`2 R_i`, three times) -> Cartesian through the mass-weighted differences of Eqs. (10)/(12) -- where
+AZ's `phys_from_state` divides once. Same physics, more cancellation.
+
+What that one flag corrupted: (1) "Heggie is 560x worse on `deep interior`" -- untruncated it is
+**14x better**; (2) "Heggie is worse on three of five Burrau regions" -- it wins **five of six**;
+(3) "`near-field` has a Heggie tail AZ does not", p99 `1.882e-6` -- clean it is **1.665e-11**,
+better than AZ's `1.087e-10`; (4) "AZ wins the tame deciles" -- clean, `d0` reads gain **+0.66**
+with 75% of pixels better; (5) `config_stability`'s magnitude, understated **40x at the median**.
+**The science field and the diagnostic field want opposite settings, and one run cannot serve
+both** -- `_uniform`/`_outcome` need termination on because the outcome class *is* the physics,
+`_drift`/`_gain` need it off. Two passes, and each panel's sidecar names which.
+
+It was caught by a test written for a **different** hypothesis -- whether Eq. (24)'s control term
+was a floor -- which happened to run at `r_coll = 0` and disagreed with the gallery by orders.
+
+**THE CLEAN COMPARISON: HEGGIE WINS FIVE OF SIX, AND `far` IS AZ's ON EVERY PIXEL.** 256^2,
+diagnostic pass, `refine_flagged` off, same predictive limit and step budget both sides:
+
+```
+              case   AZ drift p50   HG drift p50   AZ err>10  HG err>10   gain p50  frac better
+  config_stability       4.209e-8      9.038e-10         423          0      +1.67        0.908
+        near-field      6.446e-11      1.451e-11           0          0      +0.71        0.666
+         mid-field      6.000e-10      1.203e-11           0          0      +1.70        0.992
+               far      2.824e-13      2.189e-12           0          0      -0.89        0.000
+        body2_core      7.316e-11      1.459e-11           0          0      +0.71        0.649
+     deep_interior       1.345e-9      9.298e-10         438          0      +0.15        0.571
+```
+
+`err>10` -- the project's own flag for *this pixel is not data* -- runs **423 and 438 on AZ and
+zero on Heggie**. And `far` is a clean, complete loss: `frac better 0.000`, all 65536 pixels, a
+flat 0.7-0.9 decades. That **fits** the mechanism rather than contradicting it — `far` is smooth
+and wide, no pair ever approaches, so there is no unregularised third side to remove and the
+longer reconstruction chain costs a constant with nothing bought back. **Outcome labels agree on
+0 of 65536 pixels in every region** and 55 of 65536 on `config_stability`: two independently
+derived regularisations of the same physics, agreeing.

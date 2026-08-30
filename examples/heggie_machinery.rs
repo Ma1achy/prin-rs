@@ -125,6 +125,16 @@ fn ramp(x: f64) -> [u8; 3] {
 enum Arm {
     Az,
     Hg { refresh: bool },
+    /// Heggie with the predictive step limit **off**. Exists to answer one question: at coarse
+    /// `eta`, is the step count set by `eta` or by the limit? If turning the limit off restores
+    /// the `1/eta` scaling, `eta` was never the binding constraint on those rows.
+    HgNoLimit,
+    /// AZ with the predictive step limit **off** — the missing cell of the 2x2.
+    ///
+    /// Without it, "Heggie has three orders less drift" is unattributable: `HG nolimit x1` reads
+    /// 6.37e-8 against AZ-with-limit's 4.21e-8, so the win could be the limit rather than the
+    /// regularisation. Both integrators must be measured on both sides of the same knob.
+    AzNoLimit,
 }
 
 /// Max drift over the `E+1` copies of one pixel, and the summed step count.
@@ -140,6 +150,14 @@ fn pixel(cs: &[Ic<f64>], arm: Arm, n_sync: usize, eta: f64, max_steps: usize) ->
     let mut budget = false;
     for c in cs {
         let (drift, steps, finite) = match arm {
+            Arm::AzNoLimit => {
+                let o = az::integrate_az_opts(
+                    c.s, &c.m, T_MAX, n_sync, eta, max_steps,
+                    &AzOpts { stop_on_event: false, r_coll_frac: 0.0, ..Default::default() },
+                );
+                budget |= o.budget_exhausted;
+                (o.drift, o.steps as f64, o.finite)
+            }
             Arm::Az => {
                 let o = az::integrate_az_opts(
                     c.s, &c.m, T_MAX, n_sync, eta, max_steps,
@@ -158,6 +176,14 @@ fn pixel(cs: &[Ic<f64>], arm: Arm, n_sync: usize, eta: f64, max_steps: usize) ->
                         step_limit_f: 0.02,
                         ..Default::default()
                     },
+                );
+                budget |= o.budget_exhausted;
+                (o.drift, o.steps as f64, o.finite)
+            }
+            Arm::HgNoLimit => {
+                let o = integrate_hg(
+                    c.s, &c.m, T_MAX, n_sync, eta, max_steps,
+                    &HgOpts { step_limit_f: 0.0, ..Default::default() },
                 );
                 budget |= o.budget_exhausted;
                 (o.drift, o.steps as f64, o.finite)
@@ -217,6 +243,34 @@ fn main() {
         ("HG  n=250 confounded".into(), Arm::Hg { refresh: false }, n0 * 2, eta0),
         ("HG  refresh_h n=125".into(), Arm::Hg { refresh: true }, n0, eta0),
         ("HG  refresh_h n=250".into(), Arm::Hg { refresh: true }, n0 * 2, eta0 * 2.0),
+        // **The equal-compute arm.** "Three orders of drift for 67% more work" invites the
+        // obvious reply: spend that 67% on AZ instead. This is AZ at the SAME cadence with `eta`
+        // cut so the step count matches its own confounded row, which is the honest comparison —
+        // the confounded row itself halves the step AND doubles the re-registration, so reading
+        // an equal-compute answer off it would credit AZ's smaller step with a cost it did not
+        // only pay for that. Appended last so the existing checkpoint indices still resolve.
+        ("AZ  eta/1.82 n=125".into(), Arm::Az, n0, eta0 / 1.82),
+        // **Spending the advantage as speed instead of accuracy.** If three orders of drift is
+        // more than the project needs, the coarse-`eta` Heggie rows say what it costs to hold
+        // only AZ's accuracy. `n_sync` is held at `n0` here on purpose -- the CONTROLLED rows
+        // scale it with `eta` to fix the step size, which is the opposite of what is wanted now.
+        //
+        // **Matching drift is not matching the answer.** Energy drift is nearly stationary along
+        // the flow and is documented blind to at least one real defect in this project, so
+        // `chord p50` against each integrator's own fine baseline is the column that says whether
+        // a coarse run is actually as good. Read it before spending anything.
+        ("HG  eta x2  n=125".into(), Arm::Hg { refresh: false }, n0, eta0 * 2.0),
+        ("HG  eta x4  n=125".into(), Arm::Hg { refresh: false }, n0, eta0 * 4.0),
+        ("HG  eta x8  n=125".into(), Arm::Hg { refresh: false }, n0, eta0 * 8.0),
+        // Is `eta` binding at all on those rows, or is the predictive limit? Two rungs with the
+        // limit off: if `steps` now scales as `1/eta` where it saturated before, the limit was
+        // setting the cost and coarsening `eta` was buying nothing.
+        ("HG  nolimit x1 n=125".into(), Arm::HgNoLimit, n0, eta0),
+        ("HG  nolimit x8 n=125".into(), Arm::HgNoLimit, n0, eta0 * 8.0),
+        // The fourth cell of {AZ, HG} x {limit on, limit off}. Three cells cannot attribute an
+        // effect to either factor.
+        ("AZ  nolimit x1 n=125".into(), Arm::AzNoLimit, n0, eta0),
+        ("AZ  nolimit x8 n=125".into(), Arm::AzNoLimit, n0, eta0 * 8.0),
     ];
 
     println!(
@@ -264,8 +318,8 @@ fn main() {
         let mut st: Vec<f64> = out.iter().map(|(_, s, _)| *s).collect();
 
         let slot = match arm {
-            Arm::Az => &mut base_az,
-            Arm::Hg { .. } => &mut base_hg,
+            Arm::Az | Arm::AzNoLimit => &mut base_az,
+            Arm::Hg { .. } | Arm::HgNoLimit => &mut base_hg,
         };
         let (mut lift, mut chord) = (f64::NAN, f64::NAN);
         if let Some((h0, d0)) = slot.as_ref() {

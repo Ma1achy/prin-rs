@@ -1862,6 +1862,41 @@ large chord in Heggie; and `refresh_h` at 13x — the one arm that reintroduces 
 quantity — says it sees **boundary** sensitivity specifically. Without that last arm the null could
 have been the instrument.
 
+**THE THREE ORDERS OF DRIFT ARE NOT HEGGIE'S -- THEY ARE HEGGIE TIMES THE STEP LIMIT, AND THREE
+CELLS OF A 2x2 CANNOT SAY SO.** Measured on `config_stability` at 256^2, `drift p50` with
+non-finite counts:
+
+```
+                  limit OFF            limit ON          the limit buys
+    AZ        1.223e-6 (nf 897)    4.209e-8 (nf 0)            29x
+    HG        6.374e-8 (nf  25)    5.591e-11 (nf 1)         1140x
+    HG vs AZ        19x                 753x
+```
+
+**Heggie alone is 19x; `StepLimit::Predictive` alone is 29x; 19 x 29 = 551 against an observed
+753, so they are roughly independent and multiplicative.** "Heggie has three orders less drift" was
+being read off the limit-ON row alone and attributes the whole product to the regularisation. The
+missing cell was AZ-without-the-limit, and it existed only because the harness was built to compare
+integrators and the limit was held constant as a *fairness* control -- a knob held fixed is a knob
+whose effect is unattributed.
+
+**AND HEGGIE DOES NOT TAKE 22% MORE STEPS.** With the limit off: **AZ 1.228e5, HG 1.224e5**,
+identical. The +24% is the predictive limit binding harder on Heggie, not the algebra, so the true
+per-step tax is the 1.36x per call and nothing else.
+
+**THE ACCURACY CANNOT BE SPENT AS SPEED, BECAUSE `eta` IS NOT WHAT SETS THE COST.** Coarsening
+`eta` 8x moves `steps p50` only 1.520e5 -> 8.987e4, **1.69x**, where fourth-order arithmetic
+predicted 2.5-3x cheaper at matched drift. With the limit off the same 8x gives **7.4x** (1.224e5
+-> 1.660e4), the `1/eta` scaling restored -- so the predictive limit is the binding constraint and
+`eta` is nearly inert above it. The floor is real: the best equal-work cell is `HG eta x8` at
+**0.98x AZ's work for 21x less drift**, and going below it means switching the limit off, which
+costs 1040 non-finite pixels of 65536.
+
+**THE UNCONFOUNDED HEGGIE ADVANTAGE IS ROBUSTNESS, AND IT WAS NOT BEING QUOTED.** With the limit
+off, non-finite pixels run **AZ 897 against HG 25, a factor of 36** -- owing nothing to the step
+limit and nothing to drift. At `eta x8` with no limit it is 379 against 1040, which inverts, so the
+advantage is a property of the ordinary regime and not a universal one. State the regime.
+
 **AND THE 1974 COST FIGURE DOES NOT TRANSFER — BUT THE APPARENT WIN IS AZ'S CROSS-CHECK DISCIPLINE,
 NOT THE METHOD.** Measured per `deriv` call, single-threaded, same call count both sides:
 `AZ 20.29 ns`, `HG Eq.(20)/(21) 17.82 ns` (**0.88x**), `HG Eqs.(22)-(24) 27.40 ns` (**1.36x**)

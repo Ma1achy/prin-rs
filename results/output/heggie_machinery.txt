@@ -4,7 +4,7 @@ config_stability 256^2, termination OFF in both integrators.
 t_max=50 eta=0.01 max_steps=400000 copies=8
 
                      arm  n_sync      eta   steps p50   drift p50  nonfin  budget  hot lift  chord p50
-  resuming: 10 of 10 arms already computed
+  resuming: 18 of 18 arms already computed
 
       AZ  baseline n=125     125   0.0100     1.246e5    4.209e-8       0       1       NaN        NaN
     AZ  n=250 CONTROLLED     250   0.0200     1.154e5    3.118e-8       1       0     2.061   5.162e-1
@@ -16,6 +16,14 @@ t_max=50 eta=0.01 max_steps=400000 copies=8
     HG  n=250 confounded     250   0.0100     2.463e5   2.140e-11       1       1     2.327   4.185e-1
      HG  refresh_h n=125     125   0.0100     1.520e5   2.131e-10       1       1     2.909   5.570e-1
      HG  refresh_h n=250     250   0.0200     1.501e5   3.012e-10       1       1     2.728   6.769e-1
+      AZ  eta/1.82 n=125     125   0.0055     2.245e5    5.071e-9       0       0     3.550   8.255e-1
+       HG  eta x2  n=125     125   0.0200     1.083e5   2.653e-10       1       1     2.954   6.478e-1
+       HG  eta x4  n=125     125   0.0400     9.307e4    1.188e-9       1       1     1.945    1.165e0
+       HG  eta x8  n=125     125   0.0800     8.987e4    2.006e-9       1       1     1.519    1.523e0
+    HG  nolimit x1 n=125     125   0.0100     1.224e5    6.374e-8      25       8     2.161    3.049e0
+    HG  nolimit x8 n=125     125   0.0800     1.660e4    1.726e-3    1040     180     2.115    7.542e0
+    AZ  nolimit x1 n=125     125   0.0100     1.228e5    1.223e-6     897     129     2.648    1.374e0
+    AZ  nolimit x8 n=125     125   0.0800     1.647e4    3.406e-2     379      84     2.066    5.690e0
 
 HOW TO READ THIS
 

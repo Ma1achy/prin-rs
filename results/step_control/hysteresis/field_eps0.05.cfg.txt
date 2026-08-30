@@ -1,0 +1,6 @@
+image=results/step_control/hysteresis/field_eps0.05.png
+config=production + 6 override(s): t_max=50.0 (production 13.0), n_sync=125 (production 32), ref_hysteresis=0.05 (production 0.0), r_coll_frac=0.005 (production 0.001), refine_flagged=false (production true), keep_ref_path=true (production false)
+res=256x256
+case=config_stability
+ref_hysteresis=0.05
+field=spread_shape  ramp=(1e-6,1e0)  <- FIXED, shared across arms

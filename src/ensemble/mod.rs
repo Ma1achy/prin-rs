@@ -2,4 +2,5 @@
 
 pub mod jitter;
 pub mod pixel;
+pub mod provenance;
 pub mod stats;

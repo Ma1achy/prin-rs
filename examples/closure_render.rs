@@ -95,6 +95,9 @@ fn main() {
                 stop_on_escape: stop,
                 ..Default::default()
             };
+            // The config that is about to be used, not a copy of it built to be printed --
+            // a second literal describing the first is the defect this line exists to stop.
+            println!("{name:>18} stop={stop:<5} config: {}", ens.provenance());
             let t0 = std::time::Instant::now();
             let sl = grid::Slice::body_plane(res, res, cx, cy, half, body).with_chart(chart);
             let px: Vec<PixelOut> = (0..sl.npix())
@@ -131,6 +134,19 @@ fn main() {
             let stem = format!("{dir}/{name}_stop{}", if stop { 1 } else { 0 });
             let _ = adaptive::save_rect(&format!("{stem}_uniform.png"), res, res, &buf);
             let _ = adaptive::save_rect(&format!("{stem}_outcome.png"), res, res, &obuf);
+            // **Every committed panel carries its config.** The `.raw` dumps have had a full
+            // settings header since they were written; the PNGs had nothing, and neither did
+            // this harness's stdout -- which is how `refine_flagged: false` propagated here by
+            // copy at `71de13f` and sat unnoticed for six days.
+            let extra = format!(
+                "res={res}x{res}\ncase={name}\nt_max={t_max}\nn_sync={n_sync}\n\
+                 r_coll={r_coll}\nstop_on_escape={stop}\nwindow=({cx},{cy},{half})\n"
+            );
+            for panel in ["uniform", "outcome"] {
+                let _ = prin_rs::output::provenance_sidecar(
+                    &format!("{stem}_{panel}.png"), &ens, &extra,
+                );
+            }
 
             let shapes: Vec<[f64; 3]> = px.iter().map(|p| p.shape_vec).collect();
             let (dmed, dmax, moved) = prev.as_ref().map_or((f64::NAN, f64::NAN, 0), |p| {

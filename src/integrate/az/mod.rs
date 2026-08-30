@@ -22,6 +22,8 @@ pub mod state;
 pub mod system;
 
 pub use driver::{
+    StepBlend, SoftRefOut, integrate_softref, BranchJump, branch_jump,
+    StepLimit, MAX_RETRIES,
     integrate_az, integrate_az_lc, integrate_az_opts, integrate_with_policy, reference_opts, AzOpts,
     AzOut, DtauMode,
 };

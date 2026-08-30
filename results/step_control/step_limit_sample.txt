@@ -1,0 +1,130 @@
+warning: fields `col` and `chord` are never read
+   --> examples/step_limit.rs:111:5
+    |
+103 | struct Row {
+    |        --- fields in this struct
+...
+111 |     col: f64,
+    |     ^^^
+...
+115 |     chord: [f64; 2],
+    |     ^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `prin-rs` (example "step_limit") generated 1 warning
+    Finished `release` profile [optimized] target(s) in 0.07s
+     Running `target/release/examples/step_limit sample 128 48 results`
+STEP-CONTROL CANDIDATES -- stage `sample`, 128^2.
+
+`err` is `error_ratio`; its healthy value is exactly 1.0 and `err>10` is the project's
+own flag for *this pixel is not data*. `chord50` and `flips` are against the eta/256
+GROUND TRUTH, which is the reference answer because that run brings every flagged pixel
+to 1.000. **The winner reaches err ~ 1 for the least wall clock, not the lowest error.**
+
+
+================ config_stability ================
+base config: production + 4 override(s): t_max=50.0 (production 13.0), n_sync=125 (production 32), r_coll_frac=0.005 (production 0.001), refine_flagged=false (production true)
+
+  flagged 1817 of 16384 pixels; sampled set is 96 (48 flagged + 48 control). **The cap is printed because a silently truncated set reads as full coverage.**
+FULL-FRAME err>10 is 0.1109 in 61.6s. **The sampled `err>10` starts at
+0.5000 BY CONSTRUCTION** -- the set is half flagged on purpose -- so read the sampled
+column as a fall from that, never as a frame statistic.
+  ground truth at eta/256 in 1.5s -- err p50 1.0000 p99 1.0000, which is what makes it the reference.
+
+                    mode / f     secs    err p50    err p90    err p99    err>10  drift p50  drift p99   steps p50   escape chord tame     flips  overshoot  retries
+             None (baseline)      0.4    1.804e1    5.173e6   4.092e11    0.5000   2.518e-2    3.675e8     9.186e4   0.1771  1.479e0    1.0000          6        0
+  -- Reject: f is a fraction of d_min a step may move
+                Reject f=0.5      0.3    1.252e0    4.669e4    4.881e5    0.4896   5.421e-4    3.210e2     8.967e4   0.0104  1.479e0    1.0000          0     7744
+                Reject f=0.1      0.4    1.000e0    3.166e0    2.256e1    0.0521   1.905e-5   1.424e-2     9.484e4   0.0104  1.479e0    1.0000          0   533262
+               Reject f=0.02      1.6    1.000e0    1.009e0    1.843e0    0.0000   7.209e-8   7.164e-4     1.959e5   0.0104  1.479e0    1.0000          0 16589140
+                               undetermined (retry budget exhausted): 38 pixels
+  -- Predictive: f is a fraction of a crossing time
+            Predictive f=0.5      0.3    1.804e1    3.047e7   8.591e10    0.5000   2.518e-2    8.843e7     9.013e4   0.1354  1.479e0    1.0000          3        0
+            Predictive f=0.1      0.4    1.007e0    3.006e2    2.017e3    0.2917   3.500e-4    1.431e0     9.663e4   0.0104  1.479e0    1.0000          0        0
+           Predictive f=0.02      0.4    1.000e0    1.054e0    1.492e0    0.0000   5.600e-6   6.630e-4     9.278e4   0.0104  1.479e0    1.0000          0        0
+  -- AbGrowth: f is a A*B growth factor
+                AbGrowth f=4      0.4    1.804e1    5.173e6   4.092e11    0.5000   2.518e-2    3.675e8     9.186e4   0.1771  1.479e0    1.0000          6        0
+                AbGrowth f=2      0.4    1.804e1    5.173e6   4.092e11    0.5000   2.518e-2    3.675e8     9.186e4   0.1771  1.479e0    1.0000          6        0
+              AbGrowth f=1.1      0.4    1.804e1    5.173e6   4.092e11    0.5000   2.518e-2    3.675e8     9.186e4   0.1771  1.479e0    1.0000          6        0
+  -- Global: f is a eta multiplier
+                Global f=0.5      0.7    1.000e0    1.652e6   1.755e10    0.4271   6.438e-4    1.806e7     1.869e5   0.1250  1.479e0    1.0000          1        0
+               Global f=0.25      1.5    1.000e0    1.111e6   2.844e10    0.3750   1.483e-5    9.498e6     3.669e5   0.0729  1.479e0    1.0000          0        0
+              Global f=0.125      2.8    1.000e0    2.221e5    9.284e6    0.2917   5.445e-7    8.030e3     7.241e5   0.0417  1.479e0    1.0000          0        0
+
+================ preset_shape ================
+base config: production + 1 override(s): refine_flagged=false (production true)
+
+  flagged 1520 of 16384 pixels; sampled set is 96 (48 flagged + 48 control). **The cap is printed because a silently truncated set reads as full coverage.**
+FULL-FRAME err>10 is 0.0928 in 7.7s. **The sampled `err>10` starts at
+0.5000 BY CONSTRUCTION** -- the set is half flagged on purpose -- so read the sampled
+column as a fall from that, never as a frame statistic.
+  ground truth at eta/256 in 3.0s -- err p50 1.0000 p99 1.0000, which is what makes it the reference.
+
+                    mode / f     secs    err p50    err p90    err p99    err>10  drift p50  drift p99   steps p50   escape chord tame     flips  overshoot  retries
+             None (baseline)      0.1    1.246e1    3.386e9   1.427e12    0.5000   1.345e-2    2.432e9     1.990e4   0.0833 2.929e-1    0.9167         16        0
+  -- Reject: f is a fraction of d_min a step may move
+                Reject f=0.5      0.1    1.001e0    3.071e5    1.216e7    0.4583   5.308e-5    2.069e4     1.993e4   0.0000 2.929e-1    0.9167          0   167320
+                               undetermined (retry budget exhausted): 6 pixels
+                Reject f=0.1      0.1    1.000e0    3.300e3    1.239e6    0.1979   3.981e-6    3.119e3     2.356e4   0.0000 2.927e-1    0.9167          0   270973
+                               undetermined (retry budget exhausted): 23 pixels
+               Reject f=0.02      0.4    1.000e0    3.244e3    3.135e6    0.1771   3.033e-8    6.335e3     8.380e4   0.0000 2.927e-1    0.9167          0  5053243
+                               undetermined (retry budget exhausted): 39 pixels
+  -- Predictive: f is a fraction of a crossing time
+            Predictive f=0.5      0.0    1.007e0   4.248e11   2.370e15    0.4896   9.707e-5   4.789e12     1.990e4   0.1042 2.929e-1    0.9167          4        0
+            Predictive f=0.1      0.1    1.000e0    7.451e2    2.334e3    0.3021   3.466e-5    2.665e0     1.991e4   0.0000 2.929e-1    0.9167          0        0
+           Predictive f=0.02      0.2    1.000e0    1.100e0    1.832e0    0.0000   6.443e-7   1.336e-3     2.015e4   0.0000 2.927e-1    0.9167          0        0
+  -- AbGrowth: f is a A*B growth factor
+                AbGrowth f=4      0.1    1.246e1    3.386e9   1.427e12    0.5000   1.345e-2    2.432e9     1.990e4   0.0833 2.929e-1    0.9167         16        0
+                AbGrowth f=2      0.1    1.246e1    3.386e9   1.427e12    0.5000   1.345e-2    2.432e9     1.990e4   0.0833 2.929e-1    0.9167         16        0
+              AbGrowth f=1.1      0.1    1.246e1    3.386e9   1.427e12    0.5000   1.345e-2    2.432e9     1.990e4   0.0833 2.929e-1    0.9167         16        0
+  -- Global: f is a eta multiplier
+                Global f=0.5      0.2    1.000e0    1.000e9   2.414e12    0.4167   2.872e-4    4.838e9     3.937e4   0.0729 2.927e-1    0.9167          5        0
+               Global f=0.25      0.3    1.000e0    4.379e6   1.710e12    0.3438   1.818e-5    6.665e9     7.899e4   0.0833 2.927e-1    0.9167          1        0
+              Global f=0.125      0.7    1.000e0    4.374e6   9.006e11    0.3021   3.701e-7    1.822e9     1.678e5   0.0729 2.927e-1    0.9167          0        0
+
+================ deep interior ================
+base config: production + 1 override(s): refine_flagged=false (production true)
+
+  flagged 649 of 16384 pixels; sampled set is 96 (48 flagged + 48 control). **The cap is printed because a silently truncated set reads as full coverage.**
+FULL-FRAME err>10 is 0.0396 in 8.5s. **The sampled `err>10` starts at
+0.5000 BY CONSTRUCTION** -- the set is half flagged on purpose -- so read the sampled
+column as a fall from that, never as a frame statistic.
+  ground truth at eta/256 in 2.1s -- err p50 1.0000 p99 1.0000, which is what makes it the reference.
+
+                    mode / f     secs    err p50    err p90    err p99    err>10  drift p50  drift p99   steps p50   escape chord tame     flips  overshoot  retries
+             None (baseline)      0.1    1.020e1    2.230e2    4.047e4    0.5000   1.121e-3    4.243e0     1.056e4   0.0104 8.743e-2    1.0000          1        0
+  -- Reject: f is a fraction of d_min a step may move
+                Reject f=0.5      0.0    1.000e0    1.155e0    1.502e0    0.0000   2.809e-6   1.015e-4     1.005e4   0.0000 8.743e-2    1.0000          0    31679
+                               undetermined (retry budget exhausted): 1 pixels
+                Reject f=0.1      0.1    1.000e0    1.002e0    1.043e0    0.0000   4.056e-7   5.485e-6     1.646e4   0.0000 8.742e-2    1.0000          0  1010791
+                               undetermined (retry budget exhausted): 14 pixels
+               Reject f=0.02      0.8    1.000e0    1.000e0    1.000e0    0.0000   2.434e-8   9.695e-8     9.879e4   0.0000 8.742e-2    1.0000          0 12876431
+                               undetermined (retry budget exhausted): 47 pixels
+  -- Predictive: f is a fraction of a crossing time
+            Predictive f=0.5      0.1    1.000e0    1.012e0    1.058e0    0.0000   7.833e-7   3.396e-5     8.849e3   0.0000 8.743e-2    1.0000          0        0
+            Predictive f=0.1      0.1    1.000e0    1.000e0    1.004e0    0.0000   2.166e-7   5.596e-6     1.152e4   0.0000 8.742e-2    1.0000          0        0
+           Predictive f=0.02      0.3    1.000e0    1.000e0    1.000e0    0.0000   1.577e-8   5.238e-8     4.002e4   0.0000 8.742e-2    1.0000          0        0
+  -- AbGrowth: f is a A*B growth factor
+                AbGrowth f=4      0.1    1.020e1    2.230e2    4.047e4    0.5000   1.121e-3    4.243e0     1.056e4   0.0104 8.743e-2    1.0000          1        0
+                AbGrowth f=2      0.1    1.020e1    2.230e2    4.047e4    0.5000   1.121e-3    4.243e0     1.056e4   0.0104 8.743e-2    1.0000          1        0
+              AbGrowth f=1.1      0.1    1.020e1    2.230e2    4.047e4    0.5000   1.121e-3    4.243e0     1.056e4   0.0104 8.743e-2    1.0000          1        0
+  -- Global: f is a eta multiplier
+                Global f=0.5      0.2    1.000e0    1.043e1    1.899e3    0.1042   7.898e-6   1.988e-1     2.103e4   0.0000 8.743e-2    1.0000          0        0
+               Global f=0.25      0.3    1.000e0    1.047e0    1.089e1    0.0312   2.118e-7   1.180e-3     3.462e4   0.0000 8.743e-2    1.0000          0        0
+              Global f=0.125      0.5    1.000e0    1.000e0    7.198e0    0.0104   7.382e-9   8.224e-4     6.912e4   0.0000 8.742e-2    1.0000          0        0
+
+HOW TO READ THIS
+
+**`overshoot` must be zero.** It counts steps that carried the interval clock past twice
+its own interval -- `dt > dt_left` is a bug, not a condition to handle. A nonzero
+baseline column is the defect being measured; a nonzero column under a candidate means
+that candidate does not address it.
+
+**`err>10` against `secs` is the decision.** A mode that reaches the baseline's error at
+the baseline's cost has done nothing; one that reaches ~1.0 for a few percent has won.
+`Global` is the control and is expected to pay in proportion to its `eta` multiplier --
+if it does not beat the others on cost it should not ship, and if it does, it should.
+
+**The controls decide whether a win generalises.** A mode that only helps
+`config_stability` is tuned to it. `preset_shape` must be untouched by all four.

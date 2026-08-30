@@ -1621,3 +1621,143 @@ undetermined pixels is the one to read.
 The broken set runs at **4.7x-11.3x the nominal step rate** — working harder, not stepping coarser
 — with `d_min` `3.1e-3`-`4.4e-3` against `r_coll = 5e-3`. `steps/copy` alone conflates a big step
 with a short run; **the step RATE is the honest measure** and it reverses the reading.
+
+**A STICKY BIT THAT NOTHING READS IS INDISTINGUISHABLE FROM ONE THAT NEVER FIRES.**
+`AzOut::ab_floored` and `ab_min` were computed on every march since they were added and read by
+**nothing** — `pixel.rs` never touched either, so they stopped one layer below `PixelOut` and no
+render, dump, criterion or test could see the `T::TINY` floor fire. The floor is a genuine
+*advance-anyway* site: unlike `budget_exhausted`, which is terminal, it divides by a fabricated
+denominator and the run continues. Now plumbed with `dt_max` and `n_cap_hits`. The test that
+earns its place asserts the floor **fires** on a constructed degenerate state and that the step is
+finite — `(1e-200)^2` underflows at f64, so the doubly-degenerate hole is open at both precisions
+and the floor is load-bearing rather than decorative.
+
+**THE SATURATION HYPOTHESIS IS REFUTED IN ALL THREE FORMS THIS PORT HAS, AND ONE OF THE THREE
+COULD NOT HAVE ANSWERED.** `config_stability` at 1024²-equivalent settings, 512²: `ab_floored`
+**0.000000**, `budget_exhausted` **0.000000**, `n_cap_hits > 0` on **every pixel of 262144**. The
+third is saturated, so its lift against `error_ratio > 10` is **exactly 1.000 by arithmetic** —
+which is why the frame base rate is printed above the lift table. `capped` firing everywhere is
+routine and not a fault: it fires whenever `A*B` falls below its interval-entry value, i.e. every
+time bodies approach mid-interval. `principia_integrator_contract.md`'s `substep_bucket`/`N_sub`/
+`N_max`/descriptor bit 5 **do not exist in this port** — that is the GLSL app's contract, and the
+question has to be asked in this codebase's own terms.
+
+**THE CLIFF IS A SLOPE, AND `error_ratio p99 = 35.6` IS THE PASS COUNT.** Over four decades of
+`eta` the flagged population converges completely: median `error_ratio` **2.13e5 -> 1.000**, drift
+**8.6e1 -> 3.9e-14**, p90 **3.39e9 -> 1.000**, with the control flat at 1.000 throughout. **0 of
+128 fail to clear.** The `+0.00` slope at the last rung is not a floor — 1.000 is `error_ratio`'s
+*converged* value, since `sigma_E(t) -> sigma_E(0)` under exact dynamics, and a statistic
+normalised to 1 can never reach an arithmetic floor beneath it. **82.0% clear by rung 3**, the
+shipped `refine_max_passes`, so ~18% survive — that tail *is* the p99. The pass converges and is
+stopped one rung early; "the repair does not repair" is a different claim and the run was built to
+be able to make either.
+
+**A SINGLE RK4 STEP ADVANCED THE PHYSICAL CLOCK BY 2.209e128 AGAINST A SYNC INTERVAL OF 0.4, AND
+THE MARCH RECORDED A CLEAN LANDING.** `dt_max` — the largest physical step as an actual `s.t`
+difference across one step — reads p99 **1.263e43** and max **2.209e128** on `error_ratio > 10`
+pixels against a nominal `4.0e-3`, and p99 **1.874e-2** on the rest. The acceptance path is code,
+not inference: `1e128` is finite so the `is_finite` guard passes; `s.t >= dt_left - land_tol` is
+satisfied by 128 orders so `landed = true`; and `t += dt_left` then corrects the **clock** to the
+boundary while keeping the **state** reached at `s.t = 1e128`. **The clamp corrects the clock and
+cannot un-take the step**, and `t` is clamped on both branches — so the overshoot was invisible in
+every recorded quantity until `dt_max` existed. An *unbounded step with no acceptance test*, not a
+cap, and curable by `eta`. The remedy shape is a step-acceptance test — reject and retry when the
+taken increment exceeds its own remaining interval — which is local and needs no re-integration,
+so unlike `refine_flagged` it has a live-playhead analogue.
+
+**A SETTING COPIED FROM A CONTEXT WHERE IT WAS CORRECT INTO ONE WHERE IT IS NOT, INVISIBLE BECAUSE
+NOTHING PRINTS IT.** Second instance after `k_frac = 1.0`. `refine_flagged: false` was introduced
+at `c03fc85` **correctly**, in experiment and precision harnesses, in the same commit that wrote
+the invariant *"the `render-*.txt` runs have it ON"*; over six days it was copied into render
+harnesses one file at a time with no commit message arguing for it, reaching `closure_render` at
+`71de13f`. **The failure was never the choice; it is that nothing recorded the choice.** The
+architectural cause is that there was no single source of truth at all — `prin` and 111 literal
+sites each constructed `EnsembleCfg` independently, so "the production config" existed nowhere.
+`EnsembleCfg::production` is now the one literal, `Override` is a named value per field, and
+`overrides_vs_production` **derives** the declaration by diffing so a config declares itself
+however it was built — a hand-maintained list can go stale, which is the same failure one level
+up. Both the diff and `Override::apply` are exhaustive with no `..` and no `_` arm, so adding a
+field breaks the build until it is handled. `output::provenance_sidecar` puts it beside every
+panel: the `.raw` and `.prnq` dumps have carried a full settings header since they were written —
+**the PNGs were the blind spot, and so was harness stdout.**
+
+**`refine_flagged` IS A BATCH-ONLY WORKAROUND AND HAS NO LIVE-PATH ANALOGUE.** It re-integrates a
+whole trajectory from `t = 0` at finer `eta` after the fact. Under a live playhead there is
+nothing to re-integrate *from* — a pixel bad at `t = 30` cannot be repaired at `t = 30.1` without
+redoing thirty time units. So the reading of the propagation bug inverts: the render harnesses
+were showing the **unmasked kernel** and `prin.rs`, on the default, has been hiding the same
+defect behind the repair. Closing the propagation gap **closes a discrepancy, not the defect** —
+and doing it first switches off the diagnostic that revealed it. The renders are still not valid
+*science images*, because `spread_shape` saturates on diverged copies and the terminal class is
+reclassified; `_drift.png` is where the unmasked kernel is legible and `_uniform.png` is not.
+Both halves are true and the report states both.
+
+**B WINS: A PREDICTIVE, BRANCH-FREE STEP LIMIT FIXES THE DEFECT FOR +1.9% OF THE STEPS.**
+`dtau <= f*d_min/(|v_rel|_max*A*B)`, one divide from values `phys_from_state` already returns, no
+trial step and no retry. On `config_stability` at 192²: `error_ratio` p99 **7.108e9 -> 1.109**,
+the fraction above the flag threshold **0.1110 -> 0.0000**, and the overshoot count **634 -> 0**,
+on `steps p50` 1.033e5 -> 1.053e5. `preset_shape` +0.5%, `deep interior` +30%.
+`StepLimit::Predictive` at `f = 0.02` is now production; `None` stays named because every
+committed number was taken under it, and `reference_opts` pins it so xcheck is 4/4.
+**Read `steps`, not `secs`** — under load 85-100 the winning row timed *faster* than the baseline
+while doing 1.7% more work, and `total_substeps` is the machine-independent cost.
+
+**AND THE DUMB CONTROL DOES NOT FIX IT AT FOUR TIMES THE COST.** `Global f=0.25` — a uniform `eta`
+cut, the stand-in for "widen the substep table" — leaves **153 overshoots** and `err>10 = 0.0767`
+on `config_stability` at `steps p50` 4.134e5, four times the baseline. A uniform refinement buys
+accuracy everywhere and still cannot bound a step whose size is set by *local* geometry. That is
+the argument for a per-step limit over a global one, and it comes from the control rather than
+from the candidate.
+
+**A IS NOT VIABLE ON A GPU, AND `warps hit` IS THE NUMBER THAT SAYS SO — NOT THE DIVERGENCE
+FACTOR.** Reject-and-retry reaches the same quality as B and costs +77% of the steps on CPU. The
+divergence factor `mean(max per warp)/mean(per lane)` rises 1.577 -> 2.557 linear and
+1.432 -> 1.975 tiled — but **the absolute level is the FIELD's, not the mode's**: step counts vary
+lane to lane with no retries at all, which is why the control row reads 1.577 and quoting it alone
+would condemn a mode for the field's own structure. The killer is that at the parameter A needs,
+**every warp contains a retrying lane (1.0000, both dispatch shapes)** and the worst lane retried
+**5.2 million** times. A also **plateaus above 1.0**: on `preset_shape`, `f` 0.1 -> 0.02 moves
+`err p99` 2.087e5 -> 2.337e5, *up*, at 4x the cost, because 39 of 96 sampled pixels exhaust the
+retry budget. A halving ladder bounded at 8 cannot reach where one well-chosen step goes directly.
+
+**C WAS ALREADY SHIPPED UNDER ANOTHER NAME — `DtauMode::PerStepInterval` IS AN `A*B` GROWTH CLAMP
+AT `C = 1`.** `StepLimit::AbGrowth` is **bitwise identical to the baseline** on every region at
+every parameter. The brief's `dt = min(A*B, ab_entry*C)*dtau` assumes `dtau` fixed across the
+interval, which is `FixedPerInterval`; under the shipped mode `dtau = eta*dt_left/(A*B)` is
+recomputed per step, so `dt ~ eta*dt_left` however much `A*B` grows. Held as a two-armed test —
+inert under `PerStepInterval`, active under `FixedPerInterval` — so if the older mechanism changes,
+the thing that silently starts mattering announces itself. **And with B in force the cap is
+redundant**: `deep interior` is identical to four digits *including the step count*,
+`config_stability` moves `err p99` 1.555 -> 1.686 on 6% fewer steps. Reported, not removed —
+that is a second corpus-invalidating change. `clamp_final_step` is **not** a removal candidate: it
+is a correctness property, taking the convergence order 1.06 -> 2.08.
+
+**THE CHART FAMILIES ARE TAME IN `alpha` AND NOT IN THE STEP CONTROL.** `preset_shape` was chosen
+as the *clean* control and its baseline carries `err>10 = 0.0824` with **584 overshoots** at 192².
+The standing "chart families sit at `alpha` 0.99-1.01 and do not exercise the criterion" is a
+statement about the refinement criterion and says nothing about integration. A control has to be
+clean *in the quantity being measured*, and this one was not.
+
+**A GROUND-TRUTH COMPARISON CAN BE SATURATED AND SAY NOTHING.** Chord and label flips against the
+`eta/256` reference read **1.0000 flips for a correct mode and a broken one alike** — over
+`t = 50` any change of step size gives a different trajectory through a chaotic region. Reported as
+saturated rather than quoted. What discriminates is `error_ratio`, because it is normalised to
+exactly 1.0 under exact dynamics and therefore has an absolute meaning that a difference does not.
+
+**THREE TESTS FAILED WHEN THE LIMIT SHIPPED, AND EVERY ONE FAILED CORRECTLY.**
+`refined_pixels_are_repaired` fell over on its **own** guard — *nothing was flagged, so this test
+has no subject*; `mad_based_error_ratio_cannot_separate_damaged_pixels` had no damaged population
+left; and `error_ratio_minus_one_falls_with_step_size` went non-monotone because the residual is
+now **round-off, not truncation** (`3.1e-9 -> 1.6e-9` across a decade). All three are pinned to
+`StepLimit::None`, the kernel they are about. **That the fix deletes the subject of three
+characterisation tests is the strongest corroboration in the suite**, and a pin needs the arm that
+justifies it or it reads as a tolerance loosened to keep green —
+`the_shipped_limit_is_already_at_the_floor_at_the_coarsest_step` asserts an eightfold step cut
+moves the residual by *less* than an order.
+
+**`eta/256` AND A FOURTH REFINEMENT PASS ARE CHARACTERISATION, NOT REMEDIES.** Both repair the
+damage and neither survives a live playhead: `refine_flagged` re-integrates from `t = 0`, and a
+global `eta/256` pays 256x everywhere for a local failure. Their value is diagnostic and it is
+large — *`eta/256` brings every flagged pixel to `error_ratio` 1.000* is what proves this is
+ordinary under-resolution rather than a wrong equation, a saturating cap or a threshold, which is
+why it is the **ground truth** in the comparison and not a candidate in it.

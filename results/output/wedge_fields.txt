@@ -1,0 +1,15 @@
+    Finished `release` profile [optimized] target(s) in 0.13s
+     Running `target/release/examples/wedge_fields 256 results`
+config_stability 256^2
+config: production + 5 override(s): t_max=50.0 (production 13.0), n_sync=125 (production 32), r_coll_frac=0.005 (production 0.001), refine_flagged=false (production true), keep_ref_path=true (production false)
+
+127.4s
+
+  wrote field_drift.png and field_drift_cells.png
+  wrote field_spread_shape.png and field_spread_shape_cells.png
+  wrote field_ensemble_spread.png and field_ensemble_spread_cells.png
+
+  `spread_shape` is the one that matters: it is what the shipping colouring reads for
+lightness, so it is the difference between *the wedges are in the error diagnostic* and
+*the wedges are in the picture*. Measured ratio across a cell boundary to inside one:
+drift 3.235, spread_shape 2.445, ensemble_spread 2.769.

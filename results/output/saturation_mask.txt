@@ -1,0 +1,66 @@
+    Finished `release` profile [optimized] target(s) in 0.07s
+     Running `target/release/examples/saturation_mask 512 results`
+config_stability, 512^2, closure_render's settings, refine_flagged=OFF.
+t_max=50 n_sync=125 r_coll=0.005 eta=0.01 max_steps=30000 E+1=8
+
+1087.0s
+
+== FRAME BASE RATES ==
+  a mask at 90% has a lift of ~1 by arithmetic. Read these before the lifts.
+
+              mask   fraction
+        ab_floored   0.000000
+      n_cap_hits>0   1.000000
+  budget_exhausted   0.000000
+             union   1.000000
+    error_ratio>10   0.111061
+
+== THE LIFT -- does the mask pick out the fault? ==
+  P(mask | err>10) against P(mask | err<=10). **A lift near 1 means the mask and the
+fault are unrelated however alike the pictures look.** `n` is the conditioning count.
+
+              mask     P(m|bad)      P(m|ok)       lift
+        ab_floored     0.000000     0.000000      0.000
+      n_cap_hits>0     1.000000     1.000000      1.000
+  budget_exhausted     0.000000     0.000000      0.000
+             union     1.000000     1.000000      1.000
+  (n_bad = 29114, n_ok = 233030)
+
+== THE CONTINUOUS READS ==
+  `dt_max` is the largest physical step any copy took; nominal is eta*dt_sync = 4.000e-3.
+A step-control cliff shows here and in no other recorded quantity.
+
+    err>10  dt_max p50 6.074e-3 p99 1.263e43 max 2.209e128   ab_min p50 4.315e-3 p01 7.013e-5   cap_hits p50 31122 p99 112143
+   err<=10  dt_max p50 4.183e-3 p99 1.874e-2 max 7.241e-2   ab_min p50 8.219e-3 p01 1.379e-3   cap_hits p50 59418 p99 110608
+
+== PER MARKED BOX ==
+  Verdicts are `BUG_REPORT.md` §4's, carried so the table cannot be read without them.
+**B4 is the negative control** -- its pale wedge survives refinement and is real
+structure. If the mask fires there too it is reading the chart, not the fault.
+
+   box     verdict    floored     capped     budget     err>10  dt_max p50  ab_min p50
+    B1      BROKEN     0.0000     1.0000     0.0000     0.6523    4.986e-3    5.296e-3
+    B2      BROKEN     0.0000     1.0000     0.0000     0.7314    5.886e-3    4.179e-3
+    B3       sound     0.0000     1.0000     0.0000     0.3168    4.650e-3    1.967e-2
+    B4  SOUND-CTRL     0.0000     1.0000     0.0000     0.3163    4.548e-3    8.170e-3
+    B5    marginal     0.0000     1.0000     0.0000     0.6348    4.236e-3    1.955e-3
+    B6       sound     0.0000     1.0000     0.0000     0.4563    4.367e-3    3.363e-3
+    B7       sound     0.0000     1.0000     0.0000     0.3144    4.023e-3    2.165e-3
+    B8      BROKEN     0.0000     1.0000     0.0000     0.5964    4.888e-3    4.076e-3
+    B9      BROKEN     0.0000     1.0000     0.0000     0.9112    8.594e-3    2.538e-3
+   B10      BROKEN     0.0000     1.0000     0.0000     0.8943    2.076e-2    3.999e-3
+    P1       sound     0.0000     1.0000     0.0000     0.2022    4.238e-3    4.460e-3
+    P2       sound     0.0000     1.0000     0.0000     0.0235    4.246e-3    1.672e-2
+    P3       sound     0.0000     1.0000     0.0000     0.1436    4.460e-3    5.556e-3
+    P4       sound     0.0000     1.0000     0.0000     0.4792    4.364e-3    6.204e-3
+    P5      BROKEN     0.0000     1.0000     0.0000     0.9775    6.309e-3    4.831e-3
+    P6    marginal     0.0000     1.0000     0.0000     0.6327    5.206e-3    1.486e-2
+  FRAME    baseline     0.0000     1.0000     0.0000     0.1111    4.228e-3    7.647e-3
+
+Wrote results/saturation/: config_stability_uniform.png, mask_*.png, overlay_*.png (cyan),
+field_dt_max.png (inferno, FIXED window 1e-6..1e0, magenta = non-finite).
+
+HOW TO READ IT. If the saturated mask coincides with the cut-out regions the mechanism
+is confirmed in one image. If the lift is ~1 and the overlay looks alike anyway, the
+resemblance is the base rate and the mask is not the cause -- say so and keep the
+plumbing, because an advance-anyway site with no telemetry is a gap either way.

@@ -1,0 +1,42 @@
+warning: variable does not need to be mutable
+   --> examples/wedge_id.rs:142:9
+    |
+142 |     let mut din: Vec<f64> = (0..n).filter(|&i| coherent[i]).map(|i| px[i].energy_drift_max).collect();
+    |         ----^^^
+    |         |
+    |         help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+   --> examples/wedge_id.rs:143:9
+    |
+143 |     let mut dout: Vec<f64> =
+    |         ----^^^^
+    |         |
+    |         help: remove this `mut`
+
+warning: `prin-rs` (example "wedge_id") generated 2 warnings (run `cargo fix --example "wedge_id" -p prin-rs` to apply 2 suggestions)
+    Finished `release` profile [optimized] target(s) in 0.12s
+     Running `target/release/examples/wedge_id 256 results`
+config_stability 256^2
+config: production + 5 override(s): t_max=50.0 (production 13.0), n_sync=125 (production 32), r_coll_frac=0.005 (production 0.001), refine_flagged=false (production true), keep_ref_path=true (production false)
+
+128.9s
+
+== WHAT COINCIDES WITH THE BRIGHT WEDGES (drift > p90 = 9.536e-6)? ==
+Base rate first: **a candidate covering half the frame has a lift of ~1 by arithmetic.**
+
+                     candidate   base rate  P(cand | hot)      lift
+        inside a coherent cell      0.2542         0.3778     1.487
+      many ref switches (>p75)      0.2459         0.1595     0.648
+              terminated early      0.4569         0.5993     1.312
+    deep close approach (<p25)      0.2500         0.1889     0.756
+       expensive (steps > p75)      0.2500         0.1157     0.463
+                      collided      0.4501         0.5973     1.327
+                       escaped      0.0068         0.0023     0.336
+
+  drift inside a coherent cell:  p50 2.996e-8  p90 2.036e-4   (n = 16656)
+  drift elsewhere:               p50 5.399e-8  p90 6.840e-6   (n = 48880)
+
+Wrote results/step_control/wedge_id/ -- drift, hot_p90, hot_p75, coherent_cells and one panel per rival.

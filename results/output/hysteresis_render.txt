@@ -1,0 +1,8 @@
+    Finished `release` profile [optimized] target(s) in 0.14s
+     Running `target/release/examples/hysteresis_render 256 results`
+config_stability 256^2
+config: production + 5 override(s): t_max=50.0 (production 13.0), n_sync=125 (production 32), r_coll_frac=0.005 (production 0.001), refine_flagged=false (production true), keep_ref_path=true (production false)
+
+       eps     secs    switches    cell frac   mask moved  shape chord DRIFT chord p50
+      0.00    127.7     1.782e1       0.7458          NaN          NaN          NaN
+      0.02    127.5     6.734e0       0.5863       0.1739       0.0000     7.459e-5

@@ -1,0 +1,24 @@
+    Finished `release` profile [optimized] target(s) in 0.14s
+     Running `target/release/examples/warp_divergence 128 results`
+config_stability 128^2, one lane per PIXEL (the copies are serial within a pixel here,
+so this models a pixel-per-thread dispatch and says so rather than implying a lane is a
+copy). Warp = 32.
+config: production + 4 override(s): t_max=50.0 (production 13.0), n_sync=125 (production 32), r_coll_frac=0.005 (production 0.001), refine_flagged=false (production true)
+
+                    mode       secs  retry p90  retry max  div linear   div tiled  warps hit  steps p50
+          None (control)       60.6          0          0       1.577       1.432     0.0000    1.022e5
+            Reject f=0.5       61.2        152      16013       1.611       1.446     0.9824    1.027e5
+            Reject f=0.1       65.7      10619     394459       1.766       1.543     0.9980    1.060e5
+           Reject f=0.02      195.9     368118    5205454       2.557       1.975     1.0000    1.825e5
+
+HOW TO READ THIS
+
+**The absolute divergence factor is the FIELD's, not the mode's.** Step counts vary
+lane to lane with or without retries, so the control row is large too. Read each
+candidate's factor against the control's (1.577 linear, 1.432 tiled): the INCREASE is
+what reject-and-retry costs a warp.
+
+`warps hit` is the fraction of warps containing at least one retrying lane. It is the
+other half of the picture: rare retries that are perfectly scattered stall every warp,
+and frequent retries that cluster stall few. A low retry rate with a high `warps hit` is
+the bad case, and it is invisible in any per-pixel average.

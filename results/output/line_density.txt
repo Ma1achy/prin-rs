@@ -1,0 +1,37 @@
+    Finished `release` profile [optimized] target(s) in 0.02s
+     Running `target/release/examples/line_density 256 results`
+config_stability 256^2
+config: production + 5 override(s): t_max=50.0 (production 13.0), n_sync=125 (production 32), r_coll_frac=0.005 (production 0.001), refine_flagged=false (production true), keep_ref_path=true (production false)
+
+== SPEARMAN: local density of switching surfaces vs log drift ==
+Ranks, so a heavy-tailed field cannot dominate. `shifted` displaces the density field by
+half a frame: it preserves the marginal and destroys the alignment, so **a correlation
+that survives it is an artefact of the two distributions rather than of where they are.**
+
+    radius              set     spearman      shifted  density p50
+         3       early k<=9       0.2190      -0.1346       0.1429
+         3  late k>9 (ctrl)      -0.0280      -0.0806       0.5510
+         7       early k<=9       0.2511      -0.1640       0.1644
+         7  late k>9 (ctrl)      -0.0392      -0.0868       0.5333
+        15       early k<=9       0.2737      -0.1741       0.1699
+        15  late k>9 (ctrl)      -0.0488      -0.0752       0.4891
+        31       early k<=9       0.3058      -0.1743       0.1764
+        31  late k>9 (ctrl)      -0.0531      -0.0230       0.4820
+
+== DRIFT BY EARLY-DENSITY DECILE (radius 15) ==
+  **A monotone rise is the claim.** A flat table means density explains nothing,
+whatever the correlation says.
+
+    decile  density range     drift p50             n
+         1  0.000- 0.052      1.591e-8          6460
+         2  0.052- 0.091      1.730e-8          6476
+         3  0.091- 0.119      2.554e-8          6721
+         4  0.119- 0.147      2.680e-8          6466
+         5  0.147- 0.170      2.328e-8          6631
+         6  0.170- 0.199      2.994e-8          6554
+         7  0.199- 0.241      7.072e-8          6517
+         8  0.241- 0.304      2.072e-7          6524
+         9  0.304- 0.371      1.420e-7          6610
+        10  0.371- 0.730      1.300e-7          6577
+
+Wrote results/step_control/line_density/early_density.png and drift.png -- same size, both fixed-ramped.

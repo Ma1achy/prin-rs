@@ -55,6 +55,19 @@ pub struct EnsembleCfg {
     /// back -- a first-order error, spatially smooth under fixed `dtau` and spatially *varying*
     /// under per-step `dtau`, because the last step's size then depends on local `A*B`.
     pub clamp_final_step: bool,
+
+    /// Which per-step limit bounds the step. See [`crate::integrate::az::StepLimit`].
+    pub step_limit: crate::integrate::az::StepLimit,
+    /// The limit's parameter. Its meaning is **per mode** and deliberately not shared -- see
+    /// [`crate::integrate::az::AzOpts::step_limit_f`].
+    pub step_limit_f: f64,
+    /// Hysteresis on the reference-body choice; `0` is the plain argmax. See
+    /// [`crate::integrate::az::AzOpts::ref_hysteresis`]. An intervention, not a default.
+    pub ref_hysteresis: f64,
+    /// How the competing step constraints combine. See [`crate::integrate::az::StepBlend`].
+    pub step_blend: crate::integrate::az::StepBlend,
+    /// The soft-minimum exponent; `1.0` is the harmonic form, large is the hard `min`.
+    pub blend_p: f64,
     pub eta: f64,
     pub max_steps: usize,
     pub ref_policy: RefPolicy,
@@ -115,6 +128,9 @@ pub struct EnsembleCfg {
     /// below can be formed. Off by default; it is a diagnostic and costs an energy evaluation
     /// per boundary.
     pub keep_drift_hist: bool,
+    /// Keep the nominal copy's reference-body sequence on each `PixelOut`. ~`n_sync` bytes per
+    /// pixel, so off by default.
+    pub keep_ref_path: bool,
     /// Also run the nominal copy through the Benettin/diffusion accumulators, for the
     /// production colouring's lightness field. `None` skips it entirely.
     ///
@@ -141,8 +157,11 @@ pub struct EnsembleCfg {
     pub refine_max_passes: u8,
 }
 
-impl Default for EnsembleCfg {
-    fn default() -> Self {
+impl EnsembleCfg {
+    /// **The one source of truth.** Every other config in the project is this plus a recorded
+    /// list of named departures -- see [`crate::ensemble::provenance`], which exists because
+    /// there was no such thing for six days and 111 literal sites disagreed with it silently.
+    pub fn production() -> Self {
         Self {
             n_extra: 7, // E + 1 = 8, per BRIEF §3
             jitter_frac: 0.5,
@@ -154,6 +173,23 @@ impl Default for EnsembleCfg {
             escape_confirm: true,
             dtau_mode: DtauMode::default(),
             clamp_final_step: true,
+            // **B, and the measurement decided it.** At `f = 0.02` on three regions it takes
+            // `error_ratio` p99 from `7.1e9` to `1.109`, the fraction above the flag threshold
+            // from 0.1110 to **0.0000**, and the overshoot count from **634 to 0** -- for
+            // **+1.9% of the steps**. `Reject` costs +77% and plateaus above 1.0 on
+            // `preset_shape`; `AbGrowth` is bitwise inert here; `Global` at 4x the work still
+            // leaves 153 overshoots. See `results/step_control/README.md`.
+            //
+            // **The committed corpus was taken under `StepLimit::None` and does not reproduce
+            // bitwise under this default.** That is the cost of the change and it is stated
+            // rather than discovered: `EnsembleCfg::provenance` now names the setting in every
+            // header, and `reference_opts` pins `None` so the NumPy cross-check is unaffected.
+            step_limit: crate::integrate::az::StepLimit::Predictive,
+            step_limit_f: 0.02,
+            // `Min` until the measurement says otherwise. See `results/step_control/edges`.
+            ref_hysteresis: 0.0,
+            step_blend: crate::integrate::az::StepBlend::Min,
+            blend_p: 4.0,
             escape_rule: crate::outcome::EscapeRule::Closure(crate::outcome::CLOSURE_TAU),
             closure_k: 1,
             stop_on_escape: false,
@@ -171,10 +207,17 @@ impl Default for EnsembleCfg {
             keep_copy_shapes: false,
             keep_boundary_shapes: false,
             keep_drift_hist: false,
+            keep_ref_path: false,
             ftle: None,
             ftle_dt: 1e-4,
             decode_path: Path::DirectF64,
         }
+    }
+}
+
+impl Default for EnsembleCfg {
+    fn default() -> Self {
+        Self::production()
     }
 }
 
@@ -356,6 +399,60 @@ pub struct PixelOut {
     /// on `outcome` would be that regression at a new level, so the class is carried instead.
     pub event_class: u8,
 
+    /// **Saturation: any copy advanced with `A` or `B` clamped to `T::TINY`.**
+    ///
+    /// `AzOut::ab_floored` was written on every march and read by nothing — it stopped one layer
+    /// below the payload, so no render, dump, criterion or test could see the floor fire. This is
+    /// the *advance-anyway* site: unlike `budget_exhausted` it is not terminal, the step is taken
+    /// with a fabricated denominator and the run continues. **A sticky bit that nothing reads is
+    /// indistinguishable from one that never fires.**
+    pub ab_floored: bool,
+    /// Smallest raw `A*B` over the copies, **before** the floor. The quantity `dtau` divides by.
+    pub ab_min: f64,
+    /// Largest **physical** step any copy took. The direct read on a step-control cliff:
+    /// `ab_min` says the denominator was small, this says how far the step went because of it.
+    pub dt_max: f64,
+    /// **THE TRIPWIRE, summed over copies.** Steps after which the interval-local clock passed
+    /// `2 * dt_left`. `dt > dt_left` is a bug, not a condition to handle, and this is the count
+    /// that has to be zero. It was `2.209e128` on one step and undetected for six days because
+    /// nothing asserted it.
+    pub n_overshoot: u64,
+    /// The nominal copy's reference-body sequence, one entry per sync boundary. Empty unless
+    /// [`EnsembleCfg::keep_ref_path`] is set.
+    ///
+    /// The graded form of [`PixelOut::ref_path_hash`]: the hash says *whether* two neighbours
+    /// took different paths, this says **how many boundaries they differ at**. A binary
+    /// differs-or-not mask saturates — measured base rate 0.72 on `config_stability` — and a
+    /// saturated mask has a lift near 1 whatever it explains.
+    pub ref_path: Vec<u8>,
+    /// Second-longest over longest separation at each boundary, nominal copy. Empty unless
+    /// [`EnsembleCfg::keep_ref_path`] is set. **1.0 is a tie for the longest side**, which is
+    /// exactly where `choose_reference` flips — the coordinate of the chart-switching surface.
+    pub ref_tie_path: Vec<f64>,
+    /// FNV-1a hash of the **nominal copy's reference-body sequence** over the sync boundaries.
+    ///
+    /// `switches` counts how often the reference changed; this identifies *which path* it took.
+    /// The standing result is that the count alone does not order the slices — *it is not how
+    /// often the reference switches, it is how often NEIGHBOURS switch differently* — and a count
+    /// cannot answer that, because two neighbours can switch equally often at different
+    /// boundaries. Comparing hashes makes "these two pixels took different reference paths" an
+    /// exact test rather than a proxy.
+    pub ref_path_hash: u64,
+    /// Steps retried under `StepLimit::Reject`, summed over copies. Zero under every other mode.
+    pub n_retry: u64,
+    /// A copy exhausted the retry budget: **undetermined**, never discarded, and counted apart
+    /// from `budget_exhausted` so one failure swapped for another is visible.
+    pub retry_exhausted: bool,
+
+    /// Steps at `PerStepInterval`'s entry-sizing cap, summed over copies. The second
+    /// advance-anyway site — the mode wanted a larger step and was refused, so the interval is
+    /// crossed in more steps than the mode chose, bounded ultimately by `max_steps`.
+    pub n_cap_hits: u64,
+    /// Any copy ended by exhausting `max_steps`. **Terminal, not saturation** — the march breaks
+    /// and the run stops. Carried beside the other two so the three stop reasons are separable:
+    /// `budget_exhausted` ends a run, `ab_floored` and `n_cap_hits` let it continue under-resolved.
+    pub budget_exhausted: bool,
+
     /// Integrator substeps summed over the `E+1` copies — the cost side of a cost-aware
     /// priority. `AzOut::steps` was computed on every march and never read; ranking by
     /// `spread / cost` only pays if the cost distribution is wide, and this is what says
@@ -480,6 +577,11 @@ pub fn evaluate_at<T: Real>(slice: &Slice, idx: usize, cfg: &EnsembleCfg, eta_v:
         escape_confirm: cfg.escape_confirm,
         dtau_mode: cfg.dtau_mode,
         clamp_final_step: cfg.clamp_final_step,
+        step_limit: cfg.step_limit,
+        step_limit_f: cfg.step_limit_f,
+        step_blend: cfg.step_blend,
+        blend_p: cfg.blend_p,
+        ref_hysteresis: cfg.ref_hysteresis,
         escape_rule: cfg.escape_rule.lift(),
         closure_k: cfg.closure_k,
         stop_on_escape: cfg.stop_on_escape,
@@ -792,6 +894,39 @@ pub fn evaluate_at<T: Real>(slice: &Slice, idx: usize, cfg: &EnsembleCfg, eta_v:
         copy_outcomes: if cfg.keep_copy_outcomes { packed.clone() } else { Vec::new() },
         event_class: stats::event_class_at(&outs[0].tight, packed[0], cfg.n_sync - 1),
         total_substeps: outs.iter().map(|o| o.steps as u64).sum(),
+        ab_floored: outs.iter().any(|o| o.ab_floored),
+        ab_min: outs
+            .iter()
+            .map(|o| o.ab_min.to_f64().unwrap())
+            .filter(|x| x.is_finite())
+            .fold(f64::INFINITY, f64::min),
+        dt_max: outs
+            .iter()
+            .map(|o| o.dt_max.to_f64().unwrap())
+            .filter(|x| x.is_finite())
+            .fold(0.0, f64::max),
+        n_cap_hits: outs.iter().map(|o| o.n_cap_hits as u64).sum(),
+        n_overshoot: outs.iter().map(|o| o.n_overshoot as u64).sum(),
+        n_retry: outs.iter().map(|o| o.n_retry as u64).sum(),
+        ref_path: if cfg.keep_ref_path { outs[0].refs.clone() } else { Vec::new() },
+        ref_tie_path: if cfg.keep_ref_path {
+            outs[0].ref_tie.iter().map(|x| x.to_f64().unwrap()).collect()
+        } else {
+            Vec::new()
+        },
+        ref_path_hash: {
+            // FNV-1a over the nominal copy's reference sequence. Nominal only: the copies are a
+            // sampling of the cell and mixing their paths would blur the very boundary this
+            // exists to locate.
+            let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+            for &r in &outs[0].refs {
+                h ^= r as u64;
+                h = h.wrapping_mul(0x1000_0000_01b3);
+            }
+            h
+        },
+        retry_exhausted: outs.iter().any(|o| o.retry_exhausted),
+        budget_exhausted: outs.iter().any(|o| o.budget_exhausted),
         copy_shapes: if cfg.keep_copy_shapes {
             shapes
                 .iter()

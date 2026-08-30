@@ -20,6 +20,80 @@ use super::system::AzSystem;
 /// orders and `dt` grows with it. Giant physical steps immediately after an encounter, on a thin
 /// set -- encounters coinciding with a boundary -- which is why the damage clusters spatially
 /// rather than tracking `d_min`.
+/// How the competing step-size constraints are combined.
+///
+/// # Why a `min` is not neutral
+///
+/// The step size is `min(mode, entry cap, per-step limit)`. A `min` is C^0 but **not C^1**: where
+/// the active constraint switches, the step size has a *crease*, and its derivative with respect
+/// to the initial condition jumps. Accumulated over ~10^5 steps those creases can print as edges
+/// in a field that is otherwise smooth — the constraint-switching surface is a codimension-1 sheet
+/// in IC space, which is what an edge in a rendered field is.
+///
+/// # The construction, and why not the plain harmonic mean
+///
+/// `SoftMin` is the p-norm soft minimum `(sum x_i^-p)^(-1/p)`, which is C^infinity in every
+/// argument and **always <= min**, so it can only ever make the step more conservative.
+///
+/// At `p = 1` it is exactly the reciprocal sum `1/(1/a + 1/b + 1/c)` — the harmonic form — and
+/// that is where the cost lives: with `n` constraints *tied* it returns `min/n`, so three
+/// comparable constraints give a **third** of the step and three times the work. The plain
+/// harmonic *mean* `n/sum(1/x)` fixes the tie case and is **not conservative** — with one large
+/// argument it exceeds the min, which is the one thing a step limit may never do.
+///
+/// `p` recovers both ends: `p -> inf` is the hard `min`, `p = 1` is the harmonic form, and at
+/// `p = 4` three tied constraints cost `3^(1/4) = 1.32x` rather than `3x` while the map stays
+/// smooth. **`p` is a measured parameter, not a chosen one** — see `results/step_control/`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum StepBlend {
+    /// Today's behaviour, and what every committed number was taken under.
+    #[default]
+    Min,
+    /// The p-norm soft minimum. `p` is [`AzOpts::blend_p`].
+    SoftMin,
+}
+
+/// Which per-step limit, if any, bounds the step the march is about to take.
+///
+/// # Why this exists
+///
+/// `dt = A*B*dtau` is emergent: `dt/dtau = A*B` is integrated *by the RK4 stepper*, so the step
+/// actually taken is not the one predicted. Measured on `config_stability`, **one step advanced
+/// the physical clock by `2.209e128` against a sync interval of `0.4`** and the march recorded a
+/// clean landing -- `1e128` is finite so the divergence guard passes, `s.t >= dt_left` is
+/// satisfied by 128 orders, and `t += dt_left` then corrects the *clock* while keeping the
+/// *state*. **Nothing asked whether the step it just took was one it could afford.**
+///
+/// The two batch remedies -- `refine_flagged`, and a global `eta/256` -- are characterisation,
+/// not fixes: the first re-integrates from `t = 0`, which a live playhead cannot do, and the
+/// second pays 256x everywhere for a local failure. Only a per-step mechanism survives contact
+/// with marching. These are the four candidates, decided by measurement rather than by argument.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum StepLimit {
+    /// Today's behaviour. **Every committed number in the corpus was taken under this**, so it
+    /// stays the default and a test asserts it is bitwise unchanged.
+    #[default]
+    None,
+    /// **A.** Take the step, test it, and if the largest separation moved by more than
+    /// `f * d_min` restore and halve. Local and live-compatible; on a GPU a rejection is a
+    /// divergent branch, which `examples/warp_divergence.rs` measures rather than assumes.
+    Reject,
+    /// **B.** Branch-free, never rejects: bound `dtau` by the closest pair's crossing time,
+    /// `f * d_min / |v_rel|_max`, computed from values already in registers before stepping.
+    /// `f` is a fraction of a crossing time and has physical meaning.
+    Predictive,
+    /// **C.** The narrowest patch: the blow-up is `A*B` growing mid-interval, so cap the growth
+    /// at `f` times its interval-entry value. **Distinct from `PerStepInterval`'s cap**, which
+    /// bounds `dtau` at its entry value rather than the product.
+    AbGrowth,
+    /// **D.** The dumb control: scale `eta` by `f` and pay everywhere. **This port has no
+    /// substep-bucket table** -- `substep_bucket`, `N_sub`, `N_max` and descriptor bit 5 are the
+    /// GLSL app's contract and appear nowhere in `src/`. The faithful stand-in for "widen the
+    /// table" is the knob that buys resolution uniformly, and in an AZ march that is `eta`, since
+    /// steps per interval go as `1/eta`. A stand-in, and labelled as one.
+    Global,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DtauMode {
     /// `dtau = eta*dt_left/(A0*B0)`, computed **once** at the interval's entry and never
@@ -95,6 +169,15 @@ pub struct AzOut<T> {
     /// whether `spread_event` may latch — a running max would make a near-tie permanent and
     /// it would never clear. See NOTES §5.
     pub tie_ratio: Vec<T>,
+    /// Second-**longest** over **longest** pair separation, at each completed sync boundary.
+    ///
+    /// Distinct from [`AzOut::tie_ratio`], which is about the two *tightest* pairs and decides
+    /// which binary is which. This one is about the two *longest*, and it is the quantity
+    /// `choose_reference` turns on: the reference is `THIRD[argmax d]`, so it flips exactly where
+    /// the longest side changes identity — where this ratio reaches 1. It is the coordinate of
+    /// the chart-switching surface, and the two must not be confused: reading `tie_ratio` for
+    /// this question would measure the wrong pair entirely.
+    pub ref_tie: Vec<T>,
     /// The **shape vector at each completed sync boundary**, when
     /// `AzOpts::keep_boundary_shapes` is set; empty otherwise.
     ///
@@ -159,7 +242,33 @@ pub struct AzOut<T> {
     /// caught by the explicit `is_finite` test and *not* by the floor the guard is named for.
     pub ab_min: T,
     /// Whether either factor was ever clamped to `T::TINY`. Says which guard did the work.
+    ///
+    /// **This is an advance-anyway site**: the step is taken with a denominator the code knows is
+    /// fabricated, and nothing terminates. Read it as saturation, not as a warning.
     pub ab_floored: bool,
+    /// Largest **physical** step taken over the whole run, as an actual `s.t` difference.
+    ///
+    /// `ab_min` records the worst denominator; this records the step it produced. A step-control
+    /// cliff shows here and in no other recorded quantity.
+    pub dt_max: T,
+    /// Steps taken at `PerStepInterval`'s `.min(dtau_entry)` cap -- the mode asked for a larger
+    /// step than the interval's entry sizing and was refused. The landing clamp is excluded.
+    pub n_cap_hits: u32,
+    /// **THE TRIPWIRE.** Steps after which the interval-local clock exceeded `2 * dt_left`.
+    ///
+    /// `dt > dt_left` is a **bug**, not a condition to handle: a legitimate overshoot under fixed
+    /// `dtau` is at most one nominal step, ~1% of `dt_left`, so `2x` is unambiguous. It went
+    /// undetected for six days because nothing asserted it. `debug_assert`ed in debug and counted
+    /// here in release -- and **conditioned on `clamp_final_step`**, because with the clamp off
+    /// overshoot is the expected behaviour of a named measurement axis, and an assert that fires
+    /// on a deliberate mode is a broken assert.
+    pub n_overshoot: u32,
+    /// Steps retried under [`StepLimit::Reject`]. Zero under every other mode.
+    pub n_retry: u32,
+    /// A step exhausted [`MAX_RETRIES`] under `Reject`. The trajectory is **undetermined**, not
+    /// discarded -- a measurement outcome, and counted separately from `budget_exhausted` so a
+    /// failure swapped for a differently-named failure is visible rather than absorbed.
+    pub retry_exhausted: bool,
     /// Time of the first terminating event, or the time reached if none fired. Distinct from
     /// `t` only when `stop_on_event` is off, where the run continues past the event.
     pub t_end: T,
@@ -300,6 +409,31 @@ pub struct AzOpts<'a, T> {
     /// outcome-class colouring it vanishes — a colouring artefact, per `RESULTS §21`. The defect
     /// here is real and independently measured; it is not the cause of that appearance.
     pub clamp_final_step: bool,
+    /// Which per-step limit bounds the step. See [`StepLimit`].
+    pub step_limit: StepLimit,
+    /// **Hysteresis on the reference-body choice.** `0` is the plain `argmax`.
+    ///
+    /// The selector normally switches the instant another pair becomes the longest. With
+    /// `eps > 0` it keeps the current reference until a rival exceeds the current reference's
+    /// own opposite side by a factor `1 + eps`, so the switching surface **moves** and small
+    /// perturbations no longer flip the chart back and forth.
+    ///
+    /// It is an intervention, not a proposed default: every trajectory remains a legitimate
+    /// integration, but the itinerary is now path-dependent and the NumPy cross-check pins
+    /// `0`. Its purpose is a falsifiable picture — **if the rendered wedges are chart-selection
+    /// artefacts, displacing the surfaces displaces them; if they are dynamical, the field is
+    /// invariant and only the itinerary changes.**
+    pub ref_hysteresis: f64,
+    /// How the competing constraints are combined. See [`StepBlend`].
+    pub step_blend: StepBlend,
+    /// The soft-minimum exponent. `1.0` is the harmonic form; large is the hard `min`.
+    pub blend_p: f64,
+    /// The limit's single parameter. Its meaning is **per mode** and deliberately not shared:
+    /// a fraction of `d_min` for `Reject`, a fraction of a crossing time for `Predictive`, an
+    /// `A*B` growth factor for `AbGrowth`, and an `eta` multiplier for `Global`. One number with
+    /// four meanings is a knob that cannot be swept across modes, so the harness sweeps it
+    /// per mode and prints which meaning is in force.
+    pub step_limit_f: f64,
     /// Record the shape vector at every sync boundary, for the temporal accumulators (§5).
     ///
     /// Off by default: `n_sync` triples per copy is ~70x the size of a `PixelOut`, and it is
@@ -320,6 +454,11 @@ impl<T: Real> Default for AzOpts<'_, T> {
     fn default() -> Self {
         Self {
             forced_refs: None,
+            step_limit: StepLimit::None,
+            step_limit_f: 0.0,
+            ref_hysteresis: 0.0,
+            step_blend: StepBlend::Min,
+            blend_p: 4.0,
             lc_stable: true,
             r_coll_frac: T::zero(),
             escape_rule: crate::outcome::EscapeRule::Reference,
@@ -392,6 +531,11 @@ pub fn reference_opts<T: Real>(
 ) -> AzOpts<'_, T> {
     AzOpts {
         forced_refs,
+        step_limit: StepLimit::None,
+        step_limit_f: 0.0,
+        ref_hysteresis: 0.0,
+        step_blend: StepBlend::Min,
+        blend_p: 4.0,
         lc_stable,
         r_coll_frac: T::zero(),
         escape_rule: crate::outcome::EscapeRule::Reference,
@@ -407,34 +551,167 @@ pub fn reference_opts<T: Real>(
     }
 }
 
+/// What [`dtau_for_step`] decided, and the two things it decided *despite*.
+///
+/// Returned as a struct rather than a tuple because two of the four fields exist only to be
+/// recorded: **an advance-anyway site with no telemetry is indistinguishable from one that never
+/// fires**, and both of these advance with a step the code knows is not the one it asked for.
+#[derive(Clone, Copy)]
+pub(crate) struct StepSize<T> {
+    /// The fictitious step actually taken.
+    pub dtau: T,
+    /// `A*B` **before** the `T::TINY` floor.
+    pub ab_raw: T,
+    /// Either factor was clamped to `T::TINY`, so `dtau` divides by a fabricated denominator
+    /// and the step advances anyway.
+    pub floored: bool,
+    /// `PerStepInterval`'s `.min(dtau_entry)` bound, and only that one -- **not** the landing
+    /// clamp, which is a deliberate one-sided reduction of the final step. When this binds the
+    /// mode wanted a *larger* step than the interval's entry sizing and was refused it.
+    pub capped: bool,
+}
+
+/// Retries a single step may take under [`StepLimit::Reject`] before the trajectory is called
+/// **undetermined**.
+///
+/// Halving eight times is a 256x reduction -- the same factor the `eta` ladder needed to bring
+/// every flagged pixel to `error_ratio` 1.000, so a step that still fails here is not failing for
+/// want of resolution.
+pub const MAX_RETRIES: u32 = 8;
+
+/// **B.** The closest pair's crossing time, as a `dtau` bound.
+///
+/// `dt = A*B*dtau`, so a physical bound `dt <= f*d_min/|v_rel|_max` is
+/// `dtau <= f*d_min/(|v_rel|_max*A*B)`. `phys_from_state` returns `(R1, R2, V1, V2)` and the
+/// third pair is the difference of each -- everything is already in registers, and the whole
+/// limit is one divide with no trial step, no retry and no branch.
+///
+/// Returns `+inf` when nothing is moving, which is the correct absence of a bound rather than a
+/// zero step.
+fn predictive_dtau<T: Real>(
+    sys: &AzSystem<T>,
+    s: &super::state::AzState<T>,
+    f: T,
+) -> T {
+    let (r1, r2, v1, v2) = sys.phys_from_state(s);
+    let d_min = r1.norm().min(r2.norm()).min((r2 - r1).norm());
+    let v_max = v1.norm().max(v2.norm()).max((v2 - v1).norm());
+    let ab = s.a().max(T::TINY) * s.b().max(T::TINY);
+    let denom = v_max * ab;
+    // `f <= 0` is not "the tightest possible bound", it is a step of zero and a march that never
+    // advances. A mode selected without its parameter would otherwise burn its whole budget and
+    // report `budget_exhausted`, which reads as a physics failure. Treated as no bound.
+    if f > T::zero() && denom > T::zero() && d_min.is_finite() && denom.is_finite() {
+        f * d_min / denom
+    } else {
+        T::infinity()
+    }
+}
+
+/// Combine the competing `dtau` constraints. See [`StepBlend`].
+///
+/// Non-finite and non-positive entries are skipped — `+inf` is how "this constraint is not in
+/// force" is spelled, and a zero or negative bound is not a tighter limit but a broken one.
+/// Returns `+inf` when nothing is in force, which the caller reads as no bound.
+fn blend_dtau<T: Real>(blend: StepBlend, p: T, c: &[T]) -> T {
+    let live = || c.iter().copied().filter(|x| x.is_finite() && *x > T::zero());
+    match blend {
+        StepBlend::Min => live().fold(T::infinity(), |a, b| if b < a { b } else { a }),
+        StepBlend::SoftMin => {
+            // (sum x^-p)^(-1/p). One `powf` per constraint; the constraints number two or three.
+            let s: T = live().map(|x| x.powf(-p)).sum();
+            if s > T::zero() && s.is_finite() {
+                s.powf(-T::one() / p)
+            } else {
+                live().fold(T::infinity(), |a, b| if b < a { b } else { a })
+            }
+        }
+    }
+}
+
+/// **C.** The `A*B` growth clamp, as a `dtau` bound.
+///
+/// `dt = min(A*B, ab_entry*C) * dtau_entry`, realised as a *reduction of `dtau`* because
+/// `dt/dtau = A*B` is integrated by the stepper and cannot be multiplied after the fact. Relative
+/// to the interval's **entry** sizing, so it composes with whichever [`DtauMode`] is in force
+/// instead of replacing it — and `+inf` while `A*B` has not grown, which is the absence of a
+/// bound rather than a step of zero.
+fn ab_growth_dtau<T: Real>(ab_entry: T, ab: T, dtau_entry: T, c: T) -> T {
+    let cap = ab_entry * c;
+    if ab > cap && ab > T::zero() {
+        dtau_entry * (cap / ab)
+    } else {
+        T::infinity()
+    }
+}
+
+/// **A.** Was the step one the geometry could afford?
+///
+/// Rejects when either relative position moved further than `f * d_min` **as it was before the
+/// step** -- the pre-step `d_min` is the one that bounds what a step may do, and using the
+/// post-step value would let a step that destroyed the configuration justify itself. A non-finite
+/// candidate is a rejection, not an acceptance: that is the case the retry exists for.
+fn step_accepted<T: Real>(
+    sys: &AzSystem<T>,
+    before: &super::state::AzState<T>,
+    after: &super::state::AzState<T>,
+    f: T,
+) -> bool {
+    let (a1, a2, _, _) = sys.phys_from_state(before);
+    let (b1, b2, _, _) = sys.phys_from_state(after);
+    if !b1.is_finite() || !b2.is_finite() {
+        return false;
+    }
+    let d_min = a1.norm().min(a2.norm()).min((a2 - a1).norm());
+    let moved = (b1 - a1).norm().max((b2 - a2).norm());
+    moved <= f * d_min
+}
+
 /// The step size for the *next* RK4 step, given the interval's entry sizing and the current
 /// regularised state.
 ///
-/// Returns `(dtau_now, ab_raw, floored)` -- `ab_raw` is `A*B` **before** the `T::TINY` floor,
-/// which is what the blow-up is a function of and what the `TINY` report reads.
+/// `ab_raw` is `A*B` **before** the `T::TINY` floor, which is what the blow-up is a function of
+/// and what the `TINY` report reads.
 #[inline]
 fn dtau_for_step<T: Real>(
     mode: DtauMode,
+    blend: StepBlend,
+    blend_p: T,
     clamp_final: bool,
     eta: T,
     dt_left: T,
     dtau_entry: T,
+    // The per-step limit, already in `dtau` units, or `+inf` when no limit is in force.
+    // **Applied before the landing clamp**, so the clamp stays the last word and the final step
+    // still lands on the boundary rather than stopping short of it.
+    extra_limit: T,
     s: &super::state::AzState<T>,
-) -> (T, T, bool) {
+) -> StepSize<T> {
     let a = s.a();
     let b = s.b();
     let ab_raw = a * b;
     let floored = a < T::TINY || b < T::TINY;
     let ab = a.max(T::TINY) * b.max(T::TINY);
-    let dtau = match mode {
-        DtauMode::FixedPerInterval => dtau_entry,
+    let mut capped = false;
+    // **Every competing constraint is gathered, then combined once.** Written this way rather
+    // than as a chain of `.min()` calls so the blend has something to blend: a chain hard-codes
+    // the hard minimum into the control flow, which is the crease this exists to remove.
+    let mut cons = [T::infinity(); 3];
+    match mode {
+        DtauMode::FixedPerInterval => cons[0] = dtau_entry,
         // `rem`, not `dt_left`: geometric decay, kept so the measurement can show it.
         DtauMode::PerStepRemaining => {
             let rem = (dt_left - s.t).max(T::zero());
-            eta * rem / ab
+            cons[0] = eta * rem / ab;
         }
-        DtauMode::PerStepInterval => (eta * dt_left / ab).min(dtau_entry),
-    };
+        DtauMode::PerStepInterval => {
+            cons[0] = eta * dt_left / ab;
+            cons[1] = dtau_entry;
+            capped = cons[0] > cons[1];
+        }
+    }
+    cons[2] = extra_limit;
+    let dtau = blend_dtau(blend, blend_p, &cons);
     // Land ON the boundary rather than past it. `dt = A*B*dtau` to leading order, so
     // `(dt_left - s.t)/ab` is the fictitious time still owed; `.min` makes this a one-sided
     // reduction of the last step only and leaves every interior step untouched. **`ab` is the
@@ -443,12 +720,18 @@ fn dtau_for_step<T: Real>(
     // increment over the step -- first order -- so the residual is `O(h^2)` per boundary and the
     // measured global order is **3.06 under `FixedPerInterval` and 2.08 under `PerStepInterval`**,
     // against 1.13 and 1.06 without. Not the stepper's own four, and stated rather than assumed.
+    // **The landing clamp stays a HARD `min`, deliberately.** It is not a step-size preference
+    // to be traded against the others -- it is an exact endpoint condition, and it is worth
+    // 1.06 -> 2.08 in measured convergence order. Softening it would leave every final step
+    // short of the boundary, costing the exactness for a crease that occurs once per interval at
+    // essentially the same place for neighbouring pixels, rather than on the constraint-switching
+    // surfaces that sweep across the frame.
     let dtau = if clamp_final {
         dtau.min((dt_left - s.t).max(T::zero()) / ab)
     } else {
         dtau
     };
-    (dtau, ab_raw, floored)
+    StepSize { dtau, ab_raw, floored, capped }
 }
 
 /// Refine an escape's `t_end` by **replaying** the sync interval it fired in.
@@ -499,7 +782,9 @@ fn refine_escape_time<T: Real>(
     // returns a `t_end` that is wrong for a reason that looks like a criterion result -- and the
     // escape criterion is precisely what this quantity is read as evidence about.
     while s.is_finite() && s.t < dt_left - land_tol(clamp_final, dt_left) && steps < REPLAY_MAX_STEPS {
-        let (h, _, _) = dtau_for_step(mode, clamp_final, eta, dt_left, dtau, &s);
+        // No step limit in the replay: it re-walks an interval the march already took, and a
+        // different step rule would return a `t_end` from a different trajectory.
+        let h = dtau_for_step(mode, StepBlend::Min, T::lit(4.0), clamp_final, eta, dt_left, dtau, T::infinity(), &s).dtau;
         s = rk4::step(&sys, &s, e, h);
         steps += 1;
         if crate::outcome::unbound(&sys.to_cartesian(&s), m, b) {
@@ -544,6 +829,14 @@ pub fn integrate_az_opts<T: Real>(
     opts: &AzOpts<T>,
 ) -> AzOut<T> {
     let (forced_refs, lc_stable) = (opts.forced_refs, opts.lc_stable);
+    // **D**, and the only limit that acts here rather than per step. Scaling `eta` buys
+    // resolution uniformly and pays for it uniformly -- which is the property that makes it the
+    // control the other three have to beat, not a defect of it.
+    let eta = if opts.step_limit == StepLimit::Global {
+        eta * T::lit(opts.step_limit_f)
+    } else {
+        eta
+    };
     let mut cart = s0;
     let e0 = energy::energy(&s0.r, &s0.v, m, T::zero());
     let mut t = T::zero();
@@ -556,12 +849,20 @@ pub fn integrate_az_opts<T: Real>(
     let mut tight = Vec::with_capacity(n_sync);
     let mut escape_flags = Vec::with_capacity(n_sync);
     let mut tie_ratio = Vec::with_capacity(n_sync);
+    let mut ref_tie = Vec::with_capacity(n_sync);
     let mut boundary_shapes: Vec<[T; 3]> =
         Vec::with_capacity(if opts.keep_boundary_shapes { n_sync } else { 0 });
     let mut drift_hist: Vec<T> = Vec::with_capacity(if opts.keep_drift_hist { n_sync } else { 0 });
     let mut total_steps = 0usize;
     let mut finite = true;
     let mut budget_exhausted = false;
+    // Recording only. `dt_max` is the largest physical step any interval took; `n_cap_hits`
+    // counts steps at `PerStepInterval`'s entry-sizing cap. Neither changes a trajectory.
+    let mut dt_max = T::zero();
+    let mut n_cap_hits = 0u32;
+    let mut n_overshoot = 0u32;
+    let mut n_retry = 0u32;
+    let mut retry_exhausted = false;
     let mut events = Events::default();
     let mut t_end: Option<T> = None;
     // An in-loop escape awaiting confirmation at the next boundary. See `AzOpts::escape_confirm`.
@@ -607,7 +908,25 @@ pub fn integrate_az_opts<T: Real>(
         // bounds the first time the shared policy met a terminating run.)
         let a = match forced_refs.and_then(|f| f.get(kk)) {
             Some(&f) => f as usize,
-            None => choose_reference(&cart.r),
+            None => {
+                let want = choose_reference(&cart.r);
+                // Hysteresis: hold the current reference until a rival beats **its** opposite
+                // side by `1 + eps`. `THIRD[k] = 2 - k`, so the pair opposite reference `p` is
+                // index `2 - p`. At `eps = 0` this is the plain argmax, bitwise.
+                match prev_ref {
+                    Some(p) if opts.ref_hysteresis > 0.0 && p != want => {
+                        let d = crate::physics::newton::pair_dists(&cart.r);
+                        let cur = d[2 - p];
+                        let rival = d[0].max(d[1]).max(d[2]);
+                        if rival > cur * (T::one() + T::lit(opts.ref_hysteresis)) {
+                            want
+                        } else {
+                            p
+                        }
+                    }
+                    _ => want,
+                }
+            }
         };
         refs.push(a as u8);
         if let Some(p) = prev_ref {
@@ -668,14 +987,75 @@ pub fn integrate_az_opts<T: Real>(
                 break;
             }
 
-            let (h, ab_raw, floored) =
-                dtau_for_step(opts.dtau_mode, opts.clamp_final_step, eta, dt_left, dtau, &s);
-            if ab_raw.is_finite() && ab_raw < ab_min {
-                ab_min = ab_raw;
+            // The per-step limit, in `dtau` units and `+inf` when none is in force. `Global`
+            // does not appear here: it scales `eta` at entry, which is what makes it the control
+            // that pays everywhere rather than where the geometry asks.
+            let extra = match opts.step_limit {
+                StepLimit::Predictive => predictive_dtau(&sys, &s, T::lit(opts.step_limit_f)),
+                StepLimit::AbGrowth => ab_growth_dtau(
+                    a0 * b0,
+                    s.a().max(T::TINY) * s.b().max(T::TINY),
+                    dtau,
+                    T::lit(opts.step_limit_f),
+                ),
+                StepLimit::None | StepLimit::Reject | StepLimit::Global => T::infinity(),
+            };
+            let ss =
+                dtau_for_step(
+                opts.dtau_mode, opts.step_blend, T::lit(opts.blend_p),
+                opts.clamp_final_step, eta, dt_left, dtau, extra, &s,
+            );
+            if ss.ab_raw.is_finite() && ss.ab_raw < ab_min {
+                ab_min = ss.ab_raw;
             }
-            ab_floored |= floored;
-            s = rk4::step(&sys, &s, e, h);
-            steps += 1;
+            ab_floored |= ss.floored;
+            n_cap_hits += ss.capped as u32;
+            // The PHYSICAL increment, taken as a difference rather than as `A*B*dtau`: the
+            // latter is the first-order predictor, and the whole question is how far the step
+            // actually went. `s.t` is the interval-local clock, so this is a clean difference.
+            let t_before = s.t;
+            // **A** takes the step, tests it, and restores on failure. `AzState` is `Copy` and
+            // nine numbers, so the save is free. Every attempt counts against the step budget --
+            // a retry is real work and hiding it would make the mode look cheaper than it is.
+            let s_save = s;
+            let mut h = ss.dtau;
+            let mut tries = 0u32;
+            s = loop {
+                let cand = rk4::step(&sys, &s_save, e, h);
+                steps += 1;
+                if opts.step_limit != StepLimit::Reject
+                    || step_accepted(&sys, &s_save, &cand, T::lit(opts.step_limit_f))
+                {
+                    break cand;
+                }
+                tries += 1;
+                n_retry += 1;
+                if tries >= MAX_RETRIES {
+                    // **Undetermined, not discarded.** Counted apart from `budget_exhausted` so
+                    // one failure swapped for another is visible rather than absorbed.
+                    retry_exhausted = true;
+                    break cand;
+                }
+                h = h * T::lit(0.5);
+            };
+            let dt_took = s.t - t_before;
+            if dt_took.is_finite() && dt_took > dt_max {
+                dt_max = dt_took;
+            }
+            // **THE TRIPWIRE.** Not a remedy and not a condition to handle: a step that carries
+            // the interval-local clock past twice the interval is a bug. A legitimate overshoot
+            // under fixed `dtau` is at most one nominal step, ~1% of `dt_left`. Conditioned on
+            // `clamp_final_step`, because with the clamp off overshoot is the *expected*
+            // behaviour of a named measurement axis and an assert that fires on a deliberate
+            // mode is a broken assert.
+            if opts.clamp_final_step && s.t > dt_left * T::lit(2.0) {
+                n_overshoot += 1;
+                debug_assert!(
+                    false,
+                    "step overshot its interval: s.t = {} against dt_left = {}",
+                    s.t, dt_left
+                );
+            }
 
             let (r1, r2, _, _) = sys.phys_from_state(&s);
             let d1 = r1.norm();
@@ -789,6 +1169,9 @@ pub fn integrate_az_opts<T: Real>(
             let mut d = crate::physics::newton::pair_dists(&cart.r);
             d.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
             tie_ratio.push(d[1] / d[0].max(T::TINY));
+            // Ascending, so `d[2]` is the longest and `d[1]` the second: 1 is a tie for the
+            // LONGEST side, which is where the reference flips.
+            ref_tie.push(d[1] / d[2].max(T::TINY));
         }
 
         // Instantaneous candidacy at this boundary, recorded whether or not it has already
@@ -866,12 +1249,18 @@ pub fn integrate_az_opts<T: Real>(
         refs,
         tight,
         tie_ratio,
+        ref_tie,
         escape_flags,
         closure_hist,
         unbound_flags,
         t_end_at_entry,
         ab_min,
         ab_floored,
+        dt_max,
+        n_cap_hits,
+        n_overshoot,
+        n_retry,
+        retry_exhausted,
         boundary_shapes,
         drift_hist,
         steps: total_steps,
@@ -909,4 +1298,525 @@ pub fn integrate_with_policy<T: Real>(
         _ => None,
     };
     integrate_az(s0, m, t_max, n_sync, eta, max_steps, forced)
+}
+
+#[cfg(test)]
+mod step_control_tests {
+    use super::*;
+    use crate::Vec2;
+
+    fn state(u1: f64, u2: f64) -> super::super::state::AzState<f64> {
+        super::super::state::AzState {
+            u1: Vec2::new(u1, 0.0),
+            p1: Vec2::new(0.0, 0.0),
+            u2: Vec2::new(u2, 0.0),
+            p2: Vec2::new(0.0, 0.0),
+            t: 0.0,
+        }
+    }
+
+    /// **The floor fires, and the step is taken anyway.**
+    ///
+    /// This is the advance-anyway site the saturation question is about, and the test has to show
+    /// both halves: that `floored` is set, *and* that the returned step is a usable finite number
+    /// rather than a terminal. `ab_raw` is exactly zero here — `(1e-200)^2` underflows at f64, so
+    /// the doubly-degenerate hole is open at **both** precisions and not only f32 — which is what
+    /// makes the floor load-bearing rather than decorative: without it `dtau` would be `inf`.
+    #[test]
+    fn the_tiny_floor_fires_and_the_march_advances_anyway() {
+        let s = state(1e-200, 1e-200);
+        assert_eq!(s.a(), 0.0, "underflow is the premise of this test");
+        let ss = dtau_for_step(DtauMode::PerStepInterval, StepBlend::Min, 4.0, false, 0.01, 1.0, 1e-3, f64::INFINITY, &s);
+        assert!(ss.floored, "the floor must report itself");
+        assert_eq!(ss.ab_raw, 0.0);
+        assert!(ss.dtau.is_finite(), "the step is taken anyway -- that is the whole point");
+    }
+
+    /// The negative control. A guard that always fires passes as easily as one that never does.
+    #[test]
+    fn a_healthy_state_does_not_report_the_floor() {
+        let ss = dtau_for_step(DtauMode::PerStepInterval, StepBlend::Min, 4.0, false, 0.01, 1.0, 1e-3, f64::INFINITY, &state(1.0, 1.0));
+        assert!(!ss.floored);
+        assert!(ss.ab_raw > 0.0);
+    }
+
+    /// `capped` is `PerStepInterval`'s entry-sizing bound and **only** that one.
+    ///
+    /// Under `FixedPerInterval` there is no cap to hit, so the same state must report `false` —
+    /// otherwise the counter would be reading the mode rather than the step.
+    #[test]
+    fn the_cap_is_reported_only_where_it_exists() {
+        // `A*B` has fallen below its entry value, so the mode wants a larger step than entry.
+        let s = state(0.1, 0.1);
+        let (eta, dt_left, dtau_entry) = (0.01, 1.0, 0.01f64);
+        let want = eta * dt_left / (s.a() * s.b());
+        assert!(want > dtau_entry, "the premise: the mode asks for more than entry sizing");
+
+        let per = dtau_for_step(DtauMode::PerStepInterval, StepBlend::Min, 4.0, false, eta, dt_left, dtau_entry, f64::INFINITY, &s);
+        assert!(per.capped);
+        assert_eq!(per.dtau, dtau_entry, "capped means held AT entry, not near it");
+
+        let fixed = dtau_for_step(DtauMode::FixedPerInterval, StepBlend::Min, 4.0, false, eta, dt_left, dtau_entry, f64::INFINITY, &s);
+        assert!(!fixed.capped, "there is no cap under FixedPerInterval to hit");
+    }
+
+    /// And it does **not** fire when the mode gets the step it asked for.
+    #[test]
+    fn the_cap_does_not_fire_when_the_step_is_granted() {
+        let s = state(3.0, 3.0);
+        let ss = dtau_for_step(DtauMode::PerStepInterval, StepBlend::Min, 4.0, false, 0.01, 1.0, 1.0, f64::INFINITY, &s);
+        assert!(!ss.capped);
+    }
+
+    /// A three-body system in the regularised coordinates, built from a Cartesian one, so the
+    /// limit tests act on a state the integrator could actually be in.
+    fn sys_and_state(sep: f64, speed: f64) -> (AzSystem<f64>, super::super::state::AzState<f64>) {
+        let m = [3.0, 4.0, 5.0];
+        let sys = AzSystem::new(0, 1, 2, m);
+        let cart = Cart {
+            r: [Vec2::new(0.0, 0.0), Vec2::new(sep, 0.0), Vec2::new(0.0, 2.0)],
+            v: [Vec2::new(0.0, 0.0), Vec2::new(-speed, 0.0), Vec2::new(0.0, 0.0)],
+        };
+        let (st, _) = sys.to_reg(&cart);
+        (sys, st)
+    }
+
+    /// **B's bound is on the PHYSICAL step, and in `dtau` units it is nearly separation-blind.**
+    ///
+    /// This is the regularisation doing its job, not a defect, and the first cut of this test got
+    /// it wrong: `dt = A*B*dtau` with `A = |R1|`, so `f*d_min/(|v|*A*B)` has the separation cancel
+    /// out of the numerator and denominator together, and a tight pair and a wide one return the
+    /// **same** `dtau` to sixteen digits. Asserting "tighter is bounded harder" in `dtau` failed
+    /// for that reason. It is worth knowing before the measurement: in the one unit AZ does not
+    /// already adapt, B may be adding little — which is what the `error_ratio`-against-cost curve
+    /// is for.
+    ///
+    /// What the bound must do is scale as a crossing time in `|v_rel|`: halving the speed at fixed
+    /// geometry doubles it. That arm is not circular and is the one kept.
+    #[test]
+    fn the_predictive_limit_is_a_crossing_time_in_the_speed() {
+        let f = 0.1;
+        let (sys, tight) = sys_and_state(0.01, 1.0);
+        let (_, wide) = sys_and_state(1.0, 1.0);
+        let (lt, lw) = (predictive_dtau(&sys, &tight, f), predictive_dtau(&sys, &wide, f));
+        assert!(lt.is_finite() && lw.is_finite());
+        assert!(
+            (lt - lw).abs() <= 1e-12 * lw,
+            "the separation is expected to cancel in dtau units: {lt:e} against {lw:e}"
+        );
+
+        let (sys2, half) = sys_and_state(0.01, 0.5);
+        let ratio = predictive_dtau(&sys2, &half, f) / lt;
+        assert!((ratio - 2.0).abs() < 0.15, "expected ~2x on halving |v|, got {ratio:.4}");
+
+        // And it is linear in `f`, so the knob means what its name says.
+        let double_f = predictive_dtau(&sys, &tight, 2.0 * f);
+        assert!((double_f / lt - 2.0).abs() < 1e-12);
+    }
+
+    /// And a state at rest has no crossing time, so it takes **no** bound rather than a zero step.
+    #[test]
+    fn the_predictive_limit_is_absent_when_nothing_moves() {
+        let (sys, still) = sys_and_state(1.0, 0.0);
+        assert!(predictive_dtau(&sys, &still, 0.1).is_infinite());
+    }
+
+    /// **C engages once `A*B` has grown past the factor, and by exactly the right amount.**
+    ///
+    /// The exact-value arm is the one with teeth: a clamp that merely *reduced* the step would
+    /// satisfy an inequality while holding `dt` at the wrong place.
+    #[test]
+    fn the_ab_growth_clamp_engages_at_the_factor_and_not_before() {
+        let (entry, dtau) = (1.0f64, 0.5f64);
+        assert!(ab_growth_dtau(entry, 1.5, dtau, 2.0).is_infinite());
+        assert!(ab_growth_dtau(entry, 2.0, dtau, 2.0).is_infinite(), "at the factor, not past it");
+        let l = ab_growth_dtau(entry, 8.0, dtau, 2.0);
+        assert!((l - dtau * 0.25).abs() < 1e-15, "got {l:e}");
+        assert!((8.0 * l - 2.0 * entry * dtau).abs() < 1e-15, "dt held at cap * dtau_entry");
+    }
+
+    /// **A rejects a step that moves a body further than its own closest approach, and accepts
+    /// one that does not.** The accept arm is what says it is not rejecting everything.
+    #[test]
+    fn the_acceptance_test_separates_a_large_step_from_a_small_one() {
+        let (sys, st) = sys_and_state(0.05, 1.0);
+        let small = rk4::step(&sys, &st, 0.0, 1e-6);
+        let huge = rk4::step(&sys, &st, 0.0, 1e3);
+        assert!(step_accepted(&sys, &st, &small, 0.25), "a tiny step must be accepted");
+        assert!(!step_accepted(&sys, &st, &huge, 0.25), "a step of 1e3 must not be");
+    }
+
+    /// A non-finite candidate is a **rejection**. `NaN <= x` is `false`, so this could hold by
+    /// accident; asserted so it cannot silently become an acceptance if the test is rewritten.
+    #[test]
+    fn a_non_finite_candidate_is_rejected() {
+        let (sys, st) = sys_and_state(0.05, 1.0);
+        let mut bad = st;
+        bad.u1 = Vec2::new(f64::NAN, 0.0);
+        assert!(!step_accepted(&sys, &st, &bad, 1e30));
+    }
+
+    /// The extra limit reaches the step, and `+inf` leaves it **bitwise** alone.
+    ///
+    /// The second arm is the one that matters: `StepLimit::None` passes `+inf`, and every
+    /// committed number in the corpus was taken under it.
+    #[test]
+    fn the_extra_limit_binds_and_infinity_is_bitwise_inert() {
+        let s = state(1.0, 1.0);
+        let free =
+            dtau_for_step(DtauMode::FixedPerInterval, StepBlend::Min, 4.0, false, 0.01, 1.0, 1e-3, f64::INFINITY, &s);
+        let bound = dtau_for_step(DtauMode::FixedPerInterval, StepBlend::Min, 4.0, false, 0.01, 1.0, 1e-3, 1e-5, &s);
+        assert_eq!(free.dtau.to_bits(), 1e-3f64.to_bits());
+        assert_eq!(bound.dtau, 1e-5);
+    }
+}
+
+/// What [`integrate_softref`] returns. Deliberately thin: this is a **diagnostic** integrator for
+/// one question — does smoothing the reference-body choice smooth the drift field — and it does
+/// not carry events, escape or outcome classification.
+#[derive(Clone, Copy, Debug)]
+pub struct SoftRefOut<T> {
+    pub state: Cart<T>,
+    pub drift: T,
+    /// Arms integrated, summed over boundaries. `n_sync` means it never blended (pure argmax);
+    /// `2*n_sync` means it blended two arms at every boundary. **This is the cost column.**
+    pub arms: u64,
+    pub finite: bool,
+}
+
+/// One sync interval under one reference body, returning the endpoint **and the interval-local
+/// physical time it actually reached**.
+///
+/// The achieved time is not `dt_left`. The landing clamp sizes the final step from the
+/// *instantaneous* `A*B`, a first-order predictor of the time increment, so the landing residual
+/// is `O(h^2)` — which is exactly why the measured convergence order is 2.08 and not 3.06. Two
+/// charts have different `A*B` and therefore land at *different* physical times, and comparing
+/// their endpoints without accounting for that would manufacture a difference out of the time
+/// transformations themselves. Callers must have the number to correct or to report.
+///
+/// `None` on a non-finite state or an exhausted budget — those are outcomes the caller must see,
+/// not values to substitute for.
+///
+/// `StepLimit::Reject` is **not** supported here and is treated as no limit: a retry loop makes
+/// the arm's cost depend on its own rejections, which would confound the arm-count column that
+/// this experiment is measured on. Stated rather than silently mapped.
+fn march_interval<T: Real>(
+    cart: &Cart<T>,
+    m: &[T; 3],
+    a: usize,
+    dt_left: T,
+    eta: T,
+    max_steps: usize,
+    opts: &AzOpts<T>,
+) -> Option<(Cart<T>, T)> {
+    let (ab, bb, cb) = triple(a);
+    let sys = if opts.lc_stable {
+        AzSystem::new(ab, bb, cb, *m)
+    } else {
+        AzSystem::new(ab, bb, cb, *m).with_reference_lc()
+    };
+    let (mut s, e) = sys.to_reg(cart);
+    let a0 = s.a().max(T::TINY);
+    let b0 = s.b().max(T::TINY);
+    let dtau = eta * dt_left / (a0 * b0);
+    let mut steps = 0usize;
+    loop {
+        if !s.is_finite() {
+            return None;
+        }
+        if s.t >= dt_left - land_tol::<T>(opts.clamp_final_step, dt_left) {
+            break;
+        }
+        if steps >= max_steps {
+            return None;
+        }
+        let extra = match opts.step_limit {
+            StepLimit::Predictive => predictive_dtau(&sys, &s, T::lit(opts.step_limit_f)),
+            StepLimit::AbGrowth => ab_growth_dtau(
+                a0 * b0,
+                s.a().max(T::TINY) * s.b().max(T::TINY),
+                dtau,
+                T::lit(opts.step_limit_f),
+            ),
+            StepLimit::None | StepLimit::Reject | StepLimit::Global => T::infinity(),
+        };
+        let ss = dtau_for_step(
+            opts.dtau_mode, opts.step_blend, T::lit(opts.blend_p), opts.clamp_final_step,
+            eta, dt_left, dtau, extra, &s,
+        );
+        s = rk4::step(&sys, &s, e, ss.dtau);
+        steps += 1;
+    }
+    Some((sys.to_cartesian(&s), s.t))
+}
+
+/// **A softmax over the reference-body choice, instead of an argmax.**
+///
+/// # Is this even well posed?
+///
+/// You cannot be in two regularised charts at once, so the blend cannot happen inside a step.
+/// But at every sync boundary the state is **Cartesian and chart-free**, and the reference choice
+/// governs only how the *next* interval is integrated. All three choices approximate the same
+/// true trajectory, so a convex combination of their endpoints is another approximation to it,
+/// and it converges to the same limit as `dtau -> 0`. The blend is smooth in the geometry because
+/// the weights are — which is the whole point: `choose_reference` is a bare `argmax` with no
+/// hysteresis, and its cell boundaries in initial-condition space are measurably where the drift
+/// field's edges are.
+///
+/// # The weights
+///
+/// `w_k ∝ exp((d_k - d_max) / (temp * d_max))` over the three pair separations, with the
+/// reference body `THIRD[k]` as usual. **Relative, not absolute**: `d` carries units and this
+/// project quotients out overall scale, so an absolute temperature would mean different things at
+/// different hyperradii. `temp <= 0` is exact `argmax`, including its first-maximum tie-break, so
+/// the zero-temperature limit reproduces the shipped path bitwise rather than approximately.
+///
+/// Arms below `W_TOL` are pruned and the rest renormalised, so away from a tie this costs exactly
+/// one arm and the expense is confined to a thin shell around the tie surface.
+///
+/// # What it does not do
+///
+/// No events, no escape, no outcome. A blended state has no single terminal classification, and
+/// inventing one would put a discontinuity straight back in via a different door. This measures
+/// the **drift field** only, which is the field the edges were seen in.
+pub fn integrate_softref<T: Real>(
+    s0: Cart<T>,
+    m: &[T; 3],
+    t_max: T,
+    n_sync: usize,
+    eta: T,
+    max_steps: usize,
+    opts: &AzOpts<T>,
+    temp: T,
+) -> SoftRefOut<T> {
+    /// Weight below which an arm is not worth integrating.
+    const W_TOL: f64 = 1e-3;
+
+    let e0 = energy::energy(&s0.r, &s0.v, m, T::zero());
+    let mut cart = s0;
+    let mut arms = 0u64;
+    let mut finite = true;
+
+    for k in 0..n_sync {
+        let t = t_max * T::lit(k as f64 / n_sync as f64);
+        let t_target = t_max * T::lit((k + 1) as f64 / n_sync as f64);
+        let dt_left = t_target - t;
+
+        let d = crate::physics::newton::pair_dists(&cart.r);
+        let d_max = d[0].max(d[1]).max(d[2]);
+
+        let mut w = [T::zero(); 3];
+        if temp > T::zero() && d_max > T::zero() && d_max.is_finite() {
+            for j in 0..3 {
+                w[j] = ((d[j] - d_max) / (temp * d_max)).exp();
+            }
+        } else {
+            // Exact argmax, first maximum — `choose_reference`'s own convention, so `temp = 0`
+            // reproduces the shipped path rather than merely resembling it.
+            w[crate::integrate::az::reference_body::longest_index(&d)] = T::one();
+        }
+        let total: T = w.iter().copied().sum();
+        if !(total > T::zero()) || !total.is_finite() {
+            finite = false;
+            break;
+        }
+        for x in w.iter_mut() {
+            *x = *x / total;
+        }
+        // Prune, then renormalise over the survivors. Away from a tie exactly one arm survives.
+        let live: T = w.iter().copied().filter(|x| *x >= T::lit(W_TOL)).sum();
+
+        let mut blended = Cart { r: [crate::Vec2::new(T::zero(), T::zero()); 3], v: [crate::Vec2::new(T::zero(), T::zero()); 3] };
+        let mut any = false;
+        for j in 0..3 {
+            if w[j] < T::lit(W_TOL) {
+                continue;
+            }
+            let a = crate::physics::THIRD[j];
+            match march_interval(&cart, m, a, dt_left, eta, max_steps, opts) {
+                Some((c, _)) => {
+                    arms += 1;
+                    let wj = w[j] / live;
+                    for i in 0..3 {
+                        blended.r[i] = blended.r[i] + c.r[i] * wj;
+                        blended.v[i] = blended.v[i] + c.v[i] * wj;
+                    }
+                    any = true;
+                }
+                None => {
+                    // An arm that failed is an outcome, not a value to substitute for. The
+                    // blend is abandoned rather than silently re-weighted onto the survivors:
+                    // re-weighting would hide a failed integration inside a plausible state.
+                    finite = false;
+                    any = false;
+                    break;
+                }
+            }
+        }
+        if !any {
+            finite = false;
+            break;
+        }
+        cart = blended;
+    }
+
+    let e1 = energy::energy(&cart.r, &cart.v, m, T::zero());
+    SoftRefOut {
+        state: cart,
+        drift: ((e1 - e0) / e0.abs().max(T::DRIFT_FLOOR)).abs(),
+        arms,
+        finite,
+    }
+}
+
+/// What [`branch_jump`] measured at one chart-switching event.
+///
+/// **Position and velocity are reported separately, never as one norm.** They are dimensionally
+/// different, so a combined Euclidean norm is arbitrary unless phase space has been explicitly
+/// non-dimensionalised, which it has not been here.
+#[derive(Clone, Copy, Debug)]
+pub struct BranchJump<T> {
+    /// The boundary was reached and every arm integrated. `false` means no measurement, not a
+    /// measurement of zero.
+    pub ok: bool,
+    /// `|| r_win - r_alt ||` at a **common physical time** — the jump crossing the argmax surface.
+    pub dr_chart: T,
+    /// `|| v_win - v_alt ||` at the same common time.
+    pub dv_chart: T,
+    /// The same interval, same chart, `eta` against `eta/2`: the ORDINARY local step error, and
+    /// the normaliser. Without it an absolute jump is unreadable — a large number on a violent
+    /// interval and a small one on a quiet interval say the same thing.
+    pub dr_step: T,
+    pub dv_step: T,
+    /// **The confound, measured rather than assumed.** The two charts land at different physical
+    /// times because the landing residual is `O(h^2)` and `A*B` differs between them. This is
+    /// `|t_win - t_alt|`.
+    pub dt_mismatch: T,
+    /// `|| r_win - r_alt ||` **without** the common-time correction. If this differs materially
+    /// from `dr_chart`, the time mismatch was doing the work and the raw comparison would have
+    /// manufactured a branch discrepancy out of the time transformations themselves.
+    pub dr_raw: T,
+    /// Largest speed at the endpoint — with `dt_mismatch`, the displacement the mismatch alone
+    /// could explain.
+    pub speed: T,
+    /// Second-longest over longest at the entry state: distance to the selector's surface.
+    pub ref_tie: T,
+    /// The argmax winner and the runner-up.
+    pub ref_win: usize,
+    pub ref_alt: usize,
+}
+
+/// **How large a perturbation does crossing the argmax surface actually inject?**
+///
+/// March normally to sync boundary `n`, then from that one Cartesian state integrate the *same*
+/// interval under both the chosen reference and the runner-up, and measure the difference. The
+/// normaliser is the ordinary local step error — the same interval, same chart, at `eta` against
+/// `eta/2` — so the answer is a ratio: *the chart jump is N times the step error*.
+///
+/// This is the amplitude that `ref_tie` cannot give. Together they are the mechanism:
+/// `d_i - d_j -> 0` locates the surface, `delta_chart / delta_step` says the jump is real and
+/// how big, and chaotic amplification over the remaining `t_max - t_n` does the rest.
+///
+/// A ratio near 1 would mean crossing the surface costs no more than an ordinary step, and the
+/// selector is then a symptom rather than a seed.
+#[allow(clippy::too_many_arguments)]
+pub fn branch_jump<T: Real>(
+    s0: Cart<T>,
+    m: &[T; 3],
+    t_max: T,
+    n_sync: usize,
+    eta: T,
+    max_steps: usize,
+    opts: &AzOpts<T>,
+    n: usize,
+) -> BranchJump<T> {
+    let none = BranchJump {
+        ok: false,
+        dr_chart: T::nan(),
+        dv_chart: T::nan(),
+        dr_step: T::nan(),
+        dv_step: T::nan(),
+        dt_mismatch: T::nan(),
+        dr_raw: T::nan(),
+        speed: T::nan(),
+        ref_tie: T::nan(),
+        ref_win: 0,
+        ref_alt: 0,
+    };
+    if n >= n_sync {
+        return none;
+    }
+    let mut cart = s0;
+    for k in 0..n {
+        let t = t_max * T::lit(k as f64 / n_sync as f64);
+        let dt_left = t_max * T::lit((k + 1) as f64 / n_sync as f64) - t;
+        let a = super::reference_body::choose_reference(&cart.r);
+        match march_interval(&cart, m, a, dt_left, eta, max_steps, opts) {
+            Some((c, _)) => cart = c,
+            None => return none,
+        }
+    }
+
+    // The two candidate charts at the entry state: the longest side and the runner-up.
+    let d = crate::physics::newton::pair_dists(&cart.r);
+    let mut idx = [0usize, 1, 2];
+    idx.sort_by(|&a, &b| d[b].partial_cmp(&d[a]).unwrap_or(std::cmp::Ordering::Equal));
+    let (win, alt) = (crate::physics::THIRD[idx[0]], crate::physics::THIRD[idx[1]]);
+    let ref_tie = d[idx[1]] / d[idx[0]].max(T::TINY);
+
+    let t = t_max * T::lit(n as f64 / n_sync as f64);
+    let dt_left = t_max * T::lit((n + 1) as f64 / n_sync as f64) - t;
+
+    // Separate norms, per the note on `BranchJump`.
+    let dr = |a: &Cart<T>, b: &Cart<T>| -> T {
+        (0..3).map(|i| (a.r[i] - b.r[i]).norm_sq()).fold(T::zero(), |x, y| x + y).sqrt()
+    };
+    let dv = |a: &Cart<T>, b: &Cart<T>| -> T {
+        (0..3).map(|i| (a.v[i] - b.v[i]).norm_sq()).fold(T::zero(), |x, y| x + y).sqrt()
+    };
+    // **Bring an arm to the common target time.** The landing residual is `O(h^2)` and differs
+    // between charts, so the arms stop at different physical times; a first-order drift by the
+    // endpoint velocity removes that, and its own error is `O(dt^2 * accel)` with `dt ~ h^2`,
+    // i.e. `O(h^4)` — far below what is being measured. The uncorrected value is returned too,
+    // so the size of the correction is visible rather than trusted.
+    let to_time = |c: &Cart<T>, reached: T, target: T| -> Cart<T> {
+        let d = target - reached;
+        let mut o = *c;
+        for i in 0..3 {
+            o.r[i] = o.r[i] + o.v[i] * d;
+        }
+        o
+    };
+
+    let two = T::lit(2.0);
+    match (
+        march_interval(&cart, m, win, dt_left, eta, max_steps, opts),
+        march_interval(&cart, m, alt, dt_left, eta, max_steps, opts),
+        march_interval(&cart, m, win, dt_left, eta / two, max_steps * 2, opts),
+    ) {
+        (Some((a, ta)), Some((b, tb)), Some((a2, ta2))) => {
+            let (ca, cb) = (to_time(&a, ta, dt_left), to_time(&b, tb, dt_left));
+            let ca2 = to_time(&a2, ta2, dt_left);
+            let speed = (0..3)
+                .map(|i| a.v[i].norm_sq().sqrt())
+                .fold(T::zero(), |x, y| if y > x { y } else { x });
+            BranchJump {
+                ok: true,
+                dr_chart: dr(&ca, &cb),
+                dv_chart: dv(&ca, &cb),
+                // The step-error normaliser gets the SAME common-time treatment, or the two
+                // would be measured under different conventions and the ratio would be a
+                // comparison of methods rather than of magnitudes.
+                dr_step: dr(&ca, &ca2),
+                dv_step: dv(&ca, &ca2),
+                dt_mismatch: (ta - tb).abs(),
+                dr_raw: dr(&a, &b),
+                speed,
+                ref_tie,
+                ref_win: win,
+                ref_alt: alt,
+            }
+        }
+        _ => none,
+    }
 }

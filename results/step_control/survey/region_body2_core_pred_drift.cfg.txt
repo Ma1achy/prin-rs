@@ -1,0 +1,8 @@
+image=results/step_control/survey/region_body2_core_pred_drift.png
+config=production + 1 override(s): refine_flagged=false (production true)
+res=512x512
+case=region/body2 core
+arm=pred
+field=drift
+drift ramp=(1e-12,1e2)  <- FIXED, shared by every case
+errhot threshold=10  <- fixed

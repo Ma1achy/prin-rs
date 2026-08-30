@@ -4,6 +4,7 @@
 use prin_rs::ensemble::pixel::{evaluate, EnsembleCfg};
 use prin_rs::ensemble::stats;
 use prin_rs::grid;
+use prin_rs::integrate::az::StepLimit;
 use prin_rs::integrate::az;
 use prin_rs::physics::{energy, Cart};
 use prin_rs::Vec2;
@@ -121,7 +122,19 @@ fn error_ratio_minus_one_falls_with_step_size() {
     let mut total = 0usize;
     let (mut first_max, mut last_max) = (0.0f64, 0.0f64);
     for (k, eta) in [4e-2f64, 2e-2, 1e-2, 5e-3].into_iter().enumerate() {
-        let cfg = EnsembleCfg { eta, t_max: 4.0, n_sync: 10, ..Default::default() };
+        // **Pinned to `StepLimit::None`, and that pin is the finding.** Under the shipped
+        // `Predictive` limit the residual is already at the round-off floor at the COARSEST
+        // rung -- `3.1e-9` falling to `1.6e-9` across the decade, non-monotone because it is
+        // arithmetic scatter and not truncation. This test exists to watch truncation fall, so
+        // it has to run where truncation is what is there. See the second arm below, which is
+        // the statement the pin depends on.
+        let cfg = EnsembleCfg {
+            eta,
+            t_max: 4.0,
+            n_sync: 10,
+            step_limit: StepLimit::None,
+            ..Default::default()
+        };
         let mut devs: Vec<f64> = (0..s.npix())
             .map(|i| (evaluate::<f64>(&s, i, &cfg).error_ratio - 1.0).abs())
             .collect();
@@ -152,5 +165,33 @@ fn error_ratio_minus_one_falls_with_step_size() {
     assert!(
         last_max < first_max,
         "max error_ratio - 1 did not fall across the decade: {first_max:.4e} -> {last_max:.4e}"
+    );
+}
+
+/// **And under the shipped limit the residual is already at the floor at the coarsest rung.**
+///
+/// This is the arm the pin above depends on, and without it that pin would look like a test
+/// weakened to keep passing. Under `StepLimit::Predictive` at `eta = 4e-2` the median
+/// `|error_ratio - 1|` sits at ~`3e-9` — round-off, not truncation — and shrinking `eta` eightfold
+/// does not move it by an order. A test written to watch truncation fall cannot run here: there
+/// is no truncation left to watch.
+#[test]
+fn the_shipped_limit_is_already_at_the_floor_at_the_coarsest_step() {
+    let s = grid::region("near-field", 3, 3, 0.05).unwrap();
+    let med = |eta: f64| {
+        let cfg = EnsembleCfg { eta, t_max: 4.0, n_sync: 10, ..Default::default() };
+        let mut d: Vec<f64> = (0..s.npix())
+            .map(|i| (evaluate::<f64>(&s, i, &cfg).error_ratio - 1.0).abs())
+            .collect();
+        d.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        d[d.len() / 2]
+    };
+    let (coarse, fine) = (med(4e-2), med(5e-3));
+    println!("shipped limit: median |ratio-1| {coarse:.4e} at eta=4e-2, {fine:.4e} at eta=5e-3");
+    assert!(coarse < 1e-7, "the coarsest rung is not at the floor: {coarse:.4e}");
+    assert!(
+        fine > coarse / 10.0,
+        "an eightfold step cut moved it more than an order ({coarse:.4e} -> {fine:.4e}), \
+         so truncation still dominates and the pin above is not justified"
     );
 }

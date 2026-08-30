@@ -1,0 +1,21 @@
+    Finished `release` profile [optimized] target(s) in 0.03s
+     Running `target/release/examples/line_id 256 results`
+config_stability 256^2
+config: production + 5 override(s): t_max=50.0 (production 13.0), n_sync=125 (production 32), r_coll_frac=0.005 (production 0.001), refine_flagged=false (production true), keep_ref_path=true (production false)
+
+  wrote coherent_with_k4.png -- early set is 0.0553 of the frame
+  wrote coherent_with_k9.png -- early set is 0.1951 of the frame
+  wrote coherent_with_k19.png -- early set is 0.4774 of the frame
+
+  thin lines (differing pixel with >60% coherent neighbours): 0.0176 of the frame
+
+  102 components; 33 with >= 12 pixels. **The 69 below the floor are excluded and
+counted: a two-pixel component is perfectly straight by arithmetic, and admitting dust
+would report a lattice wherever there is noise.**
+
+== PER-COMPONENT STRAIGHTNESS (rms across / extent along; small = a line) ==
+    component size     count  extent p50 rms/ext p50 rms/ext p90    median k
+             12-50        30        4.73      0.0795      0.2874         3.0
+            51-200         3       15.94      0.2134      0.2407         8.0
+
+Wrote results/step_control/line_id/ -- differs_by_k, differs_by_straightness, drift_with_straight_lines.

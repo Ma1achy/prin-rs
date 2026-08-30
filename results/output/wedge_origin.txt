@@ -1,0 +1,45 @@
+    Finished `release` profile [optimized] target(s) in 0.03s
+     Running `target/release/examples/wedge_origin 256 results`
+config_stability 256^2
+config: production + 5 override(s): t_max=50.0 (production 13.0), n_sync=125 (production 32), r_coll_frac=0.005 (production 0.001), refine_flagged=false (production true), keep_ref_path=true (production false)
+
+checkpoint results/output/wedge_origin_256.ckpt: 0 rows already done
+
+nominal pass 129.1s
+
+== 4. IS THE STRUCTURE IN THE FIELD THAT SHIPS? ==
+  Ratio of median |grad log10 field| ACROSS a cell boundary to INSIDE a cell. A large
+ratio means the reference partition draws that field's edges; ~1 means it does not.
+`drift` is the error field and is the comparison, not the subject.
+
+Cell boundaries cover 0.7458 of the frame.
+
+               field   inside cell  across bound    ratio
+    energy_drift_max       0.05770       0.18668    3.235
+        spread_shape       0.07651       0.18704    2.445
+     ensemble_spread       0.07652       0.21193    2.769
+               t_end       0.00540       0.00000    0.000
+
+== 2. DO THE CELLS CONVERGE UNDER REFINEMENT? ==
+  The itinerary is compared to the FINEST rung, never to the previous one: a chain of
+pairwise comparisons can shrink while the sequence walks steadily away, which reads as
+convergence and is its opposite.
+
+  reference pass at eta/16 in 2104.4s
+
+         eta itin identical    hamming p50     cell agree      cell frac
+    1.000e-2         0.9811            0.0         0.9995         0.7458
+    2.500e-3         0.9967            0.0         0.9999         0.7458
+    6.250e-4         1.0000            0.0         1.0000         0.7458
+
+  **`cell agree` is the number that decides.** If the cell mask is essentially the same
+at every rung, the wedges are a property of the SYSTEM -- cylinder sets of the symbolic
+itinerary -- and there is nothing to remove. If it moves with `eta`, they are a property
+of the DISCRETISATION and event-driven registration is worth building.
+
+`itin identical` will fall with `t_max` on any chaotic slice however real the cells are:
+125 boundaries is 125 chances to differ, and one flip late in a trajectory does not move
+a cell BOUNDARY. Read the mask agreement, not the sequence equality.
+
+Wrote results/step_control/wedge_origin/cells_eta.png and cells_eta_over_16.png -- the two masks, to compare by eye
+as well as by the number.

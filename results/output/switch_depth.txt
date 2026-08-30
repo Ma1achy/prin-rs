@@ -1,0 +1,27 @@
+    Finished `release` profile [optimized] target(s) in 0.03s
+     Running `target/release/examples/switch_depth 256 results`
+config_stability 256^2
+config: production + 5 override(s): t_max=50.0 (production 13.0), n_sync=125 (production 32), r_coll_frac=0.005 (production 0.001), refine_flagged=false (production true), keep_ref_path=true (production false)
+
+130.1s
+
+  44432 of 65536 pixels differ from a neighbour somewhere (0.6780)
+
+== STRAIGHTNESS BY FIRST-DIVERGENCE BOUNDARY ==
+  Structure-tensor anisotropy over a 9x9 window: 1 is a line, 0 is isotropic scatter.
+**If straightness encodes WHEN, this falls with k.**
+
+             k     pixels anisotropy p50 anisotropy p90
+             0        439         0.9797         1.0000
+             1        452         0.9763         0.9883
+             2        447         0.9795         0.9856
+           3-4       2284         0.9763         1.0000
+           5-9       9165         0.3843         0.9430
+         10-24      23293         0.1588         0.4815
+           25+       8352         0.2912         0.6858
+
+Wrote results/step_control/switch_depth/ -- one mask per k band, plus first_k_field.png (RED early, BLUE late).
+
+**If the early bands are clean lines and the late ones are tangles, the straightness of
+a black line is a clock**: it says how many sync boundaries the two neighbouring
+trajectories stayed together before one of them changed which body was farthest.

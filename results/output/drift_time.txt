@@ -1,0 +1,25 @@
+    Finished `release` profile [optimized] target(s) in 0.02s
+     Running `target/release/examples/drift_time 256 results`
+config_stability 256^2
+config: production + 4 override(s): t_max=50.0 (production 13.0), n_sync=125 (production 32), r_coll_frac=0.005 (production 0.001), refine_flagged=false (production true)
+
+  stopped-at-event pass 128.5s;  common-time pass 207.7s
+                       arm     nonfin     budget    t_end p50    drift p50
+stop_on_event (production)          0          0      50.0000       0.0000
+    common time (to t_max)          0          0      50.0000       0.0000
+
+== DOES THE WEDGE SET SURVIVE WHEN EXPOSURE IS EQUALISED? ==
+  Base rates are 0.25 by construction (a p75 cut), so a lift of 1 is chance and 4 is
+perfect agreement. **Near 1 means the wedges were a `t_end` artefact.**
+
+                                 set P(. | hot_A)     lift
+          hot at common time (arm 2)       0.8502    3.401
+     hot by RATE drift/t_end (arm 1)       0.8267    3.307
+
+  drift p50 by `t_end` quartile (production arm):
+       Q1 (earliest) n =   16384   drift p50 6.765e-8
+                  Q2 n =   13559   drift p50 1.942e-8
+                  Q3 n =       0   drift p50 NaN
+         Q4 (latest) n =   35593   drift p50 5.857e-8
+
+Wrote results/step_control/drift_time/ -- drift_stopped, drift_common_time, drift_rate, t_end.

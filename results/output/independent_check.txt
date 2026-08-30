@@ -1,0 +1,26 @@
+    Finished `release` profile [optimized] target(s) in 0.02s
+     Running `target/release/examples/independent_check 192 results`
+config_stability 192^2
+config: production + 5 override(s): t_max=50.0 (production 13.0), n_sync=125 (production 32), r_coll_frac=0.005 (production 0.001), refine_flagged=false (production true), keep_ref_path=true (production false)
+
+AZ pass 72.5s
+leapfrog pass 12.7s -- frac_ok 1.0000. **Leapfrog is EXPECTED to fail on close
+encounters; that failure is why AZ exists. Every correlation below is over the pixels
+where it completed, because a correlation over a mostly-failed field is a correlation
+with the failure pattern.**
+
+FTLE pass 202.5s
+
+== SPEARMAN, with the half-frame shifted control on every row ==
+  **A correlation that survives the shift is about the two marginals, not about where
+the fields are.** `n` is the population; the leapfrog rows use only completed pixels.
+
+                                pair         n    spearman     shifted
+      early-line density vs AZ drift     36864      0.2744     -0.1840
+          early-line density vs FTLE     36864     -0.1140      0.1587
+                    FTLE vs AZ drift     36864     -0.0820     -0.1022
+          AZ drift vs LEAPFROG drift     36864     -0.0964      0.0888
+  early-line density vs LEAPFROG drift     36864     -0.3267      0.1183
+              FTLE vs LEAPFROG drift     36864      0.3048      0.0240
+
+Wrote results/step_control/independent/ -- drift_az, drift_leapfrog, ftle.

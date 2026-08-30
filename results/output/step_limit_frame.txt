@@ -1,0 +1,96 @@
+warning: fields `col` and `chord` are never read
+   --> examples/step_limit.rs:111:5
+    |
+103 | struct Row {
+    |        --- fields in this struct
+...
+111 |     col: f64,
+    |     ^^^
+...
+115 |     chord: [f64; 2],
+    |     ^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `prin-rs` (example "step_limit") generated 1 warning
+    Finished `release` profile [optimized] target(s) in 0.13s
+     Running `target/release/examples/step_limit frame 192 48 results`
+STEP-CONTROL CANDIDATES -- stage `frame`, 192^2.
+
+`err` is `error_ratio`; its healthy value is exactly 1.0 and `err>10` is the project's
+own flag for *this pixel is not data*. `chord50` and `flips` are against the eta/256
+GROUND TRUTH, which is the reference answer because that run brings every flagged pixel
+to 1.000. **The winner reaches err ~ 1 for the least wall clock, not the lowest error.**
+
+
+================ config_stability ================
+base config: production + 4 override(s): t_max=50.0 (production 13.0), n_sync=125 (production 32), r_coll_frac=0.005 (production 0.001), refine_flagged=false (production true)
+
+  flagged 4093 of 36864 pixels; sampled set is 96 (48 flagged + 48 control). **The cap is printed because a silently truncated set reads as full coverage.**
+FULL-FRAME err>10 is 0.1110 in 136.9s. **The sampled `err>10` starts at
+0.5000 BY CONSTRUCTION** -- the set is half flagged on purpose -- so read the sampled
+column as a fall from that, never as a frame statistic.
+  full frame, baseline in 136.9s
+
+                    mode / f     secs    err p50    err p90    err p99    err>10  drift p50  drift p99   steps p50   escape chord tame     flips  overshoot  retries
+             None (baseline)    136.9    1.000e0    4.047e1    7.108e9    0.1110   3.328e-7    4.001e6     1.033e5   0.0404      NaN       NaN        634        0
+                Reject f=0.1    147.4    1.000e0    1.004e0    1.402e1    0.0140   4.658e-8   1.240e-2     1.071e5   0.0068      NaN       NaN          0 175521990
+               Reject f=0.02    277.7    1.000e0    1.000e0    1.205e0    0.0000   5.162e-9   5.890e-4     1.832e5   0.0068      NaN       NaN          0 5530442541
+            Predictive f=0.1     77.6    1.000e0    1.673e0    7.046e2    0.0667   1.420e-7   9.546e-1     1.051e5   0.0068      NaN       NaN          0        0
+           Predictive f=0.02     78.3    1.000e0    1.000e0    1.109e0    0.0000   5.093e-8   4.972e-4     1.053e5   0.0068      NaN       NaN          0        0
+                AbGrowth f=2     75.7    1.000e0    4.047e1    7.108e9    0.1110   3.328e-7    4.001e6     1.033e5   0.0404      NaN       NaN        634        0
+                Global f=0.5    147.2    1.000e0    2.110e0    1.579e9    0.0907   1.690e-8    9.496e5     2.064e5   0.0323      NaN       NaN        357        0
+               Global f=0.25    271.6    1.000e0    1.008e0    9.066e7    0.0767  9.511e-10    4.029e4     4.134e5   0.0208      NaN       NaN        153        0
+
+================ preset_shape ================
+base config: production + 1 override(s): refine_flagged=false (production true)
+
+  flagged 3037 of 36864 pixels; sampled set is 96 (48 flagged + 48 control). **The cap is printed because a silently truncated set reads as full coverage.**
+FULL-FRAME err>10 is 0.0824 in 8.8s. **The sampled `err>10` starts at
+0.5000 BY CONSTRUCTION** -- the set is half flagged on purpose -- so read the sampled
+column as a fall from that, never as a frame statistic.
+  full frame, baseline in 8.8s
+
+                    mode / f     secs    err p50    err p90    err p99    err>10  drift p50  drift p99   steps p50   escape chord tame     flips  overshoot  retries
+             None (baseline)      8.8    1.000e0    1.145e0   5.538e10    0.0824   5.377e-8    1.098e8     3.021e3   0.0196      NaN       NaN        584        0
+                Reject f=0.1     10.8    1.000e0    1.000e0    2.087e5    0.0271   2.433e-8    3.970e2     3.718e3   0.0008      NaN       NaN          0 70104744
+               Reject f=0.02     41.7    1.000e0    1.000e0    2.337e5    0.0259   4.337e-9    4.412e2     1.558e4   0.0003      NaN       NaN          0 1231145311
+            Predictive f=0.1      9.2    1.000e0    1.001e0    6.267e2    0.0429   4.827e-8    1.931e0     2.981e3   0.0001      NaN       NaN          0        0
+           Predictive f=0.02      9.3    1.000e0    1.000e0    1.059e0    0.0000   2.691e-8   1.147e-3     3.037e3   0.0001      NaN       NaN          0        0
+                AbGrowth f=2      8.8    1.000e0    1.145e0   5.538e10    0.0824   5.377e-8    1.098e8     3.021e3   0.0196      NaN       NaN        584        0
+                Global f=0.5     17.5    1.000e0    1.000e0   1.626e10    0.0654   2.727e-9    3.368e7     5.960e3   0.0183      NaN       NaN        221        0
+               Global f=0.25     34.5    1.000e0    1.000e0    4.580e8    0.0564  1.636e-10    7.318e5     1.184e4   0.0160      NaN       NaN        103        0
+
+================ deep interior ================
+base config: production + 1 override(s): refine_flagged=false (production true)
+
+  flagged 1403 of 36864 pixels; sampled set is 96 (48 flagged + 48 control). **The cap is printed because a silently truncated set reads as full coverage.**
+FULL-FRAME err>10 is 0.0381 in 9.6s. **The sampled `err>10` starts at
+0.5000 BY CONSTRUCTION** -- the set is half flagged on purpose -- so read the sampled
+column as a fall from that, never as a frame statistic.
+  full frame, baseline in 9.6s
+
+                    mode / f     secs    err p50    err p90    err p99    err>10  drift p50  drift p99   steps p50   escape chord tame     flips  overshoot  retries
+             None (baseline)      9.6    1.000e0    1.458e0    2.664e2    0.0381   3.533e-7   1.889e-2     1.080e4   0.0001      NaN       NaN         84        0
+                Reject f=0.1     16.0    1.000e0    1.000e0    1.009e0    0.0000   1.641e-7   5.180e-6     1.661e4   0.0000      NaN       NaN          0 222249952
+               Reject f=0.02     96.8    1.000e0    1.000e0    1.000e0    0.0000   2.853e-8   9.878e-8     1.055e5   0.0000      NaN       NaN          0 3337417882
+            Predictive f=0.1     13.5    1.000e0    1.000e0    1.002e0    0.0000   1.133e-7   5.764e-6     1.408e4   0.0000      NaN       NaN          0        0
+           Predictive f=0.02     45.4    1.000e0    1.000e0    1.000e0    0.0000   1.736e-8   5.191e-8     4.731e4   0.0000      NaN       NaN          0        0
+                AbGrowth f=2      9.8    1.000e0    1.458e0    2.664e2    0.0381   3.533e-7   1.889e-2     1.080e4   0.0001      NaN       NaN         84        0
+                Global f=0.5     19.1    1.000e0    1.002e0    1.340e1    0.0114   1.664e-8   9.908e-4     2.151e4   0.0000      NaN       NaN         14        0
+               Global f=0.25     37.5    1.000e0    1.000e0    1.047e0    0.0034  9.110e-10   2.507e-5     4.293e4   0.0000      NaN       NaN          0        0
+
+HOW TO READ THIS
+
+**`overshoot` must be zero.** It counts steps that carried the interval clock past twice
+its own interval -- `dt > dt_left` is a bug, not a condition to handle. A nonzero
+baseline column is the defect being measured; a nonzero column under a candidate means
+that candidate does not address it.
+
+**`err>10` against `secs` is the decision.** A mode that reaches the baseline's error at
+the baseline's cost has done nothing; one that reaches ~1.0 for a few percent has won.
+`Global` is the control and is expected to pay in proportion to its `eta` multiplier --
+if it does not beat the others on cost it should not ship, and if it does, it should.
+
+**The controls decide whether a win generalises.** A mode that only helps
+`config_stability` is tuned to it. `preset_shape` must be untouched by all four.

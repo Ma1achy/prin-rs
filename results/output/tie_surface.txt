@@ -1,0 +1,30 @@
+    Finished `release` profile [optimized] target(s) in 0.17s
+     Running `target/release/examples/tie_surface 256 results`
+config_stability 256^2
+config: production + 5 override(s): t_max=50.0 (production 13.0), n_sync=125 (production 32), r_coll_frac=0.005 (production 0.001), refine_flagged=false (production true), keep_ref_path=true (production false)
+
+== ARM 1: the t = 0 tie loci (no integration) ==
+  `ref_tie` at t = 0: p50 0.8840 p90 0.9771 max 0.999998
+  fraction within 1% of a tie: 0.0437
+
+integrated pass 128.7s
+
+== ARM 2: at the FIRST boundary where two neighbours' itineraries differ ==
+                    population        p10        p50        p90  frac > 0.99
+            at a cell boundary     0.8500     0.9572     0.9932       0.1451
+         all (pixel, boundary)     0.7532     0.9725     0.9967       0.2716
+
+  n = 85198 neighbour pairs differ; first divergence at boundary p10 6 p50 17 p90 44 of 125
+
+HOW TO READ THIS
+
+**If `at a cell boundary` concentrates near 1 while the null does not, the wedges are
+chart-selection artefacts** -- the representation changing where nothing in the dynamics
+does -- and Heggie's global regularisation is the principled cure, because it removes the
+argmax rather than smoothing it.
+
+If the two populations agree, the itinerary differences are NOT tie crossings: they are
+neighbouring trajectories that have genuinely diverged by that boundary, and the cells
+are a chaos structure the reference choice merely reports. **The first-divergence
+boundary index decides which reading is available**: early divergence across the frame
+means ties; late means chaos had time to separate them first.

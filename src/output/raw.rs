@@ -43,17 +43,23 @@ pub fn write<W: Write>(
         "nx={} ny={} cx={} cy={} half={} body={}\n\
          t_max={} n_sync={} eta={} max_steps={} n_copies={} jitter_frac={} seed={} jitter_scheme={:?}\n\
          ref_policy={:?} lc_stable={} precision={} eps=0\n\
-         r_coll_frac={} escape_rule={:?} closure_k={} stop_on_escape={} dtau_mode={:?} clamp_final={} stop_on_event={} refine_flagged={} refine_threshold={} refine_eta_factor={} refine_max_passes={}\n\
+         r_coll_frac={} escape_rule={:?} closure_k={} stop_on_escape={} dtau_mode={:?} clamp_final={} step_limit={:?} step_limit_f={} stop_on_event={} refine_flagged={} refine_threshold={} refine_eta_factor={} refine_max_passes={}\n\
          chart={} decode_path={}\n\
+         provenance={}\n\
          chart_params={}\n\
          fields={}\n",
         slice.nx, slice.ny, slice.cx, slice.cy, slice.half, slice.body,
         cfg.t_max, cfg.n_sync, cfg.eta, cfg.max_steps, cfg.n_extra + 1,
         cfg.jitter_frac, cfg.seed, cfg.jitter_scheme,
         cfg.ref_policy, cfg.lc_stable, precision,
-        cfg.r_coll_frac, cfg.escape_rule, cfg.closure_k, cfg.stop_on_escape, cfg.dtau_mode, cfg.clamp_final_step, cfg.stop_on_event,
+        cfg.r_coll_frac, cfg.escape_rule, cfg.closure_k, cfg.stop_on_escape, cfg.dtau_mode, cfg.clamp_final_step, cfg.step_limit, cfg.step_limit_f, cfg.stop_on_event,
         cfg.refine_flagged, cfg.refine_threshold, cfg.refine_eta_factor, cfg.refine_max_passes,
-        slice.chart.name(), cfg.decode_path.name(), slice.chart.params(),
+        slice.chart.name(), cfg.decode_path.name(),
+        // Every field above is already here; this line is the SUMMARY -- what a reader has to
+        // notice rather than reconstruct. The `.raw` dumps were never the blind spot: the PNGs
+        // were, and they carry no header at all. See `provenance_sidecar`.
+        cfg.provenance(),
+        slice.chart.params(),
         FIELDS.join(","),
     );
     w.write_all(&(header.len() as u32).to_le_bytes())?;

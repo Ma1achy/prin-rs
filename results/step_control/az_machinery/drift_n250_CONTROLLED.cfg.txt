@@ -1,0 +1,6 @@
+image=results/step_control/az_machinery/drift_n250_CONTROLLED.png
+config=production + 6 override(s): t_max=50.0 (production 13.0), n_sync=250 (production 32), closure_k=2 (production 1), eta=0.02 (production 0.01), r_coll_frac=0.005 (production 0.001), refine_flagged=false (production true)
+res=256x256
+case=config_stability
+arm=n=250 CONTROLLED
+drift ramp=(1e-12,1e2) FIXED and shared across arms

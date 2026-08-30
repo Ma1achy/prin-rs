@@ -1,0 +1,35 @@
+    Finished `release` profile [optimized] target(s) in 0.16s
+     Running `target/release/examples/subsume 128 64 results`
+Two step controllers, or one? `dtau_mode` x `step_limit`, on the flagged-plus-control
+sampled set. **`PerStepInterval` is an `A*B` growth clamp at C = 1** -- so if the
+per-step limit alone reproduces the cap's quality, the cap is redundant and can go.
+
+
+================ config_stability ================
+  sampled 128 (64 flagged of 1817 in frame)
+
+           dtau_mode     step_limit     secs     err p90     err p99    err>10   steps p50  overshoot
+     PerStepInterval           None      0.2     2.418e7    1.214e12    0.5000     8.960e4         13
+     PerStepInterval     Predictive      0.2     1.015e0     1.555e0    0.0000     8.988e4          0
+    FixedPerInterval           None      0.3     3.100e9    1.173e12    0.4922     7.910e4         66
+    FixedPerInterval     Predictive      0.2     1.014e0     1.686e0    0.0000     8.416e4          0
+
+================ deep interior ================
+  sampled 128 (64 flagged of 649 in frame)
+
+           dtau_mode     step_limit     secs     err p90     err p99    err>10   steps p50  overshoot
+     PerStepInterval           None      0.1     1.966e2     7.920e5    0.5000     9.464e3          4
+     PerStepInterval     Predictive      0.2     1.000e0     1.000e0    0.0000     3.831e4          0
+    FixedPerInterval           None      0.0     4.055e3     6.881e9    0.5156     8.800e3          8
+    FixedPerInterval     Predictive      0.2     1.000e0     1.000e0    0.0000     3.831e4          0
+
+HOW TO READ THIS
+
+The row that decides is **`FixedPerInterval` + `Predictive`** against
+**`PerStepInterval` + `Predictive`**. If they agree, the cap is redundant once the
+per-step limit is in force and one of the three controllers can be deleted. If the
+`Fixed` row is worse, the cap is doing work the limit does not, and both stay --
+which is a real answer and not a failure of the experiment.
+
+`FixedPerInterval` + `None` is the historical behaviour and is here as the fourth cell,
+because a 2x2 read from three cells is an inference.

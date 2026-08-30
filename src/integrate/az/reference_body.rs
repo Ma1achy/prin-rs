@@ -27,7 +27,15 @@ pub enum RefPolicy {
 /// broken the other way would fail the cross-check while looking exactly like a
 /// transcription error, so the reference body is logged per sync and compared as a column.
 pub fn choose_reference<T: Real>(r: &[Vec2<T>; 3]) -> usize {
-    let d = newton::pair_dists(r);
+    THIRD[longest_index(&newton::pair_dists(r))]
+}
+
+/// Index of the longest side, with numpy's first-maximum tie-break.
+///
+/// Factored out so the soft-reference experiment can reproduce the **exact** argmax at zero
+/// temperature rather than a re-derivation of it — a second copy of a tie-break is a second copy
+/// that can disagree.
+pub fn longest_index<T: Real>(d: &[T; 3]) -> usize {
     let mut longest = 0usize;
     // Strict `>` only, so the first maximum wins — numpy's convention.
     for k in 1..3 {
@@ -35,7 +43,7 @@ pub fn choose_reference<T: Real>(r: &[Vec2<T>; 3]) -> usize {
             longest = k;
         }
     }
-    THIRD[longest]
+    longest
 }
 
 /// `(a, b, c)` for a given reference body, matching `tb_az.TRIPLES`.

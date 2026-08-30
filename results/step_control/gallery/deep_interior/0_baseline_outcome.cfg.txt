@@ -1,0 +1,11 @@
+image=results/step_control/gallery/deep_interior/0_baseline_outcome.png
+config=production + 3 override(s): step_limit=None (production Predictive), step_limit_f=0.0 (production 0.02), refine_flagged=false (production true)
+res=384x384
+case=deep_interior
+mode=None (baseline)
+step_limit=None
+step_limit_f=0
+window=(0,0,0.05)
+spread ramp=(1.838155e-6,1.178846e-3)  <- taken from the BASELINE and shared
+drift ramp=(1e-12,1e2)  <- fixed constant
+errhot threshold=10  <- fixed

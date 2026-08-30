@@ -1,0 +1,80 @@
+warning: unused import: `prin_rs::output::colour::Scalar`
+  --> examples/defect_survey.rs:43:5
+   |
+43 | use prin_rs::output::colour::Scalar;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `colour`
+  --> examples/defect_survey.rs:44:33
+   |
+44 | use prin_rs::output::{adaptive, colour};
+   |                                 ^^^^^^
+
+warning: `prin-rs` (example "defect_survey") generated 2 warnings (run `cargo fix --example "defect_survey" -p prin-rs` to apply 2 suggestions)
+    Finished `release` profile [optimized] target(s) in 0.15s
+     Running `target/release/examples/defect_survey 512 results`
+512^2, t_max = 13, r_coll = 1e-3 -- the corpus's own settings.
+
+`None` is the kernel every committed number was taken under; `Pred` is the shipped
+`StepLimit::Predictive` at f = 0.02. **A case damaged under None and clean under Pred is
+THIS defect. Damaged under both is something else** and is flagged.
+
+                                case err>10 None err>10 Pred err p99 None err p99 Pred  over None  over Pred   verdict
+  checkpoint results/output/defect_survey_512.ckpt: 0 cases already done
+
+                   region/near-field     0.0021     0.0000     1.006e0     1.000e0        506          0      THIS
+                    region/mid-field     0.0000     0.0000     1.000e0     1.000e0          0          0     clean
+                          region/far     0.0000     0.0000     1.000e0     1.000e0          0          0     clean
+                   region/body2 core     0.0034     0.0000     1.127e0     1.000e0         77          0      THIS
+                    region/body2 mid     0.0000     0.0000     1.000e0     1.000e0          0          0     clean
+                  region/body1 slice     0.0000     0.0000     1.000e0     1.000e0          0          0     clean
+                    region/body1 far     0.0272     0.0000     9.235e1     1.000e0       9829          0      THIS
+                region/deep interior     0.0361     0.0000     3.467e2     1.000e0        502          0      THIS
+                    chart/body_plane     0.0021     0.0000     1.006e0     1.000e0        506          0      THIS
+                   chart/plane_00deg     0.0021     0.0000     1.006e0     1.000e0        506          0      THIS
+                  chart/shape_sphere     0.0816     0.0000    4.044e12     1.000e0       5333          0      THIS
+                  chart/latent_shape     0.0000     0.0000     1.000e0     1.000e0          0          0     clean
+                chart/latent_inner_p     0.0000     0.0000     1.000e0     1.000e0          2          0      THIS
+                chart/latent_outer_p     0.0025     0.0000     1.000e0     1.000e0         31          0      THIS
+                   chart/latent_mass     0.0001     0.0001     2.470e0     2.470e0          0          0     clean
+                  chart/latent_mixed     0.0001     0.0000     1.000e0     1.000e0          5          0      THIS
+              chart/latent_oblique_a     0.0045     0.0045     2.500e0     2.500e0          5          0     OTHER
+              chart/latent_oblique_b     0.0029     0.0022     1.643e0     1.635e0         15          0     OTHER
+                   chart/burrau_nu_k     0.5906     0.5895     7.616e3     1.219e2        227          0     OTHER
+                chart/invariant_lz_k     0.0000     0.0000     1.000e0     1.000e0          0          0     clean
+                  chart/mass_simplex     0.0006     0.0006     3.171e0     3.171e0          0          0     clean
+                  chart/preset_shape     0.0677     0.0001    1.305e11     1.087e0       3978          0      THIS
+                   chart/preset_prho     0.0036     0.0000     1.000e0     1.000e0         32          0      THIS
+                chart/preset_plambda     0.0005     0.0000     1.000e0     1.000e0         29          0      THIS
+               chart/preset_shape_pl     0.0061     0.0000     1.262e0     1.000e0        250          0      THIS
+               chart/preset_shape_h1     0.2722     0.0030    1.994e13     6.746e0      28851          0     OTHER
+                chart/preset_prho_h1     0.0051     0.0000     1.000e0     1.000e0        159          0      THIS
+             chart/preset_plambda_h1     0.0030     0.0000     1.000e0     1.000e0        109          0      THIS
+            chart/preset_shape_pl_h1     0.0023     0.0000     1.002e0     1.000e0        207          0      THIS
+               chart/latent_shape_h3     0.0000     0.0000     1.002e0     1.000e0          0          0     clean
+             chart/latent_inner_p_h3     0.0000     0.0000     1.000e0     1.000e0          4          0      THIS
+             chart/latent_outer_p_h3     0.0036     0.0000     1.005e0     1.000e0          7          0      THIS
+                chart/latent_mass_h3     0.0000     0.0000     2.264e0     2.264e0          0          0     clean
+               chart/latent_mixed_h3     0.0010     0.0000     1.000e0     1.000e0         29          0      THIS
+
+== SUMMARY ==
+damaged under `None` and clean under `Pred`: 20
+damaged under both (a DIFFERENT problem):    4
+clean, and therefore NOT rendered:            10
+panels written:                               96  (4 per damaged case)
+
+**Panels are written for damaged cases only**, both arms, on a FIXED drift ramp shared
+by every case -- 34 auto-ranged panels would make a clean chart and a damaged one look
+alike, which is what this survey exists to tell apart. The clean count is printed so a
+partial gallery cannot read as full coverage.
+
+**`overshoot` is the sharper column than `err>10`.** A step that carries the interval
+clock past twice its interval is unambiguous; `err>10` is a threshold on a ratio and a
+chaotic slice can sit near it for honest reasons. Where the two disagree, read the
+overshoot count.
+
+A case reading `clean` here is clean AT 128^2 AND t = 13. The defect is a thin set --
+encounters coinciding with a sync boundary -- so it is resolution-sensitive by
+construction, and absence at this grid is not absence.

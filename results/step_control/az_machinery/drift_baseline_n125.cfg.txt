@@ -1,0 +1,6 @@
+image=results/step_control/az_machinery/drift_baseline_n125.png
+config=production + 4 override(s): t_max=50.0 (production 13.0), n_sync=125 (production 32), r_coll_frac=0.005 (production 0.001), refine_flagged=false (production true)
+res=256x256
+case=config_stability
+arm=baseline n=125
+drift ramp=(1e-12,1e2) FIXED and shared across arms

@@ -1,0 +1,28 @@
+    Finished `release` profile [optimized] target(s) in 0.15s
+     Running `target/release/examples/heggie_cost 20000000`
+20000000 calls per timing, best of 3 interleaved repeats, single-threaded.
+
+                   AZ  deriv (Gamma)      20.44 ns/call
+            HG  deriv, Eq. (20)/(21)      17.74 ns/call
+      HG  deriv_time, Eqs. (22)-(24)      27.73 ns/call
+
+   powf(3.0), as AZ's deriv calls it       6.12 ns/call
+               x*x*x, the same value       0.40 ns/call
+  -> up to 5.72 ns/call of AZ's 20.44 is the ulp-fidelity choice, not the algebra
+
+  Heggie Eq. (20)/(21) against AZ : 0.87x
+  Heggie Eqs. (22)-(24) against AZ: 1.36x
+  the extra cost of the control term and S^-3/2: 1.56x
+
+Against Heggie's own §3: he measures ~1.6x per step for Eqs. (20)/(21) and a further
+~15% for (22)-(24), on RKF7(8) in three dimensions in 1974. The planar reduction is why
+this port can differ -- his 4-vectors collapse to 2-vectors and his 4x3 A_i to a 2x2
+block, so a chunk of the arithmetic he paid for does not exist here.
+
+**Read the `powf` row before the ratios.** AZ pays a libm call per `deriv` for bitwise
+agreement with NumPy; that is cross-check discipline and not the method, so a Heggie
+win smaller than that row is not a win at all.
+
+**Multiply this by the step ratio for the total.** `heggie_machinery` measures 1.23x the
+steps on `config_stability`; the compute ratio is that times the number above, and
+neither factor alone is the cost.

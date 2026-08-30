@@ -1842,3 +1842,33 @@ that buys it off, and **the wedges are that price**. Robustness against a bad in
 discontinuity across neighbouring pixels are the same mechanism seen from two sides. The quote
 still cannot be cited as covariance — that reading is refuted at 3.2e-15 — but the property behind
 it is live, and this is the discriminating measurement rather than the plausible story.
+
+**PHASE 4 CONFIRMS THE PREDICTION AT 256^2, AND ALL THREE GUARDS FIRE.** `config_stability`,
+termination off in both integrators, step control held constant at `Predictive f=0.02`, every arm
+`nonfin <= 1`:
+
+```
+    AZ  n=250 CONTROLLED   lift 2.061   chord 5.162e-1
+    HG  n=250 CONTROLLED   lift 3.824   chord 4.832e-2      <- 10.7x smaller
+    HG  n=250 confounded   lift 2.327   chord 4.185e-1      <- the harness sees change
+    HG  refresh_h n=125    lift 2.909   chord 5.570e-1      <- and sees BOUNDARY change
+```
+
+`hot lift` is out of a possible 4.0. **Removing re-registration removed the cadence sensitivity**,
+and the 64^2 and 256^2 tables agree to within 10%, so it is not a small-grid artefact. The guards
+are what make the null mean anything: `steps p50` flat to 1.3% across the HG controlled rows (AZ's
+moves 10%) says `eta` held the step size; the confounded arm at 10x says the harness *can* see a
+large chord in Heggie; and `refresh_h` at 13x — the one arm that reintroduces a boundary-dependent
+quantity — says it sees **boundary** sensitivity specifically. Without that last arm the null could
+have been the instrument.
+
+**AND THE 1974 COST FIGURE DOES NOT TRANSFER — BUT THE APPARENT WIN IS AZ'S CROSS-CHECK DISCIPLINE,
+NOT THE METHOD.** Measured per `deriv` call, single-threaded, same call count both sides:
+`AZ 20.29 ns`, `HG Eq.(20)/(21) 17.82 ns` (**0.88x**), `HG Eqs.(22)-(24) 27.40 ns` (**1.36x**)
+against Heggie's own ~1.6x. The planar reduction is why — his 4-vectors collapse to 2-vectors and
+his 4x3 `A_i` to a 2x2 block. **But AZ's `deriv` calls `r3.powf(3.0)` rather than `r3*r3*r3`
+deliberately**, to route through the same libm call NumPy does; timed in isolation that is
+`6.42 ns` against `0.43 ns`, so **up to 28% of AZ's per-call cost is ulp fidelity and not algebra**.
+Against AZ's algebra alone the ratios are ~1.22x and ~1.88x, and the cost win evaporates. Total
+compute on `config_stability` is the step ratio times the call ratio — `1.23 x 1.36 = 1.67x` as
+shipped — and **neither factor alone is the cost**.

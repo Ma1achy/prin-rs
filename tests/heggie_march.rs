@@ -109,14 +109,62 @@ fn radial_collision_passes_through_for_every_pair() {
         let (s, m) = collision_setup(pair);
         let o = integrate_hg(s, &m, 1.0, 32, 1e-3, 4_000_000, &opts());
         println!(
-            "pair {pair:?}: d_min = {:.3e}  |dE/E| = {:.3e}  steps = {}  \
+            "pair {pair:?}: d_min = {:.3e}  |dE/E| reg = {:.3e}  cart = {:.3e}  steps = {}  \
              gamma = {:.2e}  sum_q = {:.2e}",
-            o.d_min, o.drift, o.steps, o.gamma_max, o.sum_q_max
+            o.d_min, o.drift_reg, o.drift, o.steps, o.gamma_max, o.sum_q_max
         );
         assert!(o.finite, "pair {pair:?} went non-finite");
         assert!(o.d_min < 1e-10, "pair {pair:?}: d_min = {:e}", o.d_min);
-        assert!(o.drift < 1e-12, "pair {pair:?}: drift = {:e}", o.drift);
+        // **The gate is asserted on the REGULARISED drift, and the reason is measured, not
+        // assumed** — see `the_cartesian_energy_is_ill_conditioned_after_an_exact_collision`
+        // below. `d_min` here is 5.4e-27, sixteen orders past what the gate asks; after a
+        // penetration like that the Cartesian energy is a cancellation of two enormous terms
+        // and its drift is a property of the coordinates, not of the integration.
+        assert!(o.drift_reg < 1e-12, "pair {pair:?}: drift = {:e}", o.drift_reg);
     }
+}
+
+/// **Which drift number is the integration's, and which is the readout's?**
+///
+/// The collision test above asserts `drift_reg` rather than `drift`, and a threshold moved onto a
+/// friendlier quantity is exactly what this project warns about — so the justification is a
+/// measurement and not a sentence.
+///
+/// Under refinement the two must behave differently, and oppositely:
+///   - `drift_reg` is the integration's own error and must sit at its round-off floor;
+///   - `drift` is the Cartesian readout's and must NOT improve, because after an exact collision
+///     the Cartesian energy is `kinetic - potential` cancelling to `O(1)` from enormous terms,
+///     while the regularised energy carries the potential as a constant-order term. That is what
+///     regularisation buys, stated as a test.
+///
+/// Measured across a 32x refinement: `drift_reg` flat at 4.4e-15 to 7.6e-14, `drift` **rising**
+/// 1.2e-12 to 5.4e-10, ratio reaching 7100. `d_min` is 5.422e-27 at every rung.
+///
+/// **If `drift` fell with `eta` this test fails and the collision gate above is unjustified** —
+/// the ill-conditioning story would be wrong and the Cartesian number would be the honest one.
+#[test]
+fn the_cartesian_energy_is_ill_conditioned_after_an_exact_collision() {
+    let (s, m) = collision_setup((0, 1));
+    let mut rows = Vec::new();
+    for k in 0..5 {
+        let eta = 1e-3 / 2f64.powi(k);
+        let o = integrate_hg(s, &m, 1.0, 32, eta, 80_000_000, &opts());
+        assert!(o.finite);
+        rows.push((eta, o.drift, o.drift_reg, o.d_min, o.steps));
+    }
+    println!("{:>10} {:>13} {:>13} {:>10} {:>12} {:>10}", "eta", "drift CART", "drift REG", "ratio", "d_min", "steps");
+    for (e, c, r, d, st) in &rows {
+        println!("{e:>10.1e} {c:>13.3e} {r:>13.3e} {:>10.1} {d:>12.3e} {st:>10}", c / r);
+    }
+    let reg_worst = rows.iter().map(|r| r.2).fold(0.0f64, f64::max);
+    let cart_first = rows[0].1;
+    let cart_last = rows[4].1;
+    assert!(reg_worst < 1e-12, "the regularised drift is not at a floor: {reg_worst:e}");
+    assert!(
+        cart_last > cart_first,
+        "the Cartesian drift IMPROVED under refinement ({cart_first:e} -> {cart_last:e}), so it \
+         is not a conditioning effect and the collision gate must be asserted on it instead"
+    );
 }
 
 // ---------------------------------------------------------------------------------------------

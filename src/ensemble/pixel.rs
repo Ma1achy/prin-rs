@@ -3,6 +3,8 @@
 use crate::decode::Path;
 use crate::grid::Slice;
 use crate::integrate::az::{self, AzOpts, DtauMode, RefPolicy};
+use crate::integrate::heggie::{self, HgDtauMode, HgOpts};
+use crate::integrate::{Integrator, MarchOut};
 use crate::outcome::{self, Outcome, State};
 use crate::physics::{energy, shape};
 use crate::Real;
@@ -74,6 +76,13 @@ pub struct EnsembleCfg {
     /// Conditioned inverse LC branch. Default true; false reproduces the reference's
     /// original branch, for measuring what the conditioning is worth.
     pub lc_stable: bool,
+    /// Which integrator marches each copy. See [`Integrator`].
+    ///
+    /// **`Az` is the default and every committed number in `results/` was taken under it.** A
+    /// configuration that silently reproduces the old behaviour needs a guard rather than a
+    /// convention, so this appears in `overrides_vs_production` and therefore in every
+    /// provenance header and sidecar.
+    pub integrator: Integrator,
     /// `r_coll` as a **fraction of the initial hyperradius** `R`, fixed at `t = 0`. Never an
     /// absolute length and never co-moving (BRIEF §2.5).
     ///
@@ -197,6 +206,7 @@ impl EnsembleCfg {
             max_steps: 30_000,
             ref_policy: RefPolicy::PerCopy,
             lc_stable: true,
+            integrator: Integrator::default(),
             r_coll_frac: 1e-3,
             stop_on_event: true,
             refine_flagged: true,
@@ -587,23 +597,70 @@ pub fn evaluate_at<T: Real>(slice: &Slice, idx: usize, cfg: &EnsembleCfg, eta_v:
         stop_on_escape: cfg.stop_on_escape,
     };
 
+    // Heggie's options, built from the same `cfg`. Three of AZ's knobs have no analogue and are
+    // **dropped explicitly rather than silently**:
+    //   - `forced_refs` / `RefPolicy::Shared`: there is no reference body to share. Under Heggie
+    //     the shared policy is a no-op, and that is a property of the method rather than an
+    //     unimplemented feature.
+    //   - `StepLimit::{Reject, AbGrowth, Global}`: only the predictive limit is ported, because
+    //     it is the one that won and the other three are named axes of a measurement that has
+    //     been made. A non-predictive limit therefore maps to *no* limit here, not to a default
+    //     one, so a config asking for a limit Heggie does not have gets no limit and says so.
+    //   - `ref_hysteresis`, `lc_stable`'s branch role: `lc_stable` still selects the inverse LC
+    //     map, which Heggie uses three times per registration rather than twice.
+    let hg = HgOpts::<T> {
+        time: heggie::HgTime::default(),
+        dtau_mode: match cfg.dtau_mode {
+            DtauMode::FixedPerInterval => HgDtauMode::FixedPerInterval,
+            DtauMode::PerStepRemaining => HgDtauMode::PerStepRemaining,
+            DtauMode::PerStepInterval => HgDtauMode::PerStepInterval,
+        },
+        clamp_final_step: cfg.clamp_final_step,
+        step_limit_f: if cfg.step_limit == az::StepLimit::Predictive {
+            T::lit(cfg.step_limit_f)
+        } else {
+            T::zero()
+        },
+        r_coll_frac: T::lit(cfg.r_coll_frac),
+        stop_on_event: cfg.stop_on_event,
+        stop_on_escape: cfg.stop_on_escape,
+        escape_rule: cfg.escape_rule.lift(),
+        closure_k: cfg.closure_k,
+        escape_every: cfg.escape_every,
+        escape_confirm: cfg.escape_confirm,
+        keep_boundary_shapes: cfg.keep_boundary_shapes,
+        keep_drift_hist: cfg.keep_drift_hist,
+        refresh_h_at_boundary: false,
+        lc_stable: cfg.lc_stable,
+    };
+
+    let march = |s: crate::physics::Cart<T>, mm: &[T; 3], forced: Option<&[u8]>| -> MarchOut<T> {
+        match cfg.integrator {
+            Integrator::Az => az::integrate_az_opts(
+                s, mm, t_max, cfg.n_sync, eta, cfg.max_steps,
+                &AzOpts { forced_refs: forced, ..base },
+            )
+            .into(),
+            Integrator::Heggie => {
+                heggie::integrate_hg(s, mm, t_max, cfg.n_sync, eta, cfg.max_steps, &hg).into()
+            }
+        }
+    };
+
     // The nominal copy first: its reference-body choices are what the shared policy hands to
-    // the others.
-    let nominal =
-        az::integrate_az_opts(copies[0].s, &copies[0].m, t_max, cfg.n_sync, eta, cfg.max_steps, &base);
+    // the others. Under Heggie `refs` is empty, so `Shared` hands over an empty slice and the
+    // per-copy path is taken anyway — the same behaviour, reached without a special case.
+    let nominal = march(copies[0].s, &copies[0].m, None);
     let nominal_refs = nominal.refs.clone();
 
-    let mut outs = Vec::with_capacity(n);
+    let mut outs: Vec<MarchOut<T>> = Vec::with_capacity(n);
     outs.push(nominal);
     for c in copies.iter().skip(1) {
         let forced = match cfg.ref_policy {
-            RefPolicy::Shared => Some(nominal_refs.as_slice()),
-            RefPolicy::PerCopy => None,
+            RefPolicy::Shared if !nominal_refs.is_empty() => Some(nominal_refs.as_slice()),
+            _ => None,
         };
-        outs.push(az::integrate_az_opts(
-            c.s, &c.m, t_max, cfg.n_sync, eta, cfg.max_steps,
-            &AzOpts { forced_refs: forced, ..base },
-        ));
+        outs.push(march(c.s, &c.m, forced));
     }
 
     let e0: Vec<T> = copies

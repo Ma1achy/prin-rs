@@ -1907,3 +1907,27 @@ deliberately**, to route through the same libm call NumPy does; timed in isolati
 Against AZ's algebra alone the ratios are ~1.22x and ~1.88x, and the cost win evaporates. Total
 compute on `config_stability` is the step ratio times the call ratio — `1.23 x 1.36 = 1.67x` as
 shipped — and **neither factor alone is the cost**.
+
+**THE TWO INTEGRATORS WERE BEING COMPARED ON TWO DIFFERENT MEASUREMENTS, AND THE ERROR FLATTERED
+THE NEW ONE.** `AzOut::drift` is the energy of the **returned Cartesian state**; `HgOut::drift` was
+the energy of the **regularised state**, which is a different quantity. On the two-body radial
+collision they differ by **280x** (4.432e-15 against 1.245e-12) and by up to **7100x** under
+refinement. Every Heggie drift number quoted before this — including the whole Phase 4 table — was
+the regularised one against AZ's Cartesian one. Fixed: `drift` is Cartesian on both, and
+`drift_reg` is carried beside it because the *gap* is the finding.
+
+**AND THE GAP IS CONDITIONING, NOT INTEGRATION — WHICH IS WHAT REGULARISATION BUYS, AS A NUMBER.**
+Across a 32x refinement on that fixture, `drift_reg` is **flat at 4.4e-15 to 9.8e-14** while
+`drift` **rises** 1.245e-12 to 5.4e-10, with `d_min = 5.422e-27` at every rung. The integration is
+at its round-off floor and the *readout* is what degrades: after passing through an exact collision
+the Cartesian energy is `kinetic - potential` cancelling from enormous terms to `O(1)`, while the
+regularised energy carries the potential as a constant-order term. Heggie reaches sixteen orders
+deeper than BRIEF's `d_min < 1e-10` gate asks and pays for it only in the readout. So the collision
+gate is asserted on `drift_reg`, and **the justification is a committed test rather than a
+sentence** — `the_cartesian_energy_is_ill_conditioned_after_an_exact_collision` fails if `drift`
+ever *falls* with `eta`, which is what would make the Cartesian number the honest one.
+
+Two hypotheses were refuted on the way, both by measurements that looked like they would confirm
+them: the reference point (`|h0 - e0|/|e0| = 2.2e-16`, negligible) and the `sum q_i` constraint
+(`|cart - enl| = 0` exactly). Both diagnostics started from the returned state and so were blind to
+the one thing that had changed.

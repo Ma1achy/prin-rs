@@ -50,6 +50,11 @@
 //! requirements. That is the `prin --size` shape at a new site, and the fix is the same: carry the
 //! setting per arm and print it.
 //!
+//! **The checkpoint key cannot see a code change.** It carries every setting this harness varies,
+//! which is what it is for, and no key can carry the behaviour of the crate it links against. So
+//! the discipline is: **delete the checkpoint when the integrator changes.** A run resumed across
+//! an edit is a mixed-version artefact, which this project has on record as costing a day.
+//!
 //! Args: `res root max_steps`. Resumable; re-run until it prints.
 
 use rayon::prelude::*;

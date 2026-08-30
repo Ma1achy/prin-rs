@@ -15,7 +15,10 @@
 //!   - `|sum q_i| / max|q_i|` — Heggie's Eq. (9), an integral of the enlarged motion. AZ has
 //!     nothing like it because AZ has no enlarged phase space.
 
-use crate::physics::Cart;
+use std::collections::VecDeque;
+
+use crate::outcome::{self, Events};
+use crate::physics::{energy, Cart};
 use crate::Real;
 
 use super::hamiltonian::{gamma_residual, HgTime};
@@ -53,9 +56,27 @@ pub struct HgOpts<T> {
     /// `f` for the predictive per-step limit, `dtau <= f d_min / (|dq/dt|_max dt/dtau)`. Zero
     /// disables it. AZ ships `0.02`.
     pub step_limit_f: T,
-    /// Collision radius, absolute. Zero disables the test.
-    pub r_coll: T,
-    pub stop_on_collision: bool,
+    /// Collision radius as a **fraction of the initial hyperradius**, canonical and fixed at
+    /// `t = 0`. Zero disables the test. Same semantics as `AzOpts::r_coll_frac`, so a config can
+    /// hand the same number to either integrator.
+    pub r_coll_frac: T,
+    /// Stop the march at the first collision.
+    pub stop_on_event: bool,
+    /// Stop the march at the first confirmed escape. **Default off**, as in AZ: closure certifies
+    /// what escaped and is silent about whether the displayed shape has settled, and stopping
+    /// moves 37% of pixels by up to 0.6 on a sphere of diameter 2.
+    pub stop_on_escape: bool,
+    pub escape_rule: outcome::EscapeRule<T>,
+    /// Closure window, in sync intervals. It is a **time**, so this must scale with `n_sync`.
+    pub closure_k: usize,
+    /// Test escape every `n` RK4 steps as well as at boundaries. Zero is the reference cadence.
+    /// **Vacuous under `Closure`**, which is only defined on the boundary series.
+    pub escape_every: usize,
+    /// Hold an in-loop escape provisional until the next boundary. Vacuous when
+    /// `escape_every == 0`, which is the shipping path.
+    pub escape_confirm: bool,
+    pub keep_boundary_shapes: bool,
+    pub keep_drift_hist: bool,
     /// Re-derive the frozen `h` from the state at each sync boundary.
     ///
     /// **Default off, and it exists to be measured rather than used.** Refreshing `h` is the one
@@ -74,8 +95,15 @@ impl<T: Real> Default for HgOpts<T> {
             dtau_mode: HgDtauMode::default(),
             clamp_final_step: true,
             step_limit_f: T::lit(0.02),
-            r_coll: T::zero(),
-            stop_on_collision: false,
+            r_coll_frac: T::zero(),
+            stop_on_event: true,
+            stop_on_escape: false,
+            escape_rule: outcome::EscapeRule::Reference,
+            closure_k: 1,
+            escape_every: 0,
+            escape_confirm: true,
+            keep_boundary_shapes: false,
+            keep_drift_hist: false,
             refresh_h_at_boundary: false,
             lc_stable: true,
         }
@@ -87,8 +115,20 @@ pub struct HgOut<T> {
     pub state: Cart<T>,
     /// Physical time actually reached.
     pub t: T,
-    /// `|E(t) - E(0)| / |E(0)|`.
+    /// `|E(t) - E(0)| / |E(0)|`, from the **returned Cartesian state**, exactly as AZ reports it.
+    ///
+    /// This is the honest one and the one to quote: it is the energy of the state every
+    /// downstream consumer actually reads — `shape_vec`, `classify`, `error_ratio` — so a drift
+    /// measured anywhere else is a drift for a state nobody sees.
     pub drift: T,
+    /// The same quantity measured in the **enlarged variables**, before reconstruction.
+    ///
+    /// Carried because the two can differ by orders after a deep collision and the gap is the
+    /// reconstruction's round-off, not the integration's error. An earlier cut of this driver
+    /// reported only this one and read **4.4e-15 where the Cartesian state was at 1.2e-12** — a
+    /// 280x under-report, and flattering in exactly the direction that would not have been
+    /// questioned.
+    pub drift_reg: T,
     /// Closest approach over all three pairs, sampled at every RK4 step.
     ///
     /// **All three, symmetrically.** AZ's `d_min_ref` is over its two regularised pairs and needs
@@ -114,8 +154,36 @@ pub struct HgOut<T> {
     /// step advanced anyway. An advance-anyway site with no telemetry is indistinguishable from
     /// one that never fires.
     pub r_floored: bool,
-    /// Set if a collision was detected and `stop_on_collision` was on.
-    pub collided: bool,
+    /// The terminating events, in the same shape AZ reports them, so `outcome::classify` can be
+    /// called on either integrator's output without a second code path.
+    pub events: Events<T>,
+    /// Time of the first terminating event, or `t_max`.
+    ///
+    /// **No replay refinement.** AZ refines an escape's `t_end` by replaying the interval it
+    /// fired in; measured, `at entry` is 1.0000 everywhere, so it never finds a crossing and
+    /// returns the boundary time regardless. This returns the boundary time directly rather than
+    /// duplicating the replay to reach the same answer — stated, because "not implemented" and
+    /// "implemented and inert" are different claims and only the second is measured.
+    pub t_end: T,
+    /// Which pair is the tightest binary, at each sync boundary. `spread_event`'s input.
+    pub tight: Vec<u8>,
+    /// Shape vector at each boundary, when asked for.
+    pub boundary_shapes: Vec<[T; 3]>,
+    pub drift_hist: Vec<T>,
+    /// Closure value at each boundary, `NaN` until the window fills.
+    pub closure_hist: Vec<T>,
+    /// Per-body unbound flags at each boundary. Rule-blind, unlike `escape_flags`.
+    pub unbound_flags: Vec<[bool; 3]>,
+    /// Whether the escape rule was satisfied at each boundary, recorded whether or not it has
+    /// already fired — this is the history a persistence guard reads.
+    pub escape_flags: Vec<bool>,
+    /// `d[1]/d[0]` at each boundary: how close the two shortest sides are to a tie.
+    ///
+    /// Pure geometry, so it means the same thing here as in AZ. Its **sibling** `ref_tie`
+    /// (`d[1]/d[2]`, a tie for the longest side) is deliberately absent: it exists in AZ to say
+    /// how near the reference-body argmax came to flipping, and there is no argmax here for it
+    /// to be about. Reporting it would be reporting a quantity with no referent.
+    pub tie_ratio: Vec<T>,
     /// Physical `d|q_i|/dt` at the end, all three pairs. Kept because it is free — the march
     /// needs it for the step limit anyway.
     pub q_dot_max: T,
@@ -174,9 +242,13 @@ fn predictive_dtau<T: Real>(sys: &HgSystem<T>, s: &HgState<T>, f: T, time: HgTim
 
 /// The full entry point.
 ///
-/// `n_sync` is a **sampling** cadence here and nothing more: the loop records residuals and the
-/// closest approach at each boundary and does not re-register. That is the whole structural
-/// difference from `integrate_az_opts`, and it is why this function is a fifth the length.
+/// `n_sync` is a **sampling and event** cadence here, and nothing more: the loop records
+/// residuals, samples the escape rule and reads the tightest pair, and it does **not**
+/// re-register. That is the whole structural difference from `integrate_az_opts`.
+///
+/// The outcome machinery is not reimplemented — `outcome::collision_pairs_from`,
+/// `escape_candidate_rule`, `closure`, `unbound` and `binary_id` are free functions on `Cart`
+/// that the AZ driver also calls, so both integrators share one definition of what an event is.
 pub fn integrate_hg<T: Real>(
     s0: Cart<T>,
     m: &[T; 3],
@@ -192,14 +264,27 @@ pub fn integrate_hg<T: Real>(
     // Registration. Once, at t = 0, and never again.
     let (mut s, h0) = sys.to_reg(&s0);
     let mut h = h0;
+    let e0 = energy::energy(&s0.r, &s0.v, m, T::zero());
 
     let n = n_sync.max(1);
     let dt_sync = t_max / T::lit(n as f64);
+
+    // Canonical and fixed at t = 0: a fraction of *this* trajectory's initial hyperradius,
+    // evaluated before anything moves. A co-moving length makes the Hamiltonian time-dependent.
+    let r0 = energy::hyperradius(&s0.r, m);
+    let r_coll = opts.r_coll_frac * r0;
+    let rule = opts.escape_rule;
+    let esc = |c: &Cart<T>, cl: Option<T>| outcome::escape_candidate_rule(c, m, rule, r0, cl);
+
+    // The closure window reads only its two ENDS, so a ring buffer of `k + 1` is all it needs.
+    let kw = opts.closure_k.max(1);
+    let mut nbuf: VecDeque<[T; 3]> = VecDeque::with_capacity(kw + 1);
 
     let mut out = HgOut {
         state: s0,
         t: T::zero(),
         drift: T::zero(),
+        drift_reg: T::zero(),
         d_min: T::infinity(),
         steps: 0,
         finite: true,
@@ -209,11 +294,23 @@ pub fn integrate_hg<T: Real>(
         dt_max: T::zero(),
         n_overshoot: 0,
         r_floored: false,
-        collided: false,
         q_dot_max: T::zero(),
+        events: Events::default(),
+        t_end: t_max,
+        tight: Vec::with_capacity(n),
+        boundary_shapes: Vec::with_capacity(if opts.keep_boundary_shapes { n } else { 0 }),
+        drift_hist: Vec::with_capacity(if opts.keep_drift_hist { n } else { 0 }),
+        closure_hist: Vec::with_capacity(n),
+        unbound_flags: Vec::with_capacity(n),
+        escape_flags: Vec::with_capacity(n),
+        tie_ratio: Vec::with_capacity(n),
     };
 
     let mut t_now = T::zero();
+    let mut t_end: Option<T> = None;
+    let mut pending_escape: Option<(u8, T)> = None;
+    let mut cart = s0;
+
     'outer: for _ in 0..n {
         let dt_left = dt_sync;
         let tol = if opts.clamp_final_step { dt_left * T::LAND_EPS_REL } else { T::zero() };
@@ -242,7 +339,6 @@ pub fn integrate_hg<T: Real>(
                 break 'outer;
             }
 
-            let rp_raw = s.r_prod();
             if s.r(0) < T::TINY || s.r(1) < T::TINY || s.r(2) < T::TINY {
                 out.r_floored = true;
             }
@@ -262,7 +358,6 @@ pub fn integrate_hg<T: Real>(
             if opts.clamp_final_step {
                 dtau = dtau.min((dt_left - s.t).max(T::zero()) / d);
             }
-            let _ = rp_raw;
 
             let before = s.t;
             s = rk4::step(&sys, &s, h, opts.time, dtau);
@@ -280,8 +375,6 @@ pub fn integrate_hg<T: Real>(
                 );
             }
 
-            // Closest approach, sampled every step rather than at boundaries: a collision that
-            // happens between two boundaries is not one that did not happen.
             let (q, p) = sys.phys_from_state(&s);
             let dm = q.iter().fold(T::infinity(), |a, x| a.min(x.norm()));
             if dm < out.d_min {
@@ -289,28 +382,136 @@ pub fn integrate_hg<T: Real>(
             }
             let v = q_dot(&sys, &p);
             out.q_dot_max = out.q_dot_max.max(v.iter().fold(T::zero(), |a, x| a.max(x.norm())));
-            if opts.stop_on_collision && opts.r_coll > T::zero() && dm < opts.r_coll {
-                out.collided = true;
-                t_now += s.t;
-                break 'outer;
+
+            // Collision, sampled **inside** the loop rather than at boundaries: with `n_sync = 32`
+            // and `t_max = 13` the boundaries are 0.4 apart and a close encounter passes between
+            // two of them unseen. `q[i]` is the separation of the pair `q_i` joins, and unlike AZ
+            // all three are on an equal footing, so there is no reference-dependent index map.
+            if r_coll > T::zero() && out.events.collision.is_none() {
+                let mut mask = 0u8;
+                for (i, qi) in q.iter().enumerate() {
+                    // `q[i]` joins bodies `i+1` and `i+2`; `outcome::pair_index` is keyed on
+                    // `PAIRS`, which is `(0,1), (0,2), (1,2)`.
+                    if qi.norm() < r_coll {
+                        let (a, b) = cyc(i);
+                        mask |= 1 << outcome::pair_index(a.min(b), a.max(b));
+                    }
+                }
+                if mask != 0 {
+                    let tc = t_now + s.t;
+                    out.events.collision = Some((mask, tc));
+                    t_end.get_or_insert(tc);
+                    if opts.stop_on_event {
+                        break;
+                    }
+                }
+            }
+
+            // The escape test at RK4-step resolution, when asked for. Off by default: this is the
+            // reference's cadence and changing it changes results. Vacuous under `Closure`, which
+            // is defined from the boundary series and has no finer resolution.
+            if opts.escape_every > 0
+                && !matches!(rule, outcome::EscapeRule::Closure(_))
+                && out.events.escape.is_none()
+                && pending_escape.is_none()
+                && out.steps % opts.escape_every == 0
+            {
+                let c = sys.to_cartesian(&s);
+                if let Some(b) = esc(&c, None) {
+                    let te = t_now + s.t;
+                    if opts.escape_confirm {
+                        // Provisional. Do NOT break: the trajectory has to reach the next boundary
+                        // for the condition to be re-tested. Breaking here is what turned 895
+                        // transients into terminal escapes on AZ.
+                        pending_escape = Some((b, te));
+                    } else {
+                        out.events.escape = Some((b, te));
+                        t_end.get_or_insert(te);
+                        if opts.stop_on_escape {
+                            break;
+                        }
+                    }
+                }
+            }
+
+            let g = gamma_residual(&sys, &s, h);
+            if g.is_finite() && g > out.gamma_max {
+                out.gamma_max = g;
             }
         }
 
-        t_now += s.t;
+        t_now += s.t.min(dt_left);
+        cart = sys.to_cartesian(&s);
 
-        // The boundary: sample, do not re-register.
-        out.gamma_max = out.gamma_max.max(gamma_residual(&sys, &s, h));
+        // ---- the boundary: sample, classify, and do NOT re-register ----
         out.sum_q_max = out.sum_q_max.max(sys.sum_q_residual(&s));
+        out.tight.push(outcome::binary_id(&cart));
+        let n_now = crate::physics::shape::shape_vec(&cart.r, m);
+        if opts.keep_boundary_shapes {
+            out.boundary_shapes.push(n_now);
+        }
+        if opts.keep_drift_hist {
+            let ek = energy::energy(&cart.r, &cart.v, m, T::zero());
+            out.drift_hist.push(((ek - e0) / e0.abs().max(T::DRIFT_FLOOR)).abs());
+        }
+        nbuf.push_back(n_now);
+        if nbuf.len() > kw + 1 {
+            nbuf.pop_front();
+        }
+        let cl = if nbuf.len() == kw + 1 { Some(outcome::closure(&n_now, &nbuf[0])) } else { None };
+        out.closure_hist.push(cl.unwrap_or(T::nan()));
+        out.unbound_flags.push([
+            outcome::unbound(&cart, m, 0),
+            outcome::unbound(&cart, m, 1),
+            outcome::unbound(&cart, m, 2),
+        ]);
+        {
+            let mut d = crate::physics::newton::pair_dists(&cart.r);
+            d.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+            out.tie_ratio.push(d[1] / d[0].max(T::TINY));
+        }
+
+        // Instantaneous candidacy, recorded whether or not it has already fired — this is the
+        // history a persistence guard reads, and it must not stop being written.
+        let candidate_now = esc(&cart, cl);
+        out.escape_flags.push(candidate_now.is_some());
+
+        // Confirm or discard a provisional in-loop escape. The committed time is the FIRST
+        // crossing: the guard decides whether the event was real, not when it happened.
+        if let Some((b, te)) = pending_escape.take() {
+            if candidate_now.is_some() {
+                out.events.escape = Some((b, te));
+                t_end.get_or_insert(te);
+            }
+        }
+        if out.events.escape.is_none() {
+            if let Some(b) = candidate_now {
+                out.events.escape = Some((b, t_now));
+                t_end.get_or_insert(t_now);
+            }
+        }
+
         if opts.refresh_h_at_boundary {
             h = sys.energy_of(&s);
+        }
+
+        if out.budget_exhausted
+            || (opts.stop_on_event && out.events.collision.is_some())
+            || (opts.stop_on_escape && out.events.escape.is_some())
+        {
+            break;
         }
     }
 
     out.t = t_now;
+    out.t_end = t_end.unwrap_or(t_max);
     if out.finite {
-        out.state = sys.to_cartesian(&s);
-        let e = sys.energy_of(&s);
-        out.drift = ((e - h0) / h0.abs().max(T::DRIFT_FLOOR)).abs();
+        out.state = cart;
+        let e1 = energy::energy(&cart.r, &cart.v, m, T::zero());
+        out.drift = ((e1 - e0) / e0.abs().max(T::DRIFT_FLOOR)).abs();
+        // From the regularised state directly, never through the Cartesian reconstruction.
+        let e1r = sys.energy_of(&s);
+        out.drift_reg = ((e1r - h0) / h0.abs().max(T::DRIFT_FLOOR)).abs();
         out.finite = out.state.is_finite() && out.drift.is_finite();
     }
     out

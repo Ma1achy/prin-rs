@@ -1,0 +1,24 @@
+    Finished `release` profile [optimized] target(s) in 0.02s
+     Running `target/release/examples/az_machinery 256 results`
+config_stability 256^2
+config: production + 4 override(s): t_max=50.0 (production 13.0), n_sync=125 (production 32), r_coll_frac=0.005 (production 0.001), refine_flagged=false (production true)
+
+                         arm  n_sync       eta   lc   steps p50   drift p50     hot lift    chord p50
+              baseline n=125     125    0.0100   on     1.061e5    4.824e-8          NaN          NaN
+            n=250 CONTROLLED     250    0.0200   on     1.014e5    3.805e-8        2.222     4.442e-1
+            n=500 CONTROLLED     500    0.0400   on     9.999e4    5.126e-8        1.885     6.555e-1
+            n=250 confounded     250    0.0100   on     1.999e5    4.315e-9        2.053      1.069e0
+     LC branch unconditioned     125    0.0100  OFF     1.061e5    4.991e-8        3.961     2.528e-6
+
+HOW TO READ THIS
+
+**`steps p50` is the control and must be roughly flat across the CONTROLLED rows.** If
+it moves, `eta` did not hold the step size and the comparison is a step-size comparison
+wearing a re-registration label.
+
+`hot lift` is against the baseline's hot set: 1.0 is chance, 4.0 is perfect agreement.
+**A high lift means the wedges survive the change; a lift near 1 means they moved.**
+`chord p50` is the median |delta log10 drift|, the magnitude.
+
+The `confounded` row is what the uncontrolled experiment would have claimed. Compare it
+against `n=250 CONTROLLED`: if they differ, the control was load-bearing.

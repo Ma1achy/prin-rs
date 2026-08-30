@@ -4019,6 +4019,144 @@ appearance that prompted it. Both halves are worth recording.
 
 ---
 
+## 25. The timeline bisect, and why this slice is fragile
+
+### 25.1 The harness, and the reason it is regenerated per commit
+
+Defaults are exactly what changed across this range, so a harness checked out with the code
+would have measured the defaults. `results/timeline/harness/run.sh` emits `bisect_slice.rs` per
+commit from one template, writing a literal for every `EnsembleCfg` field present at that commit
+and **logging the ones that are absent** — which is the bisect signal rather than a gap. Field
+counts run 22, 23, 24, 26, 27, 28, 28, 29 across the walk. The slice is built from the reference
+UI's ten-slot `z0`, `zoom`, `pan` and `mag` as literals, so no change in `grid.rs` can move it,
+and the decoded masses `(0.32735, 0.42763, 0.24502)` are **asserted** before anything is
+integrated.
+
+Both colour windows are fixed constants shared by the whole strip. An auto-ranged ramp per panel
+stretches each commit's own p1–p99 to full scale, which on a question about *bleaching* would
+manufacture or hide the thing being looked for.
+
+### 25.2 Four null controls, all bitwise — and the "before" was a real before
+
+`2596830 -> 483b630`, `4b26466 -> 71de13f`, `5cc8dec -> 220d928`, and `f7d2a31 -> HEAD working
+tree` are all **bitwise identical** over 1048576 pixels. The second matters: `4b26466`, the last
+commit before the `dtau` work, is the same state as `71de13f`. And `71de13f` reproduces
+`results/dtau_fix`'s `fixoff` row exactly (`nonfin 30109`, `hot 0.9285`, `escape 0.2618`,
+`collision 0.3632`), with `5cc8dec` reproducing `fixon` exactly. **`DtauMode::FixedPerInterval`
+is a faithful reconstruction of the pre-fix commit**, so the comparisons made against it were not
+post-fix against post-fix. What was never captured is the pre-fix *render*.
+
+### 25.3 THERE IS NO EARLIER CANDIDATE, AND THE LARGEST MOVE IS NOT THE `dtau` FIX
+
+`030de1a` (08-25 13:39) through `483b630` (08-27 00:16) are **bitwise identical** on this slice —
+34.5 hours and the whole scheduler/criterion run of 08-26, zero pixels moved. **Before that
+there is no slice at all**: `Chart::Latent` and `decoder::Latent` do not exist at `961a313` or
+`be478e1`, so the two leading candidates cannot have altered a chart that was not there — and
+`be478e1` is the commit that *creates* the decoded-mass path. At `30d713f` and `45e7dcb` the
+chart exists but decodes to `(0.31628, 0.48444, 0.19928)`, and **the mass gate fired and refused
+the run** rather than rendering a plausible panel of a different physical system. `0114be4` and `a320f50` lie inside that bracket and were not rendered
+individually; bounded endpoints that agree bitwise is not the same as rendering them, and it is
+said that way. The first pixel to move at all is `483b630 -> 077b092`: **347 flips, 0.03%**, with
+`chord p50` exactly zero, so the shape field does not move there either.
+
+`077b092 -> e53223d` — the escape gate's missing distance condition — flips **39.95%** of the
+labels against the `dtau` fix's 33.22%, and the two escape commits together take the escape
+fraction from **0.676 to 0.262** and the bounded fraction from **0.054 to 0.369**. Any account
+of "the picture changed" that begins at the `dtau` work has already missed the bigger half.
+
+### 25.3b THE MASS PATH IS CLEAN AT HEAD, AND AN EQUAL-MASS CONTROL COULD NOT HAVE SAID SO
+
+`examples/mass_audit.rs` over every pixel and all `E+1` copies — **8388608 systems per case** —
+built by `jitter::copies_with_path` with `evaluate_at`'s own arguments, which is the integrator's
+input rather than a parallel reconstruction of it. On `config_stability`: `max|dm| 3.5e-6` (the
+rounding of the expected constants as typed), `max|sum m - 1| 1.1e-16`, **`max|sum m_i v_i|
+2.9e-17`**, **`max|sum m_i r_i| 2.1e-16`**. The last two are asserted separately because zero
+momentum does not imply zero first moment, and a construction that assumes a COM-centred input
+returns a drifting system without one. `m spread` across each footprint is exactly zero, so
+`evaluate_at`'s `copies[0].m` shortcut is exact on a configuration chart.
+
+The presets are in the table and carry no information: on an equal-mass slice every mass error is
+invisible by construction. `config_stability` is the only row that could have failed.
+
+### 25.3c THE HISTORY IS LINEAR OVER THE INTEGRATOR
+
+`git log --all --graph` restricted to `driver.rs` and `outcome.rs` is a **single straight line**,
+and no merge commit in `f4084de..f7d2a31` touches `driver.rs`, `outcome.rs` or `pixel.rs`.
+`dtau-step-control` and `overshoot-clamp` are **the same commit** `f7d2a31` — two names, one tip.
+`closure-criterion` (`4b26466`) and `escape-distance-gate` (`e53223d`) are ancestors of it and are
+**already merged into `origin/main`** (`66639b2`, PR #25); only `f7d2a31` is outstanding, as PR
+#26. The one non-ancestor tip, `criterion-sweep` (`0e100e5`), has a `src/` tree **identical** to
+`84f9cbd`. Local `main` at `0c070e4` is a stale ref, not a fork. **No branch comparison is
+needed.**
+
+And triple collision is implemented and on `main`: `State::is_triple`, `triple_ejection` and the
+`>=2-pair` rule are in `src/outcome.rs` at `0114be4` and earlier, long predating the closure work.
+
+### 25.4 The bleaching is at `5cc8dec`, and the obvious statistic reads BACKWARDS
+
+Median OKLab lightness **falls** across the walk (0.796 -> 0.843 -> 0.614) and the strictly white
+population falls monotonically 0.0179 -> 0.0150: the panel gets *darker and more saturated*. What
+the eye reads as "the pale regions grew" is those regions going **flat**. The statistic that
+matches is local contrast — the 5x5 s.d. of chroma — and it collapses **3.1x** at `5cc8dec` and
+nowhere else (0.01542, 0.01726, 0.01735, **0.00557**, 0.00461).
+
+**And what left was the incoherent component.** The lag-1 neighbour correlation of chroma
+**rises** 0.62 -> 0.70 in the same step. *Amplitude cannot tell a small real signal from noise;
+coherence can* — a texture that vanishes while what remains becomes more coherent was noise.
+Measured on the 55.5% of the frame at least 8 px from any pre-fix magenta pixel, the fall is the
+same 2.9x, so it is the whole field and not the halos.
+
+### 25.5 `nonfin` IS THE WRONG DENOMINATOR FOR "TEN TIMES MORE CHANGED THAN WAS BROKEN"
+
+Median energy drift before the fix is **2.2905 — 229% of the total energy of the system**, at the
+median pixel. The frame was NaN on 2.87% and quantitatively meaningless on most of the rest.
+Against a **682x** fall in median drift, 33% of labels changing is a small number. The flips are
+enriched 2.22x on the pre-fix magenta pixels and 1.36x at 16 px, but that set is 2.87% of the
+frame, so **~94% of the flips are outside it** — spread, and correctly so.
+
+### 25.6 `hot` FALLS WITH `eta`, AND THE LABELS STILL DO NOT CONVERGE
+
+At `n_sync` held fixed: `hot` 0.8750 -> 0.7643 -> 0.6339 -> 0.4871 and median drift 9.027e-3 ->
+7.281e-7 over an 8x refinement — **12400x**, an observed order near 4.5, so truncation error and
+not a wrong equation. But the escape fraction moves monotonically `0.2016 -> 0.1171`, a 42%
+relative change with no sign of settling, and `chord max` is **2.000, antipodal, at every rung**.
+The shape field converges (`chord p50` falls ~6x per halving); the classification does not. At
+horizon 50 the outcome image on this slice is a picture of the discretisation as much as of the
+physics.
+
+### 25.7 IT IS NOT HOW OFTEN THE REFERENCE SWITCHES, IT IS HOW OFTEN NEIGHBOURS SWITCH DIFFERENTLY
+
+`config_stability` switches **21x** as often as `preset_prho` (mean 5.717 against 0.270 over 32
+boundaries). But the count alone does not order the slices: `preset_plambda` switches *more* than
+`preset_shape` (1.463 against 1.023) and carries **70x fewer** sharp gradients, because its
+switches all fall at the same boundary and neighbours switch together. The quantity that does
+order them is the fraction of neighbour pairs with differing switch history — **58.4%, 13.6%,
+5.1%, 1.6%** against gradient densities 0.0537, 0.0212, 0.0003, 0.0006.
+
+The alignment test reads **3.43x** on `config_stability`, against 1.69x from the `t = 0` proxy —
+and the **shifted control**, with each pixel's history taken from 37 rows and 53 columns away,
+reads **0.65x**. None of the enrichment is smoothness. `preset_shape` reads 10.90x against a
+shifted control of 2.62x, so about a fifth of its enrichment is.
+
+The paired increment is the mechanism caught in the act: within a trajectory, `|drift[k] -
+drift[k-1]|` at boundaries where the reference **changed** exceeds it where it **held** on
+**82.7%–99.0%** of pixels in all four slices. The confound is that a switch coincides with fast
+deformation; the argument against reading it that way is `preset_prho`, the quiescent slice,
+where switch increments still run four orders above hold increments.
+
+### 25.8 TWO FRAMINGS CORRECTED BY MEASUREMENT
+
+The discontinuity ratio reproduces (**48x** at `>100`) but the absolute percentages do not, and
+**`>400` is empty on every committed panel**. `preset_shape` carries *more* gradients above 200
+than `config_stability` does — so the contrast is `preset_prho` against everything, not this
+slice against the presets, and `preset_prho` is the constant-configuration slice for a reason
+already on record.
+
+And the collision-cadence candidate points the other way: the median physical RK4 step here is
+**9.6e-3** against the reference's `dtMacro = 0.002`, so **the reference samples collision about
+five times more often in physical time than prin-rs does**. The reference body is also already
+chosen once per **sync boundary**, never per step, so that remedy is the shipped behaviour.
+
 ## 13. Reproducing any of this
 
 **Two of these commands were wrong, and only running them found it.** The `pan_sequence` line said

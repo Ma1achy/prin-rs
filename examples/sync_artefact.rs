@@ -139,6 +139,7 @@ fn main() {
                 closure_k: 1,
                 stop_on_escape: true,
                 keep_boundary_shapes: true,
+                keep_drift_hist: false,
                 escape_every: ev,
                 escape_confirm: confirm,
                 ..Default::default()

@@ -95,6 +95,7 @@ fn opts(r_coll: f64, r_esc: f64, all: bool, ev: usize, stop: bool) -> AzOpts<'st
         // temporal one alongside would measure the pair.
         escape_confirm: false,
         keep_boundary_shapes: false,
+        keep_drift_hist: false,
     }
 }
 

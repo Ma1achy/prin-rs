@@ -111,6 +111,10 @@ pub struct EnsembleCfg {
     /// Record each copy's `shape_vec` at every sync boundary, for the §5 temporal
     /// accumulators. Off by default; reduced and dropped inside one footprint's evaluation.
     pub keep_boundary_shapes: bool,
+    /// Record the nominal copy's energy drift at every sync boundary, so the switch statistics
+    /// below can be formed. Off by default; it is a diagnostic and costs an energy evaluation
+    /// per boundary.
+    pub keep_drift_hist: bool,
     /// Also run the nominal copy through the Benettin/diffusion accumulators, for the
     /// production colouring's lightness field. `None` skips it entirely.
     ///
@@ -166,6 +170,7 @@ impl Default for EnsembleCfg {
             keep_copy_outcomes: false,
             keep_copy_shapes: false,
             keep_boundary_shapes: false,
+            keep_drift_hist: false,
             ftle: None,
             ftle_dt: 1e-4,
             decode_path: Path::DirectF64,
@@ -287,6 +292,24 @@ pub struct PixelOut {
     pub error_ratio_mad: f64,
 
     pub switches: u32,
+    /// Time of the nominal copy's FIRST reference-body switch, `NaN` if it never switched.
+    ///
+    /// The reference is chosen **once per sync boundary**, never per RK4 step, so these times
+    /// are quantised to `t_max / n_sync` by construction and no finer statement is available.
+    pub t_first_switch: f64,
+    /// Time of its LAST switch, `NaN` if it never switched.
+    pub t_last_switch: f64,
+    /// Median and max of `|drift[k] - drift[k-1]|` over the boundaries where the reference
+    /// **changed**, against [`Self::hold_jump_med`]/[`Self::hold_jump_max`] over those where it
+    /// held. `NaN` unless `EnsembleCfg::keep_drift_hist` is set, and `NaN` when the arm is empty
+    /// -- a trajectory that never switched has no switch increment, which is not the same number
+    /// as zero. **This is the mechanism caught in the act or not at all**: a correlation between
+    /// a switch map and a drift map can be produced by both tracking a third thing, where a
+    /// paired increment across the switch cannot.
+    pub switch_jump_med: f64,
+    pub switch_jump_max: f64,
+    pub hold_jump_med: f64,
+    pub hold_jump_max: f64,
     /// Per-sync count of copies whose chosen reference body differs from the nominal copy's.
     /// Lets `error_ratio` be conditioned on reference disagreement, so §8 experiment 2 gets
     /// an attributed answer from one run rather than a difference of aggregates (NOTES §1).
@@ -448,6 +471,7 @@ pub fn evaluate_at<T: Real>(slice: &Slice, idx: usize, cfg: &EnsembleCfg, eta_v:
 
     let base = AzOpts::<T> {
         keep_boundary_shapes: cfg.keep_boundary_shapes,
+        keep_drift_hist: cfg.keep_drift_hist,
         forced_refs: None,
         lc_stable: cfg.lc_stable,
         r_coll_frac: T::lit(cfg.r_coll_frac),
@@ -671,6 +695,51 @@ pub fn evaluate_at<T: Real>(slice: &Slice, idx: usize, cfg: &EnsembleCfg, eta_v:
     }
 
     let nom = &outs[0];
+
+    // Switch statistics, nominal copy only. `refs[k]` and `drift_hist[k]` share one cadence, so
+    // `refs[k] != refs[k-1]` selects the boundaries at which the LC registration was re-derived
+    // and the paired increment is what that switch cost. Both arms are reported: **a switch arm
+    // alone cannot say whether the increment is large**, because on a chaotic slice every
+    // boundary carries some, and the hold arm is the control.
+    let sw_stats: (f64, f64, f64, f64, f64, f64) = {
+        let dt_sync = cfg.t_max / cfg.n_sync as f64;
+        let (mut first, mut last) = (f64::NAN, f64::NAN);
+        for k in 1..nom.refs.len() {
+            if nom.refs[k] != nom.refs[k - 1] {
+                let t = (k as f64) * dt_sync;
+                if first.is_nan() {
+                    first = t;
+                }
+                last = t;
+            }
+        }
+        let (mut sw, mut hd): (Vec<f64>, Vec<f64>) = (Vec::new(), Vec::new());
+        for k in 1..nom.drift_hist.len().min(nom.refs.len()) {
+            let d = (nom.drift_hist[k].to_f64().unwrap() - nom.drift_hist[k - 1].to_f64().unwrap())
+                .abs();
+            if !d.is_finite() {
+                continue;
+            }
+            if nom.refs[k] != nom.refs[k - 1] {
+                sw.push(d);
+            } else {
+                hd.push(d);
+            }
+        }
+        // `NaN` on an empty arm, never 0: a trajectory that never switched has no switch
+        // increment, and that is a different statement from an increment of zero.
+        let med = |v: &mut Vec<f64>| -> (f64, f64) {
+            if v.is_empty() {
+                return (f64::NAN, f64::NAN);
+            }
+            v.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            (v[v.len() / 2], v[v.len() - 1])
+        };
+        let (sm, sx) = med(&mut sw);
+        let (hm, hx) = med(&mut hd);
+        (first, last, sm, sx, hm, hx)
+    };
+
     PixelOut {
         outcome: packed[0],
         state: outcomes[0].state as u8,
@@ -707,6 +776,12 @@ pub fn evaluate_at<T: Real>(slice: &Slice, idx: usize, cfg: &EnsembleCfg, eta_v:
         error_ratio: ratio.to_f64().unwrap(),
         error_ratio_mad: ratio_mad.to_f64().unwrap(),
         switches: nom.switches,
+        t_first_switch: sw_stats.0,
+        t_last_switch: sw_stats.1,
+        switch_jump_med: sw_stats.2,
+        switch_jump_max: sw_stats.3,
+        hold_jump_med: sw_stats.4,
+        hold_jump_max: sw_stats.5,
         ref_disagree,
         n_outcome_disagree,
         n_nonfinite,

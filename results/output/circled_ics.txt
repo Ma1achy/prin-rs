@@ -1,0 +1,113 @@
+panel results/closure/config_stability_stop0_uniform.png -- 1024x1024
+
+wrote results/circled/circled_mask.png -- yellow = hand circles, green = the pale/low-chroma mask
+
+wrote results/circled/ic_class.png -- hue = AZ reference body at t=0, lightness = tightest pair
+
+JOINT CLASS  reference=0 (longest side is (1,2))  AND  tightest=(0,1)
+                       0.2223 of the frame
+                       0.3970 of the hand-circled set        enrichment 1.79x
+                       0.2963 of the pale/low-chroma set     enrichment 1.33x
+                       0.4961 of the DENSE pale wedges       enrichment 2.23x
+                       0.5340 of the magenta set             enrichment 2.40x
+
+== INITIAL CONDITIONS, NO INTEGRATION ==
+
+           whole frame n=1048576 (1.0000 of frame)
+                         alpha    p10 0.6373 p50 0.8232 p90 1.0039
+                         beta     p10 1.0984 p50 1.4849 p90 1.8811
+                         d_min0   p10 1.2333 p50 1.4595 p90 1.6368
+                         aspect   p10 1.153 p50 1.428 p90 1.783
+                         |area|   p10 2.2908 p50 2.5075 p90 2.6598
+                         E0       p10 -0.1313 p50 -0.1195 p90 -0.1142
+                         K/|U|    p10 0.3543 p50 0.3761 p90 0.3868
+                         Lz       p10 -0.2313 p50 -0.1662 p90 -0.0888
+                         d(0,1)   p10 1.2472 p50 1.5798 p90 1.8665
+                         d(0,2)   p10 1.6240 p50 1.9883 p90 2.2801
+                         d(1,2)   p10 1.4211 p50 1.7871 p90 2.0815
+                         tie_long p10 0.7478 p50 0.8842 p90 0.9771   frac>0.95 0.2190  >0.99 0.0438
+                         tie_tght p10 0.6460 p50 0.8228 p90 0.9665   frac>0.95 0.1483  >0.99 0.0301
+                         ref body 0:0.2902 1:0.5974 2:0.1125   tightest pair 0:0.5835 1:0.1276 2:0.2889
+
+          hand-circled n= 266483 (0.2541 of frame)
+                         alpha    p10 0.6867 p50 0.9162 p90 1.0060
+                         beta     p10 1.3684 p50 1.7609 p90 1.9241
+                         d_min0   p10 1.2431 p50 1.4115 p90 1.6016
+                         aspect   p10 1.212 p50 1.474 p90 1.731
+                         |area|   p10 2.3573 p50 2.5215 p90 2.6541
+                         E0       p10 -0.1309 p50 -0.1213 p90 -0.1149
+                         K/|U|    p10 0.3550 p50 0.3726 p90 0.3853
+                         Lz       p10 -0.1859 p50 -0.1102 p90 -0.0712
+                         d(0,1)   p10 1.2431 p50 1.4139 p90 1.7959
+                         d(0,2)   p10 1.5090 p50 1.9197 p90 2.1276
+                         d(1,2)   p10 1.7752 p50 1.9266 p90 2.1665
+                         tie_long p10 0.8205 p50 0.8987 p90 0.9779   frac>0.95 0.2389  >0.99 0.0454
+                         tie_tght p10 0.6388 p50 0.7700 p90 0.9394   frac>0.95 0.0841  >0.99 0.0201
+                         ref body 0:0.5973 1:0.3443 2:0.0584   tightest pair 0:0.7344 1:0.2587 2:0.0069
+
+       pale/low-chroma n=  15672 (0.0149 of frame)
+                         alpha    p10 0.6894 p50 0.9229 p90 1.0051
+                         beta     p10 1.0940 p50 1.5377 p90 1.8961
+                         d_min0   p10 1.2430 p50 1.3808 p90 1.5877
+                         aspect   p10 1.209 p50 1.567 p90 1.790
+                         |area|   p10 2.2943 p50 2.4696 p90 2.5996
+                         E0       p10 -0.1313 p50 -0.1232 p90 -0.1147
+                         K/|U|    p10 0.3544 p50 0.3691 p90 0.3858
+                         Lz       p10 -0.2323 p50 -0.1497 p90 -0.0773
+                         d(0,1)   p10 1.2447 p50 1.4016 p90 1.7919
+                         d(0,2)   p10 1.5815 p50 2.0134 p90 2.2968
+                         d(1,2)   p10 1.5451 p50 1.8856 p90 2.1408
+                         tie_long p10 0.7427 p50 0.8691 p90 0.9618   frac>0.95 0.1310  >0.99 0.0240
+                         tie_tght p10 0.6408 p50 0.7573 p90 0.9507   frac>0.95 0.1017  >0.99 0.0115
+                         ref body 0:0.4381 1:0.5363 2:0.0256   tightest pair 0:0.7125 1:0.1672 2:0.1203
+
+DENSE pale (the wedges) n=   1935 (0.0018 of frame)
+                         alpha    p10 0.6935 p50 0.9448 p90 0.9764
+                         beta     p10 1.4013 p50 1.8032 p90 1.8688
+                         d_min0   p10 1.3005 p50 1.3606 p90 1.6140
+                         aspect   p10 1.171 p50 1.579 p90 1.608
+                         |area|   p10 2.4607 p50 2.4838 p90 2.5972
+                         E0       p10 -0.1269 p50 -0.1239 p90 -0.1142
+                         K/|U|    p10 0.3622 p50 0.3677 p90 0.3868
+                         Lz       p10 -0.1762 p50 -0.1061 p90 -0.0853
+                         d(0,1)   p10 1.3005 p50 1.3606 p90 1.7859
+                         d(0,2)   p10 1.5398 p50 1.8828 p90 2.1498
+                         d(1,2)   p10 1.8377 p50 1.9404 p90 2.1197
+                         tie_long p10 0.8540 p50 0.9098 p90 0.9582   frac>0.95 0.1183  >0.99 0.0346
+                         tie_tght p10 0.6669 p50 0.7374 p90 0.9423   frac>0.95 0.0760  >0.99 0.0005
+                         ref body 0:0.8656 1:0.1333 2:0.0010   tightest pair 0:0.6289 1:0.3705 2:0.0005
+
+  magenta (non-finite) n=   3019 (0.0029 of frame)
+                         alpha    p10 0.7089 p50 0.9392 p90 0.9785
+                         beta     p10 1.3964 p50 1.8547 p90 1.9528
+                         d_min0   p10 1.2964 p50 1.3713 p90 1.5850
+                         aspect   p10 1.201 p50 1.574 p90 1.648
+                         |area|   p10 2.3647 p50 2.4658 p90 2.5838
+                         E0       p10 -0.1273 p50 -0.1242 p90 -0.1146
+                         K/|U|    p10 0.3615 p50 0.3671 p90 0.3861
+                         Lz       p10 -0.1788 p50 -0.1020 p90 -0.0563
+                         d(0,1)   p10 1.2964 p50 1.3713 p90 1.7629
+                         d(0,2)   p10 1.5454 p50 1.8043 p90 2.1354
+                         d(1,2)   p10 1.8384 p50 2.0836 p90 2.1811
+                         tie_long p10 0.8075 p50 0.8673 p90 0.9469   frac>0.95 0.0825  >0.99 0.0053
+                         tie_tght p10 0.6718 p50 0.7598 p90 0.9147   frac>0.95 0.0391  >0.99 0.0033
+                         ref body 0:0.7671 1:0.2136 2:0.0192   tightest pair 0:0.7469 1:0.2524 2:0.0007
+
+       everything else n= 775310 (0.7394 of frame)
+                         alpha    p10 0.6268 p50 0.7962 p90 1.0022
+                         beta     p10 1.0754 p50 1.3906 p90 1.7956
+                         d_min0   p10 1.2294 p50 1.4764 p90 1.6523
+                         aspect   p10 1.132 p50 1.413 p90 1.801
+                         |area|   p10 2.2701 p50 2.5009 p90 2.6610
+                         E0       p10 -0.1314 p50 -0.1191 p90 -0.1140
+                         K/|U|    p10 0.3541 p50 0.3769 p90 0.3873
+                         Lz       p10 -0.2346 p50 -0.1839 p90 -0.1084
+                         d(0,1)   p10 1.2505 p50 1.6244 p90 1.8809
+                         d(0,2)   p10 1.6837 p50 2.0275 p90 2.3044
+                         d(1,2)   p10 1.3782 p50 1.7117 p90 2.0156
+                         tie_long p10 0.7341 p50 0.8767 p90 0.9770   frac>0.95 0.2132  >0.99 0.0434
+                         tie_tght p10 0.6494 p50 0.8431 p90 0.9704   frac>0.95 0.1701  >0.99 0.0335
+                         ref body 0:0.1861 1:0.6822 2:0.1317   tightest pair 0:0.5309 1:0.0832 2:0.3859
+
+mask agreement: hand 266483, pale 15672, both 8889  --  0.5672 of the pale mask lies inside a circle (0.2541 expected by area), enrichment 2.23x
+magenta: 3019 of 1048576 (0.0029); inside a circle 0.9099, enrichment 3.58x

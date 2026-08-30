@@ -1366,3 +1366,258 @@ share the nominal copy's reference?
 
 The flag governs **cross-copy sharing only** — not freezing the reference across time. Freezing
 across time would break AZ outright.
+
+**THE BLEACHING IS A LOSS OF TEXTURE, AND EVERY OBVIOUS STATISTIC READS IT BACKWARDS.** "The pale
+regions grew" measures as median OKLab lightness **falling** (0.796 -> 0.843 -> 0.614 across the
+walk) and the strictly white population falling monotonically 0.0179 -> 0.0150 — the panel gets
+*darker and more saturated*. What the eye reads is those regions going **flat**. The statistic
+that matches is local contrast, the 5x5 s.d. of chroma, and it collapses **3.1x at `5cc8dec` and
+nowhere else** (0.01542, 0.01726, 0.01735, **0.00557**, 0.00461). **And what left was the
+incoherent component**: lag-1 chroma coherence *rises* 0.62 -> 0.70 in the same step, and on the
+55.5% of the frame at least 8 px from any pre-fix magenta the fall is the same 2.9x. A texture
+that vanishes while what remains becomes more coherent was noise, not structure — *amplitude
+cannot tell a small real signal from noise; coherence can*, now at a third site.
+
+**`nonfin` IS THE WRONG DENOMINATOR FOR "TEN TIMES MORE CHANGED THAN WAS BROKEN".** Median energy
+drift before the `dtau` fix is **2.2905 — 229% of the total energy** at the median pixel. The
+frame was NaN on 2.87% and quantitatively meaningless on most of the rest, so against a **682x**
+fall in median drift, 33% of labels changing is a small number. The flips are enriched 2.22x on
+the pre-fix magenta pixels and 1.36x at 16 px, but that set is 2.87% of the frame — **~94% of the
+flips are outside it**, which is what a correct fix looks like here.
+
+**THE TIMELINE HAS ONE STATE FROM 08-25 TO 08-27, AND THE BIGGEST MOVE IS THE ESCAPE COMMIT.**
+`f4084de` through `483b630` are **bitwise identical** over 1048576 pixels — 34 hours, the whole
+08-26 scheduler run, zero pixels. `077b092 -> e53223d` then flips **39.95%** of labels against the
+`dtau` fix's 33.22%, and the two escape commits take escape 0.676 -> 0.262 and bounded
+0.054 -> 0.369. The screenshots being reasoned from sit at `4b26466`, **after** both, so the state
+treated as original already contains the largest label move in the range. Four null controls pass
+bitwise, including `4b26466 == 71de13f` (the named "true before" touches no `src/`) and
+`FixedPerInterval` reproducing `71de13f` exactly — so the flag *is* a faithful reconstruction of
+the pre-fix commit and those comparisons were not post-fix against post-fix.
+
+**`hot` FALLS WITH `eta`; THE LABELS DO NOT CONVERGE.** `hot` 0.8750 -> 0.4871 and median drift
+9.027e-3 -> 7.281e-7 over an 8x refinement — **12400x**, order ~4.5, so truncation and not a wrong
+equation, and the 86% is the threshold sitting far below this slice's bulk. But escape fraction
+moves monotonically `0.2016 -> 0.1171` with no sign of settling and `chord max` is **2.000,
+antipodal, at every rung**. At horizon 50 the *shape* field converges (`chord p50` falls ~6x per
+halving) and the *classification* does not.
+
+**IT IS NOT HOW OFTEN THE REFERENCE SWITCHES, IT IS HOW OFTEN NEIGHBOURS SWITCH DIFFERENTLY.**
+`config_stability` switches **21x** as often as `preset_prho` (5.717 against 0.270 over 32
+boundaries), but count alone does not order the slices — `preset_plambda` switches *more* than
+`preset_shape` and carries **70x fewer** sharp gradients, because its switches all fall at one
+boundary and neighbours switch together. The ordering quantity is the fraction of neighbour pairs
+with differing switch history: **58.4% / 13.6% / 5.1% / 1.6%** against gradient densities 0.0537 /
+0.0212 / 0.0003 / 0.0006. The alignment test reads **3.43x** (against 1.69x from the `t = 0`
+proxy) with a **shifted control at 0.65x** — none of it is smoothness. And the paired increment
+inside one trajectory has the switch boundary above the hold boundary on **82.7-99.0%** of pixels
+in all four slices. The confound is that a switch coincides with fast deformation; the argument
+against is `preset_prho`, quiescent, where switches still cost four orders more than holds.
+**The reference is already chosen once per SYNC BOUNDARY, never per step**, so that remedy is the
+shipped behaviour.
+
+**THE COLLISION-CADENCE CANDIDATE POINTS THE OTHER WAY.** The median physical RK4 step on this
+slice is **9.6e-3** against the reference's `dtMacro = 0.002`, so **the reference samples collision
+about five times more often in physical time than prin-rs does**. `total_substeps` is summed over
+all `E+1` copies, and dividing by the raw sum understates the step **eightfold** — which is the
+whole difference between "prin-rs tests far more often" and the truth.
+
+**A BISECT HARNESS MUST BE REGENERATED PER COMMIT, AND AN ABSENT FIELD IS THE SIGNAL.** Defaults
+are exactly what changed across a range like this, so a harness checked out with the code measures
+the defaults. `results/timeline/harness/run.sh` emits the `EnsembleCfg` literal field by field from
+one template and **logs the fields that do not exist yet** (22, 23, 24, 26, 27, 28, 29 across the
+walk). Both colour windows are fixed constants shared by the strip: an auto-ranged ramp per panel
+would stretch each commit's own p1-p99 to full scale, which on a question about bleaching
+manufactures or hides the thing being measured.
+
+**THE MASS GATE FIRED, AND WHAT IT CAUGHT WAS A DIFFERENT PHYSICAL SYSTEM WEARING THE SAME
+WINDOW.** Extending the bisect to 08-24 stops for two distinct reasons and the gate separates
+them: `Chart::Latent` and `decoder::Latent` **do not exist** at `961a313` or `be478e1`, so the
+two leading candidates cannot have altered a chart that was not there — and `be478e1` is the
+commit that *creates* the decoded-mass path, so there is no earlier state in which this slice
+exists to be broken. At `30d713f` and `45e7dcb` the chart exists but decodes to
+`(0.31628, 0.48444, 0.19928)` against the expected `(0.32735, 0.42763, 0.24502)`; rendering them
+would have produced a plausible panel of the wrong problem. `030de1a` (08-25 13:39) is the
+earliest renderable state and is **bitwise identical** to everything through `483b630`.
+
+**AND THE MASS PATH ITSELF IS CLEAN — 8388608 SYSTEMS, AND ONLY ONE ROW OF THE TABLE COULD HAVE
+FAILED.** `examples/mass_audit.rs` on every pixel and all `E+1` copies, built by
+`jitter::copies_with_path` with `evaluate_at`'s own arguments: `max|sum m_i v_i| = 2.9e-17` and
+`max|sum m_i r_i| = 2.1e-16` on `config_stability`. The two are asserted **separately**, because
+zero momentum does not imply zero first moment and a construction that assumes a COM-centred
+input returns a drifting system without one. The presets are in the table and carry nothing: on
+an equal-mass slice a mass error is invisible by construction, so an equal-mass control could
+not have produced this result. `m spread` across a footprint is exactly zero, which is what makes
+`copies[0].m` exact on a configuration chart rather than an approximation.
+
+**THE HISTORY IS LINEAR OVER THE INTEGRATOR, AND TWO "DIVERGENT BRANCHES" ARE ONE COMMIT.**
+`git log --all --graph` over `driver.rs` and `outcome.rs` is a single straight line; no merge in
+`f4084de..f7d2a31` touches `driver.rs`, `outcome.rs` or `pixel.rs`. `dtau-step-control` and
+`overshoot-clamp` are **the same commit** `f7d2a31`. `closure-criterion` and
+`escape-distance-gate` are ancestors of it and are already in `origin/main` (`66639b2`, PR #25).
+The one non-ancestor tip, `criterion-sweep`, has a `src/` tree **identical** to `84f9cbd`. Local
+`main` at `0c070e4` is a stale ref, not a fork — **check `origin/main` before reading a branch
+list as a divergence.** Triple collision is likewise not a missing prototype: `State::is_triple`,
+`triple_ejection` and the `>=2-pair` rule are in `src/outcome.rs` at `0114be4` and earlier.
+
+**`R = 1` ON THE LATENT CHARTS IS AN ALGEBRAIC IDENTITY, NOT A `z0 = 0` COINCIDENCE — AND THE
+UNITS QUESTION IS LIVE IN THE OPPOSITE PLACE.** `decoder::config` writes `rho~ = (cos a, 0)` and
+`lam~ = sin a (cos b, sin b)` in **mass-weighted** Jacobi coordinates, so
+`I = mu_rho|rho|^2 + mu_lam|lam|^2 = cos^2 a + sin^2 a` with the mass factors cancelling, and
+`sum m = 1`. Measured over 8388608 systems, `config_stability` reads `max|R-1| = 4.441e-16` —
+**exactly the same residual as `preset_shape`**, which has `z0 = 0`; the residual tracks whether
+the chart sweeps alpha and beta (trig round-off), not whether `z0` is zero, and the two
+constant-configuration presets read exactly 1.0. So `EscapeRule::Distance(12)` computes an
+absolute gate of exactly 12, which is what the app's `rEsc = 12` means. Where the literals do
+**not** transfer is Burrau: `escape_gate.txt` §0 has `near-field` at `R = 2.236` and
+`deep interior` at `1.369`, so `r_esc = 5` means 11.18 and 6.85 absolute.
+
+**A COMMIT MESSAGE'S COVERAGE GAP IS NOT ALWAYS THE HARNESS'S.** `e53223d`'s write-up quotes only
+`deep interior`, `near-field` and `preset_plambda`, but `examples/escape_gate.rs` already carries
+`config_stability` at its own settings and `results/output/escape_gate.txt` reports it: at
+`r_esc = 5` the gate takes persistence at +1/+2/+4/+8 from `0.784/0.769/0.753/0.734` to
+`0.968/0.958/0.944/0.923`. The gate works on this slice too. Its `r_esc` sensitivity is strong and
+monotone here (escape `0.6944 -> 0.4358` across the ladder) where `near-field` is flat at 0.0000
+at every rung — **read the committed output before re-running the sweep.** And the 24x24 sweep
+validates against the 1024^2 panel to **0.3%** at the app's own `r_esc = 12` (escape 0.4913
+against 0.4899), which is what a per-trajectory statistic is expected to do.
+
+**`escape_confirm` IS STRUCTURALLY INERT IN THE RENDER PATH.** Read from the diff, not the
+message: it holds a detection provisional only when the detection came from an **in-loop** test,
+and the render path runs at `escape_every = 0`, so there are none. The strip agrees — `077b092`
+moves **347 labels of 1048576 and not one shape vector** (`moved` 0, `chord p50` and `chord max`
+both exactly 0).
+
+**AN ARTEFACT CAN FAIL TO REPRODUCE AT ITS OWN COMMIT WITHOUT THE BUILD BEING
+NON-DETERMINISTIC — CHECK THE FILE'S mtime AGAINST THE REFLOG BEFORE SUSPECTING THE CODE.**
+`results/closure/config_stability_stop0_uniform.png` re-rendered at `220d928`, the commit that
+adds it, differs on **84.12% of pixels**; re-rendered at `4b26466` it is **bitwise identical**,
+both panels, every printed number to the digit. The reflog and the file mtime say why: HEAD sat
+at `4b26466` from 13:52 to 21:19 on 08-27, the PNG was written at **16:38**, and `220d928`
+committed it at 21:36 — **after `5cc8dec`, the `dtau` fix**. A pre-fix render committed into a
+post-fix tree. The magenta fraction is 0.0029 committed against 0.0001 at `220d928`, a factor of
+29, so anything using this file as a *before* was comparing pre-`dtau` against post-`dtau` and
+measuring §23 over again. **Commit renders in the same commit as the code that made them, or
+name the commit in the filename.**
+
+**AND THE HARNESS DIFF IS THE FIRST THING TO CLEAR, NOT THE LAST.** `220d928` also changed
+`closure_render.rs` by 13 lines in the same commit — `sub` becomes argument 4 and `tau` moves to
+5. That looks like exactly the kind of argument renumbering that silently changes a run, and it
+is **not** the cause: the committed invocation (`closure_render 1024 results`, from the log's own
+header) passes neither argument, so both take their defaults either way. Checking it first cost
+one `git show` and removed a whole candidate before any render was spent on it.
+
+**THE IMAGE THE BLEACHING THREAD IS ABOUT IS 256x256, AND IT REPRODUCES BYTE FOR BYTE AT
+`4b26466`.** `results/closure/esgate_fixed/config_stability_stop0_uniform.png` — mtime 08-27
+15:20, inside the window where HEAD was `4b26466` (13:52 to 21:19) — is reproduced **bitwise, both
+panels**, by `closure_render 256 <root> config_stability` at that commit. **There is no
+uncommitted working-tree difference to hunt for**, and the build is deterministic across a fresh
+checkout and rebuild. It was committed at `220d928` (21:36), *after* `5cc8dec` landed at 21:19, so
+it is a pre-`dtau`-fix render sitting in a post-fix tree; the same command at `220d928` gives
+escape 0.0433 against the committed 0.0588. Its magenta fraction is 0.0030 against the 1024^2
+render's 0.0029 — same physics, quarter the linear raster — so *softness in an image is a raster
+size* now has a fourth site, and a magenta cluster of a few footprints reads as a **blob** at
+4x4 screen pixels per footprint.
+
+**THE CIRCLED WEDGES ARE HIERARCHICAL ICs WITH THE HEAVIEST AND LIGHTEST BODIES FAR APART — AND
+THEY ARE *NOT* NEAR AN ARGMAX DEGENERACY.** Measured on the ICs alone, which need no integration:
+the magenta and dense-pale populations both order `d(0,1) < d(0,2) < d(1,2)` with **`d(1,2)`'s
+10th percentile at 1.84 against the frame's 1.42** — the small-separation tail is gone — and
+`tightest == (1,2)` occurs on **0.07% of the magenta against 28.9% of the frame, a 413x
+depletion**. With `m = (0.32735, 0.42763, 0.24502)` that is the heaviest and lightest body as the
+wide pair. Alongside: aspect 1.57 against 1.43, larger `alpha` (tighter inner pair), and **|Lz|
+about 60% of the frame median**.
+
+**The near-degeneracy hypothesis is refuted by the sign, not merely unsupported.** If these were
+the pixels where AZ's `argmax` is a coin flip the tie statistics would be enriched; they are
+**depleted ~2.5x** (`d[2nd]/d[longest] > 0.95` on 0.0825 against 0.2132). And `ic_class.png` — the
+reference body and tightest pair over the whole frame — is a **smooth six-sector pinwheel meeting
+at one point**, which is where the straight edges in the chart plane come from and which does
+**not** draw the wedges. *A finding read off a wireframe is a finding about an appearance*, at the
+IC layer: the straight edges suggested a discrete IC boundary, and rendering the boundary showed
+it is somewhere else.
+
+**And the class constrains without drawing.** `P(magenta | reference=0 and tightest=(0,1))` is
+**0.0070** against a base rate of 0.0029 — a 2.4x lift on a class holding 22% of the frame. The
+initial conditions bound where the artefact can appear; the fine structure inside them is
+dynamical. **Read a hand-drawn mask's area before its statistics**: the digitised circles cover
+25.4% of the frame, so that row is mostly background and only the property-selected populations
+carry the signal.
+
+**WITHDRAWN, AND THE REPLACEMENT IS BELOW — the zoom it rested on was half a frame from where it
+was said to be.** ~~**THE PALE WEDGES HAVE NO INTERIOR, AND DO NOT ACQUIRE ONE UNDER 6x
+MAGNIFICATION.**~~ Euclidean
+distance transform on `config_stability_stop0_uniform.png`: the pale class's median inscribed
+radius is **1.00 px** and **0.0%** survives a 5x5 opening, against the red band's **32.25 px** and
+**93.6%**. Re-rendered over a 1/8 window at 6x finer cell width the pale class reads **1.00 px**
+again and its *maximum* radius **falls** 2.24 -> 1.41, while the control shrinks the way a solid
+region does under magnification. **A fixed-size geometric artefact would have grown 6x in
+pixels.** The zoom render shows why: the "solid wedge with a sharp edge" is **hundreds of parallel
+laminae** with smooth curved boundaries and no polygonal edge. The appearance is sub-pixel
+aliasing — a mixture whose *density* changes over a few pixels, not a boundary — which is the
+raster lesson one level down, at the sampling of the field rather than the size of the image.
+
+**AND THE MASK THAT FAILED FAILED SILENTLY.** The first threshold (`C < 0.045`) selected dust:
+11640 components, largest 211 px, run lengths of 2. A box-counting dimension from that reads near
+1 whatever the truth is, because a scatter of isolated pixels is not a boundary — it would have
+"confirmed" a geometric edge. **Component sizes and run lengths caught it; the dimension number
+did not.** Check that a mask selects regions before measuring their boundaries.
+
+**A ZOOM HARNESS FLIPPED THE VERTICAL AXIS AND RENDERED HALF A FRAME AWAY FROM WHERE IT SAID.**
+`Slice::axis` runs low-to-high with index and `save_rect` writes rows in buffer order, so PNG row
+0 is the **minimum** `v`: fractional `v` from the top of a saved panel maps straight to the axis
+with **no flip**. `wedge_zoom.rs` wrote `1 - fv` and landed at 0.75 instead of 0.25. **Caught by
+the pixels, not by re-reading the code** — cropping the panel at both candidates and comparing
+against the render gives RMS 39.6 against 85.5. Draw the box on the source image and check it
+before reading anything off a sub-window render.
+
+**A DISTANCE TRANSFORM ON A PERFORATED REGION READS THE SAME AS ON DUST.** The corrected zoom puts
+the wedge core at one connected component of **178486 px, 30% of the frame, 99.3% pale in a 192^2
+interior window** — and its median inscribed radius is still **1.00 px** with 0% surviving a 5x5
+opening, because isolated non-pale pixels riddle it. The statistic cannot tell a sponge from a
+cloud; **component size can, and it was in the same output**. So *the white class has no interior*
+is **withdrawn for the wedge cores** and stands only for the striated halo around them.
+
+**THE WEDGE EDGE IS STRAIGHT AND STAYS STRAIGHT AT 6x — TEN TIMES STRAIGHTER THAN THE RIBBON
+BESIDE IT.** Total-least-squares fit to the boundary: pale edge **RMS 4.28 px over 621 rows**
+(max deviation 17.7) against the red band's **42.05 px over 186 rows** (max 178.4) in the same
+image. The striated band dissolved into hundreds of filaments under the same magnification; the
+wedge core did not. **A straight edge in the chart plane is not by itself a bug** — `ic_class.png`
+shows the AZ reference-body partition is a six-sector pinwheel with straight edges — but the
+observation survives its test, which the lamination reading did not.
+
+**AND THE FOURIER TEST ON THE INTERIOR WAS VACUOUS AS RUN.** The window is 99.3% pale, so the
+transform measures the sparse perforation rather than the structure. Reported rather than dropped;
+it needs a window straddling the edge.
+
+**THE RENDER HARNESSES DISABLE THE REPAIR PASS, AND `results/README.md` ASSERTS THE OPPOSITE.**
+`EnsembleCfg::default()` has `refine_flagged: true` — BRIEF §2.5's remedy for the `eta` cliff,
+re-integrating pixels whose `error_ratio` exceeds 10 at `eta/4`. **62 files under `examples/` set
+it to `false`**, including every render harness. Measured on `config_stability`, one field changed:
+`error_ratio` p99 **1.039e10 -> 35.6**, drift p99 **8.87e6 -> 1.64e-2**, drift max **1.97e12 ->
+6.74e-2**, **non-finite 30109 -> 0**, escape fraction **0.0403 -> 0.0067**, with **11.1% of the
+slice re-integrated**. The pale patches are `spread_shape` saturating at 0.39 because the copies
+diverged to garbage. `src/bin/prin.rs` is **unaffected** — it takes the default and prints the
+before/after drift.
+
+**THE OVERRIDE WAS CORRECT WHERE IT WAS BORN AND SPREAD BY COPY.** `c03fc85` introduced it in the
+same commit as the pass itself, with a rationale that still stands: experiments must characterise
+the *unrepaired* kernel, and f32/f64 comparisons must not flag different pixel sets. That commit
+also wrote **"the `render-*.txt` runs have it ON"** — the invariant. Over six days the line was
+copied from experiment harnesses into render harnesses (`closure_render` at `71de13f`, 08-27
+13:02), no commit message arguing for it, and `results/README.md:190` still asserts renders have it
+on. **A convention that outlived its justification, never re-examined at the boundary it was meant
+to stop at.** Same shape as `k_frac = 1.0` shipping as the default: *a configuration that silently
+reproduces the old behaviour needs a guard, not a convention* — and none of these harnesses even
+print the flag.
+
+**THE MEDIAN IS BLIND TO IT; `error_ratio`'s TAIL IS NOT.** Slice-wide drift p50 moves
+`4.251e-7 -> 2.560e-7`, essentially nothing, while p99 moves eight orders. A render checked on a
+median would pass. That is why it survived six days and why the statistic that exists to flag
+undetermined pixels is the one to read.
+
+**AND NOT EVERY MARKED REGION IS THE BUG.** Of sixteen sampled: six read `error_ratio` p50
+`9.8e5`-`4.9e7` and are the fault; ten read `1.001`-`2.0` and their pale structure is **real**.
+The broken set runs at **4.7x-11.3x the nominal step rate** — working harder, not stepping coarser
+— with `d_min` `3.1e-3`-`4.4e-3` against `r_coll = 5e-3`. `steps/copy` alone conflates a big step
+with a short run; **the step RATE is the honest measure** and it reverses the reading.

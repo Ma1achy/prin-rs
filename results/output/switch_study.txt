@@ -1,0 +1,42 @@
+384^2. `keep_drift_hist` on, so the drift series and `refs` share one cadence.
+
+  config_stability  masses [0.32735, 0.42763, 0.24502]  242.3s
+                    switches: p50 3 p90 14 max 31  mean 5.717  hist[0..5] [15759, 28551, 20213, 12118, 7928, 6098] (of 147456)
+                    never switched 15759 (0.1069)   t_first p10 1.562 p50 1.562 p90 3.125  (quantised to t_max/n_sync = 1.5625)
+                    jump med: switch 3.988e-9 (n=131697)  hold 1.169e-10 (n=125974)   max: switch 2.438e-6 hold 1.333e-6
+                    PAIRED switch/hold ratio over 119049 pixels with both arms: p10 0.426 p50 14.357 p90 1100612.827   frac>1 0.8274
+                    |grad lum|>100: 0.0537 of 294028 pairs.  P(step | history DIFFERS) 0.0765 over 171600   P(step | history MATCHES) 0.0218 over 122428   enrichment 3.50x   lift-vs-all 1.42x
+                      shifted control (history taken 37 rows / 53 cols away): P(step | differs) 0.0483  P(step | matches) 0.0614  enrichment 0.79x
+                    |grad lum|>200: 0.0037 of 294028 pairs.  P(step | history DIFFERS) 0.0052 over 171600   P(step | history MATCHES) 0.0015 over 122428   enrichment 3.43x   lift-vs-all 1.42x
+                      shifted control (history taken 37 rows / 53 cols away): P(step | differs) 0.0030  P(step | matches) 0.0047  enrichment 0.65x
+
+       preset_prho  masses [0.33333, 0.33333, 0.33333]  212.9s
+                    switches: p50 0 p90 2 max 21  mean 0.270  hist[0..5] [127976, 1860, 16088, 1088, 210, 84] (of 147456)
+                    never switched 127976 (0.8679)   t_first p10 0.406 p50 0.406 p90 0.406  (quantised to t_max/n_sync = 0.4062)
+                    jump med: switch 9.061e-12 (n=19480)  hold 6.045e-16 (n=147042)   max: switch 1.065e-11 hold 2.216e-13
+                    PAIRED switch/hold ratio over 19362 pixels with both arms: p10 1138.000 p50 12927.000 p90 226009.000   frac>1 0.9895
+                    |grad lum|>100: 0.0006 of 294144 pairs.  P(step | history DIFFERS) 0.0228 over 4732   P(step | history MATCHES) 0.0003 over 289412   enrichment 86.91x   lift-vs-all 36.49x
+                      shifted control (history taken 37 rows / 53 cols away): P(step | differs) 0.0000  P(step | matches) 0.0006  enrichment 0.00x
+                    |grad lum|>200: 0.0000 of 294144 pairs.  P(step | history DIFFERS) 0.0011 over 4732   P(step | history MATCHES) 0.0000 over 289412   enrichment NaNx   lift-vs-all 62.16x
+                      shifted control (history taken 37 rows / 53 cols away): P(step | differs) 0.0000  P(step | matches) 0.0000  enrichment 0.00x
+
+      preset_shape  masses [0.33333, 0.33333, 0.33333]  75.6s
+                    switches: p50 0 p90 4 max 25  mean 1.023  hist[0..5] [119694, 962, 8619, 2545, 3742, 776] (of 147456)
+                    never switched 119694 (0.8117)   t_first p10 2.438 p50 2.844 p90 8.531  (quantised to t_max/n_sync = 0.4062)
+                    jump med: switch 7.686e-10 (n=27762)  hold 8.815e-11 (n=121942)   max: switch 7.787e-8 hold 1.252e-8
+                    PAIRED switch/hold ratio over 27663 pixels with both arms: p10 8.939 p50 416.619 p90 2013878.639   frac>1 0.9885
+                    |grad lum|>100: 0.0212 of 294124 pairs.  P(step | history DIFFERS) 0.1039 over 40093   P(step | history MATCHES) 0.0081 over 254031   enrichment 12.75x   lift-vs-all 4.90x
+                      shifted control (history taken 37 rows / 53 cols away): P(step | differs) 0.0434  P(step | matches) 0.0177  enrichment 2.45x
+                    |grad lum|>200: 0.0036 of 294124 pairs.  P(step | history DIFFERS) 0.0169 over 40093   P(step | history MATCHES) 0.0015 over 254031   enrichment 10.90x   lift-vs-all 4.64x
+                      shifted control (history taken 37 rows / 53 cols away): P(step | differs) 0.0078  P(step | matches) 0.0030  enrichment 2.62x
+
+    preset_plambda  masses [0.33333, 0.33333, 0.33333]  158.9s
+                    switches: p50 1 p90 3 max 24  mean 1.463  hist[0..5] [332, 118516, 7488, 11254, 1944, 7576] (of 147456)
+                    never switched 332 (0.0023)   t_first p10 0.406 p50 0.406 p90 0.406  (quantised to t_max/n_sync = 0.4062)
+                    jump med: switch 1.605e-14 (n=147124)  hold 1.700e-15 (n=147210)   max: switch 2.038e-14 hold 4.994e-12
+                    PAIRED switch/hold ratio over 147124 pixels with both arms: p10 1.919 p50 9.273 p90 91.692   frac>1 0.9780
+                    |grad lum|>100: 0.0003 of 294144 pairs.  P(step | history DIFFERS) 0.0041 over 14910   P(step | history MATCHES) 0.0001 over 279234   enrichment 67.20x   lift-vs-all 15.43x
+                      shifted control (history taken 37 rows / 53 cols away): P(step | differs) 0.0000  P(step | matches) 0.0003  enrichment 0.00x
+                    |grad lum|>200: 0.0000 of 294144 pairs.  P(step | history DIFFERS) 0.0006 over 14910   P(step | history MATCHES) 0.0000 over 279234   enrichment NaNx   lift-vs-all 19.73x
+                      shifted control (history taken 37 rows / 53 cols away): P(step | differs) 0.0000  P(step | matches) 0.0000  enrichment 0.00x
+

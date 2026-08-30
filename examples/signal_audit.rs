@@ -451,6 +451,7 @@ fn main() {
         closure_k: 1,
         stop_on_escape: true,
         keep_boundary_shapes: true,
+        keep_drift_hist: false,
         // **The named gap.** `diffusion` and `ftle` are NaN without this, which is why they have
         // never been scored -- and §1 of the audit exists because diffusion was excluded on a
         // scale artefact and never given the good test. Running without it would repeat the

@@ -103,6 +103,7 @@ fn opts(r_coll: f64, rule: EscapeRule<f64>, k: usize, stop_esc: bool) -> AzOpts<
         escape_every: 0,
         escape_confirm: true,
         keep_boundary_shapes: false,
+        keep_drift_hist: false,
     }
 }
 

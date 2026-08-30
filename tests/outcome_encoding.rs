@@ -406,6 +406,7 @@ fn escape_every_moves_t_end_off_the_sync_boundary_and_is_inert_at_zero() {
         closure_k: 1,
         stop_on_escape: true,
         keep_boundary_shapes: false,
+        keep_drift_hist: false,
     };
 
     // A latent-chart configuration, because that is where escape terminates: Burrau's near-field
@@ -495,6 +496,7 @@ fn escape_confirm_cuts_transients_and_keeps_genuine_escapes() {
         closure_k: 1,
         stop_on_escape: true,
         keep_boundary_shapes: false,
+        keep_drift_hist: false,
     };
     let count = |chart: &Chart, body: usize, cx: f64, cy: f64, half: f64, confirm: bool| {
         let n = 16usize;

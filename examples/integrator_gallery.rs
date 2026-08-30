@@ -4,6 +4,20 @@
 //! twice. Three panels per case per integrator:
 //!
 //!   - `_uniform`  — `spread_shape`, the shipping science field;
+//!   - `_spread` / `_eventspread` — the composite the criterion reads, and its event arm alone.
+//!     Worth separating: the event arm has **five distinct values** and dominates only 1.7% of
+//!     footprints, all in the top tail, so wherever it wins, `Spread` is a staircase and no ramp
+//!     recovers what was never there.
+//!   - `_dmin`     — closest approach over all three pairs. **The collision field.** Log curve,
+//!     `HighIsSettled`, so dark is a close encounter.
+//!   - `_tend`     — when the trajectory terminated. Quantised to the sync cadence wherever
+//!     escape is the terminating event, which is a mechanism and not a defect: escape is sampled
+//!     at boundaries, collision inside the RK4 loop.
+//!   - `_errratio` — `error_ratio`, the project's own flag for *this pixel is not data*. Healthy
+//!     value is exactly 1.0.
+//!   - `_eventclass` — the event class at the last boundary, the quantity `spread_event` is built
+//!     on. **Discrete, 27 fixed slots**, so adjacent ordinals are close in colour by construction
+//!     and the legend is the instrument rather than the image.
 //!   - `_outcome`  — the terminal class, a **discrete** map. Standing result: banding in a
 //!     continuous field is a colouring artefact and the crisp edges are not, and the outcome
 //!     panel is what separates them. A continuous field and a categorical map cannot look alike
@@ -75,6 +89,10 @@
 //! kernel is what a live design actually gets.
 //!
 //! Carried as argument five, printed in the table, and in the sidecar of every panel.
+//!
+//! FTLE and diffusion are **not** rendered: they need `EnsembleCfg::ftle`, which is off in
+//! production and runs a separate unregularised march per pixel. Saying so rather than quietly
+//! omitting them — an absent panel and an unavailable one are different things.
 //!
 //! Args: `res root only max_steps repair`. `only` is a case name or `all`; `repair` is 0 or 1.
 
@@ -191,7 +209,7 @@ fn main() {
         // that case finished. Delete the directory to force a re-render; nothing is resumed
         // across a code change, because nothing here can detect one.
         let done = format!(
-            "{dir}/{}_heggie{}_gain.png",
+            "{dir}/{}_heggie{}_eventclass.png",
             c.name,
             if repair { "" } else { "_norepair" }
         );
@@ -207,6 +225,8 @@ fn main() {
         // The AZ window, computed once and reused. Held in an Option so the Heggie arm cannot
         // silently fall back to its own range if the AZ arm is skipped.
         let mut window: Option<(f64, f64)> = None;
+        let mut extra_win: std::collections::HashMap<&str, (f64, f64)> =
+            std::collections::HashMap::new();
         let mut az_shapes: Option<Vec<[f64; 3]>> = None;
         let mut az_state: Option<Vec<u8>> = None;
         let mut az_drift: Option<Vec<f64>> = None;
@@ -289,23 +309,49 @@ fn main() {
 
             let mut sbuf = Vec::with_capacity(px.len() * 3);
             let mut obuf = Vec::with_capacity(px.len() * 3);
+            let mut ebuf = Vec::with_capacity(px.len() * 3);
             let mut dbuf = Vec::with_capacity(px.len() * 3);
             for p in &px {
                 sbuf.extend_from_slice(&colour::rgb(p, Scalar::ShapeSpread, &sites, lo, hi));
                 obuf.extend_from_slice(&png::outcome_rgb(p));
+                ebuf.extend_from_slice(&png::event_class_rgb(p));
             }
             for p in &dpx {
                 dbuf.extend_from_slice(&colour::drift_rgb(p, DLO, DHI));
             }
+            // The remaining continuous science fields, each on a window taken ONCE from the AZ
+            // arm and shared — the same discipline as the shape window, for the same reason.
+            let extra: Vec<(&str, Scalar)> = vec![
+                ("spread", Scalar::Spread),
+                ("eventspread", Scalar::EventSpread),
+                ("dmin", Scalar::DMin),
+                ("tend", Scalar::TEnd),
+                ("errratio", Scalar::ErrorRatio),
+            ];
+            let mut extra_bufs: Vec<(&str, Vec<u8>)> = Vec::new();
+            for (name, sc) in extra {
+                let w = *extra_win.entry(name).or_insert_with(|| colour::range(&px, sc));
+                let mut b = Vec::with_capacity(px.len() * 3);
+                for p in &px {
+                    b.extend_from_slice(&colour::rgb(p, sc, &sites, w.0, w.1));
+                }
+                extra_bufs.push((name, b));
+            }
+
             let stem = format!(
                 "{dir}/{}_{}{}",
                 c.name,
                 integ.name(),
                 if repair { "" } else { "_norepair" }
             );
-            for (suffix, buf) in
-                [("uniform", &sbuf), ("outcome", &obuf), ("drift", &dbuf)]
-            {
+            let mut panels: Vec<(&str, &Vec<u8>)> =
+                vec![("uniform", &sbuf), ("outcome", &obuf), ("drift", &dbuf)];
+            for (n, b) in &extra_bufs {
+                panels.push((n, b));
+            }
+            // Written LAST, so it is the resume sentinel below.
+            panels.push(("eventclass", &ebuf));
+            for (suffix, buf) in panels {
                 let path = format!("{stem}_{suffix}.png");
                 let _ = adaptive::save_rect(&path, res, res, buf);
                 // **Every committed panel carries its config.** The `.raw` dumps have had a

@@ -1895,3 +1895,69 @@ Two cautions that came out of using it:
   under a second. **Read the order, not the error** -- an error falls for many reasons; only the
   order says the leading term changed.
 
+
+---
+
+## PARKED: the logarithmic Hamiltonian (logH), and why it is the next thing
+
+Queued behind the 1024^2 gallery and `far_hierarchy`. Written down rather than left in a
+conversation because it changes what the Heggie result means.
+
+### What the literature check found
+
+The AZ-vs-Heggie comparison is **not new**. Mikkola's *A Comparison of Regularization Methods for
+few-body interactions* puts all three side by side in its Figure 6 — Heggie's global method, CHAIN,
+and what he calls **"Zare's cartwheel method"** — and gives Heggie's algorithm in full (§5,
+Eqs. 16-22), matching what `src/integrate/heggie/` transcribes.
+
+**CHAIN has the same re-selection problem, checked more often than AZ checks it.** §7: *"There is
+also a check for need of a new chain after every integration step"*, a new chain forming whenever an
+unchained vector is shorter than the smallest chained vector at either end. So "the chart is rebuilt
+as the configuration changes" is structural to CHAIN too, not peculiar to AZ.
+
+**What could not be found in two searches:** any quantified cost of chain-switching or reference
+re-selection — the literature says *when* the chain is rebuilt, not what rebuilding costs in error —
+and nothing evaluating any method on coherence across **neighbouring initial conditions**. That is
+consistent with the axis being unexplored, but two searches is not a literature review. Aarseth's
+book chapter and Mikkola & Aarseth (1993) are the next reads.
+
+### The gap in OUR work, and it is the important part
+
+**Mikkola's own recommendation is neither method.** It is the logarithmic Hamiltonian
+
+```
+    Lambda = ln(T + B) - ln(U),      B = U - T
+```
+
+integrated with a leapfrog, or its non-canonical generalisation TTL. These are **algorithmic**
+regularisation: a time transformation and a good integrator, with **no coordinate transformation at
+all**. His words: *"In more general cases one may recommend the logH-method."*
+
+And logH has **no chart whatsoever** — no reference body, no chain, nothing to re-select. That is a
+*stronger* form of the property the Heggie win has been attributed to. **If the re-registration
+mechanism is the real story, logH should match or beat Heggie.** If it does not, the mechanism is
+wrong and the Heggie result needs a different explanation.
+
+### Why it is cheap to try
+
+`src/integrate/leapfrog.rs` already exists. logH is that plus a time transformation and a `B`
+accumulator; Mikkola's toy implementation is about thirty lines:
+
+```
+    X(s):  dt = s/(T + B);  r += dt * p;  t += dt
+    V(s):  p += (s/U) dU/dr;  B += (s/U) dU/dt
+    step:  X(h/2) V(h) X(h/2)
+```
+
+Leapfrog alone is not enough — Mikkola uses it as the base for Gragg-Bulirsch-Stoer extrapolation.
+**That is a real scope item and not a footnote**: comparing a GBS-extrapolated logH against an RK4
+Heggie would be scoring the integrator, not the regularisation, and this project's whole AZ/Heggie
+comparison is fair *because* both run the same RK4 under the same step control. Either give logH the
+same RK4 treatment and accept it is not how the method is meant to be used, or run all three under
+GBS. Say which.
+
+### What it would settle
+
+  1. Whether the re-registration mechanism explains the Heggie win, or only correlates with it.
+  2. Whether the whole KS/coordinate-transformation family is the wrong branch for this application.
+  3. `far` — logH is chartless, so if it also loses `far` the cause is not the chart at all.

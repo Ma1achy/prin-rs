@@ -25,3 +25,62 @@ warning: `prin-rs` (example "integrator_gallery") generated 2 warnings (run `car
   re-integrates from t = 0 and has no live analogue.
 
                   case  int  drift p50  drift p99    err p99  err>10  nonfin  budget  escape    coll    secs
+       preset_shape_h1   az   1.023e-6   1.591e-1    6.259e2   32941       0     191     926  604730  1611.3
+                            p01 2.074e-9  p10 2.240e-8  p25 1.040e-7  p50 1.023e-6  p75 1.441e-5  p90 1.156e-4  max 1.650e212
+       preset_shape_h1 heggie  5.160e-11   7.126e-8    1.000e0       6       0      87     916  604764  2744.1
+                            p01 1.364e-12  p10 7.152e-12  p25 1.788e-11  p50 5.160e-11  p75 2.027e-10  p90 2.550e-9  max 1.321e-3
+                            gain decades: p10 1.68  p50 4.33  p90 6.51  max 223.41   frac better 0.9921   frac >1 decade 0.9602
+                            AZ drift decile -> gain (decades, + means Heggie lower):
+                              d0 [3.89e-11,2.24e-8]  n 104859  gain p50   2.09  frac better 0.957
+                              d1 [2.24e-8,6.89e-8]  n 104858  gain p50   3.18  frac better 0.978
+                              d2 [6.89e-8,1.51e-7]  n 104859  gain p50   2.99  frac better 0.992
+                              d3 [1.51e-7,3.11e-7]  n 104858  gain p50   3.15  frac better 0.996
+                              d4 [3.11e-7,1.02e-6]  n 104859  gain p50   3.86  frac better 0.998
+                              d5 [1.02e-6,3.66e-6]  n 104858  gain p50   4.69  frac better 0.999
+                              d6 [3.66e-6,9.03e-6]  n 104859  gain p50   5.20  frac better 1.000
+                              d7 [9.03e-6,2.58e-5]  n 104858  gain p50   5.59  frac better 1.000
+                              d8 [2.58e-5,1.16e-4]  n 104854  gain p50   6.03  frac better 1.000
+                              d9 [1.16e-4,1.65e212]  n 104844  gain p50   7.17  frac better 1.000
+       preset_shape_h1  AZ vs HG: chord p50 5.180e-5  max 1.904e0  labels differ 120/1048576 (0.0001)
+
+HOW TO READ THIS
+
+**`_drift` is the panel to read for a numerical question, not `_uniform`.** The science
+fields show a defect only after it has propagated into a spread or a label; the drift
+map shows it at source, as coherent structure with the non-finite pixels inside it.
+
+**`_outcome` is the panel that separates a colouring artefact from real structure.**
+Arcs that vanish under the discrete map and edges that survive and sharpen are the
+standing signature: the banding is a colouring artefact, the crisp edges are not.
+
+**`chord max` of 2.000 is antipodal and is NOT evidence of anything.** Two correct
+integrators through a chaotic region must diverge over t = 13 or 50. These images answer
+whether the structure got cleaner. They do not answer whether the pixels agree, and no
+chord between the two integrators can.
+warning: variable does not need to be mutable
+   --> examples/integrator_gallery.rs:276:17
+    |
+276 |             let mut er: Vec<f64> =
+    |                 ----^^
+    |                 |
+    |                 help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+   --> examples/integrator_gallery.rs:431:29
+    |
+431 |                         let mut g: Vec<f64> = (0..dpx.len())
+    |                             ----^
+    |                             |
+    |                             help: remove this `mut`
+
+warning: `prin-rs` (example "integrator_gallery") generated 2 warnings (run `cargo fix --example "integrator_gallery" -p prin-rs` to apply 2 suggestions)
+    Finished `release` profile [optimized] target(s) in 0.23s
+     Running `target/release/examples/integrator_gallery 1024 results config_stability 400000 0`
+1024^2, both integrators, shared colour windows, max_steps=400000, refine_flagged=false.
+
+  **The UNMASKED kernel.** This is what a live playhead gets: the repair pass
+  re-integrates from t = 0 and has no live analogue.
+
+                  case  int  drift p50  drift p99    err p99  err>10  nonfin  budget  escape    coll    secs

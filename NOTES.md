@@ -2084,3 +2084,44 @@ decades**. So the stepper contributes heavily where the field is dominated by on
 two-body encounter and essentially nothing where it is chaotic. A single case would have
 licensed either "the stepper is in every comparison" or "the comparison is clean", and both
 would have been wrong somewhere.
+
+### CORRECTION, ONE CASE LATER: THE COLLISION EXPLANATION IS NOT SUPPORTED, AND THE CONTROL IS SATURATED
+
+`near-field` landed and refutes the mechanism I offered above for logH's deficit. Decades against
+Heggie, with each region's collision fraction beside it:
+
+```
+             case    coll   hg/az   logh_lf   logh_rk4   lf-rk4    plain_rk4    plain_lf
+              far   1.000   -0.89     -5.33      -3.17    -2.16    3.165e+02   3.130e+05
+    deep_interior   0.985   +0.16     -4.69      -1.45    -3.23    2.240e+02   1.869e+02
+       near-field   0.024   +0.65     -4.94      -2.09    -2.85    1.486e+02   9.576e+01
+```
+
+**`logh_lf`'s deficit is flat at 4.7-5.3 decades while the collision fraction runs from 100% to
+2.4%.** So "logH is being graded almost entirely on the one thing it is known not to do" is
+wrong: the deficit is the same where collisions are rare. Withdrawn. The `logh_rk4` gaps do not
+order by collision fraction either -- 3.17, 1.45, 2.09 against 1.000, 0.985, 0.024.
+
+**AND THE STEPPER-ONLY CONTROL IS SATURATED ON EVERY FIELD CASE, SO ITS DIFFERENCES MEASURE
+NOTHING.** Both `plain_*` arms carry `err>10` on **all 65536 pixels** of all three regions --
+this project's own flag for *this pixel is not data* -- with drift at `1e2` to `1e5`. The "three
+decades on `far`, 0.08 on `deep_interior`" quoted above is a difference between two meaningless
+numbers, and the conclusion drawn from it (that the stepper's contribution is case-dependent) is
+withdrawn with it. A fixed step of `4e-3` cannot resolve any of these regions, which is exactly
+what `the_control_is_a_fixed_step_integrator` says it is.
+
+Where the control is **not** saturated it does measure the stepper: on the figure-eight,
+`LhTime::None` reads order 4.52 under RK4 and 1.85 under KDK, and at matched evaluations RK4 is
+ahead by about **2 decades**. That is the same size as the measured `logh_lf` against `logh_rk4`
+gap (2.16, 3.23, 2.85), so most of the leapfrog arm's deficit is its **order**, not its
+regularisation.
+
+**Which makes the like-for-like comparison `logh_rk4` against `heggie`, both RK4 under the same
+step control: -3.17, -1.45, -2.09 decades.** That is the number the regularisation question turns
+on, and it is two to three decades rather than five.
+
+**What survives from the entry above:** the general confound -- logH differs from Heggie in more
+than one way, so an absolute-accuracy comparison cannot isolate re-registration -- and therefore
+the case for the cadence measurement, which is a difference within one integrator and cancels
+whatever each occupant's absolute accuracy is. What does not survive is my account of *which*
+difference was doing the work. I named collisions, and the collision fraction says no.

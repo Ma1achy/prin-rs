@@ -70,7 +70,8 @@
 //! about — the first `integrator_gallery` render had it on and showed no wedges under *either*
 //! integrator, which said nothing.
 //!
-//! Args: `res root only max_steps`.
+//! Args: `res root only max_steps armset`. `armset` is `all` (the eight-arm corpus) or `gbs`
+//! (the controlled GBS comparison, with `heggie` and `logh_rk4` re-run under identical settings).
 
 use std::collections::HashMap;
 
@@ -193,7 +194,25 @@ struct Arm {
     limit: bool,
 }
 
-fn arms() -> Vec<Arm> {
+/// The arm set to run. `all` is the eight-arm corpus in `results/output/logh_arms.txt`; `gbs` is
+/// the **controlled** GBS comparison, which that corpus cannot supply.
+///
+/// The first GBS numbers were taken with the predictive step limit **off** while every
+/// `logh_arms` row has it **on** -- a knob measured to be worth up to 13 decades on `far` and to
+/// be fatal at an exact collision. Comparing across that is comparing step control. So the `gbs`
+/// set carries `heggie` and `logh_rk4` as references **re-run under identical settings**, which
+/// also makes them a reproduction check on the eight-arm table.
+fn arms(set: &str) -> Vec<Arm> {
+    if set == "gbs" {
+        return vec![
+            Arm { label: "heggie", integ: Integrator::Heggie, eta_scale: 1.0, limit: true },
+            Arm { label: "logh_rk4", integ: Integrator::LogHRk4, eta_scale: 1.0, limit: true },
+            // The controlled arm: same limit as everything else.
+            Arm { label: "logh_gbs", integ: Integrator::LogHGbs, eta_scale: 1.0, limit: true },
+            // And the arm matching how GBS was first measured, so the two are on one page.
+            Arm { label: "logh_gbs_nolim", integ: Integrator::LogHGbs, eta_scale: 1.0, limit: false },
+        ];
+    }
     vec![
         Arm { label: "az", integ: Integrator::Az, eta_scale: 1.0, limit: true },
         Arm { label: "heggie", integ: Integrator::Heggie, eta_scale: 1.0, limit: true },
@@ -213,11 +232,12 @@ fn main() {
     let root: String = std::env::args().nth(2).unwrap_or_else(|| "results".into());
     let only: String = std::env::args().nth(3).unwrap_or_else(|| "all".into());
     let max_steps: usize = arg(4, 400_000);
+    let set: String = std::env::args().nth(5).unwrap_or_else(|| "all".into());
     let dir = format!("{root}/logh_arms");
     let _ = std::fs::create_dir_all(&dir);
 
     println!(
-        "{res}^2, six occupants, shared colour windows, max_steps={max_steps}, \
+        "{res}^2, arm set `{set}`, shared colour windows, max_steps={max_steps}, \
          refine_flagged=false.\n"
     );
     println!(
@@ -250,7 +270,7 @@ fn main() {
         // The last panel written for the last arm is the resume sentinel, exactly as in
         // `integrator_gallery`. Nothing is resumed across a code change, because nothing here
         // can detect one.
-        let done = format!("{dir}/{}_{}_gain_vs_heggie.png", c.name, arms().last().unwrap().label);
+        let done = format!("{dir}/{}_{}_gain_vs_heggie.png", c.name, arms(&set).last().unwrap().label);
         if std::path::Path::new(&done).exists() {
             println!("  {:>18}  (already rendered, skipping)", c.name);
             continue;
@@ -271,7 +291,7 @@ fn main() {
 
         println!("\n{hdr}");
 
-        for a in arms() {
+        for a in arms(&set) {
             let t0 = std::time::Instant::now();
             let eta = EnsembleCfg::production().eta * a.eta_scale;
             let ov = |r_coll: f64, stop: bool| {

@@ -2231,3 +2231,50 @@ everything else, and it is the obvious next thing.
 "logH does not beat Heggie" was answered on the bare leapfrog and the RK4 arm. Under the
 configuration Mikkola actually recommends it may well; that is now a live question rather than a
 settled one.
+
+### THE LANDING CORRECTION DOES TRANSFER — AND ITS VALUE ORDERS INVERSELY WITH CHAOS
+
+Re-run against a **trajectory** diagnostic (shape chord against a converged GBS reference at
+`eta/16`, with a second reference at `eta/32` as the convergence guard) instead of energy drift.
+`gain = chord_off / chord_on`:
+
+```
+                          t=1     t=2     t=4     t=8    chord off @ t=8
+    near-field       Rk4  0.997  41.118  41.180  22.454     2.458e-5
+                     Kdk  1.000   0.855   0.889   0.979
+    config_stability Rk4  1.000   6.893   1.966   1.587     2.190e-5
+                     Kdk  1.000   1.002   1.006   1.002
+    deep_interior    Rk4  2.396   1.168   0.993   0.983     1.417e0   <- SATURATED
+                     Kdk  0.990   0.998   1.000   0.997
+```
+
+**Up to 41x, where `energy_drift_max` read 1.00.** The blind-instrument diagnosis is confirmed
+from the other side: the same correction, the same runs, a diagnostic that can see a displacement
+in time.
+
+**And the ordering is the mechanism, not scatter.** `near-field` is the tamest region in the
+corpus -- `d_min/R = 3.8e-3`, 2.4% of pixels collide -- and gains 22-41x. `config_stability` is
+chaotic and collision-heavy: 1.6-6.9x. `deep_interior` is the most chaotic: **nothing** past
+`t = 2`. The landing contributes a roughly fixed error per boundary, so it matters in proportion
+to how little else is going wrong.
+
+**`deep_interior` at `t = 8` is a dead row and says so on its face**: `chord off = 1.417` against
+a maximum of 2.000 on the shape sphere. That is chaotic saturation, which the harness was
+designed to expose rather than average over.
+
+**The KDK control never improves, in twelve cells out of twelve** -- 0.855 to 1.006, and
+*slightly worse* where it moves at all, paying for corrections a second-order method cannot use.
+That is what licenses reading the RK4 column: a correction that improved every arm would not be
+removing an order-two cap.
+
+### WHAT THAT MEANS FOR THE PORT, WITH THE DECISION LEFT OPEN
+
+For AZ and Heggie the correction would buy **a large trajectory improvement in tame regions,
+nothing where chaos dominates, for 2-7% more force evaluations**. And it is not an academic
+quantity here: the shipping science field is `spread_shape`, which is trajectory-derived, so the
+rendered field in tame regions would move.
+
+Against: it invalidates every committed number in `results/`, and the regions it helps most are
+the ones already at `1e-11` drift where nothing was visibly wrong.
+
+Both halves are now measured rather than argued. The decision is not taken here.

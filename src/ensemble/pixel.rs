@@ -4,6 +4,7 @@ use crate::decode::Path;
 use crate::grid::Slice;
 use crate::integrate::az::{self, AzOpts, DtauMode, RefPolicy};
 use crate::integrate::heggie::{self, HgDtauMode, HgOpts};
+use crate::integrate::logh::{self, LhDsMode, LhOpts};
 use crate::integrate::{Integrator, MarchOut};
 use crate::outcome::{self, Outcome, State};
 use crate::physics::{energy, shape};
@@ -468,6 +469,12 @@ pub struct PixelOut {
     /// `spread / cost` only pays if the cost distribution is wide, and this is what says
     /// whether it is.
     pub total_substeps: u64,
+    /// Force evaluations, summed over all `E+1` copies exactly as `total_substeps` is.
+    ///
+    /// **`total_substeps` is not comparable across integrators that use different steppers.** AZ,
+    /// Heggie and the RK4 logH arms spend four evaluations per step; the leapfrog arms spend one.
+    /// Any cost table with more than one stepper in it has to match and report on this.
+    pub total_force_evals: u64,
 
     /// Every copy's `shape_vec`, in copy order. Empty unless
     /// [`EnsembleCfg::keep_copy_shapes`] is set.
@@ -634,6 +641,43 @@ pub fn evaluate_at<T: Real>(slice: &Slice, idx: usize, cfg: &EnsembleCfg, eta_v:
         lc_stable: cfg.lc_stable,
     };
 
+    // logH's options, for the four chartless occupants. What is dropped, and why:
+    //   - `forced_refs` / `RefPolicy::Shared`, `ref_hysteresis`, `lc_stable`: there is no chart
+    //     at all here, so there is no reference body, no branch and nothing to share. That is the
+    //     property under test rather than an unimplemented feature.
+    //   - `escape_every` / `escape_confirm`: both are about testing escape *between* sync
+    //     boundaries, and they are vacuous under `EscapeRule::Closure`, which is production and
+    //     is defined from the boundary series. Dropped rather than wired to something inert.
+    //   - `StepLimit`: mapped the same way as Heggie's — only the predictive arm is ported, and
+    //     anything else maps to *no* limit rather than to a default one. **But note the default
+    //     differs**: `LhOpts::default()` carries `step_limit_f = 0.0` because the limit defeats
+    //     the time transformation at a collision, so a `cfg` that does not ask for `Predictive`
+    //     gets logH's own preferred setting rather than a crippled one.
+    let (lh_time, lh_stepper) =
+        cfg.integrator.logh_arms().unwrap_or((logh::LhTime::LogH, logh::Stepper::Rk4));
+    let lh = LhOpts::<T> {
+        time: lh_time,
+        stepper: lh_stepper,
+        ds_mode: match cfg.dtau_mode {
+            DtauMode::FixedPerInterval => LhDsMode::FixedPerInterval,
+            DtauMode::PerStepRemaining => LhDsMode::PerStepRemaining,
+            DtauMode::PerStepInterval => LhDsMode::PerStepInterval,
+        },
+        clamp_final_step: cfg.clamp_final_step,
+        step_limit_f: if cfg.step_limit == az::StepLimit::Predictive {
+            T::lit(cfg.step_limit_f)
+        } else {
+            T::zero()
+        },
+        r_coll_frac: T::lit(cfg.r_coll_frac),
+        stop_on_event: cfg.stop_on_event,
+        stop_on_escape: cfg.stop_on_escape,
+        escape_rule: cfg.escape_rule.lift(),
+        closure_k: cfg.closure_k,
+        keep_boundary_shapes: cfg.keep_boundary_shapes,
+        keep_drift_hist: cfg.keep_drift_hist,
+    };
+
     let march = |s: crate::physics::Cart<T>, mm: &[T; 3], forced: Option<&[u8]>| -> MarchOut<T> {
         match cfg.integrator {
             Integrator::Az => az::integrate_az_opts(
@@ -643,6 +687,15 @@ pub fn evaluate_at<T: Real>(slice: &Slice, idx: usize, cfg: &EnsembleCfg, eta_v:
             .into(),
             Integrator::Heggie => {
                 heggie::integrate_hg(s, mm, t_max, cfg.n_sync, eta, cfg.max_steps, &hg).into()
+            }
+            // One arm for all four chartless occupants: they differ only in `lh.time` and
+            // `lh.stepper`, which `Integrator::logh_arms` has already resolved. The `Plain*`
+            // controls are literally this code path with the time transformation switched off.
+            Integrator::LogHLeapfrog
+            | Integrator::LogHRk4
+            | Integrator::PlainLeapfrog
+            | Integrator::PlainRk4 => {
+                logh::integrate_lh(s, mm, t_max, cfg.n_sync, eta, cfg.max_steps, &lh).into()
             }
         }
     };
@@ -951,6 +1004,7 @@ pub fn evaluate_at<T: Real>(slice: &Slice, idx: usize, cfg: &EnsembleCfg, eta_v:
         copy_outcomes: if cfg.keep_copy_outcomes { packed.clone() } else { Vec::new() },
         event_class: stats::event_class_at(&outs[0].tight, packed[0], cfg.n_sync - 1),
         total_substeps: outs.iter().map(|o| o.steps as u64).sum(),
+        total_force_evals: outs.iter().map(|o| o.force_evals as u64).sum(),
         ab_floored: outs.iter().any(|o| o.ab_floored),
         ab_min: outs
             .iter()

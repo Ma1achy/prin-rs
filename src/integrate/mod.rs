@@ -36,15 +36,46 @@ impl<T: Real> TrajOut<T> {
     }
 }
 
-/// Which integrator marches a trajectory.
+/// Which regularisation and which stepper march a trajectory.
 ///
-/// Both regularise; they differ in **what they regularise around**. AZ picks a reference body —
-/// the one not in the longest side — regularises the two pairs sharing it, and re-chooses at
-/// every sync boundary. Heggie regularises all three relative vectors symmetrically and has no
-/// reference body to choose, so its march runs uninterrupted from `t = 0`.
+/// Flat rather than a product of `(regularisation, stepper)`, because **the product has invalid
+/// cells and saying so is part of the point**: there is no `Az + Leapfrog` and no
+/// `Heggie + Leapfrog`. Their `Gamma` couples position and momentum, so neither Hamiltonian is
+/// separable and a drift-kick-drift composition does not apply. There is no common stepper that
+/// leaves all three methods intact, and matching arms on *steps* across steppers would be a
+/// confound rather than a fairness measure — see [`Profile::evals_per_step`].
 ///
-/// Measured on `config_stability` at 256^2, doubling the sync cadence at fixed step size moves
-/// AZ's drift field by **0.516 decades** and Heggie's by **0.048** — the reason this enum exists.
+/// # The registry
+///
+/// ```text
+///   variant          chart          re-registrations   owns dt/ds   stepper
+///   Az               2 KS pairs     every boundary     yes          RK4
+///   Heggie           3 KS vectors   none               yes          RK4
+///   LogHLeapfrog     none           none               yes          KDK
+///   LogHRk4          none           none               yes          RK4
+///   PlainLeapfrog    none           none               NO           KDK
+///   PlainRk4         none           none               NO           RK4
+/// ```
+///
+/// `principia_integrator_contract.md` is the **GLSL app's** contract and is not in this repo;
+/// its `substep_bucket`/`N_sub`/`N_max`/descriptor bit 5 appear nowhere in `src/`. So the
+/// registry it describes is built here in this codebase's own terms, as [`Profile`], and
+/// asserted in `tests/logh_seam.rs` rather than borrowed from a document this port does not
+/// implement.
+///
+/// # Why the two logH arms and the two controls exist
+///
+/// Measured on `config_stability` at 256^2 with the step size held fixed by scaling `eta` with
+/// `n_sync`, doubling the sync cadence moves AZ's drift field by **0.516 decades** and Heggie's
+/// by **0.048** — the re-registration mechanism, and the reason this enum existed at all.
+///
+/// logH is the **falsification test** for it: no coordinate transformation of any kind, which is
+/// a strictly stronger form of the property Heggie's win is attributed to. Two steppers, because
+/// Mikkola & Merritt are explicit that in these methods *"the regularization is achieved by using
+/// the leapfrog"* — already confirmed here on the radial collision, which KDK traverses and RK4
+/// does not. And two `Plain*` controls, so the stepper's own contribution is measured rather than
+/// assumed: they are the **same code path** with the time transformation switched off, which is a
+/// tighter control than a separate integrator could be.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Integrator {
     /// Aarseth-Zare. The default, and what every committed number in `results/` was taken under.
@@ -52,6 +83,33 @@ pub enum Integrator {
     Az,
     /// Heggie 1974 global regularisation.
     Heggie,
+    /// logH under drift-kick-drift. **The method as designed**: one force evaluation per step.
+    LogHLeapfrog,
+    /// logH under RK4. Not how the method is meant to be used, and the arm directly comparable
+    /// to AZ and Heggie. Four force evaluations per step.
+    LogHRk4,
+    /// Control: no regularisation, KDK. `dt/ds = 1`, the same code path as `LogHLeapfrog`.
+    PlainLeapfrog,
+    /// Control: no regularisation, RK4. `dt/ds = 1`, the same code path as `LogHRk4`.
+    PlainRk4,
+}
+
+/// What an occupant of the [`Integrator`] seam is, in fields a table can print.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Profile {
+    /// How many coordinate charts the state passes through. `0` is algorithmic regularisation.
+    pub charts: usize,
+    /// Whether the state is re-registered into a chart during the march, and how often. `None`
+    /// is "never"; `Some(n)` is "at every sync boundary" with `n` charts rebuilt.
+    ///
+    /// **This is the quantity the whole logH experiment is about.**
+    pub re_registers: bool,
+    /// Whether the integrator supplies its own time transformation, as opposed to marching in
+    /// physical time. The `Plain*` controls are the only occupants that do not.
+    pub owns_time_mapping: bool,
+    /// Force evaluations per step. `steps` is only comparable between occupants sharing this
+    /// number; `MarchOut::force_evals` is what a cross-stepper table must use.
+    pub evals_per_step: usize,
 }
 
 impl Integrator {
@@ -59,13 +117,78 @@ impl Integrator {
         match self {
             Integrator::Az => "az",
             Integrator::Heggie => "heggie",
+            Integrator::LogHLeapfrog => "logh_lf",
+            Integrator::LogHRk4 => "logh_rk4",
+            Integrator::PlainLeapfrog => "plain_lf",
+            Integrator::PlainRk4 => "plain_rk4",
         }
     }
     pub fn parse(s: &str) -> Option<Self> {
         match s {
             "az" | "AZ" => Some(Integrator::Az),
             "heggie" | "hg" | "HG" => Some(Integrator::Heggie),
+            "logh_lf" | "logh-lf" | "loghlf" => Some(Integrator::LogHLeapfrog),
+            "logh_rk4" | "logh-rk4" | "loghrk4" => Some(Integrator::LogHRk4),
+            "plain_lf" | "plain-lf" | "none_lf" => Some(Integrator::PlainLeapfrog),
+            "plain_rk4" | "plain-rk4" | "none_rk4" => Some(Integrator::PlainRk4),
             _ => None,
+        }
+    }
+    pub fn profile(self) -> Profile {
+        use Integrator::*;
+        match self {
+            Az => Profile {
+                charts: 2,
+                re_registers: true,
+                owns_time_mapping: true,
+                evals_per_step: az::rk4::EVALS_PER_STEP,
+            },
+            Heggie => Profile {
+                charts: 3,
+                re_registers: false,
+                owns_time_mapping: true,
+                evals_per_step: heggie::rk4::EVALS_PER_STEP,
+            },
+            LogHLeapfrog => Profile {
+                charts: 0,
+                re_registers: false,
+                owns_time_mapping: true,
+                evals_per_step: logh::Stepper::Kdk.evals_per_step(),
+            },
+            LogHRk4 => Profile {
+                charts: 0,
+                re_registers: false,
+                owns_time_mapping: true,
+                evals_per_step: logh::Stepper::Rk4.evals_per_step(),
+            },
+            PlainLeapfrog => Profile {
+                charts: 0,
+                re_registers: false,
+                owns_time_mapping: false,
+                evals_per_step: logh::Stepper::Kdk.evals_per_step(),
+            },
+            PlainRk4 => Profile {
+                charts: 0,
+                re_registers: false,
+                owns_time_mapping: false,
+                evals_per_step: logh::Stepper::Rk4.evals_per_step(),
+            },
+        }
+    }
+
+    /// The `(time transformation, stepper)` pair for the four occupants that run through
+    /// `logh::integrate_lh`, and `None` for AZ and Heggie.
+    ///
+    /// Exhaustive with no `_` arm, so a seventh variant breaks the build here rather than
+    /// silently falling through to a default.
+    pub fn logh_arms(self) -> Option<(logh::LhTime, logh::Stepper)> {
+        use logh::{LhTime, Stepper};
+        match self {
+            Integrator::Az | Integrator::Heggie => None,
+            Integrator::LogHLeapfrog => Some((LhTime::LogH, Stepper::Kdk)),
+            Integrator::LogHRk4 => Some((LhTime::LogH, Stepper::Rk4)),
+            Integrator::PlainLeapfrog => Some((LhTime::None, Stepper::Kdk)),
+            Integrator::PlainRk4 => Some((LhTime::None, Stepper::Rk4)),
         }
     }
 }
@@ -94,6 +217,10 @@ pub struct MarchOut<T> {
     pub d_min_true: T,
     pub gamma_max: T,
     pub steps: usize,
+    /// Force evaluations. **`steps` is not comparable across steppers** — RK4 spends four per
+    /// step and a drift-kick-drift leapfrog one — so any table with more than one stepper in it
+    /// has to match and report on this instead.
+    pub force_evals: usize,
     pub finite: bool,
     pub budget_exhausted: bool,
     pub events: crate::outcome::Events<T>,
@@ -124,6 +251,9 @@ impl<T: Real> From<az::AzOut<T>> for MarchOut<T> {
             d_min_true: o.d_min_true,
             gamma_max: o.gamma_max,
             steps: o.steps,
+            // Exact rather than an estimate: every `rk4::step` in the march is paired with
+            // `steps += 1`, retries included, and the driver calls `deriv` nowhere else.
+            force_evals: o.steps * az::rk4::EVALS_PER_STEP,
             finite: o.finite,
             budget_exhausted: o.budget_exhausted,
             events: o.events,
@@ -162,6 +292,7 @@ impl<T: Real> From<heggie::HgOut<T>> for MarchOut<T> {
             d_min_true: o.d_min,
             gamma_max: o.gamma_max,
             steps: o.steps,
+            force_evals: o.steps * heggie::rk4::EVALS_PER_STEP,
             finite: o.finite,
             budget_exhausted: o.budget_exhausted,
             events: o.events,
@@ -177,6 +308,52 @@ impl<T: Real> From<heggie::HgOut<T>> for MarchOut<T> {
             // reduction and a zero would read as "floored on every step".
             ab_min: T::nan(),
             ab_floored: o.r_floored,
+            refs: Vec::new(),
+            switches: 0,
+            ref_tie: Vec::new(),
+            n_cap_hits: 0,
+            n_retry: 0,
+            retry_exhausted: false,
+        }
+    }
+}
+
+impl<T: Real> From<logh::LhOut<T>> for MarchOut<T> {
+    fn from(o: logh::LhOut<T>) -> Self {
+        Self {
+            state: o.state,
+            drift: o.drift,
+            // No chart, so there is no reference-relative separation to be distinct from the true
+            // one. As in Heggie the two coincide, and here they coincide because there was never
+            // a second definition rather than because two definitions agree.
+            d_min_ref: o.d_min,
+            d_min_true: o.d_min,
+            // `rho = |K + B - U|/U`. Occupying `gamma_max` because it is the same *kind* of
+            // quantity the other two put there — the regularised Hamiltonian's running residual.
+            // It is the energy defect normalised by `U`, not an independent constraint; logH has
+            // no analogue of Heggie's `sum q_i = 0` because its phase space is the physical one.
+            gamma_max: o.gamma_max,
+            steps: o.steps,
+            // **Counted, not derived.** Its two steppers spend different numbers per step, so
+            // there is no single multiplier to derive one from the other.
+            force_evals: o.force_evals,
+            finite: o.finite,
+            budget_exhausted: o.budget_exhausted,
+            events: o.events,
+            t_end: o.t_end,
+            tight: o.tight,
+            boundary_shapes: o.boundary_shapes,
+            drift_hist: o.drift_hist,
+            tie_ratio: o.tie_ratio,
+            dt_max: o.dt_max,
+            n_overshoot: o.n_overshoot,
+            // No `A*B` and no `R1 R2 R3`: **non-finite, never zero**, so `evaluate_at` drops it
+            // from its reductions instead of folding in a value that would read as "the product
+            // hit its floor on every step".
+            ab_min: T::nan(),
+            // The denominator degeneracy is the analogous *advance-anyway* site: `K + B` is `U`
+            // on shell, so a non-positive value means the transformation itself has failed.
+            ab_floored: o.den_degenerate,
             refs: Vec::new(),
             switches: 0,
             ref_tie: Vec::new(),

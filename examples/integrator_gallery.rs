@@ -372,6 +372,22 @@ fn main() {
             }
 
             match integ {
+                // **This gallery is deliberately AZ-against-Heggie and stays that way.** Its
+                // resume sentinel keys on the Heggie panel and 32 cases of committed 256^2
+                // artefacts were taken under exactly these two arms, so adding a third here
+                // would invalidate the corpus and re-run every finished case. The logH
+                // comparison lives in `examples/logh_arms.rs`, which is free to choose its own
+                // arms and its own sentinel.
+                //
+                // These arms are unreachable given the literal array above; they exist so the
+                // match stays exhaustive with no `_`, which is what makes a seventh occupant
+                // break the build here rather than silently vanish from a gallery.
+                Integrator::LogHLeapfrog
+                | Integrator::LogHRk4
+                | Integrator::PlainLeapfrog
+                | Integrator::PlainRk4 => unreachable!(
+                    "integrator_gallery runs AZ and Heggie only; use logh_arms for the rest"
+                ),
                 Integrator::Az => {
                     az_shapes = Some(px.iter().map(|p| p.shape_vec).collect());
                     az_state = Some(px.iter().map(|p| p.state).collect());

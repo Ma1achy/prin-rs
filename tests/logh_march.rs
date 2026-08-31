@@ -23,6 +23,13 @@ fn kdk() -> LhOpts<f64> {
     LhOpts { stepper: Stepper::Kdk, ..opts() }
 }
 
+/// The predictive limit **off, by name**. `LhOpts::default()` carries `0.02` to match AZ and
+/// Heggie, and that value is fatal at an exact collision, so every test whose subject is a
+/// collision or a convergence order says so here rather than inheriting a setting.
+fn nolimit(stepper: Stepper) -> LhOpts<f64> {
+    LhOpts { stepper, step_limit_f: 0.0, ..opts() }
+}
+
 // ---------------------------------------------------------------------------------------------
 // The globality claim, and the flags not being inert
 // ---------------------------------------------------------------------------------------------
@@ -83,7 +90,7 @@ fn radial_collision_is_traversed_by_the_leapfrog_and_not_by_rk4() {
     let mut steps = Vec::new();
     for pair in [(0usize, 1usize), (0, 2), (1, 2)] {
         let (s, m) = collision_setup(pair);
-        let o = integrate_lh(s, &m, 1.0, 32, 3e-5, 8_000_000, &kdk());
+        let o = integrate_lh(s, &m, 1.0, 32, 3e-5, 8_000_000, &nolimit(Stepper::Kdk));
         println!(
             "KDK pair {pair:?}: d_min = {:.3e}  |dE/E| = {:.3e}  rho = {:.2e}  steps = {}  \
              evals = {}",
@@ -102,7 +109,7 @@ fn radial_collision_is_traversed_by_the_leapfrog_and_not_by_rk4() {
     // The RK4 arm, pinned rather than skipped. If this ever starts completing, the two-stepper
     // framing needs revisiting -- so it fails loudly instead of quietly becoming true.
     let (s, m) = collision_setup((0, 1));
-    let r = integrate_lh(s, &m, 1.0, 32, 3e-5, 2_000_000, &LhOpts { step_limit_f: 0.0, ..opts() });
+    let r = integrate_lh(s, &m, 1.0, 32, 3e-5, 2_000_000, &nolimit(Stepper::Rk4));
     println!(
         "RK4 pair (0, 1): finite = {}  budget_exhausted = {}  d_min = {:.3e}  steps = {}",
         r.finite, r.budget_exhausted, r.d_min, r.steps
@@ -217,7 +224,7 @@ fn convergence_order_on_the_figure_eight() {
                     // **The predictive limit is OFF here**, as it is in the Heggie and AZ
                     // versions of this test. It resizes steps from local geometry, so leaving it
                     // on would put a third thing in a measurement of the stepper and the landing.
-                    &LhOpts { stepper, clamp_final_step: clamp, step_limit_f: 0.0, ..opts() },
+                    &LhOpts { clamp_final_step: clamp, ..nolimit(stepper) },
                 );
                 assert!(o.finite, "{stepper:?} went non-finite at eta = {eta}");
                 errs.push((eta, closure_err(&o.state, &s0), o.steps, o.force_evals));
@@ -303,8 +310,8 @@ fn burrau_agrees_with_az_and_heggie() {
         s0, &m, t, n, eta, 40_000_000,
         &heggie::HgOpts { step_limit_f: 0.0, r_coll_frac: 0.0, stop_on_event: false, ..Default::default() },
     );
-    let l = integrate_lh(s0, &m, t, n, eta, 40_000_000, &LhOpts { step_limit_f: 0.0, ..opts() });
-    let lk = integrate_lh(s0, &m, t, n, eta * 0.25, 40_000_000, &LhOpts { step_limit_f: 0.0, ..kdk() });
+    let l = integrate_lh(s0, &m, t, n, eta, 40_000_000, &nolimit(Stepper::Rk4));
+    let lk = integrate_lh(s0, &m, t, n, eta * 0.25, 40_000_000, &nolimit(Stepper::Kdk));
 
     let d = |x: &Cart<f64>, y: &Cart<f64>| {
         (0..3).fold(0.0f64, |w, i| w.max((x.r[i] - y.r[i]).norm()))
@@ -390,11 +397,8 @@ fn the_predictive_limit_helps_on_burrau_and_is_fatal_at_a_collision() {
     let m = burrau::masses::<f64>();
     let s0 = burrau::state::<f64>();
     for stepper in [Stepper::Rk4, Stepper::Kdk] {
-        let off = integrate_lh(s0, &m, 13.0, 32, 1e-2, 4_000_000, &LhOpts { stepper, ..opts() });
-        let on = integrate_lh(
-            s0, &m, 13.0, 32, 1e-2, 4_000_000,
-            &LhOpts { stepper, step_limit_f: 0.02, ..opts() },
-        );
+        let off = integrate_lh(s0, &m, 13.0, 32, 1e-2, 4_000_000, &nolimit(stepper));
+        let on = integrate_lh(s0, &m, 13.0, 32, 1e-2, 4_000_000, &LhOpts { stepper, ..opts() });
         println!(
             "{stepper:?} Burrau t = 13: limit off steps {:>8} drift {:.3e} overshoot {}  |  \
              f = 0.02 steps {:>8} drift {:.3e} overshoot {}",
@@ -417,12 +421,9 @@ fn the_predictive_limit_helps_on_burrau_and_is_fatal_at_a_collision() {
 
     // The other half of the inversion, on the fixture where it is fatal.
     let (s, mm) = collision_setup((0, 1));
-    let capped = integrate_lh(
-        s, &mm, 1.0, 32, 1e-3, 2_000_000,
-        &LhOpts { step_limit_f: 0.02, ..kdk() },
-    );
+    let capped = integrate_lh(s, &mm, 1.0, 32, 1e-3, 2_000_000, &kdk());
     let (s, mm) = collision_setup((0, 1));
-    let free = integrate_lh(s, &mm, 1.0, 32, 1e-3, 2_000_000, &kdk());
+    let free = integrate_lh(s, &mm, 1.0, 32, 1e-3, 2_000_000, &nolimit(Stepper::Kdk));
     println!(
         "KDK collision: f = 0.02 -> budget_exhausted {} at {} steps  |  limit off -> finished {} \
          at {} steps, drift {:.3e}",

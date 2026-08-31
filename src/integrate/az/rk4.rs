@@ -9,6 +9,15 @@ use super::hamiltonian::deriv;
 use super::state::AzState;
 use super::system::AzSystem;
 
+/// Force evaluations spent per step.
+///
+/// Lives here, beside the four `deriv` calls that spend them, rather than in the driver. The
+/// driver derives `force_evals = steps * EVALS_PER_STEP`, which is exact because **every
+/// `rk4::step` in the march is paired with `steps += 1`, retries included**, and neither driver
+/// calls `deriv` anywhere else. `steps` alone stops being comparable the moment a one-evaluation
+/// stepper joins the table, which is what logH's leapfrog does.
+pub const EVALS_PER_STEP: usize = 4;
+
 /// One step: `s + (h/6)(k1 + 2 k2 + 2 k3 + k4)`.
 ///
 /// The accumulation order matches the reference's `(k1 + 2*k2 + 2*k3 + k4)` evaluated

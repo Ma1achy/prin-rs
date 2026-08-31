@@ -38,10 +38,27 @@
 //! **It is not simply harmful, and that is why it is a knob rather than a deletion.** On Burrau
 //! at `t = 13`, `eta = 1e-2`, it moves drift `2.3e-6 -> 1.2e-9` for 36% more steps under RK4. So
 //! it is a robustness/cost trade that **inverts** between an ordinary encounter and an exact
-//! collision, and the default is `0.0` because the collision failure is unbounded while the
-//! Burrau gain is a constant factor. The comparison harness runs both arms: *a knob held fixed
-//! for fairness is a knob whose effect is unattributed*, and forcing a limit onto a method it
-//! defeats is not fairness either.
+//! collision.
+//!
+//! # And the default stays at `0.02`, matching the other two, on purpose
+//!
+//! The tempting fix is to default this to `0.0`. It was written that way first and reverted,
+//! because `EnsembleCfg::production()` asks for `StepLimit::Predictive` at `f = 0.02` and
+//! `pixel.rs` maps that onto every occupant — so a `0.0` default here would make
+//! `LhOpts::default()` disagree with what the ensemble path builds for the same config.
+//! **That asymmetry is already on this project's record**: `AzOpts::default()` carried
+//! `StepLimit::None` while `HgOpts::default()` carried the predictive limit, and a whole Phase 4
+//! table compared a Heggie paying for a limit that AZ was not.
+//!
+//! The two failures are not equally bad. A uniform `0.02` makes a collision-heavy field exhaust
+//! its budget, which lands in the `budget` column of every table and in `LhOut::finite` —
+//! **visible**. A split default hides a knob difference inside two constructors of the same
+//! options — **silent**. Prefer the visible one.
+//!
+//! So both arms are carried, the comparison harness runs both — *a knob held fixed for fairness
+//! is a knob whose effect is unattributed*, and forcing a limit onto a method it defeats is not
+//! fairness either — and every test whose subject is a collision pins `step_limit_f: 0.0` by
+//! name rather than inheriting it.
 
 use std::collections::VecDeque;
 
@@ -84,9 +101,11 @@ pub struct LhOpts<T> {
     /// preference: on AZ it is worth 1.06 -> 2.08 in measured convergence order, and on Heggie
     /// 1.03 -> 2.40.
     pub clamp_final_step: bool,
-    /// `f` for the predictive limit `ds <= f d_min (K+B) / |v_rel|_max`. Zero disables it, and
-    /// **zero is the default here**, unlike AZ and Heggie which ship it at `0.02`. See the module
-    /// doc: it defeats the time transformation at a collision. Carried so both arms can be run.
+    /// `f` for the predictive limit `ds <= f d_min (K+B) / |v_rel|_max`. Zero disables it.
+    ///
+    /// Defaults to `0.02` as AZ and Heggie do, and **it is fatal at an exact collision** — see
+    /// the module doc for why it is left uniform anyway, and why every test about a collision
+    /// pins `0.0` by name.
     pub step_limit_f: T,
     /// Collision radius as a fraction of the initial hyperradius, fixed at `t = 0`.
     pub r_coll_frac: T,
@@ -106,7 +125,7 @@ impl<T: Real> Default for LhOpts<T> {
             stepper: Stepper::Rk4,
             ds_mode: LhDsMode::PerStepInterval,
             clamp_final_step: true,
-            step_limit_f: T::zero(),
+            step_limit_f: T::lit(0.02),
             r_coll_frac: T::zero(),
             stop_on_event: true,
             stop_on_escape: false,

@@ -2013,3 +2013,74 @@ slows the clock, so the encounter has to be **resolved** rather than removed, an
 second, better-conditioned energy to report instead. **A chartless method is not a coordinate
 regularisation with the coordinates left out**, and if prediction 1 fails this is the first
 place to look for why.
+
+### THE FALSIFICATION TEST IS CONFOUNDED, AND THE CONFOUND IS MEASURED
+
+Two of six cases at 256^2, unmasked kernel, diagnostic pass:
+
+```
+                     drift p50   vs heggie   frac better    evals p50   err>10
+  far      az         2.824e-13      +0.89        1.0000      3.938e5        0
+           heggie     2.189e-12          -             -      2.354e5        0
+           logh_rk4    3.271e-9      -3.17        0.0000      2.345e5        0
+           logh_lf     4.709e-7      -5.33        0.0000      1.477e5        0
+           plain_rk4    3.165e2     -14.16        0.0000      1.056e5    65536
+           plain_lf     3.130e5     -17.15        0.0000      1.056e5    65536
+
+  deep_    az          1.345e-9      -0.15        0.4287      9.479e5      438
+  interior heggie     9.298e-10          -             -      4.642e5        0
+           logh_rk4    2.650e-8      -1.49        0.0168      4.623e5      129
+           logh_lf     4.541e-5      -4.68        0.0001      1.942e5      598
+           plain_rk4    2.240e2     -11.36        0.0000      1.056e5    65536
+           plain_lf     1.869e2     -11.31        0.0000      1.056e5    65536
+```
+
+**Prediction 1 fails on both, by 5.33 and 4.68 decades.** The plan says that means the
+re-registration attribution is wrong. **It does not, and the reason is now measured rather than
+suspected.**
+
+The syllogism was: logH has *no* re-registration, which is stronger than Heggie's *none after
+the first*, so if re-registration is the mechanism logH should match or beat it. That is valid
+only if logH is otherwise at least as good as Heggie, and it is not. `tests/logh_march.rs`
+already shows logH missing BRIEF §5's collision gate -- `d_min < 1e-10` yes, `|dE/E| < 1e-12`
+never, drift *rising* with penetration depth where Heggie's `drift_reg` is flat at 4.4e-15 --
+because a KS map removes the `1/r` from the Hamiltonian and a time transformation only slows the
+clock.
+
+And **every region tested is collision-dominated**: `results/output/integrator_gallery.txt` gives
+`coll` of 1048576/1048576 on `far`, 1033184 on `deep_interior`, 850590 on `preset_shape`. So
+logH is being graded almost entirely on the one thing it is known not to do, and its deficit
+there says nothing about re-registration either way. **This is the same class of error the
+project keeps catching -- two things compared that differ in more than one way -- arrived at from
+the other side: not a knob held fixed whose effect goes unattributed, but a knob NOT held fixed
+that was treated as if it were.**
+
+**THE UNCONFOUNDED MEASUREMENT IS CADENCE SENSITIVITY, NOT ABSOLUTE ACCURACY.** Double `n_sync`
+at fixed step size (scaling `eta`, and `closure_k` with it) and measure how far the drift field
+moves. AZ moves **0.44-0.52 decades**, Heggie **0.048**. That is a *difference within one
+integrator*, so each occupant's own singularity handling cancels out of it, and logH -- which
+re-registers zero times -- must land at Heggie's level or below if the mechanism is real,
+however poor its absolute drift is. `examples/heggie_machinery.rs` is the harness; logH arms go
+in after the sweep.
+
+### AND PREDICTION 4 IS REFUTED IN THE DIRECTION I DID NOT CONSIDER
+
+`logh_rk4` was predicted to lose most of the method's advantage, degenerating to a Sundman
+transformation because `K + B == U` on shell. It does not lose to `logh_lf` -- it **beats** it,
+by 2.16 decades on `far` and 3.23 on `deep_interior`, and by ~1.8 and ~2.5 after correcting for
+the evaluation shortfall. The prediction assumed `logh_lf` was the ceiling.
+
+The arithmetic behind it may still hold; its predicted *consequence* is false, because at these
+depths a fourth-order stepper's accuracy outweighs whatever the leapfrog's structure buys. The
+one place the structure is decisive is the **exact** collision, where RK4 does not complete at
+all and KDK traverses for all three pairs. So there is a crossover in encounter depth, measured
+at both ends and not in between.
+
+### THE STEPPER-ONLY CONTROL GIVES OPPOSITE ANSWERS ON THE TWO CASES, WHICH IS WHY IT IS RUN
+
+At exactly matched evaluations (1.056e5 on both arms, both cases): `far` reads `3.165e2` against
+`3.130e5`, **three decades**, and `deep_interior` reads `2.240e2` against `1.869e2`, **0.08
+decades**. So the stepper contributes heavily where the field is dominated by one clean
+two-body encounter and essentially nothing where it is chaotic. A single case would have
+licensed either "the stepper is in every comparison" or "the comparison is clean", and both
+would have been wrong somewhere.

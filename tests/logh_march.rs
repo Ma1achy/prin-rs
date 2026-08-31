@@ -459,3 +459,151 @@ fn the_remaining_time_mode_is_zeno() {
     assert!(o.budget_exhausted, "the remaining-time mode completed, so it is not Zeno here");
     assert!(o.t / 13.0 < 0.5, "it reached t/t_max = {:.4}", o.t / 13.0);
 }
+
+// ---------------------------------------------------------------------------------------------
+// What the control actually is
+// ---------------------------------------------------------------------------------------------
+
+/// **`LhTime::None` is a FIXED-step integrator, and every table has to say so.**
+///
+/// Setting both denominators to one makes `dt/ds = 1`, so `ds = eta * dt_left` and `dt = ds`: a
+/// uniform step of `eta * t_max/n_sync`, with **no adaptivity at all**. That is not an oversight
+/// and it is not avoidable — in logH the time transformation *is* the adaptivity, so removing it
+/// necessarily removes that too. Keeping an adaptive step while dropping the transformation would
+/// mean bolting on a different step rule, which is a third variable in a two-variable experiment.
+///
+/// So the control isolates exactly one thing, which is what a control is for. What it is **not**
+/// is "an unregularised integrator done properly": `src/integrate/leapfrog.rs` is that, and it
+/// sizes its step from `newton::adaptive_dt`. The two must never have their numbers swapped, and
+/// this test exists so the distinction is a committed fact rather than a paragraph.
+///
+/// It matters for reading `examples/logh_arms.rs`: on `far` the `plain_*` arms come back with
+/// `error_ratio > 10` on all 65536 pixels and an escape fraction near 1.0, which reads as a
+/// catastrophic failure of "no regularisation" and is really a fixed step of `4e-3` meeting a
+/// close pair. The comparison it licenses is *stepper against stepper at equal evaluations*,
+/// not *regularised against unregularised as anyone would actually run it*.
+#[test]
+fn the_control_is_a_fixed_step_integrator_and_the_adaptive_one_is_a_different_thing() {
+    let (s0, m, t) = figure_eight();
+    let (n_sync, eta) = (32usize, 1e-2);
+    let dt_sync = t / n_sync as f64;
+
+    for stepper in [Stepper::Rk4, Stepper::Kdk] {
+        let o = integrate_lh(
+            s0, &m, t, n_sync, eta, 4_000_000,
+            &LhOpts { stepper, time: LhTime::None, ..nolimit(stepper) },
+        );
+        // Every step is the same size, so the largest is the nominal one. `dt_max` is recorded as
+        // an actual `s.t` difference across one step, which is what makes this an observation
+        // rather than a restatement of the sizing formula.
+        let nominal = eta * dt_sync;
+        println!(
+            "{stepper:?} LhTime::None: dt_max = {:.6e} against nominal {nominal:.6e}  \
+             steps = {}  drift = {:.3e}",
+            o.dt_max, o.steps, o.drift
+        );
+        assert!(
+            (o.dt_max - nominal).abs() <= 1e-12 * nominal,
+            "{stepper:?}: dt_max {:e} is not the nominal fixed step {nominal:e}, so the control \
+             is adaptive after all and the whole reading of it is wrong",
+            o.dt_max
+        );
+        assert!(o.finite);
+    }
+
+    // The transformation is what makes the step vary. Same everything else.
+    let logh = integrate_lh(s0, &m, t, n_sync, eta, 4_000_000, &nolimit(Stepper::Rk4));
+    let nominal = eta * dt_sync;
+    println!("LogH, same settings:      dt_max = {:.6e} against nominal {nominal:.6e}", logh.dt_max);
+    assert!(
+        (logh.dt_max - nominal).abs() > 1e-9 * nominal,
+        "the LogH arm also took a fixed step, so `LhTime` is not driving the step size"
+    );
+}
+
+/// And the control **converges** — which is what says it is a working integrator rather than a
+/// broken one that happens to produce large numbers.
+///
+/// A control that fails everywhere passes a "the regularisation helps" test exactly as well as a
+/// correct one does, so this is the arm that licenses reading `plain_rk4` and `plain_lf` at all.
+///
+/// # It converges at order 4.5, and that measures what the clamp costs everywhere else
+///
+/// ```text
+///   Rk4, LhTime::None, clamped:  1.4383e-2 -> 5.4533e-4 -> 2.7326e-5 -> 1.1982e-6   order 4.52
+/// ```
+///
+/// Fourth order, not second — and the LogH arm of `convergence_order_on_the_figure_eight` reads
+/// **2.04** on the same fixture, as AZ reads 2.08 and Heggie 2.40. The difference is the landing,
+/// and this is the arm that isolates it. `clamp_final_step` sizes the last step of each interval
+/// as `(dt_left - s.t)/(dt/ds)` with `dt/ds` evaluated *before* the step, so it is a first-order
+/// predictor of the time increment and its residual is `O(h^2)` — which caps the observable order
+/// at two however good the stepper is. Under `LhTime::None`, `dt/ds` is exactly `1`, the
+/// prediction is exact, and RK4's own fourth order shows through.
+///
+/// The standing note says the `O(h^2)` landing is why `perstep+clamp` lands at 2 rather than 3.
+/// **This is that claim with the predictor removed rather than argued about**, and it says the
+/// cost is nearer two orders than one.
+///
+/// # The unclamped arm does not converge at all, and asserting an order on it would be wrong
+///
+/// ```text
+///   Rk4, LhTime::None, unclamped: 2.1315e0  1.4965e0  2.7326e-5  1.1982e-6  2.3635e-8
+///                                 2.2557e-1  4.0874e-8
+/// ```
+///
+/// Non-monotone by four orders. With a fixed step the march either divides the interval exactly —
+/// in which case the unclamped and clamped runs are **identical**, as they are at `eta` of
+/// `2e-1`, `1e-1`, `5e-2` and `1.25e-2` — or it does not, and then it overshoots by a whole step.
+/// Whether it divides is decided by binary round-off in `1/eta`: `eta = 2.5e-2` is `40` steps in
+/// decimal and is not, which is where the `2.2557e-1` comes from.
+///
+/// So the assertion here is **non-monotonicity**, not a slope. An error curve with no power law
+/// in it will happily yield a number if a slope is fitted to it, and that number would be
+/// meaningless — the same defect as quoting an endpoint slope across a floor.
+#[test]
+fn the_unregularised_control_converges_on_a_problem_a_fixed_step_can_handle() {
+    let (s0, m, t) = figure_eight();
+    let etas = [8e-1, 4e-1, 2e-1, 1e-1, 5e-2, 2.5e-2, 1.25e-2];
+    for stepper in [Stepper::Rk4, Stepper::Kdk] {
+        for clamp in [true, false] {
+            let e: Vec<f64> = etas
+                .iter()
+                .map(|&eta| {
+                    let o = integrate_lh(
+                        s0, &m, t, 32, eta, 40_000_000,
+                        &LhOpts { time: LhTime::None, clamp_final_step: clamp, ..nolimit(stepper) },
+                    );
+                    assert!(o.finite, "{stepper:?} clamp={clamp} went non-finite at eta={eta}");
+                    closure_err(&o.state, &s0)
+                })
+                .collect();
+            println!("{stepper:?} LhTime::None, clamp = {clamp}:");
+            for (eta, x) in etas.iter().zip(&e) {
+                println!("   eta {eta:.2e}   closure {x:.4e}");
+            }
+            if clamp {
+                // Read above the fixture's ~5e-8 floor, which this arm reaches by `eta = 5e-2`.
+                let order = (e[0].ln() - e[3].ln()) / (etas[0].ln() - etas[3].ln());
+                println!("   order over eta {:.0e}..{:.0e} = {order:.2}", etas[0], etas[3]);
+                let want = if stepper == Stepper::Rk4 { 3.5 } else { 1.7 };
+                assert!(
+                    order > want,
+                    "{stepper:?} control came out at order {order:.2}, below {want}. With an exact \
+                     `dt/ds` the landing carries no prediction error, so the stepper's own order \
+                     must show through — if it does not, the control is not a working integrator \
+                     and nothing may be read from the `plain_*` rows."
+                );
+            } else {
+                let rises = (1..e.len()).any(|i| e[i] > e[i - 1] * 10.0);
+                println!("   non-monotone by 10x somewhere: {rises}");
+                assert!(
+                    rises,
+                    "{stepper:?} UNCLAMPED control converged monotonically, so the fixed step is \
+                     dividing every interval exactly and `clamp_final_step` has nothing to fix \
+                     here — which would make the clamped arm's order say nothing about the clamp."
+                );
+            }
+        }
+    }
+}

@@ -680,6 +680,11 @@ pub fn evaluate_at<T: Real>(slice: &Slice, idx: usize, cfg: &EnsembleCfg, eta_v:
         // defaults. They are named here rather than left to `..Default::default()` because a
         // struct literal that silently inherits is how a setting stops being visible, and every
         // panel's sidecar reads its settings from the config rather than from here.
+        // **Off**, matching AZ and Heggie, which have no landing correction at all. Turning it
+        // on here would give logH a landing the other two do not have, in a comparison whose
+        // whole point is that the arms differ in one named way.
+        land_iterate: false,
+        land_max_iters: 4,
         gbs_tol: T::lit(logh::driver::GBS_TOL),
         gbs_k_max: logh::driver::GBS_K_MAX,
     };

@@ -1,0 +1,52 @@
+    Finished `release` profile [optimized] target(s) in 0.08s
+     Running `target/release/examples/landing_correction`
+figure-eight closure over 32 sync intervals, predictive limit off
+
+    step    land       eta     closure  land resid     evals   corr      order
+     Kdk   false    8.0e-2   2.9396e-4    5.278e-6       446      0          -
+     Kdk   false    4.0e-2   4.0203e-5    5.430e-6       844      0       2.87
+     Kdk   false    2.0e-2   1.0103e-5    1.354e-6      1644      0       1.99
+     Kdk   false    1.0e-2   2.4277e-6    3.380e-7      3244      0       2.06
+     Kdk   false    5.0e-3   6.6198e-7    8.444e-8      6464      0       1.87
+
+     Kdk    true    8.0e-2   3.6399e-4   1.721e-15       516    100          -
+     Kdk    true    4.0e-2   9.3058e-5   1.804e-15       900     82       1.97
+     Kdk    true    2.0e-2   2.3346e-5   8.327e-16      1698     80       1.99
+     Kdk    true    1.0e-2   5.8736e-6   1.138e-15      3296     68       1.99
+     Kdk    true    5.0e-3   1.4993e-6   6.661e-16      6506     58       1.97
+
+     Rk4   false    8.0e-2   7.1604e-5    5.281e-6      1784      0          -
+     Rk4   false    4.0e-2   5.4281e-5    5.432e-6      3376      0       0.40
+     Rk4   false    2.0e-2   1.3537e-5    1.354e-6      6576      0       2.00
+     Rk4   false    1.0e-2   3.4873e-6    3.380e-7     12976      0       1.96
+     Rk4   false    5.0e-3   8.1543e-7    8.444e-8     25856      0       2.10
+
+     Rk4    true    8.0e-2   2.5224e-7   1.721e-15      2064    100          -
+     Rk4    true    4.0e-2   2.7692e-8   1.832e-15      3608     84       3.19
+     Rk4    true    2.0e-2   4.0203e-8   8.049e-16      6808     84      -0.54
+     Rk4    true    1.0e-2   4.0971e-8   1.416e-15     13184     68      -0.03
+     Rk4    true    5.0e-3   4.1019e-8   6.384e-16     26024     58      -0.00
+
+     Gbs   false    8.0e-2   7.1387e-5    5.281e-6      8388      0          -
+     Gbs   false    4.0e-2   5.4268e-5    5.432e-6     14036      0       0.40
+     Gbs   false    2.0e-2   1.3536e-5    1.354e-6     20004      0       2.00
+     Gbs   false    1.0e-2   3.4873e-6    3.380e-7     38936      0       1.96
+     Gbs   false    5.0e-3   8.1542e-7    8.444e-8     77506      0       2.10
+
+     Gbs    true    8.0e-2   4.1022e-8   1.971e-15     10108     99          -
+     Gbs    true    4.0e-2   4.1022e-8   1.971e-15     15308     85       0.00
+     Gbs    true    2.0e-2   4.1022e-8   9.714e-16     21184     84      -0.00
+     Gbs    true    1.0e-2   4.1022e-8   1.305e-15     39840     68       0.00
+     Gbs    true    5.0e-3   4.1022e-8   8.604e-16     78288     58      -0.00
+
+HOW TO READ THIS
+
+**`land resid` is the quantity, `closure` is the consequence.** The residual falls nine
+orders to round-off; the closure then falls until it meets the FIXTURE's own ~4.10e-8
+floor, which the corrected rows sit on at every step size. **No order may be read off a
+corrected row** -- that flat 4.1022e-8 is nine-significant-digit initial conditions, not
+a method.
+
+**KDK is the control.** Second order, so an O(h^2) landing was never its constraint, and
+the correction buys it nothing -- it is marginally worse, paying for corrections it does
+not need. A fix that improved every arm would not be removing an order-two cap.

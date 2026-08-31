@@ -346,3 +346,58 @@ fn gbs_against_the_bare_leapfrog_at_matched_evaluations() {
          KDK step costs one, so equal `eta` is a factor of tens in disguise."
     );
 }
+
+/// **The secant landing removes the cap, and KDK is the control that says that is what it does.**
+///
+/// `land_iterate` re-takes the landing step with a secant on `t(ds)`. Three things must hold
+/// together, and the third is what makes the first two mean anything:
+///
+///   - the landing residual falls to **round-off** — this is the quantity being fixed;
+///   - a stepper better than second order gets **much** more accurate — this is the consequence;
+///   - **KDK does not improve** — this is the control. It is second order, so an `O(h^2)` landing
+///     was never its binding constraint. A correction that improved every arm would be doing
+///     something other than removing an order-two cap, and the whole account would be wrong.
+#[test]
+fn the_secant_landing_removes_the_order_cap_and_kdk_is_the_control() {
+    let (s0, m, t) = fig8();
+    let run = |stepper: Stepper, land: bool, eta: f64| {
+        let o = integrate_lh(
+            s0, &m, t, 32, eta, 40_000_000,
+            &LhOpts { land_iterate: land, gbs_tol: 1e-13, gbs_k_max: 6, ..opts(stepper) },
+        );
+        assert!(o.finite);
+        let e = (0..3).fold(0.0f64, |w, i| {
+            w.max((o.state.r[i] - s0.r[i]).norm()).max((o.state.v[i] - s0.v[i]).norm())
+        });
+        (e, o.land_residual_max, o.force_evals, o.land_iters)
+    };
+
+    for stepper in [Stepper::Kdk, Stepper::Rk4, Stepper::Gbs] {
+        let (e0, r0, v0, _) = run(stepper, false, 4e-2);
+        let (e1, r1, v1, c1) = run(stepper, true, 4e-2);
+        println!(
+            "  {stepper:?}: closure {e0:.4e} -> {e1:.4e}   resid {r0:.3e} -> {r1:.3e}   \
+             evals {v0} -> {v1} ({c1} corrections)"
+        );
+        assert!(r1 < 1e-13, "{stepper:?}: the corrected landing residual is {r1:e}, not round-off");
+        assert!(r0 > 1e-8, "{stepper:?}: the UNcorrected residual is {r0:e}, so there was nothing \
+                            to correct and this comparison says nothing");
+        assert!(c1 > 0, "{stepper:?}: no corrections were taken");
+        match stepper {
+            // The control. Second order: the landing was never its constraint, so it must not
+            // improve -- and it is in fact slightly worse, paying for corrections it cannot use.
+            Stepper::Kdk => assert!(
+                e1 > e0 * 0.9,
+                "KDK improved from {e0:e} to {e1:e}. A second-order stepper cannot be limited by \
+                 an O(h^2) landing, so the correction is doing something other than what this \
+                 test claims."
+            ),
+            // Better than second order: the cap was binding and removing it must show.
+            _ => assert!(
+                e1 < e0 * 0.1,
+                "{stepper:?} improved only {e0:e} -> {e1:e}; the landing was expected to be its \
+                 binding constraint"
+            ),
+        }
+    }
+}

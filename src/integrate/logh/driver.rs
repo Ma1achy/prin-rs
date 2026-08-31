@@ -121,6 +121,20 @@ pub struct LhOpts<T> {
     pub closure_k: usize,
     pub keep_boundary_shapes: bool,
     pub keep_drift_hist: bool,
+    /// Secant-correct the final step of each interval so it lands ON the boundary.
+    ///
+    /// `clamp_final_step` predicts the landing step from `dt/ds` read *before* the step, which is
+    /// first order, so the step overshoots and the clock is then clamped over the top of it. This
+    /// re-takes the final step with `ds *= (dt_left - t_before)/(t_after - t_before)` -- a secant
+    /// on `t(ds)`, using the step that was just taken as the second point, so it costs one extra
+    /// step per correction and no extra machinery.
+    ///
+    /// **Default off.** Every committed number in `results/` was taken without it, and AZ and
+    /// Heggie do not have it at all, so switching it on by default would change the corpus and
+    /// make the arms incomparable in the same breath.
+    pub land_iterate: bool,
+    /// Cap on secant corrections per interval.
+    pub land_max_iters: usize,
     /// Relative tolerance on the GBS extrapolation error estimate. Ignored unless
     /// `stepper == Stepper::Gbs`.
     pub gbs_tol: T,
@@ -144,6 +158,8 @@ impl<T: Real> Default for LhOpts<T> {
             closure_k: 1,
             keep_boundary_shapes: false,
             keep_drift_hist: false,
+            land_iterate: false,
+            land_max_iters: 4,
             gbs_tol: T::lit(GBS_TOL),
             gbs_k_max: GBS_K_MAX,
         }
@@ -205,6 +221,11 @@ pub struct LhOut<T> {
     /// however good the stepper is, which is why AZ reads 2.08, Heggie 2.40 and logH+RK4 2.04 on
     /// the same fixture while `LhTime::None`, whose predictor is exact, reaches 4.52.
     pub land_residual_max: T,
+    /// Extra steps spent on secant landing corrections. Zero unless `land_iterate`.
+    ///
+    /// Counted into `force_evals` as well, because a correction is real work and hiding it would
+    /// make the option look free.
+    pub land_iters: u64,
     /// Macro-steps that reached `gbs_k_max` still above tolerance and were taken anyway.
     ///
     /// **An advance-anyway site, not a terminal one.** Standard GBS would shrink the macro-step
@@ -299,6 +320,7 @@ pub fn integrate_lh<T: Real>(
         gbs_levels: 0,
         gbs_unconverged: 0,
         land_residual_max: T::zero(),
+        land_iters: 0,
     };
 
     let mut t_now = T::zero();
@@ -356,10 +378,41 @@ pub fn integrate_lh<T: Real>(
             }
 
             let before = s.t;
-            let (next, evals, levels, ok) =
-                step::step(&sys, &s, b, opts.time, opts.stepper, ds, opts.gbs_tol, opts.gbs_k_max);
-            s = next;
+            let s_before = s;
+            // Is this the step that is trying to land? Only then is a correction meaningful --
+            // correcting a mid-interval step would just be a smaller step.
+            let landing = opts.clamp_final_step
+                && ds >= (dt_left - s.t).max(T::zero()) / dtds * (T::one() - T::lit(1e-12));
+            let mut cur_ds = ds;
+            let (mut next, mut evals, mut levels, mut ok) =
+                step::step(&sys, &s, b, opts.time, opts.stepper, cur_ds, opts.gbs_tol, opts.gbs_k_max);
             out.steps += 1;
+
+            if landing && opts.land_iterate {
+                let want = dt_left - before;
+                let tol_abs = dt_left * T::LAND_EPS_REL;
+                for _ in 0..opts.land_max_iters {
+                    let got = next.t - before;
+                    if !got.is_finite() || got <= T::zero() || (got - want).abs() <= tol_abs {
+                        break;
+                    }
+                    // Secant on `t(ds)`, using the step just taken as the second point. `t(0) = 0`
+                    // is the first, which is exact and free.
+                    cur_ds = cur_ds * want / got;
+                    let (n2, e2, l2, o2) = step::step(
+                        &sys, &s_before, b, opts.time, opts.stepper, cur_ds,
+                        opts.gbs_tol, opts.gbs_k_max,
+                    );
+                    next = n2;
+                    evals += e2;
+                    levels += l2;
+                    ok = o2;
+                    out.steps += 1;
+                    out.land_iters += 1;
+                }
+            }
+
+            s = next;
             out.force_evals += evals;
             out.gbs_levels += levels as u64;
             if !ok {

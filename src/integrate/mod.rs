@@ -3,6 +3,7 @@
 pub mod az;
 pub mod heggie;
 pub mod leapfrog;
+pub mod logh;
 
 use crate::physics::Cart;
 use crate::Real;

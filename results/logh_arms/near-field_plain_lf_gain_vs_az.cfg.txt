@@ -1,0 +1,14 @@
+image=results/logh_arms/near-field_plain_lf_gain_vs_az.png
+config=production + 8 override(s): n_sync=33 (production 32), step_limit=None (production Predictive), eta=0.0025 (production 0.01), max_steps=400000 (production 30000), integrator=PlainLeapfrog (production Az), r_coll_frac=0.0 (production 0.001), stop_on_event=false (production true), refine_flagged=false (production true)
+res=256x256
+case=near-field
+arm=plain_lf
+integrator=plain_lf
+field=gain_vs_az
+eta=2.5e-3 (scale 0.25 on production, to match FORCE EVALUATIONS)
+predictive step limit=false
+shape window=(5.713510030743365e-6,1.1767464431676658e-4) taken from the `az` arm and SHARED
+drift ramp=(1e-12,1e2) FIXED across every case and arm
+gain ramp=+/-4 decades, FIXED and symmetric
+pass: uniform/outcome from the SCIENCE run (termination on);
+drift/errratio/gain from the DIAGNOSTIC run (r_coll=0, stop_on_event=false)

@@ -1,0 +1,14 @@
+image=results/logh_arms/deep_interior_logh_lf_errratio.png
+config=production + 7 override(s): n_sync=33 (production 32), eta=0.0025 (production 0.01), max_steps=400000 (production 30000), integrator=LogHLeapfrog (production Az), r_coll_frac=0.0 (production 0.001), stop_on_event=false (production true), refine_flagged=false (production true)
+res=256x256
+case=deep_interior
+arm=logh_lf
+integrator=logh_lf
+field=errratio
+eta=2.5e-3 (scale 0.25 on production, to match FORCE EVALUATIONS)
+predictive step limit=true
+shape window=(9.611525905443927e-7,6.481181439650305e-4) taken from the `az` arm and SHARED
+drift ramp=(1e-12,1e2) FIXED across every case and arm
+gain ramp=+/-4 decades, FIXED and symmetric
+pass: uniform/outcome from the SCIENCE run (termination on);
+drift/errratio/gain from the DIAGNOSTIC run (r_coll=0, stop_on_event=false)

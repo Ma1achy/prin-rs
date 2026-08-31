@@ -2125,3 +2125,55 @@ than one way, so an absolute-accuracy comparison cannot isolate re-registration 
 the case for the cadence measurement, which is a difference within one integrator and cancels
 whatever each occupant's absolute accuracy is. What does not survive is my account of *which*
 difference was doing the work. I named collisions, and the collision fraction says no.
+
+### THE SWEEP LANDED, AND THE SIGNAL IS THE VARIANCE, NOT THE ACCURACY
+
+Six cases, eight arms, 256^2, diagnostic pass, unmasked kernel. Decades against Heggie, sorted,
+with the **spread across the six regions**:
+
+```
+          az:  -4.50  -3.02  -1.67  -0.65  -0.16  +0.89    spread 5.39 decades
+    logh_rk4:  -3.17  -2.09  -1.77  -1.76  -1.57  -1.45    spread 1.72
+     logh_lf:  -5.33  -4.99  -4.94  -4.87  -4.69  -4.21    spread 1.12
+```
+
+**AZ's deficit against Heggie swings 5.4 decades across the corpus; logH's swings 1.7, and the
+bare leapfrog's 1.1.** Both AZ and logH are measured against the same no-re-registration
+baseline, so the comparison is like for like -- and the arm *with* re-registration is the one
+whose error depends on the field, by a factor of three to five.
+
+That is the strongest evidence in the whole run for the re-registration story, and it is **not**
+the axis the falsification test was written on. Absolute accuracy asks "is logH better"; the
+answer is no. Variance asks "does the chart machinery make the error field-dependent"; the answer
+looks like yes. The leapfrog arm being the *most* consistent of the three fits the same reading:
+its error is dominated by its ORDER, which is a property of the method, where AZ's is dominated
+by events that depend on where in the chart the trajectory goes.
+
+**Suggestive, not conclusive.** Six points, and a spread is a weak statistic on six points; the
+cadence measurement remains the pre-registered test, because it is a difference *within* one
+integrator rather than a spread across regions.
+
+### AND logH BEATS AZ ON THE CHART CASES, WHICH THE FIRST FOUR ROWS DID NOT SHOW
+
+```
+    config_stability   -0.10       preset_shape      +1.46
+          near-field   -1.44       preset_shape_h1   +2.74
+                 far   -4.06
+       deep_interior   -1.29
+```
+
+`preset_shape_h1` is the chart where AZ carries **2222 not-data pixels**; `logh_rk4` carries
+**9**, and beats it by 2.74 decades. `preset_shape`: AZ 703, logH 11. **The robustness column is
+where logH's advantage over AZ is unambiguous and it is large on every case** -- `err>10` of
+423 -> 7, 438 -> 129, 703 -> 11, 2222 -> 9 -- even on the cases where its drift is worse.
+
+Reporting the first four cases as "logH is competitive with AZ" understated it: on the two
+presets it is decisively ahead. A four-case read of a six-case corpus, and the two missing cases
+were the ones that differed.
+
+### AND THE `plain_*` SATURATION IS 86%, NOT 100%, ON `config_stability`
+
+The claim "err>10 on all 65536 pixels, both arms" was measured on `far`, `deep_interior` and
+`near-field`, where it holds. `config_stability` reads 56199 and 47012. No practical difference
+-- a drift of `8.4e2` is not data either way -- but the claim was about three cases and does not
+generalise to the fourth.

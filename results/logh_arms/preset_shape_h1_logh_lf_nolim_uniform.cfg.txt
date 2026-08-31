@@ -1,0 +1,14 @@
+image=results/logh_arms/preset_shape_h1_logh_lf_nolim_uniform.png
+config=production + 6 override(s): n_sync=33 (production 32), step_limit=None (production Predictive), eta=0.0025 (production 0.01), max_steps=400000 (production 30000), integrator=LogHLeapfrog (production Az), refine_flagged=false (production true)
+res=256x256
+case=preset_shape_h1
+arm=logh_lf_nolim
+integrator=logh_lf
+field=uniform
+eta=2.5e-3 (scale 0.25 on production, to match FORCE EVALUATIONS)
+predictive step limit=false
+shape window=(1.0884223482536304e-5,4.0717657808920404e-1) taken from the `az` arm and SHARED
+drift ramp=(1e-12,1e2) FIXED across every case and arm
+gain ramp=+/-4 decades, FIXED and symmetric
+pass: uniform/outcome from the SCIENCE run (termination on);
+drift/errratio/gain from the DIAGNOSTIC run (r_coll=0, stop_on_event=false)

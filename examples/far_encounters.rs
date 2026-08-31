@@ -51,6 +51,24 @@
 //! tightening monotonically to 1.02 says the same thing from the other side — the further the
 //! perturber, the more identical every pixel's encounter becomes.
 //!
+//! # And the committed gallery already said so, in the column beside the one being read
+//!
+//! `results/output/integrator_gallery.txt` carries an `escape`/`coll` pair per row. At 1024^2:
+//!
+//! ```text
+//!   far             escape 0        coll 1048576   <- 100% of the frame collides
+//!   deep_interior   escape 0        coll 1033184      98.5%
+//!   preset_shape    escape 188      coll  850590      81.1%
+//!   near-field      escape 0        coll   24649       2.4%
+//! ```
+//!
+//! **`far` collides on every pixel and `near-field` on one in forty.** So "no pair ever
+//! approaches" was contradicted by the project's own committed output the whole time, one column
+//! to the right of `escape`, which reads `0` for `far` and is the number that was being read.
+//! Nothing new had to be measured to falsify it — only the next column looked at. The `d_min`
+//! table above is what says *how* deep and the discriminator is what says *why*, but the
+//! refutation was free.
+//!
 //! Args: `res`.
 
 use rayon::prelude::*;

@@ -2177,3 +2177,57 @@ The claim "err>10 on all 65536 pixels, both arms" was measured on `far`, `deep_i
 `near-field`, where it holds. `config_stability` reads 56199 and 47012. No practical difference
 -- a drift of `8.4e2` is not data either way -- but the claim was about three cases and does not
 generalise to the fourth.
+
+### THE LANDING FIELD TEST USED A DIAGNOSTIC THIS PROJECT ALREADY DOCUMENTS AS BLIND TO IT
+
+Both guards passed and the answer was flat:
+
+```
+    near-field  Rk4  land off   drift 3.292e-7   land resid 1.488e-5   corr 0
+    near-field  Rk4  land on    drift 3.291e-7   land resid 1.815e-14  corr 7460158
+```
+
+The residual falls **nine orders**, the correction fires **7.5 million times**, and the drift
+moves by **0.03%**. Same on every case and stepper.
+
+**That is not a negative result, it is the wrong instrument, and CLAUDE.md:1292 says so
+already:** *"A DIAGNOSTIC FIELD IS SPECIFIC TO A CLASS OF DEFECT, AND ENERGY DRIFT IS BLIND TO
+THIS ONE... The overshoot displaces the state in TIME and the AZ energy is nearly stationary
+along the flow."* That entry is about the overshoot clamp, which is the same defect one revision
+earlier, and it ends *"ask what the diagnostic would say about the defect you are hunting BEFORE
+reading it as clean."*
+
+The figure-eight measured **closure** -- a position and velocity error, which a displacement in
+time changes directly. The field harness measured **energy drift**, which is nearly invariant
+along the flow, so a state displaced in time carries almost the same energy. The two tests
+disagree because they measure different things, and the landing correction improves the one the
+field harness cannot see.
+
+**So the port question is unanswered, not answered no.** What it needs is a trajectory
+diagnostic on a field -- a shape chord against a much finer reference, the way `dtau_mode` pairs
+were compared -- not `energy_drift_max`.
+
+### AND GBS LOOKS LIKE IT BEATS HEGGIE, WHICH CONTRADICTS THE ANSWER GIVEN TWO MESSAGES EARLIER
+
+Decades, GBS against the `logh_arms` table:
+
+```
+                       vs heggie      vs az   vs logh_rk4
+    config_stability      +0.98      +2.65         +2.75
+          near-field      +1.20      +1.84         +3.29
+       deep_interior      -3.43      -3.27         -1.97
+```
+
+Two of three cases ahead of Heggie, and `nonfin` runs RK4 14 -> GBS 0 on `config_stability` and
+140 -> 0 on `deep_interior`. Cost is 3-4x the evaluations.
+
+**This is NOT a controlled comparison and must not be quoted as one.** The GBS rows run with the
+predictive step limit **off** and the `logh_arms` rows run with it **on**, which is the knob
+measured to be worth up to 13 decades on `far` and to be fatal at an exact collision. Different
+resolutions too (96^2 against 256^2), which per-trajectory statistics tolerate but which should
+be said. The controlled run is `logh_gbs` as an arm of `logh_arms` under the same limit as
+everything else, and it is the obvious next thing.
+
+"logH does not beat Heggie" was answered on the bare leapfrog and the RK4 arm. Under the
+configuration Mikkola actually recommends it may well; that is now a live question rather than a
+settled one.

@@ -385,7 +385,9 @@ fn main() {
                 Integrator::LogHLeapfrog
                 | Integrator::LogHRk4
                 | Integrator::PlainLeapfrog
-                | Integrator::PlainRk4 => unreachable!(
+                | Integrator::PlainRk4
+                | Integrator::LogHGbs
+                | Integrator::PlainGbs => unreachable!(
                     "integrator_gallery runs AZ and Heggie only; use logh_arms for the rest"
                 ),
                 Integrator::Az => {

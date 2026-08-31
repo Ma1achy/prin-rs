@@ -676,6 +676,12 @@ pub fn evaluate_at<T: Real>(slice: &Slice, idx: usize, cfg: &EnsembleCfg, eta_v:
         closure_k: cfg.closure_k,
         keep_boundary_shapes: cfg.keep_boundary_shapes,
         keep_drift_hist: cfg.keep_drift_hist,
+        // GBS is not reachable from any existing `EnsembleCfg` knob, so these take the driver's
+        // defaults. They are named here rather than left to `..Default::default()` because a
+        // struct literal that silently inherits is how a setting stops being visible, and every
+        // panel's sidecar reads its settings from the config rather than from here.
+        gbs_tol: T::lit(logh::driver::GBS_TOL),
+        gbs_k_max: logh::driver::GBS_K_MAX,
     };
 
     let march = |s: crate::physics::Cart<T>, mm: &[T; 3], forced: Option<&[u8]>| -> MarchOut<T> {
@@ -694,7 +700,9 @@ pub fn evaluate_at<T: Real>(slice: &Slice, idx: usize, cfg: &EnsembleCfg, eta_v:
             Integrator::LogHLeapfrog
             | Integrator::LogHRk4
             | Integrator::PlainLeapfrog
-            | Integrator::PlainRk4 => {
+            | Integrator::PlainRk4
+            | Integrator::LogHGbs
+            | Integrator::PlainGbs => {
                 logh::integrate_lh(s, mm, t_max, cfg.n_sync, eta, cfg.max_steps, &lh).into()
             }
         }

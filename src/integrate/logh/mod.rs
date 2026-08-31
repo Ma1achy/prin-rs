@@ -64,6 +64,7 @@
 //! the measurement.
 
 pub mod driver;
+pub mod gbs;
 pub mod hamiltonian;
 pub mod state;
 pub mod step;
@@ -72,5 +73,6 @@ pub mod system;
 pub use driver::{integrate_lh, LhDsMode, LhOpts, LhOut};
 pub use hamiltonian::{Dens, LhTime};
 pub use state::LhState;
+pub use gbs::GbsOut;
 pub use step::Stepper;
 pub use system::LhSystem;

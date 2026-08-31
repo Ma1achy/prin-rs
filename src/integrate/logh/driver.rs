@@ -77,6 +77,11 @@ use super::system::LhSystem;
 /// [`HgDtauMode`](crate::integrate::heggie::HgDtauMode) so a three-way comparison can hold it
 /// constant, and carrying the same warning: `PerStepRemaining` is Zeno by arithmetic and is a
 /// measurement axis, never a candidate default.
+/// Default relative tolerance on the GBS extrapolation error estimate.
+pub const GBS_TOL: f64 = 1e-12;
+/// Default cap on GBS extrapolation levels. `k(k+1)` evaluations at level `k`, so 8 is 72.
+pub const GBS_K_MAX: usize = 8;
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum LhDsMode {
     /// `ds = eta dt_left (K+B)`, sized once at interval entry and held.
@@ -116,6 +121,12 @@ pub struct LhOpts<T> {
     pub closure_k: usize,
     pub keep_boundary_shapes: bool,
     pub keep_drift_hist: bool,
+    /// Relative tolerance on the GBS extrapolation error estimate. Ignored unless
+    /// `stepper == Stepper::Gbs`.
+    pub gbs_tol: T,
+    /// Cap on GBS extrapolation levels. Reaching it without meeting `gbs_tol` **advances anyway**
+    /// and is counted in [`LhOut::gbs_unconverged`].
+    pub gbs_k_max: usize,
 }
 
 impl<T: Real> Default for LhOpts<T> {
@@ -133,6 +144,8 @@ impl<T: Real> Default for LhOpts<T> {
             closure_k: 1,
             keep_boundary_shapes: false,
             keep_drift_hist: false,
+            gbs_tol: T::lit(GBS_TOL),
+            gbs_k_max: GBS_K_MAX,
         }
     }
 }
@@ -176,6 +189,28 @@ pub struct LhOut<T> {
     /// `d[1]/d[0]` over the sorted pair separations. The sibling `ref_tie` is deliberately
     /// absent: there is no argmax here to be near a tie of.
     pub tie_ratio: Vec<T>,
+    /// Sum of GBS extrapolation levels used, so `gbs_levels / steps` is the mean level. Zero
+    /// under the non-extrapolating steppers.
+    pub gbs_levels: u64,
+    /// Largest **landing residual** over the march: `|s.t - dt_left|` when an interval's step
+    /// loop exits.
+    ///
+    /// `clamp_final_step` sizes the last step of an interval as `(dt_left - s.t)/(dt/ds)` with
+    /// `dt/ds` read *before* the step, so it is a first-order predictor of the time increment and
+    /// misses by `O(ds^2)`. The clock is then corrected to the boundary and the state is not, so
+    /// **the residual is invisible in every other recorded quantity** — which is precisely how an
+    /// AZ step advancing `2.209e128` was once recorded as a clean landing.
+    ///
+    /// It is the binding constraint on marched accuracy here: it caps the observable order at two
+    /// however good the stepper is, which is why AZ reads 2.08, Heggie 2.40 and logH+RK4 2.04 on
+    /// the same fixture while `LhTime::None`, whose predictor is exact, reaches 4.52.
+    pub land_residual_max: T,
+    /// Macro-steps that reached `gbs_k_max` still above tolerance and were taken anyway.
+    ///
+    /// **An advance-anyway site, not a terminal one.** Standard GBS would shrink the macro-step
+    /// here; this one holds it so the arms stay comparable, which means the miss has to be
+    /// recorded or it is invisible — the same reason `ab_floored` and `n_cap_hits` exist.
+    pub gbs_unconverged: u32,
 }
 
 /// `dt/ds`, the physical time bought by a unit of fictitious time.
@@ -261,6 +296,9 @@ pub fn integrate_lh<T: Real>(
         unbound_flags: Vec::with_capacity(n),
         escape_flags: Vec::with_capacity(n),
         tie_ratio: Vec::with_capacity(n),
+        gbs_levels: 0,
+        gbs_unconverged: 0,
+        land_residual_max: T::zero(),
     };
 
     let mut t_now = T::zero();
@@ -318,10 +356,15 @@ pub fn integrate_lh<T: Real>(
             }
 
             let before = s.t;
-            let (next, evals) = step::step(&sys, &s, b, opts.time, opts.stepper, ds);
+            let (next, evals, levels, ok) =
+                step::step(&sys, &s, b, opts.time, opts.stepper, ds, opts.gbs_tol, opts.gbs_k_max);
             s = next;
             out.steps += 1;
             out.force_evals += evals;
+            out.gbs_levels += levels as u64;
+            if !ok {
+                out.gbs_unconverged += 1;
+            }
             let took = s.t - before;
             if took > out.dt_max {
                 out.dt_max = took;
@@ -361,6 +404,12 @@ pub fn integrate_lh<T: Real>(
             if g.is_finite() && g > out.gamma_max {
                 out.gamma_max = g;
             }
+        }
+
+        // Recorded BEFORE the clock is clamped, because clamping is what hides it.
+        let land = (s.t - dt_left).abs();
+        if land.is_finite() && land > out.land_residual_max {
+            out.land_residual_max = land;
         }
 
         t_now += s.t.min(dt_left);

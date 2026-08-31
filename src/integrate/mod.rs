@@ -53,8 +53,10 @@ impl<T: Real> TrajOut<T> {
 ///   Heggie           3 KS vectors   none               yes          RK4
 ///   LogHLeapfrog     none           none               yes          KDK
 ///   LogHRk4          none           none               yes          RK4
+///   LogHGbs          none           none               yes          GBS over KDK
 ///   PlainLeapfrog    none           none               NO           KDK
 ///   PlainRk4         none           none               NO           RK4
+///   PlainGbs         none           none               NO           GBS over KDK
 /// ```
 ///
 /// `principia_integrator_contract.md` is the **GLSL app's** contract and is not in this repo;
@@ -92,6 +94,12 @@ pub enum Integrator {
     PlainLeapfrog,
     /// Control: no regularisation, RK4. `dt/ds = 1`, the same code path as `LogHRk4`.
     PlainRk4,
+    /// logH under Gragg-Bulirsch-Stoer extrapolation over the leapfrog. **The configuration
+    /// Mikkola & Merritt actually recommend**, and the one every earlier logH number was not.
+    LogHGbs,
+    /// Control: no regularisation, GBS. Says how much of the GBS arm's result is the
+    /// extrapolation rather than the time transformation.
+    PlainGbs,
 }
 
 /// What an occupant of the [`Integrator`] seam is, in fields a table can print.
@@ -121,6 +129,8 @@ impl Integrator {
             Integrator::LogHRk4 => "logh_rk4",
             Integrator::PlainLeapfrog => "plain_lf",
             Integrator::PlainRk4 => "plain_rk4",
+            Integrator::LogHGbs => "logh_gbs",
+            Integrator::PlainGbs => "plain_gbs",
         }
     }
     pub fn parse(s: &str) -> Option<Self> {
@@ -131,6 +141,8 @@ impl Integrator {
             "logh_rk4" | "logh-rk4" | "loghrk4" => Some(Integrator::LogHRk4),
             "plain_lf" | "plain-lf" | "none_lf" => Some(Integrator::PlainLeapfrog),
             "plain_rk4" | "plain-rk4" | "none_rk4" => Some(Integrator::PlainRk4),
+            "logh_gbs" | "logh-gbs" | "gbs" => Some(Integrator::LogHGbs),
+            "plain_gbs" | "plain-gbs" | "none_gbs" => Some(Integrator::PlainGbs),
             _ => None,
         }
     }
@@ -173,6 +185,22 @@ impl Integrator {
                 owns_time_mapping: false,
                 evals_per_step: logh::Stepper::Rk4.evals_per_step(),
             },
+            // `evals_per_step` is **0** for both GBS occupants, and that is the honest value
+            // rather than a missing one: a macro-step accepted at level `k` costs `k(k+1)`
+            // evaluations with `k` chosen adaptively, so any `steps * evals_per_step` a caller
+            // derives comes out zero and obviously wrong instead of plausibly wrong.
+            LogHGbs => Profile {
+                charts: 0,
+                re_registers: false,
+                owns_time_mapping: true,
+                evals_per_step: logh::Stepper::Gbs.evals_per_step(),
+            },
+            PlainGbs => Profile {
+                charts: 0,
+                re_registers: false,
+                owns_time_mapping: false,
+                evals_per_step: logh::Stepper::Gbs.evals_per_step(),
+            },
         }
     }
 
@@ -189,6 +217,8 @@ impl Integrator {
             Integrator::LogHRk4 => Some((LhTime::LogH, Stepper::Rk4)),
             Integrator::PlainLeapfrog => Some((LhTime::None, Stepper::Kdk)),
             Integrator::PlainRk4 => Some((LhTime::None, Stepper::Rk4)),
+            Integrator::LogHGbs => Some((LhTime::LogH, Stepper::Gbs)),
+            Integrator::PlainGbs => Some((LhTime::None, Stepper::Gbs)),
         }
     }
 }

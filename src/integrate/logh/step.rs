@@ -1,15 +1,19 @@
-//! The two steppers, and the reason there are two.
+//! The three steppers, and the reason there are three.
 //!
 //! Mikkola & Merritt (2008) are explicit that *"in these new methods the regularization is
 //! achieved by using the leapfrog, hence the name algorithmic regularization"*. The
 //! transformation alone is not the method — a leapfrog on `Lambda` is **exact** for the two-body
 //! problem, and that exactness is the regularisation.
 //!
-//! So logH is run under both:
+//! So logH is run under all three:
 //!
-//! - [`kdk`] — the method as designed. One force evaluation per step.
+//! - [`kdk`] — the leapfrog bare. One force evaluation per step.
 //! - [`rk4`] — the stepper AZ and Heggie both use, so this arm is the one directly comparable
 //!   to them. Four force evaluations per step.
+//! - [`Stepper::Gbs`] — the leapfrog under Gragg-Bulirsch-Stoer extrapolation, which is the
+//!   configuration Mikkola & Merritt actually recommend and which `kdk` alone is not. See
+//!   [`super::gbs`]: extrapolation in `h^2` is valid only because the leapfrog is time-symmetric,
+//!   so each level buys two orders. Variable cost per macro-step.
 //!
 //! **The RK4 arm is expected to lose most of the method, and the prediction is specific.** On
 //! shell `K + B == U`, so an integrator that evaluates both denominators at the same point sees
@@ -118,6 +122,12 @@ pub fn kdk<T: Real>(
 
 /// Which stepper a march uses.
 ///
+/// `Gbs` is not a third peer of the other two: it is `Kdk` **under extrapolation**, which is the
+/// configuration Mikkola & Merritt recommend and the one the bare-leapfrog arm is not. Its cost
+/// per macro-step is variable, so it takes its parameters from [`super::LhOpts`] rather than
+/// through this enum, and [`Stepper::evals_per_step`] is `0` for it — a deliberate tell that the
+/// count has to come from the driver.
+///
 /// `Rk4` is a fair comparison against AZ and Heggie and an unfair one against the method;
 /// `Kdk` is the reverse. Both are run, and the gap between them is a measurement of how much of
 /// logH's behaviour is the stepper — which no single arm can report.
@@ -128,19 +138,36 @@ pub enum Stepper {
     Rk4,
     /// Drift-kick-drift leapfrog, one force evaluation per step. What logH is designed for.
     Kdk,
+    /// Gragg-Bulirsch-Stoer extrapolation over the KDK leapfrog. **Variable** cost per step —
+    /// `k(k+1)` evaluations at level `k` — so its evaluations are counted, never derived.
+    Gbs,
 }
 
 impl Stepper {
-    /// Force evaluations per step. Used to match arms on evaluations rather than steps.
+    /// Force evaluations per step, or **`0` for a stepper whose cost is not fixed**.
+    ///
+    /// Zero is not "free": it is the value that makes `steps * evals_per_step` come out obviously
+    /// wrong if anyone derives a count from it, which is the mistake this whole field exists to
+    /// prevent. `Gbs` spends `k(k+1)` per macro-step with `k` chosen adaptively.
     pub fn evals_per_step(self) -> usize {
         match self {
             Stepper::Rk4 => 4,
             Stepper::Kdk => 1,
+            Stepper::Gbs => 0,
         }
+    }
+
+    /// True when `steps * evals_per_step()` is the exact evaluation count.
+    pub fn has_fixed_cost(self) -> bool {
+        self.evals_per_step() > 0
     }
 }
 
-/// One step under the chosen stepper, returning the new state and the force evaluations spent.
+/// One step under the chosen stepper, returning the new state, the evaluations spent, the
+/// extrapolation levels used (`0` when not extrapolating) and whether it converged.
+///
+/// `converged` is `true` for the non-extrapolating steppers because they have no tolerance to
+/// miss — not because they are known good.
 #[inline]
 pub fn step<T: Real>(
     sys: &LhSystem<T>,
@@ -149,9 +176,21 @@ pub fn step<T: Real>(
     time: LhTime,
     stepper: Stepper,
     h: T,
-) -> (LhState<T>, usize) {
+    gbs_tol: T,
+    gbs_k_max: usize,
+) -> (LhState<T>, usize, usize, bool) {
     match stepper {
-        Stepper::Rk4 => rk4(sys, s, b, time, h),
-        Stepper::Kdk => kdk(sys, s, b, time, h),
+        Stepper::Rk4 => {
+            let (st, e) = rk4(sys, s, b, time, h);
+            (st, e, 0, true)
+        }
+        Stepper::Kdk => {
+            let (st, e) = kdk(sys, s, b, time, h);
+            (st, e, 0, true)
+        }
+        Stepper::Gbs => {
+            let o = super::gbs::macro_step(sys, s, b, time, h, gbs_tol, gbs_k_max);
+            (o.state, o.evals, o.k_used, o.converged)
+        }
     }
 }

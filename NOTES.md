@@ -2751,3 +2751,13 @@ orders above the rest of the frame.
 
 **The transferable form: the fix for a saturated count is not a better threshold on the same count,
 it is a quantity with range.** 13,590 distinct values against a boolean's two.
+
+The `logh_gbs_nolim` arm corroborates more weakly, which is what a smaller hot population should do:
+all **8** of its not-data pixels fall in the top two rate quintiles (lift 3.75 and 1.25) against the
+same boolean reading **1.198**. With 8 hot pixels rather than 26 there is less to concentrate.
+
+**And one number in that block must not be read as a finding: `n_overshoot > 0` scores
+`lift 2048.000` on ONE firing.** A ratio computed on `n = 1` can only come out at the ceiling or at
+zero -- it is `1/(8/16384)` and says nothing about overshoot. The harness prints the fire count
+beside every lift so this is visible rather than quotable, which is the same discipline that stopped
+`gbs_unconverged > 0`'s "covers 1.0000 of the hot set" being read as coverage.

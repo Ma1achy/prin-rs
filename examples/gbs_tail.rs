@@ -122,6 +122,52 @@ fn main() {
             "    unconverged macro-steps {unc_tot} of {steps_tot} total steps ({:.3e} of steps)",
             unc_tot as f64 / steps_tot.max(1) as f64
         );
+        // **THE RATE, NOT THE BOOLEAN.** `gbs_unconverged > 0` fires on 83% of pixels and
+        // therefore cannot discriminate: it scores a lift of 1.203 while covering 1.0000 of the
+        // hot set, which is close to what chance alone gives. The reason is arithmetic and is the
+        // standing lesson about a count capped below its own decision threshold -- a trajectory of
+        // ~5e5 macro-steps almost always accumulates at least one unconverged step, at a rate of
+        // only 6.3e-4 per step.
+        //
+        // The rate is unbounded and continuous, so it can rank. Reported as the fraction of hot
+        // pixels in each rate quintile against the frame base rate: a signal that carries nothing
+        // gives a flat column, which is a result rather than an absence.
+        let rate: Vec<f64> = px
+            .iter()
+            .map(|p| {
+                if p.total_substeps > 0 {
+                    p.gbs_unconverged as f64 / p.total_substeps as f64
+                } else {
+                    f64::NAN
+                }
+            })
+            .collect();
+        let nd = {
+            let mut w: Vec<u64> =
+                rate.iter().filter(|x| x.is_finite()).map(|x| x.to_bits()).collect();
+            w.sort_unstable();
+            w.dedup();
+            w.len()
+        };
+        let mut order: Vec<usize> = (0..px.len()).filter(|&i| rate[i].is_finite()).collect();
+        order.sort_by(|&a, &b| rate[a].partial_cmp(&rate[b]).unwrap());
+        println!("    unconverged RATE: {nd} distinct values over {} pixels", order.len());
+        let base = hot as f64 / n as f64;
+        for k in 0..5 {
+            let lo = order.len() * k / 5;
+            let hi = order.len() * (k + 1) / 5;
+            let bucket = &order[lo..hi];
+            let h = bucket.iter().filter(|&&i| px[i].error_ratio > 10.0).count();
+            println!(
+                "      quintile {} rate<={:.3e}  hot {h:>5} of {:>5}  ({:.5}, lift {:>6.2})",
+                k + 1,
+                rate[*bucket.last().unwrap_or(&0)],
+                bucket.len(),
+                h as f64 / bucket.len().max(1) as f64,
+                (h as f64 / bucket.len().max(1) as f64) / base.max(1e-30)
+            );
+        }
+
         for (nm, f) in [
             ("budget_exhausted", &(|p: &PixelOut| p.budget_exhausted) as &dyn Fn(&PixelOut) -> bool),
             ("n_overshoot > 0", &|p: &PixelOut| p.n_overshoot > 0),

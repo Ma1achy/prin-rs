@@ -2699,3 +2699,55 @@ Every one produced a plausible number in the correct units:
 
 The usable tolerance range is measured rather than chosen: `1e-11` and `1e-12` complete in 36 and
 96 steps; `1e-13` and `1e-14` burn the whole budget reaching `t = 0.0044` and `t = 0.0023`.
+
+## TWO SATURATED DIAGNOSTICS REPLACED, AND BOTH REPLACEMENTS ANSWER
+
+### `rev/amp` was never a second quantity — the fitted slope is ZERO, not one
+
+The divided form `rev / exp(lambda t)` **assumes** the residual grows as `exp(lambda t)` with a
+slope of exactly 1. Regressing `ln(rev)` on `lambda * t_max` instead, on `deep_interior` at 64^2:
+
+```
+        az  slope -0.0024      heggie  slope -0.0040      logh_rk4  slope -0.0057
+   logh_lf  slope -0.0053    logh_gbs  slope -0.0043
+```
+
+**Zero, where the amplification model requires 1.0.** So reversibility carries no `exp(lambda t)`
+dependence at all, there is nothing to normalise out, and the fitted residual carries the same
+information as the raw quantity — Spearman against FTLE `-0.006` to `+0.013`, all inside their
+shifted controls, exactly as `rev` itself is.
+
+This replaces the earlier order-of-magnitude argument (`deep_interior` predicts a residual of order
+100 and measures `7.175e-6`) with a direct fit, and it explains the `-0.92 to -0.999` correlations
+the divided form produced: **dividing by something that varies enormously when the numerator does
+not returns the divisor with a minus sign.** The divided form was manufacturing a signal, not
+mis-scaling one.
+
+### `gbs_unconverged` as a RATE concentrates the entire tail in its top quintile
+
+The boolean `gbs_unconverged > 0` fires on **83%** of pixels and scores a lift of **1.203** while
+"covering" 1.0000 of the hot set — close to what chance alone gives. The cause is arithmetic: a
+trajectory of ~5e5 macro-steps almost always accumulates one unconverged step at a rate of only
+`6.3e-4` per step, so a per-pixel boolean saturates by construction. Same shape as `n_cap_hits > 0`
+firing on every pixel.
+
+The rate is unbounded and continuous. `config_stability` at 128^2, `logh_gbs`:
+
+```
+  unconverged RATE: 13590 distinct values over 16384 pixels
+  quintile 1  rate <= 2.065e-6   hot   0 of 3276   lift 0.00
+  quintile 2  rate <= 4.546e-6   hot   0 of 3277   lift 0.00
+  quintile 3  rate <= 1.527e-5   hot   0 of 3277   lift 0.00
+  quintile 4  rate <= 6.704e-5   hot   0 of 3277   lift 0.00
+  quintile 5  rate <= 1.159e-1   hot  26 of 3277   lift 5.00
+```
+
+**Every not-data pixel is in the top quintile and none is anywhere else.** `lift 5.00` is the
+arithmetic ceiling for a quintile, so this is perfect concentration rather than a good score.
+
+That is the attribution the boolean could not make: **GBS's tail is exactly where its extrapolation
+misses its own tolerance most often** — not budget truncation, not overshoot, at a rate two to five
+orders above the rest of the frame.
+
+**The transferable form: the fix for a saturated count is not a better threshold on the same count,
+it is a quantity with range.** 13,590 distinct values against a boolean's two.

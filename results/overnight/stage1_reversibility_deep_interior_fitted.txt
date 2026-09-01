@@ -1,0 +1,45 @@
+STAGE 1: reversibility on deep_interior at 64^2, t_max = 13, n_sync = 33.
+  Termination OFF, r_coll = 0, nominal copy only, COM-centred residual.
+
+  FTLE field: 4096 of 4096 pixels completed at least one renormalisation. **Read this first** -- `ftle` is meaningless without it.
+  FTLE p10 2.2221  p50 3.2644  p90 5.0007
+
+         arm     rev p50     rev p90   resid p50    disp p50  evals p50  nonfin    secs
+          az    7.083e-6    1.366e-4    2.737e-2     1.924e0    2.297e5       0     7.9
+      heggie    1.258e-5    5.700e-4   -9.818e-2     1.923e0    1.137e5       4     4.2
+    logh_rk4    2.644e-4    9.056e-3    5.868e-2     1.923e0    1.134e5       4     4.3
+     logh_lf    4.299e-1     1.990e0    6.301e-1     1.942e0    4.820e4       3     3.3
+    logh_gbs    8.890e-5    3.982e-2    8.640e-2     1.922e0    5.792e5       6    30.4
+
+  FITTED SLOPE of ln(rev) on lambda*t. **1.0 would mean the residual grows as
+  exp(lambda t), i.e. round-off carried through the tangent flow. Far below 1 says
+  it does not, and that dividing by exp(lambda t) over-corrects.**
+            az  slope  -0.0024   n 4096
+        heggie  slope  -0.0040   n 4092
+      logh_rk4  slope  -0.0057   n 4092
+       logh_lf  slope  -0.0053   n 4094
+      logh_gbs  slope  -0.0043   n 4091
+
+  SPEARMAN vs FTLE. `shifted` is the control: same marginals, no spatial relation.
+  A coefficient no larger than its own shifted control is a NULL, not a correlation.
+         arm        rev      resid    shifted        n
+          az    -0.0198    -0.0059    -0.0167     4096
+      heggie    -0.0209    -0.0004    -0.0031     4096
+    logh_rk4    -0.0297    -0.0019     0.0016     4096
+     logh_lf    -0.0309     0.0132    -0.0182     4096
+    logh_gbs    -0.0059     0.0071     0.0083     4096
+       drift    -0.0263         --    -0.0052     4095   <- energy drift, AZ
+
+HOW TO READ THIS
+
+**PREDICTION 1, recorded before the run: reversibility tracks FTLE more strongly than
+drift does.** Drift-vs-FTLE is a published null for AZ (-0.0820 against a shifted
+-0.1022).
+
+**PREDICTION 1b: `rev/amp` should track FTLE MUCH LESS than `rev` does.** That is the
+test of the normalisation itself. If the two columns correlate alike, the division did
+not remove the amplification and `rev/amp` is not integrator quality -- it is `rev` under
+another name, and must not be reported as the integrator arm.
+
+**Compare arms DOWN a column only.** RK4 is not time-symmetric and KDK is; across
+steppers this statistic scores symmetry rather than accuracy.

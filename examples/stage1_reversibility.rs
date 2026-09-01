@@ -108,6 +108,28 @@ fn spearman(a: &[f64], b: &[f64]) -> (f64, usize) {
     (num / (da.sqrt() * db.sqrt()), n)
 }
 
+/// Ordinary least squares of `y` on `x` over the pairs where both are finite. Returns
+/// `(slope, intercept, n)`.
+fn ols(x: &[f64], y: &[f64]) -> (f64, f64, usize) {
+    let p: Vec<(f64, f64)> =
+        x.iter().zip(y).filter(|(a, b)| a.is_finite() && b.is_finite()).map(|(a, b)| (*a, *b)).collect();
+    let n = p.len();
+    if n < 8 {
+        return (f64::NAN, f64::NAN, n);
+    }
+    let (mx, my) = (
+        p.iter().map(|q| q.0).sum::<f64>() / n as f64,
+        p.iter().map(|q| q.1).sum::<f64>() / n as f64,
+    );
+    let sxx: f64 = p.iter().map(|q| (q.0 - mx) * (q.0 - mx)).sum();
+    let sxy: f64 = p.iter().map(|q| (q.0 - mx) * (q.1 - my)).sum();
+    if sxx <= 0.0 {
+        return (f64::NAN, f64::NAN, n);
+    }
+    let b = sxy / sxx;
+    (b, my - b * mx, n)
+}
+
 /// The half-frame shifted control: same marginals, spatial relationship destroyed.
 fn shift_half(v: &[f64], res: usize) -> Vec<f64> {
     let mut o = vec![0.0; v.len()];
@@ -247,7 +269,7 @@ fn main() {
 
     println!(
         "  {:>10} {:>11} {:>11} {:>11} {:>11} {:>10} {:>7} {:>7}",
-        "arm", "rev p50", "rev p90", "rev/amp p50", "disp p50", "evals p50", "nonfin", "secs"
+        "arm", "rev p50", "rev p90", "resid p50", "disp p50", "evals p50", "nonfin", "secs"
     );
 
     let arms: [(&str, Arm, f64); 5] = [
@@ -261,6 +283,7 @@ fn main() {
     ];
 
     let mut corr_rows: Vec<(String, f64, usize, f64, usize, f64, usize)> = Vec::new();
+    let mut fits: Vec<(String, f64, usize)> = Vec::new();
 
     for (label, arm, sc) in arms {
         let eta = cfg0.eta * sc;
@@ -282,13 +305,28 @@ fn main() {
         let disp: Vec<f64> = out.iter().map(|x| x.1).collect();
         let ev: Vec<f64> = out.iter().map(|x| x.2).collect();
         let nonfin = out.iter().filter(|x| !x.3).count();
-        // Round-off per unit amplification. `exp(lambda t)` overflows for a large FTLE, so this is
-        // formed in logs and exponentiated once -- a ratio of two huge numbers is not the quantity.
-        let rev_amp: Vec<f64> = rev
+        // **THE FITTED RESIDUAL, NOT THE DIVIDED FORM.**
+        //
+        // The first cut computed `rev / exp(lambda t)`, i.e. it ASSUMED the residual grows as
+        // `exp(lambda t)` with a slope of exactly 1. Measured, that assumption is wrong by eight
+        // orders -- `deep_interior` has `lambda t ~ 42.6`, which predicts a residual of order 100
+        // against `7.175e-6` observed -- and the divided quantity came back correlating with FTLE
+        // at **-0.92 to -0.999**, because `exp(lambda t)` varies far more than `rev` does and the
+        // division simply over-corrects. It was `exp(-lambda t)` wearing another name.
+        //
+        // So the slope is FITTED rather than assumed: regress `ln(rev)` on `lambda * t_max` across
+        // pixels and keep the residual. The slope is itself the measurement -- 1.0 would mean the
+        // amplification model holds, and anything far below it says the residual is not
+        // round-off carried through the tangent flow.
+        let lam_t: Vec<f64> = ftle.iter().map(|l| l * t_max).collect();
+        let ln_rev: Vec<f64> = rev.iter().map(|r| r.ln()).collect();
+        let (slope, icept, n_fit) = ols(&lam_t, &ln_rev);
+        let rev_amp: Vec<f64> = lam_t
             .iter()
-            .zip(ftle.iter())
-            .map(|(r, l)| if l.is_finite() { (r.ln() - l * t_max).exp() } else { f64::NAN })
+            .zip(ln_rev.iter())
+            .map(|(x, y)| if x.is_finite() && y.is_finite() { y - (icept + slope * x) } else { f64::NAN })
             .collect();
+        fits.push((label.to_string(), slope, n_fit));
 
         println!(
             "  {label:>10} {:>11.3e} {:>11.3e} {:>11.3e} {:>11.3e} {:>10.3e} {nonfin:>7} {secs:>7.1}",
@@ -304,11 +342,18 @@ fn main() {
     // --- the correlations, with the drift row for comparison ----------------------------------
     let (d_raw, d_n) = spearman(&drift_ref, &ftle);
     let (d_ctl, _) = spearman(&drift_ref, &shift_half(&ftle, res));
+    println!("\n  FITTED SLOPE of ln(rev) on lambda*t. **1.0 would mean the residual grows as");
+    println!("  exp(lambda t), i.e. round-off carried through the tangent flow. Far below 1 says");
+    println!("  it does not, and that dividing by exp(lambda t) over-corrects.**");
+    for (l, b, n) in &fits {
+        println!("    {l:>10}  slope {b:>8.4}   n {n}");
+    }
+
     println!("\n  SPEARMAN vs FTLE. `shifted` is the control: same marginals, no spatial relation.");
     println!("  A coefficient no larger than its own shifted control is a NULL, not a correlation.");
     println!(
         "  {:>10} {:>10} {:>10} {:>10} {:>8}",
-        "arm", "rev", "rev/amp", "shifted", "n"
+        "arm", "rev", "resid", "shifted", "n"
     );
     for (l, cr, nr, ca, _na, cc, _nc) in &corr_rows {
         println!("  {l:>10} {cr:>10.4} {ca:>10.4} {cc:>10.4} {nr:>8}");

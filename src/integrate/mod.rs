@@ -2,6 +2,7 @@
 
 pub mod az;
 pub mod heggie;
+pub mod ias15;
 pub mod leapfrog;
 pub mod logh;
 
@@ -270,6 +271,14 @@ pub struct MarchOut<T> {
     pub n_cap_hits: u32,
     pub n_retry: u32,
     pub retry_exhausted: bool,
+    /// **An advance-anyway site, and its two zeros mean different things.** The GBS macro-step
+    /// hit `gbs_k_max` without meeting `gbs_tol`; the extrapolated state is taken regardless.
+    ///
+    /// `0` under `Stepper::Gbs` says every macro-step converged. `0` under AZ, Heggie, RK4 or
+    /// KDK says there is no extrapolation to converge — the same number for the absence and for
+    /// the clean result. A harness must gate this column on the arm, and the denominator is
+    /// `steps`, not pixels: this counts macro-steps, summed over copies.
+    pub gbs_unconverged: u32,
 }
 
 impl<T: Real> From<az::AzOut<T>> for MarchOut<T> {
@@ -302,6 +311,7 @@ impl<T: Real> From<az::AzOut<T>> for MarchOut<T> {
             n_cap_hits: o.n_cap_hits,
             n_retry: o.n_retry,
             retry_exhausted: o.retry_exhausted,
+            gbs_unconverged: 0,
         }
     }
 }
@@ -344,6 +354,8 @@ impl<T: Real> From<heggie::HgOut<T>> for MarchOut<T> {
             n_cap_hits: 0,
             n_retry: 0,
             retry_exhausted: false,
+            // No extrapolation here, so this is an absence rather than a clean result.
+            gbs_unconverged: 0,
         }
     }
 }
@@ -390,6 +402,7 @@ impl<T: Real> From<logh::LhOut<T>> for MarchOut<T> {
             n_cap_hits: 0,
             n_retry: 0,
             retry_exhausted: false,
+            gbs_unconverged: o.gbs_unconverged,
         }
     }
 }

@@ -72,6 +72,19 @@ pub struct EnsembleCfg {
     /// The soft-minimum exponent; `1.0` is the harmonic form, large is the hard `min`.
     pub blend_p: f64,
     pub eta: f64,
+    /// **Secant-correct the step that lands on each sync boundary.**
+    ///
+    /// `clamp_final_step` sizes that step from a first-order predictor, so its residual is
+    /// `O(h^2)` and it caps the observable convergence order at two — AZ measures 2.08 and Heggie
+    /// 2.40 on the figure-eight, which is exactly what an `O(h^2)` landing allows. Correcting it
+    /// takes RK4's figure-eight closure from `5.43e-5` to `2.77e-8`, a factor of 1960, for ~7%
+    /// more force evaluations.
+    ///
+    /// One field for all three occupants, and the same default in each `*Opts` struct: this
+    /// project has been bitten three times by two option structs disagreeing about one field.
+    pub land_iterate: bool,
+    /// Cap on secant iterations per landing step. Each is a real step and is counted.
+    pub land_max_iters: usize,
     pub max_steps: usize,
     pub ref_policy: RefPolicy,
     /// Conditioned inverse LC branch. Default true; false reproduces the reference's
@@ -204,6 +217,8 @@ impl EnsembleCfg {
             closure_k: 1,
             stop_on_escape: false,
             eta: 0.01,
+            land_iterate: true,
+            land_max_iters: 4,
             max_steps: 30_000,
             ref_policy: RefPolicy::PerCopy,
             lc_stable: true,
@@ -428,6 +443,9 @@ pub struct PixelOut {
     /// that has to be zero. It was `2.209e128` on one step and undetected for six days because
     /// nothing asserted it.
     pub n_overshoot: u64,
+    /// GBS macro-steps that hit the level cap without meeting tolerance, summed over copies.
+    /// **Zero is ambiguous across arms** — see [`crate::integrate::MarchOut::gbs_unconverged`].
+    pub gbs_unconverged: u64,
     /// The nominal copy's reference-body sequence, one entry per sync boundary. Empty unless
     /// [`EnsembleCfg::keep_ref_path`] is set.
     ///
@@ -584,6 +602,9 @@ pub fn evaluate_at<T: Real>(slice: &Slice, idx: usize, cfg: &EnsembleCfg, eta_v:
     let eta = T::lit(eta_v);
 
     let base = AzOpts::<T> {
+        // Named, never inherited: `AzOpts` and `HgOpts` have disagreed on a default twice.
+        land_iterate: cfg.land_iterate,
+        land_max_iters: cfg.land_max_iters,
         keep_boundary_shapes: cfg.keep_boundary_shapes,
         keep_drift_hist: cfg.keep_drift_hist,
         forced_refs: None,
@@ -616,6 +637,9 @@ pub fn evaluate_at<T: Real>(slice: &Slice, idx: usize, cfg: &EnsembleCfg, eta_v:
     //   - `ref_hysteresis`, `lc_stable`'s branch role: `lc_stable` still selects the inverse LC
     //     map, which Heggie uses three times per registration rather than twice.
     let hg = HgOpts::<T> {
+        // Named, never inherited -- see the `AzOpts` block above.
+        land_iterate: cfg.land_iterate,
+        land_max_iters: cfg.land_max_iters,
         time: heggie::HgTime::default(),
         dtau_mode: match cfg.dtau_mode {
             DtauMode::FixedPerInterval => HgDtauMode::FixedPerInterval,
@@ -680,11 +704,13 @@ pub fn evaluate_at<T: Real>(slice: &Slice, idx: usize, cfg: &EnsembleCfg, eta_v:
         // defaults. They are named here rather than left to `..Default::default()` because a
         // struct literal that silently inherits is how a setting stops being visible, and every
         // panel's sidecar reads its settings from the config rather than from here.
-        // **Off**, matching AZ and Heggie, which have no landing correction at all. Turning it
-        // on here would give logH a landing the other two do not have, in a comparison whose
-        // whole point is that the arms differ in one named way.
-        land_iterate: false,
-        land_max_iters: 4,
+        // **From the config, like the other two.** This used to be a hardcoded `false`, on the
+        // sound reasoning that AZ and Heggie had no landing correction and giving logH one would
+        // have been an arm asymmetry in a comparison whose point is that the arms differ in one
+        // named way. Both now have it, so the reason has expired and the literal would have
+        // become exactly the kind of silently-stale setting this file has been bitten by twice.
+        land_iterate: cfg.land_iterate,
+        land_max_iters: cfg.land_max_iters,
         gbs_tol: T::lit(logh::driver::GBS_TOL),
         gbs_k_max: logh::driver::GBS_K_MAX,
     };
@@ -904,14 +930,37 @@ pub fn evaluate_at<T: Real>(slice: &Slice, idx: usize, cfg: &EnsembleCfg, eta_v:
                 d_true = d_true.min(b);
             }
         }
+        // **A FAILED COPY IS AN OUTCOME, NOT MISSING DATA.** These two reductions used to read
+        // `if x.is_finite() { max }`, which *discarded* a diverged copy and left the pixel with a
+        // finite, healthy-looking maximum over the copies that survived. That is the no-discard
+        // violation the project's own rule names, and it fails chaos-selectively: a copy goes
+        // non-finite because its integration was hard, integration is hard at a close encounter,
+        // and close encounters are what the instrument exists to measure. The statistic was
+        // therefore biased against exactly the regions it is pointed at.
+        //
+        // `budget_exhausted` is tested **separately from `finite`, because the occupants do not
+        // agree on what `finite` means**: `az::driver` sets it false only when the state itself
+        // goes non-finite and leaves it `true` for a run it truncated, while `logh::driver` sets
+        // it false for both. Keying on `finite` alone therefore caught the truncation in one
+        // integrator and missed it in another -- `tests/no_discard.rs` failed 64 of 64 on exactly
+        // that. A truncated run has a perfectly finite drift **at the point it stopped**, and
+        // reading it reports the error of a trajectory that never finished. Measured on
+        // `deep_interior`, 199 pixel-outs carried `budget_exhausted` while `nonfin` read 0.
+        //
+        // `+inf` and not `NaN`: these are max-reductions, so infinity is the absorbing element
+        // and the pixel reports "undetermined" by saturating rather than by poisoning a sort.
+        // `colour::drift_rgb` already paints the non-finite veto set magenta, so an undetermined
+        // pixel renders as one instead of as a tame value.
+        //
+        // **`d_min` above is deliberately NOT changed.** It is a *min*-reduction, which has no
+        // absorbing element for "undetermined" — `-inf` would read as a collision at every
+        // threshold and silently rewrite the collision labels the whole outcome encoding rests
+        // on. Same violation, different repair, and not this one.
+        let usable = o.finite && !o.budget_exhausted;
         let dr = o.drift.to_f64().unwrap();
-        if dr.is_finite() {
-            drift_max = drift_max.max(dr);
-        }
+        drift_max = if usable && dr.is_finite() { drift_max.max(dr) } else { f64::INFINITY };
         let g = o.gamma_max.to_f64().unwrap();
-        if g.is_finite() {
-            gamma_max = gamma_max.max(g);
-        }
+        gamma_max = if usable && g.is_finite() { gamma_max.max(g) } else { f64::INFINITY };
         for (k, r) in o.refs.iter().enumerate() {
             if nominal_refs.get(k).is_some_and(|nr| nr != r) {
                 ref_disagree += 1;
@@ -1031,6 +1080,7 @@ pub fn evaluate_at<T: Real>(slice: &Slice, idx: usize, cfg: &EnsembleCfg, eta_v:
             .fold(0.0, f64::max),
         n_cap_hits: outs.iter().map(|o| o.n_cap_hits as u64).sum(),
         n_overshoot: outs.iter().map(|o| o.n_overshoot as u64).sum(),
+        gbs_unconverged: outs.iter().map(|o| o.gbs_unconverged as u64).sum(),
         n_retry: outs.iter().map(|o| o.n_retry as u64).sum(),
         ref_path: if cfg.keep_ref_path { outs[0].refs.clone() } else { Vec::new() },
         ref_tie_path: if cfg.keep_ref_path {

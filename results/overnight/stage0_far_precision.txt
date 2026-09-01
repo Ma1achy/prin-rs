@@ -1,0 +1,35 @@
+STAGE 0: `far` at 128^2, AZ vs Heggie, f32 vs f64. Nothing else changed.
+
+  Diagnostic pass: termination OFF, r_coll = 0, refine_flagged OFF. A run stopped by an
+  event is parked at a close approach where the Cartesian energy is a cancellation of two
+  enormous terms -- that flag alone produced five wrong conclusions in a row once.
+
+  PREDICTION (recorded in PREDICTIONS.md before this ran): if conditioning is the
+  mechanism, AZ's advantage WIDENS at f32. The brief expects a collapse; I think that
+  implication runs the wrong way and this run adjudicates it.
+
+       az  f64  drift p50  2.823e-13  p99  3.453e-13  err>10      0  distinct  16384  evals p50   3.952e5     45.2s
+       az  f32  drift p50   1.175e-4  p99   1.911e-4  err>10     25  distinct  16368  evals p50   3.928e5     45.5s
+   heggie  f64  drift p50  2.189e-12  p99  2.234e-12  err>10      0  distinct  16384  evals p50   2.368e5     31.3s
+   heggie  f32  drift p50   2.022e-5  p99   4.423e-5  err>10      0  distinct  16347  evals p50   2.344e5     32.1s
+
+  SATURATION GUARD -- does this comparison have a subject?
+    f64: distinct az  16384 hg  16384   az-inside-hg p1..p99 0.0000   LIVE -- the arms are separable at this precision
+    f32: distinct az  16368 hg  16347   az-inside-hg p1..p99 0.0004   LIVE -- the arms are separable at this precision
+
+  AZ ADVANTAGE  gain = log10(drift_heggie / drift_az), positive = AZ better
+    f64: gain p10   0.842  p50   0.890  p90   0.935  frac az better 1.0000  n 16384
+    f32: gain p10  -1.065  p50  -0.768  p90  -0.494  frac az better 0.0000  n 16384
+
+HOW TO READ THIS
+
+**Read the saturation guard first.** If either precision reads DEAD or SATURATED, the
+gain line beneath it for that precision is a difference between two numbers that are not
+measuring anything, and it does not adjudicate the conditioning question.
+
+**The decision, if the f32 row is LIVE:** an AZ advantage that GROWS at f32 supports
+conditioning and justifies Stage 2 (chain coordinates). One that SHRINKS says the
+mechanism is not precision, and chain is unlikely to fix `far` either.
+
+**`err>10` is the project's own flag for *this pixel is not data*.** An f32 arm carrying
+it on a large share of pixels is not a weaker measurement, it is a different one.

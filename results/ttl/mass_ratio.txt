@@ -1,0 +1,51 @@
+TTL vs logH across a mass-ratio ladder. near-field configurations at 48^2,
+t_max = 13, n_sync = 33, KDK stepper, eta = 1.0e-2, termination OFF.
+
+  **PREDICTION, recorded before this ran: TTL beats logH at high ratio and TIES at q = 1.**
+  The tie is exact by construction (`w_ij = mbar^2` makes `Omega === U` at equal masses) and
+  is asserted below. If it fails, no other row means anything.
+
+  Only the MASSES vary down the ladder; configurations and velocities are decoded once.
+  Each row is TTL against logH on the SAME system. Reading ACROSS a row is the measurement;
+  reading DOWN the q column is comparing different physics.
+
+        q       arm   drift p50   drift p99  err>10  nonfin  evals p50 distinct
+        1      logh    8.363e-6    2.402e-5       0       0    4.386e3     2304
+        1       ttl    8.363e-6    2.402e-5       0       0    4.386e3     2304
+                 ->   gain (logH/TTL)  -0.000 decades   TTL cost  1.000x evals
+
+        2      logh    1.124e-5    1.202e-5       0       0    3.787e3     2304
+        2       ttl    5.786e-6    6.219e-6       0       0    3.783e3     2304
+                 ->   gain (logH/TTL)  +0.288 decades   TTL cost  0.999x evals
+
+        5      logh    1.147e-5    1.344e-5       0       0    3.923e3     2304
+        5       ttl    1.268e-5    1.595e-5       0       0    3.913e3     2304
+                 ->   gain (logH/TTL)  -0.044 decades   TTL cost  0.997x evals
+
+       20      logh    7.862e-6    9.578e-6       0       0    4.175e3     2304
+       20       ttl    2.334e-5    3.251e-5       0       0    4.158e3     2304
+                 ->   gain (logH/TTL)  -0.472 decades   TTL cost  0.996x evals
+
+      100      logh    2.683e-6    3.586e-6       0       0    4.479e3     2304
+      100       ttl    1.854e-5    3.510e-5       0       0    4.465e3     2304
+                 ->   gain (logH/TTL)  -0.840 decades   TTL cost  0.997x evals
+
+     1000      logh    2.369e-7    3.099e-7       0       0    4.936e3     2304
+     1000       ttl    1.671e-5    3.700e-5       0       0    4.922e3     2304
+                 ->   gain (logH/TTL)  -1.848 decades   TTL cost  0.997x evals
+
+CONTROL
+  q = 1 gain 0.0000 decades -- the arms agree, as `Omega === U` requires.
+  The rows below it are interpretable.
+
+HOW TO READ THIS
+
+**Read the control first, then `nonfin` and `err>10`, then the gain.** A win over an arm
+that produced no data is not a win.
+
+**`TTL cost` is part of the result.** A time transformation that shrinks the step where
+it should spends more steps to do it; a gain bought at 3x the evaluations is a different
+claim from one bought at parity.
+
+**The prediction is that gain rises with q and is zero at q = 1.** A gain that is flat in
+q would say the mass weighting is not the mechanism, whatever its sign.

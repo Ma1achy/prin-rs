@@ -1,0 +1,49 @@
+far at 16^2, t_max = 13, n_sync = 33, termination OFF, r_coll = 0, nominal copy only.
+
+  **Read this DOWN a column, never across.** RK4 is not time-symmetric and KDK is, so a
+  reversibility number compared between steppers scores symmetry rather than accuracy.
+  `az`, `heggie` and `logh_rk4` are all RK4 and are mutually comparable; the leapfrog and
+  GBS arms are not comparable to them on this statistic.
+
+  **`disp` is the guard.** It is the forward displacement in the same units. A row whose
+  `disp` is near zero has no subject, and `rev/disp` is the honest ratio.
+
+  **The `eta` ladder is the discriminator.** Falling with `eta` is truncation and the
+  integrator owns it; saturating is round-off amplified by the flow and no step size buys
+  it off. One `eta` cannot tell those apart.
+
+         arm       eta     rev p50     rev p90    disp p50    rev/disp   nonfin     secs
+          az   1.00e-2   1.943e-11   4.899e-11    7.139e-1   2.709e-11        0      0.3
+          az   2.50e-3   5.352e-14   1.805e-13    7.139e-1   7.471e-14        0      0.6
+          az   6.25e-4   5.584e-14   9.283e-14    7.139e-1   7.923e-14        0      1.9
+
+      heggie   1.00e-2   2.126e-12   1.058e-11    7.139e-1   2.983e-12        0      0.3
+      heggie   2.50e-3   5.217e-14   1.174e-13    7.139e-1   7.391e-14        0      0.7
+      heggie   6.25e-4   6.384e-14   1.395e-13    7.139e-1   8.886e-14        0      2.2
+
+    logh_rk4   1.00e-2    1.135e-9    1.912e-9    7.139e-1    1.598e-9        0      0.2
+    logh_rk4   2.50e-3   9.445e-10    1.666e-9    7.139e-1    1.316e-9        0      0.5
+    logh_rk4   6.25e-4   6.684e-10    1.390e-9    7.139e-1   9.245e-10        0      2.0
+
+     logh_lf   2.50e-3    2.858e-7    2.885e-7    7.139e-1    4.005e-7        0      0.3
+     logh_lf   6.25e-4    1.804e-8    1.891e-8    7.139e-1    2.528e-8        0      1.0
+     logh_lf   1.56e-4    1.450e-9    2.356e-9    7.139e-1    2.024e-9        0      5.5
+
+    logh_gbs   2.50e-3    8.518e-8    1.768e-7    7.139e-1    1.195e-7        0      4.0
+    logh_gbs   6.25e-4    8.645e-8    1.836e-7    7.139e-1    1.214e-7        0      8.1
+    logh_gbs   1.56e-4    8.769e-8    1.814e-7    7.139e-1    1.228e-7        0     25.7
+
+HOW TO READ THIS
+
+**A saturating column is the expected result on a chaotic region, not a failure.** It
+says the residual is round-off amplified by the flow, which is a property of the field.
+A column that falls with `eta` is one where truncation still dominates and the
+integrator has room.
+
+**`rev/disp` near 1 means the trajectory has lost its way entirely** -- the return is as
+far from the start as the forward leg went. Near 0 means the march retraced.
+
+**What this cannot do is rank steppers.** Time-symmetry is worth orders here and is not
+accuracy. The comparison this supports is regularisation at fixed stepper: `az` against
+`heggie` against `logh_rk4`, all three RK4.
+REVERSIBILITY_COMPLETE

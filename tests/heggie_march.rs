@@ -271,7 +271,18 @@ fn convergence_order_on_the_figure_eight() {
                 32,
                 eta,
                 40_000_000,
-                &HgOpts { clamp_final_step: clamp, step_limit_f: 0.0, ..opts() },
+                // **`land_iterate: false` -- this test measures what `clamp_final_step` ALONE
+                // buys, and the secant landing deletes its subject.** With the landing on, the
+                // closure sits flat at 4.1022e-8 across the whole ladder: that is the
+                // figure-eight's own ~5e-8 IC-precision floor, not a failure to converge. Pinned
+                // to the kernel it is about, with `the_secant_landing_beats_the_clamp_alone`
+                // below as the arm that says the thing pinned out is an improvement.
+                &HgOpts {
+                    clamp_final_step: clamp,
+                    land_iterate: false,
+                    step_limit_f: 0.0,
+                    ..opts()
+                },
             );
             assert!(o.finite, "figure eight went non-finite at eta = {eta}");
             errs.push((eta, closure_err(&o.state, &s0), o.steps, o.drift));
@@ -581,5 +592,39 @@ fn a_frozen_reference_body_is_what_makes_az_label_dependent() {
         "freezing the reference did NOT make AZ label-dependent (frozen {froz:e} against free \
          {free:e}), so re-registration is not what erases Heggie's contrast and the explanation \
          on record for that negative is wrong"
+    );
+}
+
+/// **The arm that justifies pinning `convergence_order_on_the_figure_eight` to `land_iterate:
+/// false`.** A pin is honest only if what it excludes is an improvement; this asserts it, at a
+/// step size above the fixture's own ~5e-8 IC floor so both arms are not simply sitting on it.
+#[test]
+fn the_secant_landing_beats_the_clamp_alone() {
+    let (s0, m, period) = figure_eight();
+    let eta = 4.0e-2;
+    let run = |land: bool| {
+        let o = integrate_hg(
+            s0, &m, period, 32, eta, 4_000_000,
+            &HgOpts { clamp_final_step: true, land_iterate: land, step_limit_f: 0.0, ..opts() },
+        );
+        assert!(o.finite, "figure-eight went non-finite with land_iterate = {land}");
+        (closure_err(&o.state, &s0), o.steps)
+    };
+    let (e_off, n_off) = run(false);
+    let (e_on, n_on) = run(true);
+    println!(
+        "closure at eta {eta:.1e}: clamp only {e_off:.4e} ({n_off} steps), + secant {e_on:.4e} \
+         ({n_on} steps), gain {:.1}x",
+        e_off / e_on
+    );
+    assert!(
+        e_off > 5e-8,
+        "NO SUBJECT: the clamp-only arm is already at {e_off:.3e}, at or below the fixture's own \
+         IC floor, so there is nothing to improve at this step size"
+    );
+    assert!(
+        e_on < e_off * 0.5,
+        "the secant landing gave {e_on:.4e} against {e_off:.4e} -- not an improvement, so pinning \
+         the order test away from it hides a regression"
     );
 }

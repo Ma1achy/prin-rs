@@ -76,6 +76,8 @@ fn main() {
     let dt_sync = t_max / n_sync as f64;
 
     let opts = |ev: usize, stop: bool| AzOpts::<f64> {
+        land_iterate: true,
+        land_max_iters: 4,
         // Zero, the shipped default. These runs are about the escape criterion; hysteresis
         // changes WHICH reference body is chosen at a boundary and would vary a second thing.
         ref_hysteresis: 0.0,

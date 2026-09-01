@@ -1,0 +1,14 @@
+[01:32:20] START. Predictions were written to PREDICTIONS.md before any stage ran.
+[01:32:20] STAGE 0 begin: far 128^2, az/heggie x f64/f32
+[01:34:54] STAGE 0 done -> stage0_far_precision.txt
+[01:34:54] STAGE 1 begin: near-field at 128^2
+[01:37:36] STAGE 1 near-field done -> stage1_reversibility_near-field.txt
+[01:37:36] STAGE 1 begin: far at 128^2
+[01:40:46] STAGE 1 far done -> stage1_reversibility_far.txt
+[01:40:46] STAGE 1 begin: deep_interior at 128^2
+[01:46:23] STAGE 1 deep_interior done -> stage1_reversibility_deep_interior.txt
+[01:46:23] STAGE 1 begin: config_stability at 128^2
+[01:55:55] STAGE 1 config_stability done -> stage1_reversibility_config_stability.txt
+[01:55:55] STAGES 2-4 not built -- see STAGES_2_4_NOT_BUILT.md
+[01:55:55] END
+OVERNIGHT_COMPLETE

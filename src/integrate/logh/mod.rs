@@ -63,6 +63,7 @@
 //! A boundary sample is a read of the state, not a round trip through a chart. That absence is
 //! the measurement.
 
+pub mod chain;
 pub mod driver;
 pub mod gbs;
 pub mod hamiltonian;

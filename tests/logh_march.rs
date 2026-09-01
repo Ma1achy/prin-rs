@@ -224,7 +224,17 @@ fn convergence_order_on_the_figure_eight() {
                     // **The predictive limit is OFF here**, as it is in the Heggie and AZ
                     // versions of this test. It resizes steps from local geometry, so leaving it
                     // on would put a third thing in a measurement of the stepper and the landing.
-                    &LhOpts { clamp_final_step: clamp, ..nolimit(stepper) },
+                    // **`land_iterate: false` — this test is about what `clamp_final_step`
+                    // ALONE buys, and the secant landing deletes its subject.** With the landing
+                    // on, RK4's closure reaches the figure-eight's own ~5e-8 IC-precision floor by
+                    // `eta = 2e-2` and the asymptotic window lands entirely inside it: measured
+                    // order -0.01, which is the floor and not a failure. Above the floor the same
+                    // ladder reads 2.5224e-7 -> 2.7692e-8, a factor of 9.1 for a 2x cut, order
+                    // ~3.2 against the clamp-only 2.08.
+                    //
+                    // A pin needs the arm that justifies it or it reads as a tolerance loosened to
+                    // keep green -- `the_secant_landing_beats_the_clamp_alone` below is that arm.
+                    &LhOpts { clamp_final_step: clamp, land_iterate: false, ..nolimit(stepper) },
                 );
                 assert!(o.finite, "{stepper:?} went non-finite at eta = {eta}");
                 errs.push((eta, closure_err(&o.state, &s0), o.steps, o.force_evals));
@@ -606,4 +616,49 @@ fn the_unregularised_control_converges_on_a_problem_a_fixed_step_can_handle() {
             }
         }
     }
+}
+
+/// **The arm that justifies pinning `convergence_order_on_the_figure_eight` to `land_iterate:
+/// false`.** That test measures what `clamp_final_step` alone buys, and is pinned to the kernel it
+/// is about. A pin is only honest if the thing pinned out is an improvement, so this asserts it.
+///
+/// The fixture's own initial conditions are good to ~5e-8, so this compares at a step size ABOVE
+/// that floor. Comparing below it would find both arms at the floor and report a null -- *a
+/// difference can be small because both sides are right or because both are dead.*
+#[test]
+fn the_secant_landing_beats_the_clamp_alone() {
+    use prin_rs::integrate::logh::{integrate_lh, LhOpts, Stepper};
+    let (s0, m, period) = figure_eight();
+    let eta = 4.0e-2;
+    let run = |land: bool| {
+        let o = integrate_lh(
+            s0, &m, period, 32, eta, 4_000_000,
+            &LhOpts { clamp_final_step: true, land_iterate: land, ..nolimit(Stepper::Rk4) },
+        );
+        assert!(o.finite, "figure-eight went non-finite with land_iterate = {land}");
+        (closure_err(&o.state, &s0), o.force_evals)
+    };
+    let (e_off, v_off) = run(false);
+    let (e_on, v_on) = run(true);
+    println!(
+        "closure at eta {eta:.1e}: clamp only {e_off:.4e} ({v_off} evals), \
+         + secant {e_on:.4e} ({v_on} evals), gain {:.1}x",
+        e_off / e_on
+    );
+    assert!(
+        e_off > 5e-8,
+        "NO SUBJECT: the clamp-only arm is already at {e_off:.3e}, at or below the fixture's own \
+         ~5e-8 IC floor, so there is nothing for the correction to improve at this step size"
+    );
+    assert!(
+        e_on < e_off * 0.5,
+        "the secant landing gave {e_on:.4e} against the clamp alone at {e_off:.4e} -- it is not \
+         an improvement, so pinning the order test away from it is hiding a regression"
+    );
+    // Cost is part of the claim: the correction retakes the landing step, and a large gain bought
+    // with many extra evaluations is a different result from one bought with a few percent.
+    assert!(
+        (v_on as f64) < 1.5 * v_off as f64,
+        "the secant landing cost {:.2}x the force evaluations", v_on as f64 / v_off as f64
+    );
 }

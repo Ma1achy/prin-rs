@@ -49,7 +49,7 @@ fn fig8() -> (Cart<f64>, [f64; 3], f64) {
 }
 
 fn diff13(a: &LhState<f64>, b: &LhState<f64>) -> f64 {
-    let (x, y) = (a.to_array13(), b.to_array13());
+    let (x, y) = (a.to_array14(), b.to_array14());
     (0..13).fold(0.0f64, |w, i| w.max((x[i] - y[i]).abs()))
 }
 
@@ -184,7 +184,7 @@ fn the_leapfrog_base_is_time_symmetric() {
         let fwd = reference(&sys, &st, b, 1e-2, n);
         // Reversing `s` reverses the velocities and marches back; `t` runs backwards with it.
         let flipped =
-            LhState { r: fwd.r, v: std::array::from_fn(|i| -fwd.v[i]), t: 0.0 };
+            LhState { r: fwd.r, v: std::array::from_fn(|i| -fwd.v[i]), t: 0.0, w: fwd.w };
         let back = reference(&sys, &flipped, b, 1e-2, n);
         let err = (0..3).fold(0.0f64, |w, i| w.max((back.r[i] - st.r[i]).norm()));
         println!("  n = {n:>2}: reversal recovery {err:.3e}");
@@ -278,9 +278,19 @@ fn the_landing_residual_dwarfs_the_macro_step_accuracy() {
         let r: Vec<f64> = etas
             .iter()
             .map(|&eta| {
+                // **`land_iterate: false`, and the paired arm below is why that is honest.**
+                // This test characterises the residual left by `clamp_final_step` alone -- the
+                // first-order predictor. The secant correction removes it, which deletes the
+                // subject rather than contradicting the finding.
                 let o = integrate_lh(
                     s0, &m, t, 32, eta, 40_000_000,
-                    &LhOpts { time, gbs_tol: 1e-13, gbs_k_max: 6, ..opts(Stepper::Gbs) },
+                    &LhOpts {
+                        time,
+                        land_iterate: false,
+                        gbs_tol: 1e-13,
+                        gbs_k_max: 6,
+                        ..opts(Stepper::Gbs)
+                    },
                 );
                 assert!(o.finite, "{time:?} went non-finite at eta = {eta}");
                 o.land_residual_max
@@ -292,6 +302,11 @@ fn the_landing_residual_dwarfs_the_macro_step_accuracy() {
         }
         let worst = r.iter().cloned().fold(0.0f64, f64::max);
         match time {
+            // TTL carries `W` as a fourteenth component and its landing behaviour is a separate
+            // question from the one this test asks; it is excluded explicitly rather than folded
+            // into the `LogH` arm, where it would be measured under an assertion written for a
+            // different transformation.
+            LhTime::Ttl => {}
             LhTime::LogH => {
                 let order = (r[0].ln() - r[3].ln()) / (etas[0].ln() - etas[3].ln());
                 println!(
@@ -302,6 +317,32 @@ fn the_landing_residual_dwarfs_the_macro_step_accuracy() {
                     worst > 1e-8,
                     "the landing residual is {worst:e}, which is near the macro-step's own \
                      accuracy -- the account of why GBS buys nothing here would then be wrong"
+                );
+                // **THE PAIRED ARM.** The same ladder with the secant correction on must drive
+                // the residual down by orders. Without this the `land_iterate: false` above would
+                // be an unexplained pin, indistinguishable from one added to keep a stale
+                // assertion green.
+                let corrected = etas
+                    .iter()
+                    .map(|&eta| {
+                        let o = integrate_lh(
+                            s0, &m, t, 32, eta, 40_000_000,
+                            &LhOpts {
+                                time,
+                                land_iterate: true,
+                                gbs_tol: 1e-13,
+                                gbs_k_max: 6,
+                                ..opts(Stepper::Gbs)
+                            },
+                        );
+                        o.land_residual_max
+                    })
+                    .fold(0.0f64, f64::max);
+                println!("   with the secant landing: worst {corrected:.3e}");
+                assert!(
+                    corrected < worst * 1e-3,
+                    "the secant landing left {corrected:e} against the clamp's {worst:e} -- it is \
+                     not removing the residual, so pinning this test away from it is hiding that"
                 );
             }
             LhTime::None => {

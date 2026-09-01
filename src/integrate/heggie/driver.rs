@@ -53,6 +53,12 @@ pub struct HgOpts<T> {
     /// correctness property, not a preference: on AZ it is worth 1.06 -> 2.08 in measured
     /// convergence order.
     pub clamp_final_step: bool,
+    /// **Secant-correct the step that lands on a sync boundary.** See `AzOpts::land_iterate` —
+    /// same knob, same default, deliberately. Heggie's measured figure-eight order is 2.40
+    /// clamped against 1.03 unclamped, and the `O(h^2)` landing residual is what holds it there.
+    pub land_iterate: bool,
+    /// Cap on secant iterations per landing step. Each is a real step and is counted.
+    pub land_max_iters: usize,
     /// `f` for the predictive per-step limit, `dtau <= f d_min / (|dq/dt|_max dt/dtau)`. Zero
     /// disables it. AZ ships `0.02`.
     pub step_limit_f: T,
@@ -94,6 +100,8 @@ impl<T: Real> Default for HgOpts<T> {
             time: HgTime::default(),
             dtau_mode: HgDtauMode::default(),
             clamp_final_step: true,
+            land_iterate: true,
+            land_max_iters: 4,
             step_limit_f: T::lit(0.02),
             r_coll_frac: T::zero(),
             stop_on_event: true,
@@ -136,6 +144,9 @@ pub struct HgOut<T> {
     /// are the three pairs and there is only one number to report.
     pub d_min: T,
     pub steps: usize,
+    /// Extra steps spent on secant landing corrections. **Zero is ambiguous** — either the knob is
+    /// off, or every landing hit tolerance first. Print the flag beside it.
+    pub land_iters: u64,
     pub finite: bool,
     pub budget_exhausted: bool,
     /// Running max of `|Gamma*|` against its largest term.
@@ -281,6 +292,7 @@ pub fn integrate_hg<T: Real>(
     let mut nbuf: VecDeque<[T; 3]> = VecDeque::with_capacity(kw + 1);
 
     let mut out = HgOut {
+        land_iters: 0,
         state: s0,
         t: T::zero(),
         drift: T::zero(),
@@ -360,8 +372,32 @@ pub fn integrate_hg<T: Real>(
             }
 
             let before = s.t;
+            let s_before = s;
             s = rk4::step(&sys, &s, h, opts.time, dtau);
             out.steps += 1;
+
+            // **THE LANDING CORRECTION.** The clamp above sizes the final step with `d`, the
+            // `dt/dtau` read *before* the step — a first-order predictor whose residual is
+            // `O(h^2)`. The clock is then set to the boundary and the state is not, which is what
+            // holds the measured order at 2.40 rather than at RK4's four. The condition is the
+            // loop's own exit test on the state just reached, so a mid-interval step is never
+            // touched.
+            if opts.clamp_final_step && opts.land_iterate && s.t >= dt_left - tol {
+                let want = dt_left - before;
+                let mut cur = dtau;
+                for _ in 0..opts.land_max_iters {
+                    let got = s.t - before;
+                    if !got.is_finite() || got <= T::zero() || (got - want).abs() <= tol {
+                        break;
+                    }
+                    // Secant on `t(dtau)`, with the free exact point `t(0) = 0`.
+                    cur = cur * want / got;
+                    s = rk4::step(&sys, &s_before, h, opts.time, cur);
+                    out.steps += 1;
+                    out.land_iters += 1;
+                }
+            }
+
             let took = s.t - before;
             if took > out.dt_max {
                 out.dt_max = took;

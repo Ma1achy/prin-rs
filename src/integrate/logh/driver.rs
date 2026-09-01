@@ -66,7 +66,7 @@ use crate::outcome::{self, Events};
 use crate::physics::{energy, newton, Cart};
 use crate::Real;
 
-use super::hamiltonian::{denominators, residual, LhTime};
+use super::hamiltonian::{self as hamiltonian, denominators, residual, LhTime};
 use super::state::LhState;
 use super::step::{self, Stepper};
 use super::system::LhSystem;
@@ -158,7 +158,7 @@ impl<T: Real> Default for LhOpts<T> {
             closure_k: 1,
             keep_boundary_shapes: false,
             keep_drift_hist: false,
-            land_iterate: false,
+            land_iterate: true,
             land_max_iters: 4,
             gbs_tol: T::lit(GBS_TOL),
             gbs_k_max: GBS_K_MAX,
@@ -282,6 +282,12 @@ pub fn integrate_lh<T: Real>(
     // autonomous Newtonian gravity.
     let b = sys.b_of(&s0);
     let mut s = LhState::from_cart(&s0);
+    // **`W` is registered ONCE, at `t = 0`, and carried across every sync boundary.** It is the
+    // TTL analogue of `B`, which is likewise frozen at registration -- re-seeding it to
+    // `Omega(r)` at each boundary would discard exactly the accumulated off-shell information the
+    // transformation runs on, and would make the march depend on `n_sync`. `s.t` is reset per
+    // interval because it is an interval-local clock; `W` is not one.
+    s.w = hamiltonian::omega(&sys, &s.r);
     let e0 = energy::energy(&s0.r, &s0.v, m, T::zero());
 
     let n = n_sync.max(1);

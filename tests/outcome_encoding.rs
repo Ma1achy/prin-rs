@@ -390,6 +390,8 @@ fn escape_every_moves_t_end_off_the_sync_boundary_and_is_inert_at_zero() {
     let t_max = 13.0f64;
     let dt_sync = t_max / n_sync as f64;
     let opts = |ev: usize| AzOpts::<f64> {
+        land_iterate: true,
+        land_max_iters: 4,
         step_limit: prin_rs::integrate::az::StepLimit::None,
         // Zero: the reference-body selection rule is not what either of these tests is about,
         // and hysteresis would change WHICH reference is chosen at a boundary while they are
@@ -490,6 +492,8 @@ fn escape_confirm_cuts_transients_and_keeps_genuine_escapes() {
 
     let (t_max, n_sync) = (13.0f64, 32usize);
     let opts = |confirm: bool| AzOpts::<f64> {
+        land_iterate: true,
+        land_max_iters: 4,
         step_limit: prin_rs::integrate::az::StepLimit::None,
         // Zero: the reference-body selection rule is not what either of these tests is about,
         // and hysteresis would change WHICH reference is chosen at a boundary while they are

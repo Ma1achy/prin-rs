@@ -37,7 +37,7 @@ fn masses() -> [f64; 3] {
 
 /// `dLambda/ds[k]` for the twelve non-time components, from the analytic equations of motion.
 ///
-/// `to_array13`'s layout is `r0 v0 r1 v1 r2 v2 t`, and `deriv_with` returns
+/// `to_array14`'s layout is `r0 v0 r1 v1 r2 v2 t`, and `deriv_with` returns
 /// `r[i] = dLambda/dp_i` and `v[i] = -(1/m_i) dLambda/dr_i`. Momenta are `p_i = m_i v_i`, so the
 /// mass factors go back in here rather than in the physics — the march never needs them.
 fn analytic_grad(sys: &LhSystem<f64>, s: &LhState<f64>, d: Dens<f64>) -> [f64; 12] {
@@ -85,7 +85,7 @@ where
     F: Fn(&LhState<f64>) -> f64,
 {
     let m = masses();
-    let base = s.to_array13();
+    let base = s.to_array14();
     let d = prin_rs::physics::newton::pair_dists(&s.r);
     let d_min = d.iter().fold(f64::INFINITY, |a, &x| a.min(x));
     let v_max = s.v.iter().fold(0.0f64, |a, x| a.max(x.norm()));
@@ -107,7 +107,7 @@ where
         let (mut hi, mut lo) = (base, base);
         hi[k] += hk;
         lo[k] -= hk;
-        out[k] = (g(&LhState::from_array13(hi)) - g(&LhState::from_array13(lo))) / (2.0 * hk);
+        out[k] = (g(&LhState::from_array14(hi)) - g(&LhState::from_array14(lo))) / (2.0 * hk);
     }
     out
 }
@@ -127,7 +127,7 @@ fn random_states(n: usize, seed: u64, on_shell: bool) -> Vec<(LhState<f64>, f64,
         i += 1;
         let sr = 10f64.powf(rng.range(-1.0, 1.0));
         let sv = 10f64.powf(rng.range(-1.0, 1.0));
-        let mut s = LhState { r: [Vec2::zero(); 3], v: [Vec2::zero(); 3], t: 0.0 };
+        let mut s = LhState { r: [Vec2::zero(); 3], v: [Vec2::zero(); 3], t: 0.0, w: 0.0 };
         for a in 0..3 {
             // Shrink one body toward the origin so the pairs it forms are the close ones.
             let shrink = if a == tight { 1e-2 } else { 1.0 };

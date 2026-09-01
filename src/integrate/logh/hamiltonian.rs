@@ -76,6 +76,27 @@ pub enum LhTime {
     LogH,
     /// No transformation: both denominators are `1`, `dt = ds`, and the generator is `K - U`.
     None,
+    /// **Time-transformed leapfrog** (Mikkola & Aarseth, CMDA **84** (2002) 343).
+    ///
+    /// `dt = ds/W` on the drift and `ds/Omega(r)` on the kick, with `W` carried in the state and
+    /// advanced by `dW = (dOmega/dt) dt`.
+    ///
+    /// # Why it exists, in one sentence
+    ///
+    /// logH's kick denominator is `U = sum m_i m_j / r_ij`, which is **mass-weighted**: a close
+    /// approach between a heavy body and a light one barely moves `U`, so the physical step fails
+    /// to shrink when it should. TTL replaces it with `Omega = sum w_ij / r_ij` for freely chosen
+    /// weights, and this port takes `w_ij = mbar^2` with `mbar` the mean mass.
+    ///
+    /// # That weight choice makes the equal-mass control EXACT, which is the point
+    ///
+    /// At `m_0 = m_1 = m_2 = m` we have `mbar^2 = m^2 = m_i m_j` for every pair, so
+    /// `Omega === U` identically and TTL degenerates to logH. The control is then an algebraic
+    /// identity rather than a near-identity, and a TTL arm that differs on an equal-mass slice
+    /// is measuring something other than the mass ratio. `w_ij = 1` would have been simpler and
+    /// would have left `Omega` on a different scale from `U`, so a comparison at fixed `eta`
+    /// would have scored the step size instead of the transformation.
+    Ttl,
 }
 
 /// The two time-transformation denominators, as a named pair.
@@ -104,6 +125,41 @@ impl<T: Real> Dens<T> {
     }
 }
 
+/// TTL's pair weight, `mbar^2` with `mbar` the mean mass. See [`LhTime::Ttl`] for why this and
+/// not `1`: it makes `Omega === U` at equal masses, so the control is an identity.
+#[inline]
+pub fn ttl_weight<T: Real>(sys: &LhSystem<T>) -> T {
+    let mbar = (sys.masses[0] + sys.masses[1] + sys.masses[2]) / T::lit(3.0);
+    mbar * mbar
+}
+
+/// `Omega = w sum_pairs 1/|r_i - r_j|`, the **mass-independent** time-transformation function.
+pub fn omega<T: Real>(sys: &LhSystem<T>, r: &[Vec2<T>; 3]) -> T {
+    let w = ttl_weight(sys);
+    let d = newton::pair_dists(r);
+    let mut acc = T::zero();
+    for x in d.iter() {
+        acc = acc + w / x.max(T::TINY);
+    }
+    acc
+}
+
+/// `dOmega/dt = -w sum_pairs (r_ij . v_ij) / |r_ij|^3`, exact rather than differenced.
+///
+/// This is what advances `W`, so an error here is an error in the time transformation itself and
+/// not merely in a diagnostic. `tests/logh_ttl.rs` finite-differences it against [`omega`].
+pub fn omega_dot<T: Real>(sys: &LhSystem<T>, r: &[Vec2<T>; 3], v: &[Vec2<T>; 3]) -> T {
+    let w = ttl_weight(sys);
+    let mut acc = T::zero();
+    for &(i, j) in crate::physics::PAIRS.iter() {
+        let dr = r[j] - r[i];
+        let dv = v[j] - v[i];
+        let d = dr.norm().max(T::TINY);
+        acc = acc - w * (dr.x * dv.x + dr.y * dv.y) / (d * d * d);
+    }
+    acc
+}
+
 /// The denominators for a state, before flooring.
 pub fn denominators<T: Real>(sys: &LhSystem<T>, s: &LhState<T>, b: T, time: LhTime) -> Dens<T> {
     match time {
@@ -112,6 +168,10 @@ pub fn denominators<T: Real>(sys: &LhSystem<T>, s: &LhState<T>, b: T, time: LhTi
             drift: energy::kinetic(&s.v, &sys.masses) + b,
             kick: energy::potential_pos(&s.r, &sys.masses, T::zero()),
         },
+        // The carried `W` drifts and the coordinate function `Omega` kicks. They are equal at
+        // registration and diverge off shell -- the same asymmetry that makes the logH leapfrog
+        // exact for two bodies, with `W` playing the part `K + B` plays there.
+        LhTime::Ttl => Dens { drift: s.w, kick: omega(sys, &s.r) },
     }
 }
 
@@ -125,6 +185,9 @@ pub fn lambda<T: Real>(sys: &LhSystem<T>, s: &LhState<T>, b: T, time: LhTime) ->
     match time {
         LhTime::None => k - u,
         LhTime::LogH => (k + b).ln() - u.ln(),
+        // Written for completeness of the FD harness. TTL's generator is not a function of the
+        // state alone -- it carries `W` -- so this is `ln W - ln Omega`, the direct analogue.
+        LhTime::Ttl => s.w.max(T::TINY).ln() - omega(sys, &s.r).max(T::TINY).ln(),
     }
 }
 
@@ -158,7 +221,8 @@ pub fn deriv_with<T: Real>(sys: &LhSystem<T>, s: &LhState<T>, d: Dens<T>) -> LhS
     let a = newton::accel(&s.r, &sys.masses, T::zero());
     let inv_drift = T::one() / d.drift.max(T::TINY);
     let inv_kick = T::one() / d.kick.max(T::TINY);
-    let mut out = LhState { r: [Vec2::zero(); 3], v: [Vec2::zero(); 3], t: inv_drift };
+    let mut out =
+        LhState { r: [Vec2::zero(); 3], v: [Vec2::zero(); 3], t: inv_drift, w: T::zero() };
     for i in 0..3 {
         out.r[i] = s.v[i] * inv_drift;
         out.v[i] = a[i] * inv_kick;
@@ -167,6 +231,18 @@ pub fn deriv_with<T: Real>(sys: &LhSystem<T>, s: &LhState<T>, d: Dens<T>) -> LhS
 }
 
 /// [`deriv_with`] at the denominators implied by `time`. One force evaluation.
+///
+/// **`dW/ds` is set here and not in [`deriv_with`]**, because it is the one component whose rate
+/// depends on the *mode* rather than on the denominators. `deriv_with` takes a bare [`Dens`] so
+/// the finite-difference test can hand it a swapped pair; giving it a mode as well would give the
+/// swap somewhere to hide. Under `LogH` and `None` the rate is exactly zero, so `W` is inert and
+/// carried rather than branched on.
 pub fn deriv<T: Real>(sys: &LhSystem<T>, s: &LhState<T>, b: T, time: LhTime) -> LhState<T> {
-    deriv_with(sys, s, denominators(sys, s, b, time))
+    let d = denominators(sys, s, b, time);
+    let mut out = deriv_with(sys, s, d);
+    if time == LhTime::Ttl {
+        // `dW = (dOmega/dt) dt` and `dt/ds = 1/Omega` on the kick, so `dW/ds = omega_dot/Omega`.
+        out.w = omega_dot(sys, &s.r, &s.v) / d.kick.max(T::TINY);
+    }
+    out
 }

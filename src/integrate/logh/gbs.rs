@@ -83,7 +83,7 @@ pub struct GbsOut<T> {
 /// through zero. The mixed form is the standard ODE-solver scaling and is what makes one
 /// tolerance mean the same thing across `far` and `deep interior`.
 #[inline]
-fn scaled_diff<T: Real>(a: &[T; 13], b: &[T; 13], atol: T) -> T {
+fn scaled_diff<T: Real>(a: &[T; 14], b: &[T; 14], atol: T) -> T {
     let mut w = T::zero();
     for i in 0..13 {
         let scale = a[i].abs().max(b[i].abs()).max(atol);
@@ -138,7 +138,7 @@ pub fn macro_step<T: Real>(
     let kmax = k_max.clamp(1, K_MAX);
     let atol = T::lit(1e-30);
     // `tab[j]` holds row `k`'s entries as they are built; `prev[j]` is row `k-1`.
-    let mut prev: Vec<[T; 13]> = Vec::with_capacity(kmax);
+    let mut prev: Vec<[T; 14]> = Vec::with_capacity(kmax);
     let mut evals = 0usize;
     let mut best = *s;
     let mut err = T::infinity();
@@ -146,15 +146,15 @@ pub fn macro_step<T: Real>(
     for k in 0..kmax {
         let (raw, e) = substeps(sys, s, b, time, h, SEQ[k]);
         evals += e;
-        let mut row: Vec<[T; 13]> = Vec::with_capacity(k + 1);
-        row.push(raw.to_array13());
+        let mut row: Vec<[T; 14]> = Vec::with_capacity(k + 1);
+        row.push(raw.to_array14());
 
         for j in 1..=k {
             // `(n_k / n_{k-j})^2 - 1`, the Aitken-Neville denominator for an `h^2` expansion.
             let r = T::lit(SEQ[k] as f64) / T::lit(SEQ[k - j] as f64);
             let den = r * r - T::one();
             let (cur, up) = (row[j - 1], prev[j - 1]);
-            let mut next = [T::zero(); 13];
+            let mut next = [T::zero(); 14];
             for i in 0..13 {
                 next[i] = cur[i] + (cur[i] - up[i]) / den;
             }
@@ -162,7 +162,7 @@ pub fn macro_step<T: Real>(
         }
 
         let top = row[k];
-        best = LhState::from_array13(top);
+        best = LhState::from_array14(top);
         if k > 0 {
             err = scaled_diff(&top, &row[k - 1], atol);
             if err <= tol && best.is_finite() {

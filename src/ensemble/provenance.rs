@@ -158,6 +158,7 @@ impl EnsembleCfg {
             n_extra, jitter_frac, jitter_scheme, seed, t_max, n_sync, escape_rule, closure_k,
             stop_on_escape, escape_every, escape_confirm, dtau_mode, clamp_final_step,
             step_limit, step_limit_f, ref_hysteresis, step_blend, blend_p, eta,
+            land_iterate, land_max_iters,
             max_steps, ref_policy, lc_stable, integrator, r_coll_frac, stop_on_event, refine_flagged,
             refine_threshold, refine_eta_factor, refine_max_passes, decode_path,
             keep_copy_outcomes, keep_copy_shapes, keep_boundary_shapes, keep_drift_hist,
@@ -193,6 +194,8 @@ impl EnsembleCfg {
         cmp!("step_blend", step_blend, p.step_blend);
         cmp!("blend_p", blend_p, p.blend_p);
         cmp!("eta", eta, p.eta);
+        cmp!("land_iterate", land_iterate, p.land_iterate);
+        cmp!("land_max_iters", land_max_iters, p.land_max_iters);
         cmp!("max_steps", max_steps, p.max_steps);
         cmp!("integrator", integrator, p.integrator);
         cmp!("ref_policy", ref_policy, p.ref_policy);

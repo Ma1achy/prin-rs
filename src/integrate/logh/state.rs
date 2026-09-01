@@ -29,29 +29,50 @@ pub struct LhState<T> {
     /// `1/(T + B)` under [`LhTime::LogH`](super::hamiltonian::LhTime::LogH) and exactly `1`
     /// under [`LhTime::None`](super::hamiltonian::LhTime::None).
     pub t: T,
+    /// **TTL's auxiliary variable.** Under [`LhTime::Ttl`](super::hamiltonian::LhTime::Ttl) this
+    /// is integrated alongside the state and used as the *drift* denominator in place of `K + B`.
+    ///
+    /// It exists because TTL's time transformation is driven by a function `Omega(r)` of the
+    /// coordinates alone, which has no conserved partner to read off the state the way logH reads
+    /// `K + B`. So `W` is carried, initialised to `Omega(r_0)`, and advanced by
+    /// `dW = dOmega/dt * dt` — it tracks `Omega` along the flow and diverges from it exactly to
+    /// the extent the integration has erred, which is the same off-shell asymmetry that makes the
+    /// logH leapfrog work.
+    ///
+    /// **Unused and held constant under `LogH` and `None`.** Not `Option`: a branch in the inner
+    /// loop to skip one addition would cost more than the addition, and a state whose component
+    /// count depends on a mode is a state two code paths can disagree about.
+    pub w: T,
 }
 
 impl<T: Real> LhState<T> {
     pub fn is_finite(&self) -> bool {
-        self.r.iter().chain(self.v.iter()).all(|q| q.is_finite()) && self.t.is_finite()
+        self.r.iter().chain(self.v.iter()).all(|q| q.is_finite())
+            && self.t.is_finite()
+            && self.w.is_finite()
     }
 
     /// Flat form, so the finite-difference test can perturb component `k` generically while the
-    /// physics stays written as vector algebra. Layout is `r0 v0 r1 v1 r2 v2 t`.
-    pub fn to_array13(&self) -> [T; 13] {
+    /// physics stays written as vector algebra. Layout is `r0 v0 r1 v1 r2 v2 t w`.
+    ///
+    /// **Fourteen, not thirteen.** It matched `HgState`'s count until TTL needed `W`; that
+    /// coincidence was never load-bearing and the name now says the length so a mismatch is a
+    /// compile error rather than a silent index shift.
+    pub fn to_array14(&self) -> [T; 14] {
         [
             self.r[0].x, self.r[0].y, self.v[0].x, self.v[0].y,
             self.r[1].x, self.r[1].y, self.v[1].x, self.v[1].y,
             self.r[2].x, self.r[2].y, self.v[2].x, self.v[2].y,
-            self.t,
+            self.t, self.w,
         ]
     }
 
-    pub fn from_array13(a: [T; 13]) -> Self {
+    pub fn from_array14(a: [T; 14]) -> Self {
         Self {
             r: [Vec2::new(a[0], a[1]), Vec2::new(a[4], a[5]), Vec2::new(a[8], a[9])],
             v: [Vec2::new(a[2], a[3]), Vec2::new(a[6], a[7]), Vec2::new(a[10], a[11])],
             t: a[12],
+            w: a[13],
         }
     }
 
@@ -63,11 +84,12 @@ impl<T: Real> LhState<T> {
             out.v[i] = self.v[i] + d.v[i] * h;
         }
         out.t = self.t + d.t * h;
+        out.w = self.w + d.w * h;
         out
     }
 
     pub fn from_cart(c: &crate::physics::Cart<T>) -> Self {
-        Self { r: c.r, v: c.v, t: T::zero() }
+        Self { r: c.r, v: c.v, t: T::zero(), w: T::zero() }
     }
 
     pub fn to_cart(&self) -> crate::physics::Cart<T> {

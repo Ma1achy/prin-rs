@@ -193,6 +193,22 @@ DTAU_MODE_DEFAULT = 'per-step-interval'
 # EVERY committed NumPy number in the corpus was taken with clamp_final=False.
 CLAMP_FINAL_DEFAULT = True
 
+# --- THE LANDING CORRECTION -------------------------------------------------------------------
+# `clamp_final` sizes the landing step from `dt/dtau = A*B` read BEFORE the step. That is a
+# first-order predictor, so the state arrives near the boundary and the clock is then set to it
+# exactly: the clock is corrected and the state is not, leaving an O(h^2) residual at every
+# boundary. Measured on the figure-eight, that residual is what holds AZ's convergence order at
+# 2.08 instead of RK4's four, and Heggie's at 2.40.
+#
+# The fix is a secant on t(dtau) using the free exact point t(0) = 0: rescale by want/got and
+# retake the step from the interval-local state. Each retake is a real step.
+#
+# This is the PARTNER of the Rust `AzOpts::land_iterate`, and it is here for the standing reason
+# that a change on one side only makes the cross-check disagree for the right reason and tell you
+# nothing. Every committed NumPy number before this was taken with land_iterate=False.
+LAND_ITERATE_DEFAULT = True
+LAND_MAX_ITERS = 4
+
 # The interval is complete once the state is within this FRACTION of dt_left of the boundary.
 # Zero without the clamp -- there the loop exits by overshooting and any positive tolerance would
 # change which step is last. With it, the landing is exact only to the stepper's own order and
@@ -223,6 +239,7 @@ def _dtau_for_step(mode, eta, dt_left, dtau_entry, s, clamp_final=CLAMP_FINAL_DE
 
 
 def integrate_az(r0, v0, t_max, n_sync=32, eta=0.02, max_steps=8000, M=None,
+                 land_iterate=LAND_ITERATE_DEFAULT,
                  dtau_mode=DTAU_MODE_DEFAULT, clamp_final=CLAMP_FINAL_DEFAULT):
     Mv = tb.M if M is None else M
     n = r0.shape[0]
@@ -266,11 +283,37 @@ def integrate_az(r0, v0, t_max, n_sync=32, eta=0.02, max_steps=8000, M=None,
                     break
                 h = (_dtau_for_step(dtau_mode, eta, dt_left, dtau, s, clamp_final)
                      * (~done)).astype(float)[:, None]
+                s_prev = s
+                t_before = s[:, 8].copy()
                 k1 = sysm.deriv(s, E)
                 k2 = sysm.deriv(s + 0.5*h*k1, E)
                 k3 = sysm.deriv(s + 0.5*h*k2, E)
                 k4 = sysm.deriv(s + h*k3, E)
                 s = s + (h/6.0)*(k1 + 2*k2 + 2*k3 + k4)
+
+                # Secant landing. Only lanes that just reached the boundary are touched -- a
+                # mid-interval step has nothing to land on and correcting it would only make it
+                # smaller. Lanes not selected are left bit-for-bit alone, which is what keeps this
+                # inert when land_iterate is off.
+                if land_iterate and clamp_final:
+                    want = dt_left - t_before
+                    hcur = h[:, 0].copy()
+                    for _ in range(LAND_MAX_ITERS):
+                        got = s[:, 8] - t_before
+                        need = (np.isfinite(s).all(axis=1) & (~done)
+                                & (s[:, 8] >= dt_left - tol)
+                                & np.isfinite(got) & (got > 0.0)
+                                & (np.abs(got - want) > tol))
+                        if not need.any():
+                            break
+                        hcur = np.where(need, hcur*want/np.where(got > 0.0, got, 1.0), hcur)
+                        hh = (hcur*need).astype(float)[:, None]
+                        j1 = sysm.deriv(s_prev, E)
+                        j2 = sysm.deriv(s_prev + 0.5*hh*j1, E)
+                        j3 = sysm.deriv(s_prev + 0.5*hh*j2, E)
+                        j4 = sysm.deriv(s_prev + hh*j3, E)
+                        s_try = s_prev + (hh/6.0)*(j1 + 2*j2 + 2*j3 + j4)
+                        s = np.where(need[:, None], s_try, s)
                 R1, R2, _, _ = sysm.phys_from_state(s)
                 d1 = np.sqrt(np.einsum('sk,sk->s', R1, R1))
                 d2 = np.sqrt(np.einsum('sk,sk->s', R2, R2))

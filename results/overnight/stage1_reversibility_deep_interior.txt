@@ -1,0 +1,36 @@
+STAGE 1: reversibility on deep_interior at 128^2, t_max = 13, n_sync = 33.
+  Termination OFF, r_coll = 0, nominal copy only, COM-centred residual.
+
+  FTLE field: 16384 of 16384 pixels completed at least one renormalisation. **Read this first** -- `ftle` is meaningless without it.
+  FTLE p10 2.2856  p50 3.2792  p90 4.9759
+
+         arm     rev p50     rev p90 rev/amp p50    disp p50  evals p50  nonfin    secs
+          az    7.175e-6    1.567e-4   2.124e-24     1.934e0    2.306e5       1    29.9
+      heggie    1.346e-5    6.538e-4   4.510e-24     1.933e0    1.140e5       5    16.3
+    logh_rk4    2.874e-4    1.000e-2   7.883e-23     1.933e0    1.137e5       5    14.2
+     logh_lf    4.159e-1     1.949e0   6.999e-20     1.932e0    4.813e4      10    12.0
+    logh_gbs    1.014e-4    4.889e-2   2.656e-23     1.934e0    5.815e5       9   122.2
+
+  SPEARMAN vs FTLE. `shifted` is the control: same marginals, no spatial relation.
+  A coefficient no larger than its own shifted control is a NULL, not a correlation.
+         arm        rev    rev/amp    shifted        n
+          az    -0.0282    -0.9744    -0.0129    16384
+      heggie    -0.0269    -0.9682     0.0035    16384
+    logh_rk4    -0.0215    -0.9675     0.0069    16384
+     logh_lf    -0.0410    -0.9830    -0.0161    16384
+    logh_gbs    -0.0099    -0.9221    -0.0036    16384
+       drift    -0.0204         --     0.0035    16369   <- energy drift, AZ
+
+HOW TO READ THIS
+
+**PREDICTION 1, recorded before the run: reversibility tracks FTLE more strongly than
+drift does.** Drift-vs-FTLE is a published null for AZ (-0.0820 against a shifted
+-0.1022).
+
+**PREDICTION 1b: `rev/amp` should track FTLE MUCH LESS than `rev` does.** That is the
+test of the normalisation itself. If the two columns correlate alike, the division did
+not remove the amplification and `rev/amp` is not integrator quality -- it is `rev` under
+another name, and must not be reported as the integrator arm.
+
+**Compare arms DOWN a column only.** RK4 is not time-symmetric and KDK is; across
+steppers this statistic scores symmetry rather than accuracy.

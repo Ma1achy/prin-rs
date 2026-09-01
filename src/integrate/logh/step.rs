@@ -28,9 +28,9 @@
 //! is therefore meaningless — RK4 does four force evaluations where KDK does one. Every entry
 //! point here returns its evaluation count, and the harnesses match on that.
 
-use crate::Real;
+use crate::{Real, Vec2};
 
-use super::hamiltonian::{denominators, deriv, deriv_with, Dens, LhTime};
+use super::hamiltonian::{denominators, deriv, deriv_with, omega_dot, Dens, LhTime};
 use super::state::LhState;
 use super::system::LhSystem;
 
@@ -61,6 +61,7 @@ pub fn rk4<T: Real>(
         r: [Default::default(); 3],
         v: [Default::default(); 3],
         t: k1.t + k2.t * two + k3.t * two + k4.t,
+        w: k1.w + k2.w * two + k3.w * two + k4.w,
     };
     for i in 0..3 {
         acc.r[i] = k1.r[i] + k2.r[i] * two + k3.r[i] * two + k4.r[i];
@@ -94,8 +95,21 @@ pub fn kick<T: Real>(sys: &LhSystem<T>, s: &mut LhState<T>, b: T, time: LhTime, 
     // in exactly one place. `deriv_with`'s `.v` is `a_i / kick`; a unit drift denominator makes
     // the `.r` and `.t` components it also computes irrelevant here, and they are discarded.
     let k = deriv_with(sys, s, Dens { drift: T::one(), kick: d });
+    let v_old = s.v;
     for i in 0..3 {
         s.v[i] = s.v[i] + k.v[i] * h;
+    }
+    if time == LhTime::Ttl {
+        // `dW = (dOmega/dt) dt`, and `dOmega/dt` needs a velocity. **The MIDPOINT velocity, not
+        // the entering one.** The kick changes `v` while `r` is held, so evaluating `omega_dot`
+        // at either end makes the half-step asymmetric under time reversal and costs the
+        // composition the symmetry that is the whole reason the leapfrog is used here — the same
+        // property that makes it exact for two bodies. The average of the two ends restores it.
+        let mut v_mid = [Vec2::zero(); 3];
+        for i in 0..3 {
+            v_mid[i] = (v_old[i] + s.v[i]) * T::lit(0.5);
+        }
+        s.w = s.w + omega_dot(sys, &s.r, &v_mid) * (h / d);
     }
     1
 }

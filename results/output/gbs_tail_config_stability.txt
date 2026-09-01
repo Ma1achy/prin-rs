@@ -1,0 +1,29 @@
+config_stability at 128^2, DIAGNOSTIC PASS ONLY (termination off, r_coll = 0), refine_flagged = false, max_steps = 400000.
+
+  Every column below is over the SAME 16384 pixels. `logh_arms`' `budget` column is not:
+  it is counted over both passes and therefore over twice this denominator.
+
+  == logh_gbs ==
+    n 16384   err>10 28 (0.001709)   budget 4   overshoot>0 0   unconverged>0 13617
+    unconverged macro-steps 5445519 of 8618209459 total steps (6.319e-4 of steps)
+          budget_exhausted  fires      4  lift  146.286  covers 0.0357 of the hot set
+           n_overshoot > 0  fires      0  lift      NaN  EMPTY -- fires nowhere, cannot score
+       gbs_unconverged > 0  fires  13617  lift    1.203  covers 1.0000 of the hot set
+    hot with NO counter set: 0 of 28 -- the method's own share
+
+  == logh_gbs_nolim ==
+    n 16384   err>10 9 (0.000549)   budget 0   overshoot>0 1   unconverged>0 13719
+    unconverged macro-steps 1079361 of 8225983845 total steps (1.312e-4 of steps)
+          budget_exhausted  fires      0  lift      NaN  EMPTY -- fires nowhere, cannot score
+           n_overshoot > 0  fires      1  lift    0.000  covers 0.0000 of the hot set
+       gbs_unconverged > 0  fires  13719  lift    1.194  covers 1.0000 of the hot set
+    hot with NO counter set: 0 of 9 -- the method's own share
+
+HOW TO READ THIS
+
+**A lift needs its base rate above it.** A predictor firing on every pixel scores 1.000 
+by arithmetic and one firing on none scores NaN; both are labelled rather than quoted.
+
+**`hot with NO counter set` is the number the comparison turns on.** Budget exhaustion 
+truncates a trajectory and an overshoot corrupts one; neither is GBS being inaccurate. 
+What is left over is.

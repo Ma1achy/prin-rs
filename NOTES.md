@@ -2637,3 +2637,65 @@ returns `b_6` rather than letting a caller supply it.
 
 `next_dt` clamps its growth factor to `[0.2, 4.0]`: an unbounded step control is how this project
 recorded a single step advancing the clock by `2.209e128`.
+
+## SCORING AGAINST TRUTH: HEGGIE IS CLOSEST, AND THE REFERENCE HAS A MEASURED HORIZON
+
+`examples/ias15_reference.rs`. The first measurement in this project of **distance from the true
+trajectory** rather than energy drift (a self-consistency check) or a difference between two arms
+(which cannot say which is right).
+
+`near-field` at 24^2, nominal copy, termination off, `t_max = 1`:
+
+```
+  ref self-gap p50 6.671e-16   incomplete 0/576   LIVE
+         az  err p50  1.736e-14   evals p50 1.68e3
+     heggie  err p50  1.017e-14   evals p50 1.67e3     <- closest to truth
+   logh_rk4  err p50  3.461e-14   evals p50 1.68e3
+      chain  err p50  5.208e-15   evals p50 4.20e4     <- 25x the cost, NOT comparable
+```
+
+**Heggie is 1.71x closer to truth than AZ and 3.4x closer than logH's RK4 arm, at matched force
+evaluations** (all three within 1%). The reference agrees with itself to `6.7e-16`, three orders
+below the errors it measures.
+
+**And the tolerance pair was varied, which is what makes it robust.** `(1e-9, 1e-11)` and
+`(1e-11, 1e-12)` give arm scores agreeing to **under 0.3%** — az `1.735e-14` against `1.736e-14`,
+heggie `1.014e-14` against `1.017e-14`. A reference that moved when tightened would have been
+scoring itself.
+
+### THE REFERENCE'S HORIZON IS `t ~ 1.85`, AND THAT IS THE CASE FOR REGULARISATION AS A NUMBER
+
+At `t_max = 2` the reference stalls, identically at both tolerances:
+
+```
+  eps 1e-11:  reached t = 1.8759, 4,000,000 steps, final dt = 1.742e-13
+  eps 1e-12:  reached t = 1.8596, 4,000,000 steps, final dt = 1.343e-13
+```
+
+There is a close approach at `t ~ 1.87`, and an **unregularised** integrator cannot step through
+it however high its order: `dt` collapses onto the floor and the remaining `0.13` would need
+`~1e12` steps. AZ, Heggie and logH cross the same encounter in ~1.7e3 force evaluations, because
+the time transformation shrinks the *physical* step while the fictitious step stays `O(1)`.
+
+Neither a tighter tolerance nor a bigger budget extends this — both tolerances stall in the same
+place. **A regularised reference (IAS15 on the logH-transformed equations) is what would.**
+
+### FOUR TRUNCATIONS REPORTED AS VALUES, IN ONE HARNESS
+
+Every one produced a plausible number in the correct units:
+
+- **chain with a stray `eta`** — integrated ~1% of the span, reported `1.509e-1` as an *error*.
+- **chain matched on a step COUNT** — under LogH the physical time per fictitious step varies, so
+  a fixed count lands wherever it lands: `1.363e-2`. Fixed by marching to the state's own clock
+  with an explicit guard that the span landed.
+- **the reference hitting its step budget** — at `eps <= 1e-13` the step control drives `dt` onto
+  its floor and covers **0.4% of the span**; the harness `return`ed silently and the self-gap read
+  `1.510e-1`, which looks exactly like a tolerance catastrophe. `reference` now returns *whether it
+  finished*, and there is a separate verdict for it.
+- **and my reading of that one.** I dismissed the budget explanation by quoting
+  `ref evals p50 2.57e3` — "nowhere near 4,000,000" — but that is `ev_a`, the *first* reference's
+  cost, and the arm that failed was the second, whose cost was never captured. **I diagnosed one
+  arm by reading the other's.** Both are carried now.
+
+The usable tolerance range is measured rather than chosen: `1e-11` and `1e-12` complete in 36 and
+96 steps; `1e-13` and `1e-14` burn the whole budget reaching `t = 0.0044` and `t = 0.0023`.

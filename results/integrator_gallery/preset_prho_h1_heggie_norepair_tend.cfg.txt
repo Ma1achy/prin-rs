@@ -1,0 +1,10 @@
+image=results/integrator_gallery/preset_prho_h1_heggie_norepair_tend.png
+config=production + 4 override(s): n_sync=33 (production 32), max_steps=400000 (production 30000), integrator=Heggie (production Az), refine_flagged=false (production true)
+res=256x256
+case=preset_prho_h1
+integrator=heggie
+field=tend
+shape window=(3.61373350935498e-5,3.046405736548431e-1) taken from the AZ arm and SHARED
+drift ramp=(1e-12,1e2) FIXED across every case and integrator
+pass: uniform/outcome from the SCIENCE run (termination on);
+drift/gain from the DIAGNOSTIC run (r_coll=0, stop_on_event=false)

@@ -9,12 +9,28 @@ compared, which is on this project's record from the bleaching strip.
 Nearest-neighbour paste, no resampling: if a sheet looks soft, a viewer is upscaling it.
 
     python3 tools/contact_sheet.py far deep_interior near-field
+    python3 tools/contact_sheet.py --root results_regen far deep_interior near-field
+
+**The output root is an ARGUMENT, not a constant.** It was hardcoded to `results/`, which is the
+third site of that defect on this project -- `criterion_metric` wrote to a hardcoded `results/`
+so a reduced-`levels` validation pass would overwrite committed artefacts, and `pan_sequence`
+took a `viewport` argument while `frame_res` stayed a literal. Here it meant that running this
+against a regenerated tree would write the sheets straight into the committed one, silently
+pairing new panels with an old montage.
 """
 import sys, os
 from PIL import Image, ImageDraw, ImageFont
 
-D = "results/logh_arms"
-OUT = "results/logh_arms/sheets"
+argv = sys.argv[1:]
+ROOT = "results"
+if argv and argv[0] == "--root":
+    ROOT = argv[1]
+    argv = argv[2:]
+
+D = f"{ROOT}/logh_arms"
+OUT = f"{ROOT}/logh_arms/sheets"
+if not os.path.isdir(D):
+    sys.exit(f"no such panel directory: {D}  (pass --root <dir> before the case names)")
 os.makedirs(OUT, exist_ok=True)
 
 ARMS = ["az", "heggie", "logh_rk4", "logh_lf", "logh_rk4_nolim", "plain_rk4"]
@@ -50,7 +66,7 @@ def sheet(case, field, arms, title, note=""):
     sh.save(out)
     return out
 
-for case in sys.argv[1:]:
+for case in argv:
     print(sheet(case, "drift",
         ARMS,
         f"{case} — energy drift, inferno ramp FIXED at 1e-12..1e2 across every case and arm",

@@ -2047,7 +2047,8 @@ never, drift *rising* with penetration depth where Heggie's `drift_reg` is flat 
 because a KS map removes the `1/r` from the Hamiltonian and a time transformation only slows the
 clock.
 
-And **every region tested is collision-dominated**: `results/output/integrator_gallery.txt` gives
+And **every region tested is collision-dominated**: `results/output/integrator_gallery_1024.txt`
+gives
 `coll` of 1048576/1048576 on `far`, 1033184 on `deep_interior`, 850590 on `preset_shape`. So
 logH is being graded almost entirely on the one thing it is known not to do, and its deficit
 there says nothing about re-registration either way. **This is the same class of error the

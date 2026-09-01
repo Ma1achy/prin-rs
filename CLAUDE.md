@@ -2019,6 +2019,18 @@ properties -- non-finite `shape_vec` from a genuine triple collision, the instru
 rather than a fault. **Every integration failure clears completely**: 423, 438, 703, 2222, 33, and
 eight smaller, all to zero.
 
+**Regenerated 2026-09-01 under the no-discard fix and the secant landing. The headline holds and
+one clause does not.** Heggie still wins 31 of 32, the one Heggie-worse case is still
+`burrau_nu_k`, and `err>10` moves 3916 -> **3915** and 73 -> **74**; `drift p50` ratios run
+0.987-1.004 over all 64 rows, so the landing does not move the median drift. *"Every integration
+failure clears completely"* is now **12 of 13**: `deep_interior` reads AZ 434 / Heggie **1**. The
+cause is separable and was separated -- `error_ratio` (`pixel.rs:766`) is computed from the energy
+arrays and never consults `budget_exhausted`, so the no-discard fix cannot touch it and the mover
+is the landing. One pixel of 65536, in the region already on record as never resolvable at these
+settings. And **the no-discard fix fires on exactly the rows that carry `budget_exhausted` and
+nowhere else** -- eight rows gain `nonfin`, 56 are unmoved, and `deep_interior heggie` reads
+0 -> 199 against a budget count of 199, the row the code comment cites.
+
 The standout is `preset_shape_h1`: AZ `drift p50 = 2.479e-6` with **2222 not-data pixels**, Heggie
 `7.835e-11` with **zero**, gain **+4.42 decades**. That is the chart already on record as the one
 case where the refinement criterion fails outright -- 16 leaves against a complete 4096, widest

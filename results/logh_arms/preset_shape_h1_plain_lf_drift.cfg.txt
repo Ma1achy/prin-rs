@@ -7,7 +7,7 @@ integrator=plain_lf
 field=drift
 eta=2.5e-3 (scale 0.25 on production, to match FORCE EVALUATIONS)
 predictive step limit=false
-shape window=(1.0884223482536304e-5,4.0717657808920404e-1) taken from the `az` arm and SHARED
+shape window=(1.0884223482536304e-5,4.071745240943557e-1) taken from the `az` arm and SHARED
 drift ramp=(1e-12,1e2) FIXED across every case and arm
 gain ramp=+/-4 decades, FIXED and symmetric
 pass: uniform/outcome from the SCIENCE run (termination on);

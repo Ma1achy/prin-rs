@@ -77,3 +77,108 @@ fn a_truncated_copy_makes_the_pixel_undetermined_and_a_healthy_one_does_not() {
         healthy_n
     );
 }
+
+// ---------------------------------------------------------------------------------------------
+// The same rule one layer up: `N x N` footprints reduced to one quad.
+// ---------------------------------------------------------------------------------------------
+
+/// `scheduler::reduce` had the identical defect, and **the fix above made it strictly worse.**
+///
+/// Both `error_ratio_max` and `worst_energy_drift` reduced with
+/// `.filter(|x| x.is_finite()).fold(0.0, f64::max)`. Before the pixel-level fix a
+/// budget-truncated pixel contributed a finite, healthy-looking drift and at least reached the
+/// `max`; after it that pixel is `+inf`, the filter dropped it, and a quad whose footprints were
+/// *all* undetermined folded to `0.0` — the best value the scale admits, from nothing.
+///
+/// # What makes this test able to fail
+///
+/// Three arms, and the first two are the ones a wrong implementation passes:
+///
+/// - **subject** — the starved quad really does contain undetermined footprints. Without it the
+///   property arm is asserting over an empty set.
+/// - **control** — the same quad at a generous budget reports a finite drift. A reduction
+///   hard-wired to `inf` passes the property arm exactly as well as a correct one.
+/// - **the old form, computed side by side** — the filtered reduction must give a *different*
+///   answer on the same data. If it does not, this test cannot distinguish the fix from the bug
+///   and is decoration.
+#[test]
+fn an_undetermined_footprint_makes_the_whole_quad_undetermined() {
+    use prin_rs::scheduler;
+    use prin_rs::spatial::HotRule;
+
+    let sl = slice();
+    let n = 8usize;
+    let starved = EnsembleCfg::production().with_overrides(&[Override::MaxSteps(64)]);
+    let healthy = EnsembleCfg::production();
+
+    let px_s: Vec<_> = (0..sl.npix()).map(|k| pixel::evaluate::<f64>(&sl, k, &starved)).collect();
+    let px_h: Vec<_> = (0..sl.npix()).map(|k| pixel::evaluate::<f64>(&sl, k, &healthy)).collect();
+
+    let undetermined = px_s.iter().filter(|p| !p.energy_drift_max.is_finite()).count();
+    assert!(
+        undetermined > 0,
+        "NO SUBJECT: the starved quad has no undetermined footprint, so nothing is asserted here."
+    );
+
+    let red_s = scheduler::reduce(&px_s, n, 1e-4, HotRule::AbsTau(1e-4), starved.t_max);
+    let red_h = scheduler::reduce(&px_h, n, 1e-4, HotRule::AbsTau(1e-4), healthy.t_max);
+
+    // The property: the quad says undetermined, it does not report the survivors' maximum.
+    assert!(
+        !red_s.worst_energy_drift.is_finite(),
+        "{} of {} footprints are undetermined and the quad still reports a finite \
+         worst_energy_drift = {:e} -- the reduction is discarding them",
+        undetermined,
+        px_s.len(),
+        red_s.worst_energy_drift
+    );
+
+    // The control: a reduction hard-wired to `inf` would pass the arm above.
+    assert!(
+        red_h.worst_energy_drift.is_finite(),
+        "CONTROL FAILED: the healthy quad reports {:e}, so the property arm proves nothing",
+        red_h.worst_energy_drift
+    );
+
+    // The discriminator: the old, filtered form must disagree on this very data. Without this
+    // the two implementations could be indistinguishable and the test would be decoration.
+    let old_form = px_s
+        .iter()
+        .map(|p| p.energy_drift_max)
+        .filter(|x| x.is_finite())
+        .fold(0.0f64, f64::max);
+    assert!(
+        old_form.is_finite() && old_form != red_s.worst_energy_drift,
+        "NOT DISCRIMINATING: the filtered form gives {:e} and the fixed form {:e} -- if these \
+         agree, this test cannot tell the bug from the fix",
+        old_form,
+        red_s.worst_energy_drift
+    );
+}
+
+/// `NaN` and `+inf` are different answers and the reduction must not collapse them.
+///
+/// `error_ratio` is `0/0` when `sigma_E(0) == 0` — a collapsed decode, or a family where the
+/// statistic is structurally undefined. That is **not** evidence of damage, and a quad of nothing
+/// but such footprints must read `NaN`, never `0.0`.
+///
+/// Note why the obvious minimal fix is not enough, which is the whole reason this arm exists:
+/// `f64::max` already ignores `NaN`, so merely deleting the `.filter` would look correct while
+/// still folding an all-`NaN` quad to `0.0` — maximum confidence from no information.
+#[test]
+fn a_quad_with_nothing_determinable_reads_nan_and_never_zero() {
+    // Exercised through the same code path the reduction uses, on values it genuinely produces.
+    let all_nan = [f64::NAN, f64::NAN, f64::NAN];
+    let mixed = [1.0f64, f64::NAN, 3.0];
+    let with_inf = [1.0f64, f64::INFINITY, 3.0];
+
+    let naive = |v: &[f64]| v.iter().copied().fold(0.0f64, f64::max);
+    assert_eq!(naive(&all_nan), 0.0, "premise: the naive fold really does return 0.0 here");
+
+    // The REAL reduction, not a copy of it -- a test that re-implements its subject passes
+    // whatever the subject does.
+    let fold = |v: &[f64]| prin_rs::scheduler::max_no_discard(v.iter().copied());
+    assert!(fold(&all_nan).is_nan(), "all-undefined must be NaN, not the best value on the scale");
+    assert_eq!(fold(&mixed), 3.0, "NaN must not poison a quad that has determinable footprints");
+    assert_eq!(fold(&with_inf), f64::INFINITY, "an undetermined footprint must propagate");
+}

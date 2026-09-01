@@ -321,6 +321,51 @@ fn compute_quad<T: crate::Real>(
     (red, px)
 }
 
+/// Max over footprints, with a non-finite footprint treated as a **measurement outcome**.
+///
+/// §4.3's no-discard rule at the aggregation layer. The earlier form was
+/// `.filter(|x| x.is_finite()).fold(0.0, f64::max)`, which discarded exactly the footprints the
+/// two statistics using it exist to flag — and the `pixel.rs` no-discard fix made that strictly
+/// **worse**, not better. Before it, a budget-truncated pixel contributed a finite,
+/// healthy-looking drift and at least reached the `max`; after it that pixel is `+inf`, the
+/// filter dropped it entirely, and a quad whose footprints were *all* undetermined folded to
+/// `0.0` — reading as perfectly clean. *A statistic can report maximum confidence precisely when
+/// it is least informed*, at a second site and caused by the repair of the first.
+///
+/// **`NaN` and `+inf` are not the same and are not collapsed**, following `band_of`'s
+/// convention — `NaN` to the bottom, `+inf` to the top:
+///
+/// - `+inf` — a copy went non-finite, so [`crate::ensemble::stats::max_dev`] returned an
+///   infinite deviation *by design*, or `pixel.rs` marked the pixel unusable. The quad is
+///   undetermined and propagates that.
+/// - `NaN` — `error_ratio` is `0/0` because `sigma_E(0) == 0`: a collapsed decode, or a
+///   configuration family where the statistic is structurally undefined (released from rest,
+///   every `L_z` is zero — the reason there is no `L_z` version of `error_ratio` at all). Not
+///   evidence of damage. It neither sets the result nor is silently counted as clean.
+/// - nothing finite and no `+inf` — `NaN`, **never `0.0`**. A quad nothing is known about must
+///   not report the best value the scale admits.
+///
+/// Note the asymmetry is real and not tidiness: `f64::max` already ignores `NaN`, so dropping
+/// the filter alone would have looked correct while still folding an all-`NaN` quad to `0.0`.
+pub fn max_no_discard(it: impl Iterator<Item = f64>) -> f64 {
+    let mut worst = f64::NEG_INFINITY;
+    let mut any = false;
+    for x in it {
+        if x.is_nan() {
+            continue;
+        }
+        any = true;
+        if x > worst {
+            worst = x;
+        }
+    }
+    if any {
+        worst
+    } else {
+        f64::NAN
+    }
+}
+
 /// Reduce `N x N` footprints to one quad number per field.
 ///
 /// `tau` is needed here and not only at decision time because the §3.1/§3.2 signals are
@@ -354,16 +399,8 @@ pub fn reduce(px: &[PixelOut], n: usize, tau: f64, hot_rule: HotRule, t_max: f64
         spread_p90: quantile(&mut sp, 0.9),
         spread_shape_median: quantile(&mut sh, 0.5),
         spread_event_median: quantile(&mut ev, 0.5),
-        error_ratio_max: px
-            .iter()
-            .map(|p| p.error_ratio)
-            .filter(|x| x.is_finite())
-            .fold(0.0f64, f64::max),
-        worst_energy_drift: px
-            .iter()
-            .map(|p| p.energy_drift_max)
-            .filter(|x| x.is_finite())
-            .fold(0.0f64, f64::max),
+        error_ratio_max: max_no_discard(px.iter().map(|p| p.error_ratio)),
+        worst_energy_drift: max_no_discard(px.iter().map(|p| p.energy_drift_max)),
         n_nonfinite: px.iter().map(|p| p.n_nonfinite as u32).sum(),
         n_footprints: px.len() as u32,
 

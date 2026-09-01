@@ -825,10 +825,64 @@ presets, with `keep_drift_hist` on so the drift series and `AzOut::refs` share o
 increment: within a trajectory, the drift increment at a boundary where the reference **changed**
 exceeds the increment where it **held** on 82.7%-99.0% of pixels in every slice tested.
 
+## `integrator_gallery/`, `integrator_gallery_1024/` — AZ against Heggie
+
+From `examples/integrator_gallery.rs`. Two arms per case, two passes each: the **science** pass
+with termination on (the outcome class *is* the physics) and the **diagnostic** pass with it off
+(a trajectory parked at a close approach makes the Cartesian energy a cancellation of two enormous
+terms, which corrupted five conclusions in a row once). `refine_flagged` is **off** — the repair
+pass is batch-only, has no live-playhead analogue, and removes the very population the comparison
+is about.
+
+- **`integrator_gallery/`** — the canonical set. **32 cases at 256²**, complete. Table:
+  `output/integrator_gallery.txt`. This is what every gallery claim in `CLAUDE.md` is measured on.
+- **`integrator_gallery_1024/`** — **7 cases at 1024²**, incomplete and stale; see its own README.
+  Table: `output/integrator_gallery_1024.txt`, which `NOTES.md` reads its collision fractions from.
+
+```sh
+cargo run --release --example integrator_gallery -- 256 results all 400000 0
+```
+
+Argument two is the **output root**. Point it somewhere else for a validation pass.
+
+## `logh_arms/`, `logh_arms_gbs_sweep/` — six occupants on one trajectory
+
+From `examples/logh_arms.rs`. Eight arms at 256²: `az`, `heggie`, `logh_rk4`, `logh_lf`, their
+`_nolim` twins, and `plain_rk4` / `plain_lf`. The plain pair is the **stepper-only control** — the
+same code path with the time transformation switched off, so it is literally the regularisation
+removed and nothing else.
+
+That control earned its keep twice. It separates stepper from regularisation, as designed; and
+when the secant landing was verified against the committed baseline it came back **bitwise
+identical on 12 of 12 rows while every one of the 36 time-transformed rows moved** — the landing
+acts on a boundary residual that exists only where `dt` is a function of the state, and the split
+falls exactly there with no exception on either side.
+
+`sheets/` holds contact sheets from `tools/contact_sheet.py --root <dir> <case>...`. A sheet is a
+**layout, not a rendering decision**: the drift ramp is fixed at `1e-12..1e2`, the gain ramp a
+fixed symmetric ±4 decades, and the shape window is taken once from the `az` arm and shared, so an
+auto-ranged montage would undo all three.
+
+```sh
+cargo run --release --example logh_arms -- 256 results all 400000 all
+python3 tools/contact_sheet.py --root results far deep_interior near-field
+```
+
 ## A note on raster sizes
 
-Everything generated in this build is **1024²** (figures are 1400×800; budget side-by-sides are
-2048×1024). Anything smaller in `results/` predates it.
+The **scheduler** build is 1024² throughout (figures are 1400×800; budget side-by-sides are
+2048×1024), and anything smaller among those artefacts predates it.
+
+**That is not a rule for the whole tree, and reading it as one is how a resolution mismatch
+nearly destroyed a committed set.** The integrator work is deliberately **256²** —
+`integrator_gallery/`, `logh_arms/`, `logh_arms_gbs_sweep/` — because its statistics are
+per-trajectory (drift, `err>10`, force evaluations) and those are resolution-independent, so 16x
+the samples buys nothing a number can use. `integrator_gallery_1024/` is the high-resolution
+subset kept for the eye, and it is seven cases against the 256² set's thirty-two.
+
+So: **read a directory's own README for its resolution.** Chord statistics are the exception that
+makes this matter — no chord ratio may be quoted from a coarse grid, and both signs of that error
+are on this project's record.
 
 If an image looks blurry, **measure its pixel dimensions first**. Wireframe lines are written with
 integer pixel `set` calls and adaptive texels are nearest-neighbour, so neither can be soft in the

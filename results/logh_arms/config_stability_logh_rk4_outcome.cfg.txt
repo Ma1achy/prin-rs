@@ -7,7 +7,7 @@ integrator=logh_rk4
 field=outcome
 eta=1e-2 (scale 1 on production, to match FORCE EVALUATIONS)
 predictive step limit=true
-shape window=(6.275959216273652e-5,4.91546835967575e-1) taken from the `az` arm and SHARED
+shape window=(6.266929399551593e-5,4.915458297725487e-1) taken from the `az` arm and SHARED
 drift ramp=(1e-12,1e2) FIXED across every case and arm
 gain ramp=+/-4 decades, FIXED and symmetric
 pass: uniform/outcome from the SCIENCE run (termination on);

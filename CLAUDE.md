@@ -2247,3 +2247,34 @@ post-fix arms agreeing to three digits was called impossible; the per-pixel meas
 differ on every pixel at 1e-6. **The harness had no *"the flag is not inert"* guard**, which
 `tests/integrator_seam.rs` carries for exactly this -- had the override genuinely not applied
 there would have been no way to tell.
+
+**THE LIVE-PLAYHEAD CRITERION, AS A TEST RATHER THAN A THING TO REMEMBER.** The target design
+marches trajectories forward and renders as it goes. At playhead time `t` the only things known
+are the initial conditions and the trajectory **up to `t`**. So for any proposed remedy, ask:
+
+> **Could this decision be made by a trajectory that has only reached `t`, without re-running it
+> from `t = 0` and without knowing anything after `t`?**
+
+If no, it is a batch workaround whatever its measured effect. Classified:
+
+**Live-compatible.** `StepLimit::Predictive` -- one divide from values `phys_from_state` already
+returns at the current step. `DtauMode::PerStepInterval` -- recomputes `A*B` per step from the
+current state. `clamp_final_step` and `land_iterate` -- local to the interval being closed.
+In-loop event detection with a **bounded** confirmation lag such as `escape_confirm` -- it commits
+one sync interval late, which is forward-only and not retroactive. Any per-trajectory constant
+drawn at `t = 0` from the pixel index, as the Halton ensemble offsets already are. Choosing a
+different integrator.
+
+**NOT live-compatible, whatever the number says.** `refine_flagged` -- re-integrates a whole
+trajectory from `t = 0` at finer `eta` after seeing its `error_ratio`; under a playhead a pixel
+bad at `t = 30` cannot be repaired at `t = 30.1` without redoing thirty time units. Any rule keyed
+on `t_end`, which is not known until it happens. Any two-pass render. A global `eta` chosen after
+seeing the result -- though a *fixed* smaller `eta` is fine, it is only cost.
+
+**Live-compatible and still not a fix -- the category that is easy to miss.** A per-pixel dither
+of the step phase would break a spatial beat by decohering it, and it passes the criterion
+cleanly. But it converts a **coherent** artefact into **incoherent noise of the same amplitude**,
+and this project's own rule is that *amplitude cannot tell a small real signal from noise;
+coherence can*. Dithering removes the evidence rather than the error, and would make the artefact
+undiagnosable while leaving every trajectory as wrong as before. **A remedy that only changes the
+spatial correlation of an error is cosmetic; say so before measuring how good it looks.**

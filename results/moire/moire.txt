@@ -1,0 +1,9 @@
+MOIRE / BANDING on a ribbon window of config_stability, 256^2, t_max = 50.
+half = 0.11477 (0.18 of the full view), centre (-0.29906, 0.25997).
+
+  `cadence` scales eta WITH n_sync so the step size is held -- `steps p50` is the
+  check. `step` holds n_sync and shrinks eta. Bands moving under the first means
+  the sync cadence draws them; under the second, the stepper; under neither,
+  physics.
+
+         arm  n_sync       eta  steps p50   lambda    promin t_end dst    on bnd   nonfin

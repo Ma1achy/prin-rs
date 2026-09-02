@@ -121,6 +121,11 @@ fn main() {
     let _ = std::fs::create_dir_all(adir);
 
     let ens = EnsembleCfg { refine_flagged: false, ..Default::default() };
+    // **The column, not the instance.** Nine harnesses feeding the refinement work printed no
+    // provenance at all -- the `refine_flagged` failure exactly: *the failure was never the
+    // choice, it is that nothing recorded the choice.*
+    println!("  config: {}", ens.provenance());
+
 
     // A base latent point. Deliberately not the origin: at z = 0 every sigmoid sits at 0.5 and
     // several coordinates would be at a symmetry point, which is exactly where a sign error

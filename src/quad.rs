@@ -236,6 +236,8 @@ impl QuadReduction {
                 }
             }
             Criterion::GradRms => self.grad_rms_within,
+            Criterion::PerimeterWithin => self.layout_within.perimeter_ratio,
+            Criterion::PerimeterBetween => self.layout_between.perimeter_ratio,
         }
     }
 
@@ -470,6 +472,33 @@ pub enum Criterion {
     /// whole hot-mask family: if a masked signal cannot beat it, the mask is not earning its
     /// parameter.
     GradRms,
+    /// **`perimeter_ratio` of the within-arm hot mask, alone.** `signal_audit` has scored it as
+    /// `lay_w_perimeter` since the audit was written and it was **never in the `Rank` list**, so
+    /// it has never been through an `error(B)` curve — the only measurement that decides a
+    /// criterion here.
+    ///
+    /// It is not a component of [`Criterion::Layout`], which is `frac_hot x connectedness` and
+    /// carries no perimeter term at all. `QuadReduction::structure` multiplies thinness in as one
+    /// of three factors, and *structure neither replaces nor multiplies* — measured, multiplying
+    /// took `frac_hot_between` on `preset_shape` from 0.07038 to 0.13133. This is the third
+    /// possibility that neither of those tested: the perimeter term **on its own, as the ranking**.
+    ///
+    /// Thin is high: a one-cell filament reads exactly `2.0` under the internal-edges convention,
+    /// a compact blob `~4/sqrt(A)`, and a fully-hot quad exactly `0`.
+    ///
+    /// **`NaN` on an empty mask**, following `perimeter_ratio`'s own convention rather than
+    /// coercing to zero — and `far`'s absolute mask is empty on every leaf, so this criterion is
+    /// `NaN` across that whole region. `band_of` sends `NaN` to the bottom, which is the right
+    /// standing for "not measured"; it is stated here because a criterion that is undefined over
+    /// an entire region is a property to read, not a defect to hide. *`term_grad` is `NaN` on
+    /// 97.1% of near-field and still reaches the oracle's zero by `B = 383`.*
+    PerimeterWithin,
+    /// The between-arm twin, as the control on which arm the perimeter term wants.
+    ///
+    /// Required rather than decorative: `frac_hot_between` beats `frac_hot_within` decisively and
+    /// is the best criterion measured on this project, so the arm is known to matter for a
+    /// mask-derived signal. Testing the within arm alone would leave that unasked.
+    PerimeterBetween,
 }
 
 impl Criterion {
@@ -486,6 +515,8 @@ impl Criterion {
             Criterion::TerminationGradient => "term_grad",
             Criterion::LayoutRel => "layout_rel",
             Criterion::GradRms => "grad_rms",
+            Criterion::PerimeterWithin => "perim_within",
+            Criterion::PerimeterBetween => "perim_between",
         }
     }
     pub fn parse(s: &str) -> Option<Criterion> {
@@ -501,11 +532,13 @@ impl Criterion {
             "term_grad" => Criterion::TerminationGradient,
             "layout_rel" => Criterion::LayoutRel,
             "grad_rms" => Criterion::GradRms,
+            "perim_within" => Criterion::PerimeterWithin,
+            "perim_between" => Criterion::PerimeterBetween,
             _ => return None,
         })
     }
     /// Every variant, for sweeps that must not silently omit one.
-    pub const ALL: [Criterion; 11] = [
+    pub const ALL: [Criterion; 13] = [
         Criterion::Within,
         Criterion::Between,
         Criterion::MaxOfBoth,
@@ -517,6 +550,8 @@ impl Criterion {
         Criterion::TerminationGradient,
         Criterion::LayoutRel,
         Criterion::GradRms,
+        Criterion::PerimeterWithin,
+        Criterion::PerimeterBetween,
     ];
 }
 

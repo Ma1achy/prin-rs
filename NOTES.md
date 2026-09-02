@@ -403,6 +403,43 @@ differently". An aggregate that cannot move, a test that cannot fire, a statisti
 disagree, a sweep whose rows are not comparable, a lead time whose baseline was a different
 criterion. In each case the arithmetic was correct and the measurement was still empty.
 
+### The measurement was correct and the column chosen could not see it
+
+A recurring form, distinct from *"a test that cannot fail"* — there the measurement is empty; here
+it is **right, and read through a field that is structurally blind to it**. Three instances:
+
+- **`f64::max` ignores `NaN`.** `ensemble_spread = sp_shape.max(sp_event)`, so a footprint whose
+  shape spread is undetermined reports its **event** spread as an ordinary number. Predicting that
+  the pre-fix kernel carries undetermined footprints and reading the `nonfin` column gave **0/4096
+  on both arms in every region** — an apparent refutation. It carries **11** in `deep interior`,
+  every one of them invisible there. The prediction was right; `nonfin` cannot see a `NaN` that
+  `max` already swallowed.
+- **The `d_min` discriminator poisoned by its own subject.** *"Are the re-labelled footprints
+  firing mid-encounter?"* was tested by comparing `d_min` by terminal state, and the re-labelled
+  ones carried *larger* separations — read as "no". But a run stopped early by a spurious escape
+  never reaches its close approach, so its `d_min` is larger **because** it terminated early. The
+  statistic was confounded by the effect it was measuring and gave the opposite of the truth.
+- **Energy drift is blind to the landing overshoot.** The clamp buys 24,000x on the figure-eight
+  while moving `near-field`'s median drift **37x the wrong way**, because the overshoot displaces
+  the state in *time* and the AZ energy is nearly stationary along the flow.
+
+The rule: *render the diagnostic field, not the science field* is necessary and not sufficient.
+**Ask what the diagnostic would say about the defect you are hunting before reading it as clean.**
+A field can be the right one for a class of defect and the wrong one for this defect.
+
+### A guard that works for the wrong reason is one refactor from not working
+
+Found in the same hour as the entry above, and it is its mirror. `scheduler::footprint_undetermined`
+caught all 11 of those `NaN`-shape footprints — through its `n_nonfinite` arm, because on that
+corpus every one of them **also** carried an unusable copy. Coincidence, not coverage: a triple
+collision reaches the identical state with every copy flagged usable, since `shape_vec` is `NaN` at
+`I = 0` while the state stays finite.
+
+The guard was correct, its test passed, and the reason it passed was not the reason it was written.
+Nothing would have announced the day the coincidence stopped holding. **When a guard fires, check
+*which arm* fired and whether that is the arm you meant** — and assert the intended arm on an input
+constructed to exercise it alone, with a control that fails without it.
+
 ### Where the "~4 time units earlier" figure came from
 
 Recorded because it could not be reproduced here and the reason matters more than the number.

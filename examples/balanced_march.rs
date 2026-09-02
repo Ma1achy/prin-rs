@@ -56,6 +56,7 @@ fn key(cx: f64, cy: f64, half: f64) -> (i64, i64, i64) {
 }
 
 fn main() {
+    let mut first_cell = true;
     let budget: usize = arg(1, 800);
     let n: usize = arg(2, 4);
     let tau: f64 = arg(3, 1e-4);
@@ -101,6 +102,12 @@ fn main() {
                     n_sync,
                     ..Default::default()
                 };
+                // **The column, not the instance.** Printed once, on the first cell, because
+                // this harness builds a config per row and a line per row would be noise.
+                if first_cell {
+                    first_cell = false;
+                    println!("  config: {}", ens.provenance());
+                }
                 let cam = Camera::framing(root.cx, root.cy, 0.05, viewport);
                 let cfg = SchedCfg {
                     n,

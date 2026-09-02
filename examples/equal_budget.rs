@@ -95,6 +95,11 @@ fn main() {
     let seeds: u64 = arg(3, 5);
     let res = (1usize << levels) * n;
     let ens = EnsembleCfg { refine_flagged: false, ..Default::default() };
+    // **The column, not the instance.** Nine harnesses feeding the refinement work printed no
+    // provenance at all -- the `refine_flagged` failure exactly: *the failure was never the
+    // choice, it is that nothing recorded the choice.*
+    println!("  config: {}", ens.provenance());
+
 
     println!("equal-budget comparison. levels={levels}, N={n}, res={res}^2, E+1={}, t={}, f64.",
              ens.n_extra + 1, ens.t_max);

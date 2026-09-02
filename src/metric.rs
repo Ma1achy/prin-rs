@@ -653,6 +653,19 @@ pub struct Point {
     pub budget: usize,
     pub leaves: usize,
     pub error: f64,
+    /// **Substeps computed so far, root included** — the machine-independent cost.
+    ///
+    /// A quad budget is only a cost when quads cost the same, and they do not: `total_substeps`
+    /// varies by orders across a region, because a footprint at a close encounter takes far more
+    /// steps than one in the smooth surroundings. So a curve plotted against `budget` scores
+    /// every strategy as though a chaotic quad were as cheap as a smooth one.
+    ///
+    /// That is not a refinement of the quad axis, it is a different question, and it matters most
+    /// for exactly the ranking built to exploit it: [`Rank::GreedyLookahead1PerCost`] optimises
+    /// `Δerror / substeps` and has only ever been plotted against `budget` — **scored in units it
+    /// does not optimise**. Both axes are carried; neither replaces the other. *Read `steps`, not
+    /// `secs`* is the same rule one level up, and it failed once already for want of a column.
+    pub cost: u64,
 }
 
 /// Replay a ranking over the cache, recording `error(B)` after every split.
@@ -701,7 +714,10 @@ fn replay_ordered(cache: &Cache, order: Order, budget: usize) -> (Vec<Point>, Ve
         _ => None,
     };
     let mut spent = 1usize;
-    let mut out = vec![Point { budget: spent, leaves: 1, error: cache.error_of(&leaves) }];
+    // The root is computed before anything is ranked, so its own substeps are the cost floor.
+    let mut cost: u64 = cache.get((0, 0, 0)).red.total_substeps;
+    let mut out =
+        vec![Point { budget: spent, leaves: 1, error: cache.error_of(&leaves), cost }];
 
     loop {
         // Only leaves that can still be refined.
@@ -748,9 +764,15 @@ fn replay_ordered(cache: &Cache, order: Order, budget: usize) -> (Vec<Point>, Ve
         };
 
         let k = leaves.swap_remove(pick);
-        leaves.extend_from_slice(&Cache::children(k));
+        let kids = Cache::children(k);
+        // The four children are what this split actually computes, so their substeps are what it
+        // costs. Read from the cache rather than estimated from the parent: that is the whole
+        // point -- a parent's cost does not predict its children's when one of them holds an
+        // encounter and three do not.
+        cost += kids.iter().map(|c| cache.get(*c).red.total_substeps).sum::<u64>();
+        leaves.extend_from_slice(&kids);
         spent += 4;
-        out.push(Point { budget: spent, leaves: leaves.len(), error: cache.error_of(&leaves) });
+        out.push(Point { budget: spent, leaves: leaves.len(), error: cache.error_of(&leaves), cost });
     }
     (out, leaves)
 }
@@ -793,6 +815,42 @@ pub fn curve_at(points: &[Point], budgets: &[usize]) -> Vec<f64> {
                 .last()
                 .map(|p| p.error)
                 .unwrap_or(f64::NAN)
+        })
+        .collect()
+}
+
+/// The same curve read against a **substep** ladder rather than a quad ladder.
+///
+/// Separate from [`curve_at`] rather than a parameter on it, because the two answer different
+/// questions and a caller that plots one has to say which. See [`Point::cost`].
+///
+/// `NaN` before the first point, never the root's error: a budget below the cost of computing the
+/// root has bought nothing, and reporting the root's value there would claim an image was rendered
+/// for less than it costs.
+pub fn curve_at_cost(points: &[Point], costs: &[u64]) -> Vec<f64> {
+    costs
+        .iter()
+        .map(|&c| {
+            points.iter().take_while(|p| p.cost <= c).last().map(|p| p.error).unwrap_or(f64::NAN)
+        })
+        .collect()
+}
+
+/// A geometric substep ladder spanning what a replay actually spent, so the rungs are comparable
+/// across rankings that reach very different totals.
+///
+/// Taken from the **union** of the runs being compared, never from one of them: a ladder fitted to
+/// the cheapest run would stop before the others start, and one fitted to the dearest would put
+/// every rung past where the cheapest finished. Both are the *span quoted between two named rungs*
+/// defect, at a third site.
+pub fn cost_ladder(runs: &[Vec<Point>], rungs: usize) -> Vec<u64> {
+    let lo = runs.iter().filter_map(|r| r.first()).map(|p| p.cost).min().unwrap_or(1).max(1);
+    let hi = runs.iter().filter_map(|r| r.last()).map(|p| p.cost).max().unwrap_or(lo).max(lo + 1);
+    let (l, h) = ((lo as f64).ln(), (hi as f64).ln());
+    (0..rungs)
+        .map(|i| {
+            let t = i as f64 / (rungs - 1).max(1) as f64;
+            (l + t * (h - l)).exp().round() as u64
         })
         .collect()
 }

@@ -436,6 +436,9 @@ fn main() {
     let t_max: f64 = arg(4, 13.0);
     let root: String = std::env::args().nth(5).unwrap_or_else(|| "results".into());
     let only: String = std::env::args().nth(6).unwrap_or_else(|| "all".into());
+    // **Argument 7: the escape pair, `production` (default) or `legacy`.** A named control, so
+    // the pre-rebuild numbers stay reachable and stop being what runs when nobody chose.
+    let legacy_escape = std::env::args().nth(7).map(|s| s == "legacy").unwrap_or(false);
     let res = (1usize << levels) * n;
 
     let base = EnsembleCfg::default();
@@ -444,12 +447,19 @@ fn main() {
         refine_flagged: false,
         t_max,
         n_sync,
-        // The numpy reference's ungated escape test, with escape terminal: every result in
-        // this diagnostic predates both the distance gate and the closure criterion, and is
-        // quoted against that form.
-        escape_rule: prin_rs::outcome::EscapeRule::Reference,
+        // **The escape pair is an argument now, and production is the default.** It used to be
+        // pinned to the numpy reference's ungated test with escape terminal, justified as *"every
+        // result in this diagnostic predates both the distance gate and the closure criterion"* --
+        // a justification that expired when those results were superseded. One half of it also
+        // contradicts a standing decision: `stop_on_escape` is **off** in production, because
+        // closure certifies what escaped and is silent on whether the displayed shape has settled.
+        escape_rule: if legacy_escape {
+            prin_rs::outcome::EscapeRule::Reference
+        } else {
+            EnsembleCfg::production().escape_rule
+        },
         closure_k: 1,
-        stop_on_escape: true,
+        stop_on_escape: legacy_escape,
         keep_boundary_shapes: true,
         keep_drift_hist: false,
         // **The named gap.** `diffusion` and `ftle` are NaN without this, which is why they have
@@ -459,6 +469,9 @@ fn main() {
         ftle: Some(FtleOpts::default()),
         ..Default::default()
     };
+    // **The column, not the instance.** Nine harnesses feeding the refinement work printed no
+    // provenance at all -- the `refine_flagged` failure exactly.
+    println!("  config: {}", ens.provenance());
 
     let full = ((1usize << (2 * (levels + 1))) - 1) / 3;
     let max_splits = (full - 1) / 4;

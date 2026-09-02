@@ -422,6 +422,49 @@ fn a_quad_that_integrated_nothing_stops_as_undetermined_and_a_healthy_one_does_n
     );
 }
 
+/// `ensemble_spread` swallows a `NaN` shape spread, and the guard must not depend on luck.
+///
+/// `ensemble_spread = sp_shape.max(sp_event)` and Rust's `f64::max` **ignores `NaN`**, so a
+/// footprint whose shape spread is undetermined reports its *event* spread as an ordinary number.
+/// Measured on `deep interior` under the pre-fix kernel: 11 footprints carry a `NaN`
+/// `spread_shape` and **all 11** report a finite `ensemble_spread`.
+///
+/// On that corpus every one of them also carried an unusable copy, so
+/// `footprint_undetermined`'s `n_nonfinite` arm caught them anyway. **Coincidence is not
+/// coverage** — a triple collision reaches this with every copy still flagged usable, because
+/// `shape_vec` is `NaN` at `I = 0` while the state stays finite. So the arm is asserted directly,
+/// on a footprint constructed to have exactly that shape.
+#[test]
+fn a_nan_shape_spread_is_undetermined_even_though_ensemble_spread_swallows_it() {
+    use prin_rs::ensemble::pixel::PixelOut;
+    use prin_rs::scheduler::footprint_undetermined;
+
+    // The premise, asserted rather than assumed: this is a property of `f64::max`, not of a
+    // particular value, and if it ever stops holding the guard's second arm loses its subject.
+    assert_eq!(f64::NAN.max(4.0), 4.0, "f64::max no longer ignores NaN; re-read this whole test");
+
+    // A triple collision: shape spread undetermined, event spread ordinary, every copy usable.
+    let mut p = PixelOut { n_nonfinite: 0, ..Default::default() };
+    p.spread_shape = f64::NAN;
+    p.spread_event = 4.0 / 7.0;
+    p.ensemble_spread = p.spread_shape.max(p.spread_event);
+
+    assert!(
+        p.ensemble_spread.is_finite(),
+        "NO SUBJECT: ensemble_spread is already non-finite, so the first arm covers this and the          test asserts nothing"
+    );
+    assert!(
+        footprint_undetermined(&p),
+        "a NaN shape spread reads as determined; the guard depends on n_nonfinite happening to fire"
+    );
+
+    // The control: the same footprint with a real shape spread is NOT undetermined. Without it a
+    // predicate hard-wired to `true` would pass the arm above exactly as well.
+    p.spread_shape = 1e-4;
+    p.ensemble_spread = p.spread_shape.max(p.spread_event);
+    assert!(!footprint_undetermined(&p), "the guard fires on a perfectly ordinary footprint");
+}
+
 /// `Collapsed` and `Undetermined` are independent, and `decide` reports the cause when both hold.
 ///
 /// A decode collapse is the *cause* -- identical ICs -- and divergence is downstream of it, so

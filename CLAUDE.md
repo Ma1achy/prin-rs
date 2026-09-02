@@ -2448,3 +2448,58 @@ reasons. **Every field-conditional number does not**: all `error(B)` curves, the
 `frac_hot_between/median` verdict, the `tau`/`alpha_hi`/`k_frac`/`N`/`E` sweeps, the per-level
 `captured` ladder, the regional spread medians, the treadmill, the mask saturation fractions. Kept
 as the *before*; full statement at the head of `results/README.md`.
+
+**THE CRITERION'S INPUT FIELD WAS RE-ORDERED, NOT RESCALED, AND `Floor` COLLAPSES 17 -> 0.**
+`examples/corpus_scope.rs`, five Burrau regions at 64^2 and budget 2000, corpus kernel against
+production, everything else held. `rho` is the headline because the criterion is a **ranking** and
+*a ranking is invariant to a monotone rescaling; a threshold is not* -- a rescale leaves it at 1.0.
+
+```
+region             moved    spr pre    spr now  rat p50       rho   antip | lv pre lv now differ
+near-field        1.0000   1.525e-3   2.677e-4    0.179    0.6359  0.0000 |    46     64  12/33
+mid-field         1.0000   9.399e-8   7.008e-8    0.746    0.8351  0.0000 |    16     16   0/21
+far               1.0000   1.892e-8   1.512e-8    0.798    0.5887  0.0000 |    16     16   0/21
+body2 core        1.0000   1.894e-3   5.998e-4    0.374    0.6456  0.0000 |    43     64  12/41
+deep interior     0.9998   5.808e-5   8.478e-6    0.146    0.7281  0.0034 |    22     16   5/21
+```
+
+`rho` runs **0.59-0.84 everywhere**, so the ordering moved and every criterion *comparison* is
+affected rather than only its numbers. **`Decision::Floor` collapses 17 -> 0, 16 -> 1, 9 -> 1** --
+a *branch* changing behaviour, not a value changing magnitude, and the strongest single reason the
+re-measurement is a re-derivation. The mechanism: `Floor` fires at `alpha < alpha_lo`, i.e. when
+refining did not reduce the spread, and a spread inflated by **integration failure** is exactly
+what looks irreducible, because the failure is a property of the trajectory and halving the cell
+does not halve it. Churn on shared quads is 36% / 29% / 24%. **`far` and `mid-field` decide
+nothing** -- 16 leaves, `keep:16`, both arms, the standing `tau`-below-the-bulk degeneracy -- so
+their `differ = 0` is degeneracy and not stability, and of five regions only three say anything.
+
+**`far` IS FLAT IN THE BULK UNDER BOTH KERNELS, AND THE NEW ONE ADDS A TWO-DECADE TAIL.** Its
+ratio band is **0.795-0.802** -- a rescale to within 0.9% -- beside `rho = 0.5887`, the lowest in
+the table, which is a contradiction until the ladder is printed: p01-p90 spans **2.8% (pre) and
+1.4% (now)**, so within the bulk there is **no ordering to preserve** and `rho` measures noise
+reshuffling. *Two different faults give the same flat curve: a bad ordering and no ordering*, and
+this is the second. Above p90 the new kernel carries a tail the old one does not -- p99
+`1.917e-8 -> 1.926e-6`, max `1.921e-8 -> 4.403e-6`. `far` is the **control** region, on record as
+*what a featureless field looks like* with thirteen criteria giving the identical leaf set; that
+was measured on a field with **no tail at all**, and a tail is what a criterion ranks on.
+
+**A `pre` ARM BUILT FROM THE FOUR FAMOUS FIXES IS NOT THE OLD KERNEL, AND ONLY ITS OWN CONTROL
+SAYS SO.** Diffing `EnsembleCfg` at `0114be4` against `production()`, **seventeen fields did not
+exist** in the corpus era; naming `dtau_mode`, `clamp_final_step`, `step_limit` and `integrator`
+leaves thirteen at today's values inside an arm labelled *pre*. The one that bites is
+**`escape_rule`**: the closure criterion landed at `71de13f` on 27 August, *after* the corpus, and
+`spread_event` reads the event class. A third arm measures it -- **inert on four regions, 361
+outcome labels on `deep interior`**, one of the three regions the corpus covers.
+
+**AND `f64::max` IGNORES `NaN`, SO `ensemble_spread` SWALLOWS AN UNDETERMINED SHAPE SPREAD.**
+Predicted the `pre` arm would carry non-finite pixels; `nonfin` read **0/4096 on both arms in every
+region**, apparently refuting it. It does carry them -- `deep interior` has **11 footprints with a
+`NaN` `spread_shape` against 0 under `now`** -- and they are invisible in that column because
+`ensemble_spread = sp_shape.max(sp_event)` returns the *event* spread when the shape spread is
+`NaN`. **The physics was predicted correctly and the statistic chosen could not see it**: *ask what
+a diagnostic would say about the defect you are hunting before reading it as clean.* It also closed
+a gap in the same PR's own guard -- `footprint_undetermined` caught all 11, but through its
+`n_nonfinite` arm **by coincidence**, since every one also had an unusable copy; a triple collision
+reaches the same state with every copy usable. The predicate now tests `spread_shape` directly. The
+`f64::max` swallowing is a `pixel.rs` defect and is **not repaired**, because propagating the `NaN`
+changes `ensemble_spread` itself and moves every tree and every render.

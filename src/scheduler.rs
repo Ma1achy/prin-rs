@@ -374,22 +374,34 @@ pub fn max_no_discard(it: impl Iterator<Item = f64>) -> f64 {
 ///    vector — a triple collision, or a diverged trajectory. Real, and at the shipped step
 ///    control it is rare: measured across `deep interior`, `near-field` and `far`, a quad with
 ///    every footprint budget-exhausted has **zero** footprints failing this test.
-/// 2. **A copy was flagged unusable and the spread was computed anyway.** `PixelOut::n_nonfinite`
+/// 2. **`ensemble_spread` swallowed a `NaN`.** It is `sp_shape.max(sp_event)`, and Rust's
+///    `f64::max` **ignores `NaN`** — so a footprint whose shape spread is undetermined reports its
+///    *event* spread as an ordinary number. Measured on `deep interior` under the pre-fix kernel:
+///    **11 footprints carry a `NaN` `spread_shape` and all 11 report a finite `ensemble_spread`.**
+///    A triple collision reaches this with every copy still flagged usable, since `shape_vec` is
+///    `NaN` at `I = 0` while the state stays finite.
+/// 3. **A copy was flagged unusable and the spread was computed anyway.** `PixelOut::n_nonfinite`
 ///    counts copies the driver marked `!finite` — budget exhaustion included — and by the
 ///    standing *never discard an ensemble copy* rule the shape spread is taken over all `E+1`
 ///    regardless. When the copy stopped early its shape vector is a perfectly finite number that
 ///    is simply not the number the statistic claims, so the quad reports an ordinary spread over
 ///    a sample it does not have.
 ///
-/// The second is what makes `Decision::Undetermined` reachable at all; a predicate written on the
-/// first alone is dead code wearing a guard's name.
+/// The third is what makes `Decision::Undetermined` reachable at all; a predicate written on the
+/// first alone is dead code wearing a guard's name. **The second is tested explicitly rather than
+/// left to the third to cover**: on this corpus all 11 of those footprints also carried an
+/// unusable copy, so the guard caught them by coincidence — and coincidence is not coverage.
+///
+/// The `f64::max` swallowing is a defect in `pixel.rs` and is **not repaired there**: propagating
+/// the `NaN` would change `ensemble_spread` itself, which moves every tree and every render, and
+/// it wants its own attribution rather than riding along with this one.
 ///
 /// **Deliberately strict: one unusable copy of `E+1` marks the footprint.** The alternative is a
 /// fraction with a threshold in it, and a fixed threshold picked without measurement is what this
 /// project keeps having to withdraw. It costs nothing where the integration succeeds — all three
 /// regions above read `n_nonfinite = 0` at production settings, so no production tree moves.
 pub fn footprint_undetermined(p: &PixelOut) -> bool {
-    !p.ensemble_spread.is_finite() || p.n_nonfinite > 0
+    !p.ensemble_spread.is_finite() || !p.spread_shape.is_finite() || p.n_nonfinite > 0
 }
 
 /// Reduce `N x N` footprints to one quad number per field.

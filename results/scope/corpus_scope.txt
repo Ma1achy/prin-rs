@@ -1,0 +1,62 @@
+    Finished `release` profile [optimized] target(s) in 0.11s
+     Running `target/release/examples/corpus_scope 64 2000`
+HOW FAR DID THE CRITERION'S INPUT FIELD MOVE? 64^2 field, budget 2000 quads.
+
+  pre = Az + FixedPerInterval + no landing clamp + StepLimit::None + no secant landing
+  now = EnsembleCfg::production()          (both arms: refine_flagged = false)
+
+  t_max 13 eta 0.01 n_sync 32 r_coll 0.001  E+1 = 8
+
+STAGE 1 -- the per-footprint field. `rho` is the headline: the criterion is a
+ranking, so a monotone rescale costs it nothing and a re-ordering costs it everything.
+
+region          distinct   moved    spr pre    spr now  rat p10  rat p50  rat p90       rho chd p50   antip chdNaN
+near-field     4096/4096  1.0000   1.525e-3   2.677e-4    0.099    0.179    0.354    0.6359   0.037  0.0000      0
+mid-field      4096/4096  1.0000   9.399e-8   7.008e-8    0.736    0.746    0.756    0.8351   0.000  0.0000      0
+far            4096/4096  1.0000   1.892e-8   1.512e-8    0.795    0.798    0.802    0.5887   0.000  0.0000      0
+body2 core     4096/4096  1.0000   1.894e-3   5.998e-4    0.156    0.374    0.681    0.6456   0.038  0.0000      0
+deep interior  4096/4096  0.9998   5.808e-5   8.478e-6    0.000    0.146    0.409    0.7281   0.000  0.0034      1
+
+  non-finite `ensemble_spread`, and the rank pairs the `rho` above is over:
+    near-field     pre     0/4096   now     0/4096   rho over   4096 pairs   live
+    mid-field      pre     0/4096   now     0/4096   rho over   4096 pairs   live
+    far            pre     0/4096   now     0/4096   rho over   4096 pairs   live
+    body2 core     pre     0/4096   now     0/4096   rho over   4096 pairs   live
+    deep interior  pre     0/4096   now     0/4096   rho over   4096 pairs   live
+
+  THE AUDIT'S OWN CONTROL. `pre` against a `pre` built from the four famous fixes
+  alone, with `escape_rule`/`escape_confirm` left at today's post-corpus values:
+    near-field     differs on     0/4096    spr   1.525e-3   the audit was INERT here -- four flags would have been enough
+    mid-field      differs on     0/4096    spr   9.399e-8   the audit was INERT here -- four flags would have been enough
+    far            differs on     0/4096    spr   1.892e-8   the audit was INERT here -- four flags would have been enough
+    body2 core     differs on     0/4096    spr   1.894e-3   the audit was INERT here -- four flags would have been enough
+    deep interior  differs on   361/4096    spr   5.768e-5   the audit MATTERED: 361 outcome labels differ
+
+  SIGNAL RESOLUTION -- count the distinct values before reading any `rho`. A field with
+  no ordering cannot have one preserved, and would show a low `rho` for that reason:
+    region          dist pre    modal p99/p1 pre  dist now    modal p99/p1 now
+    near-field      3984/4096    0.014    5.412e3  4084/4096    0.001    2.465e1
+    mid-field       4096/4096    0.000    1.072e0  4096/4096    0.000    1.059e0
+    far             4096/4096    0.000    1.026e0  4096/4096    0.000    1.284e2
+    body2 core      3832/4096    0.024    1.156e4  4039/4096    0.007    7.699e3
+    deep interior   3477/4096    0.030    5.110e4  4057/4096    0.003    4.466e4
+
+STAGE 2 -- the real descent under both kernels, at the corpus's own SchedCfg
+(n=8, bootstrap=2, tau=1e-4, hot=q[0.50], agg=median, criterion=within, camera
+viewport 1024 max_rel_depth 6). `k_frac` is held at the CURRENT default on both arms:
+this measures the kernel, and letting a second knob move would unattribute it.
+
+region          lv pre  lv now  shared   differ                    stops pre                    stops now
+near-field          46      64      33       12 floor:17 keep:21 max_rel_depth:8     keep:48 max_rel_depth:16
+mid-field           16      16      21        0                      keep:16                      keep:16
+far                 16      16      21        0                      keep:16                      keep:16
+body2 core          43      64      41       12 floor:16 keep:23 max_rel_depth:4 floor:1 keep:47 max_rel_depth:16
+deep interior       22      16      21        5              floor:9 keep:13              floor:1 keep:15
+
+HOW TO READ IT
+  `rho` near 1.0 with a wide ratio spread = a monotone rescale. The ORDERING survived,
+  so every criterion comparison in the corpus is largely intact and the numbers are not.
+  `rho` far from 1.0 = the field was re-ordered and the criterion work is a full
+  re-derivation. `antip` near 1.0 means the chord column is SATURATED and says nothing:
+  read `rho` and STAGE 2 there. `differ`/`shared` is the bottom line -- it is measured
+  over shared quads only, because a quad in one tree and not the other never decided.

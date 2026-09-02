@@ -155,19 +155,39 @@ fn main() {
     // control, read zero dense and the whole table was void.
     let dense_half = ((4 * res) / 1024).max(1);
 
-    let prefix: Vec<Override> = vec![
-        Override::Integrator(Integrator::Az),
-        Override::DtauMode(DtauMode::FixedPerInterval),
-        Override::ClampFinalStep(false),
-        Override::StepLimit(StepLimit::None),
-    ];
-    let arms: Vec<(&str, Vec<Override>)> = vec![
-        ("az_prefix", prefix),
-        ("az", vec![Override::Integrator(Integrator::Az)]),
-        ("heggie", vec![Override::Integrator(Integrator::Heggie)]),
-        ("logh_rk4", vec![Override::Integrator(Integrator::LogHRk4)]),
-        ("plain_rk4", vec![Override::Integrator(Integrator::PlainRk4)]),
-    ];
+    // `integrators` (default) compares occupants; `ablation` turns the three step-control fixes
+    // off ONE AT A TIME. The first census turned all three off together, so it established *the
+    // step-control work* removed the wedges and could not say which of the three did -- stated
+    // as a limitation at the time rather than discovered later. This is that question.
+    let mode: String = std::env::args().nth(3).unwrap_or_else(|| "integrators".into());
+    let off_dtau = Override::DtauMode(DtauMode::FixedPerInterval);
+    let off_clamp = Override::ClampFinalStep(false);
+    let off_limit = Override::StepLimit(StepLimit::None);
+    let az = Override::Integrator(Integrator::Az);
+    let (arms, order): (Vec<(&str, Vec<Override>)>, Vec<&str>) = if mode == "ablation" {
+        (
+            vec![
+                // `all` runs first so it sets the shared colour window, as `az` does above.
+                ("all", vec![az.clone()]),
+                ("none", vec![az.clone(), off_dtau.clone(), off_clamp.clone(), off_limit.clone()]),
+                ("dtau_only", vec![az.clone(), off_clamp.clone(), off_limit.clone()]),
+                ("clamp_only", vec![az.clone(), off_dtau.clone(), off_limit.clone()]),
+                ("limit_only", vec![az.clone(), off_dtau.clone(), off_clamp.clone()]),
+            ],
+            vec!["all", "none", "dtau_only", "clamp_only", "limit_only"],
+        )
+    } else {
+        (
+            vec![
+                ("az", vec![az.clone()]),
+                ("az_prefix", vec![az.clone(), off_dtau, off_clamp, off_limit]),
+                ("heggie", vec![Override::Integrator(Integrator::Heggie)]),
+                ("logh_rk4", vec![Override::Integrator(Integrator::LogHRk4)]),
+                ("plain_rk4", vec![Override::Integrator(Integrator::PlainRk4)]),
+            ],
+            vec!["az", "az_prefix", "heggie", "logh_rk4", "plain_rk4"],
+        )
+    };
 
     println!("WEDGE CENSUS on config_stability at {res}^2, t_max = 50, science pass.");
     println!("Mask is `circled_ics.rs`'s own: OKLab l > 0.86 && chroma < 0.045, then >=25% pale");
@@ -185,11 +205,9 @@ fn main() {
     );
 
     let mut window: Option<(f64, f64)> = None;
-    // The AZ production arm sets the window; it runs first among the ones that may.
-    let order = ["az", "az_prefix", "heggie", "logh_rk4", "plain_rk4"];
     let mut rows: Vec<(String, String)> = Vec::new();
 
-    for want in order {
+    for want in order.iter().copied() {
         let (label, ov) = arms.iter().find(|(l, _)| *l == want).unwrap();
         let mut o = ov.clone();
         o.push(Override::TMax(50.0));
@@ -243,6 +261,8 @@ fn main() {
         let p99 = if ss.is_empty() { f64::NAN } else { ss[(ss.len() - 1) * 99 / 100] };
 
         let f = |v: usize| v as f64 / (res * res) as f64;
+        eprintln!("  [{label}] dense {:.4} lgst {} bnd {:.4} | field dense {:.4} lgst {} bnd {:.4}",
+                  f(dense_n), lgst, bstr, f(fdense_n), flgst, fbstr);
         rows.push((
             label.to_string(),
             format!(
@@ -261,7 +281,14 @@ fn main() {
             ),
         ));
     }
-    for want in ["az_prefix", "az", "heggie", "logh_rk4", "plain_rk4"] {
+    // Reporting order puts the all-off arm first: it is the subject control and nothing below it
+    // means anything until it separates.
+    let report: Vec<&str> = if mode == "ablation" {
+        vec!["none", "dtau_only", "clamp_only", "limit_only", "all"]
+    } else {
+        vec!["az_prefix", "az", "heggie", "logh_rk4", "plain_rk4"]
+    };
+    for want in report {
         if let Some((_, line)) = rows.iter().find(|(l, _)| l == want) {
             println!("{line}");
         }

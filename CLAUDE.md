@@ -2204,3 +2204,46 @@ Rebased on it, running both integrators. **The Heggie margin is still only 1.12x
 its own *"no damaged pixels"* guard, since Heggie reads `err>10 = 0` across the gallery. It reads
 **4 damaged of 1024**, the same count as AZ. The gallery statistic is at production settings; this
 fixture runs `StepLimit::None`, which is the kernel the test is about and where damage survives.
+
+**THE WEDGES WERE A NUMERICAL ARTEFACT AND THE STEP CONTROL IS WHAT REMOVED THEM -- NOT HEGGIE,
+AND THE DEFAULT'S FIRST WRITTEN JUSTIFICATION SAID OTHERWISE.** Measured on the object that was
+actually circled, using `circled_ics.rs`'s own mask verbatim (`examples/wedge_census.rs`,
+`results/wedge/`), `config_stability` at `t_max = 50`, 512^2, colour window shared from AZ:
+
+```
+        arm     nonfin   render-dense   field-dense   field bnd str
+  az_prefix       1153         0.0026        0.2058          0.7549
+         az          0         0.0001        0.1524          0.5878
+     heggie          0         0.0001        0.1524          0.5913
+   logh_rk4          0         0.0001        0.1524          0.5913
+  plain_rk4          0         0.0001        0.1524          0.5918
+```
+
+`az_prefix` is AZ with `FixedPerInterval`, no landing clamp and no step limit -- **and the
+subject control passes**: 0.0026 of the frame against the record's 0.0018 at 1024^2 (1935 px of
+1048576), same order, so the mask reproduces what was circled. Turning the three fixes on takes
+it **26x down** and non-finite to zero. **The panels say the same thing far more clearly than the
+table** -- `az_prefix` has pale wedges with straight edges severing the ribbons and magenta
+speckle inside them; `az` post-fix has continuous ribbons and neither.
+
+**`heggie` is indistinguishable from post-fix AZ, and so is `plain_rk4`, which has no
+regularisation at all.** Not because the arms are inert: measured on the same slice, **all 9216
+pixels move** and `chord max` reaches **1.907** of a possible 2.0. But `chord p50` is **1.2e-6**
+(Heggie) and **4.1e-6** (plain RK4) -- a millionth of the shape sphere, invisible at 8 bits.
+**Post-fix, this slice is integrator-insensitive at the median.**
+
+**`refine_flagged` was OFF in every arm**, so none of this is the batch repair pass. All three
+fixes are per-step and local -- `PerStepInterval` recomputes `A*B` per step, `clamp_final_step`
+lands on the boundary instead of overshooting, and `StepLimit::Predictive` is one divide from
+values `phys_from_state` already returns at +1.9% of the steps. **They all have live-playhead
+analogues, which is the property `refine_flagged` lacks.**
+
+**Not attributed:** the census turns all three off together, so it says *the step-control work*
+and cannot say which of the three. The record separates them -- `dtau` alone 30109 -> 2071, with
+the clamp -> 178, and the limit taking `err>10` 0.1110 -> 0.0000 with overshoot 634 -> 0.
+
+**And I twice read a null as a broken harness rather than measuring it.** First the census's four
+post-fix arms agreeing to three digits was called impossible; the per-pixel measurement said they
+differ on every pixel at 1e-6. **The harness had no *"the flag is not inert"* guard**, which
+`tests/integrator_seam.rs` carries for exactly this -- had the override genuinely not applied
+there would have been no way to tell.

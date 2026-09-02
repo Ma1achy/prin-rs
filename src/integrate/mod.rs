@@ -99,7 +99,18 @@ pub enum Integrator {
     /// justified by a win count does not survive the next investigation. The mechanism is:
     ///
     /// **Heggie has no reference body, so the state is never re-registered into a chart mid-run,
-    /// and the cost of re-registration is what the `config_stability` wedges were.** Measured
+    /// and re-registration is what the drift field's boundary-cadence sensitivity costs.**
+    ///
+    /// **It is NOT what removed the visible wedges, and an earlier version of this comment said
+    /// it was.** Measured directly (`examples/wedge_census.rs`, `results/wedge/`): on
+    /// `config_stability` at `t_max = 50`, AZ with the step-control fixes *off* carries a
+    /// dense-pale set of 0.0026 of the frame -- the record's own 0.0018 at 1024^2 -- and turning
+    /// them on takes it to **0.0001** with non-finite `1153 -> 0`. `heggie` then reads
+    /// **identical to post-fix AZ to three digits**, as do `logh_rk4` and `plain_rk4`. Post-fix
+    /// the slice is integrator-insensitive at the median: every pixel moves between arms, but
+    /// `chord p50` is `1.2e-6` against a `chord max` of 1.907. The wedges were a numerical
+    /// artefact and the `dtau` fix, the landing clamp and the predictive step limit are what
+    /// removed them. Measured
     /// unconfounded at 256², termination off, step control held constant, every arm `nonfin <= 1`:
     ///
     /// ```text

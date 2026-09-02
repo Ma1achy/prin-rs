@@ -427,6 +427,37 @@ The rule: *render the diagnostic field, not the science field* is necessary and 
 **Ask what the diagnostic would say about the defect you are hunting before reading it as clean.**
 A field can be the right one for a class of defect and the wrong one for this defect.
 
+### A number computed from a structure you have not read is not a measurement
+
+Distinct from *"the measurement was correct and the column chosen could not see it"*, and worse:
+there the measurement exists and is misread; here **it was never taken**, and the arithmetic stood
+in for it.
+
+Two background runs died. I computed the boundary-shape footprint as
+`quads x 64 x 8 x 33 x 3 f64` = **8.9 GB at `levels = 7`**, concluded OOM, wrote it into a commit
+message as fact, and spent the next step designing a cheaper route around it. `boundary_shapes`
+lives on the **march output**, local to `evaluate` and dropped when it returns; `PixelOut` never
+holds it. Measured on the relaunched run: **RSS 0.01 GB**.
+
+The evidence against it was already on screen. **Four tasks died simultaneously, two of them
+monitors that allocate nothing** — a shared failure time across unrelated processes is a session
+event, not memory. And `log show` returned nothing for an OOM. I had both and believed the
+arithmetic.
+
+The tells, in order of how cheap they are to check:
+
+- **A shared failure time across unrelated processes** is never a resource limit of one of them.
+- **`ps` costs one command.** Any claim about a running process's memory that was not read off
+  `ps` is a hypothesis wearing a unit.
+- **An arithmetic estimate needs the struct definition**, not the field name. `keep_boundary_shapes`
+  is a *config flag*; the buffer it names is on a different type with a different lifetime, and
+  one `grep` for `pub boundary_shapes` separated them.
+
+And the second-order cost is the one to watch: the wrong diagnosis sent me looking for a cheaper
+test, which **found the complete-level comb** — a real result, arrived at for a false reason. Keep
+the finding, and record that the reason it was sought was wrong, or the next reader infers the
+obstacle was real.
+
 ### A guard that works for the wrong reason is one refactor from not working
 
 Found in the same hour as the entry above, and it is its mirror. `scheduler::footprint_undetermined`

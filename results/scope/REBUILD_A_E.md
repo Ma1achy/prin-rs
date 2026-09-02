@@ -161,11 +161,31 @@ up with depth.
 ## What this does not answer
 
 Whether the teeth would keep shrinking in `near-field` past level 5, which needs `levels = 7`.
-**That run is blocked by memory and the number is worth recording**: `keep_boundary_shapes` holds
-`quads x 64 x 8 x 33 x 3 f64` -- **2.2 GB at `levels = 6` and 8.9 GB at `levels = 7`** -- and it
-OOMs on an 18 GB machine. Reaching level 7 means turning it off, which drops `running_max`,
-`first_div` and `term_grad` from that table, including the best early performer. A deliberate
-trade, not a retry.
+
+**WITHDRAWN: "that run is blocked by memory".** I computed `quads x 64 x 8 x 33 x 3 f64` =
+**8.9 GB** for the boundary shapes, called it the cause of two kills, and wrote it into a commit
+message as measured fact. It is arithmetic on a **false premise**: `boundary_shapes` lives on the
+*march output* (`AzOut` / `HgOut` / `LhOut`), which is local to `evaluate` and dropped when it
+returns. `PixelOut` never holds it -- the three temporal accumulators are extracted to scalars
+inside `evaluate` and the series is discarded. Measured on the relaunched `levels = 7` run:
+**RSS 0.01 GB**.
+
+The likelier cause was in plain sight and I read past it: **four background tasks died
+simultaneously**, two of them monitors that allocate nothing. That is a session-level cleanup, not
+an out-of-memory kill. A shared failure time across unrelated processes is the signature, and no
+`log show` entry supported the OOM reading either -- I checked, got nothing, and believed the
+arithmetic anyway.
+
+*The measurement was correct and the column chosen could not see it* has a sibling here: **the
+measurement was never taken.** A number computed from a structure you have not read is not a
+measurement, however carefully it is computed, and putting it in a commit message makes it
+citable. `keep_boundary_shapes` stays **on** for `levels = 7`; nothing is traded away and the
+table keeps `running_max`, `first_div` and `term_grad`.
+
+**The finding this cost is still real and stands on its own**: the ladder never sampled a complete
+level, and the comb is what was hiding behind that. It was found while looking for a cheaper route
+around an obstacle that did not exist -- worth keeping, and worth saying plainly that the reason it
+was looked for was wrong.
 
 And `deep interior`'s `.qcache` was, briefly, the only stale one in `results/criterion/` after an
 interrupted run regenerated its two siblings. The whole run was relaunched rather than the gap

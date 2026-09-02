@@ -214,7 +214,16 @@ fn main() {
 
     let (chart, cx, cy, half) = Chart::config_stability();
     let n0 = (T_MAX / WINDOW).round() as usize; // 125, the production cadence
-    let cfg = EnsembleCfg::production();
+    // **Pinned to `Az`, and this file's own header is why**: *"The AZ arms are re-run here
+    // rather than quoted from the committed table."* It took the integrator from the default,
+    // which was `Az` when this was written and is `Heggie` from 2026-09-02 -- so the arms this
+    // harness calls AZ would have been Heggie, in a file whose whole subject is AZ against
+    // Heggie. Nothing printed the integrator, which is the same shape as `refine_flagged`
+    // spreading by copy: a setting correct where it was born and silent where it was not.
+    let cfg = EnsembleCfg::production()
+        .with_overrides(&[prin_rs::ensemble::provenance::Override::Integrator(
+            prin_rs::integrate::Integrator::Az,
+        )]);
     let sl = grid::Slice::body_plane(res, res, cx, cy, half, 0).with_chart(chart);
     let eta0 = cfg.eta;
 

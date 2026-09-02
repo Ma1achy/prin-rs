@@ -23,12 +23,29 @@ fn cfg_at(i: Integrator) -> EnsembleCfg {
     EnsembleCfg::production().with_overrides(&[Override::Integrator(i)])
 }
 
-/// `Az` is the default, and it must stay so: every committed number in `results/` was taken
-/// under it, and a default that quietly changed the corpus is this project's recorded failure.
+/// **`Heggie` is the default from 2026-09-02, and an `Az` run must declare itself.**
+///
+/// The guard this replaces said *"`Az` is the default and it must stay so: every committed number
+/// in `results/` was taken under it, and a default that quietly changed the corpus is this
+/// project's recorded failure."* That concern is real and is **not** answered by changing the
+/// assertion — it is answered by the second arm below. The corpus does not become wrong when the
+/// default moves; it becomes wrong when the corpus stops *saying which integrator it was*. So
+/// this test asserts the property that keeps it honest: `overrides_vs_production` **derives** the
+/// declaration by diffing, so every AZ artefact from here on carries `integrator=Az` in its
+/// provenance sidecar, and the pre-2026-09-02 corpus is labelled by its own committed headers.
+///
+/// The reason for the default is on `Integrator::Heggie` and is the **cadence measurement**, not
+/// the win count: a default with a scoreboard does not survive the next investigation.
 #[test]
-fn production_is_still_az() {
-    assert_eq!(EnsembleCfg::production().integrator, Integrator::Az);
+fn production_is_heggie_and_an_az_run_declares_itself() {
+    assert_eq!(EnsembleCfg::production().integrator, Integrator::Heggie);
     assert!(EnsembleCfg::production().is_production());
+
+    // The arm that makes the change safe. Without it this test is a restatement of the default.
+    let az = cfg_at(Integrator::Az);
+    assert!(!az.is_production(), "an AZ run reads as production, so it would declare nothing");
+    let p = az.provenance();
+    assert!(p.contains("integrator") && p.contains("Az"), "an AZ run does not name itself: {p}");
 }
 
 /// **The flag is not inert.** A selectable integrator that produces the same pixels as the old
@@ -74,7 +91,16 @@ fn the_fields_heggie_does_not_have_read_as_absent() {
 
     // ...and AZ still fills them, so the assertions above are about Heggie and not about the
     // fields being dead everywhere.
-    let a = EnsembleCfg::production().with_overrides(&[Override::KeepRefPath(true)]);
+    //
+    // **`Integrator::Az` is named explicitly and must stay named.** This arm relied on AZ being
+    // the default, and when the default moved to Heggie it silently became Heggie-against-Heggie
+    // — the control comparing the thing to itself. It failed loudly (`AZ's ab_min is non-finite`)
+    // and that failure was correct: *the control arm caught that the control was no longer the
+    // control*, which is now the fifth time on this project that a fixture moved under a test and
+    // the control, not the property, is what noticed. Measured while diagnosing it: AZ fills
+    // `ab_min` on **64 of 64** pixels of this fixture, so the arm has a subject.
+    let a = EnsembleCfg::production()
+        .with_overrides(&[Override::Integrator(Integrator::Az), Override::KeepRefPath(true)]);
     let q = pixel::evaluate::<f64>(&sl, 0, &a);
     assert!(q.ab_min.is_finite(), "AZ's ab_min is non-finite, so the Heggie assertion is vacuous");
     assert!(!q.ref_path.is_empty(), "AZ's ref_path is empty, so the Heggie assertion is vacuous");
@@ -119,15 +145,24 @@ fn the_shared_reference_policy_is_a_no_op_under_heggie() {
 /// The setting declares itself. `overrides_vs_production` **derives** the declaration by diffing,
 /// so a config says what it is however it was built — a hand-maintained list goes stale, which is
 /// the same failure one level up.
+///
+/// **Both directions, and the roles swapped when the default moved.** The non-production value
+/// must name itself and the production value must stay silent — a header line that is always true
+/// carries no information. Asserting only the first half would pass on a `provenance` that named
+/// the integrator unconditionally.
 #[test]
 fn the_integrator_appears_in_the_provenance() {
-    let c = cfg_at(Integrator::Heggie);
+    // `Az` is now the override.
+    let c = cfg_at(Integrator::Az);
     let p = c.provenance();
     println!("{p}");
     assert!(p.contains("integrator"), "the integrator is missing from the provenance: {p}");
-    assert!(p.contains("Heggie"), "the provenance does not name the integrator: {p}");
+    assert!(p.contains("Az"), "the provenance does not name the integrator: {p}");
     assert!(!c.is_production());
-    // And the production value declares nothing, or every header would carry a line that is
-    // always true.
+
+    // `Heggie` is production and declares nothing — reached by the default AND by an explicit
+    // override to the same value, because *overriding to the production value is not an override*.
     assert!(!EnsembleCfg::production().provenance().contains("integrator"));
+    assert!(!cfg_at(Integrator::Heggie).provenance().contains("integrator"));
+    assert!(cfg_at(Integrator::Heggie).is_production());
 }

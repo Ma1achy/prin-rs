@@ -67,6 +67,7 @@
 use prin_rs::ensemble::pixel::{self, EnsembleCfg};
 use prin_rs::ensemble::provenance::Override;
 use prin_rs::grid;
+use prin_rs::integrate::Integrator;
 
 fn slice() -> grid::Slice {
     // `deep interior` at `t = 13` -- the region that actually exhausts budgets in production.
@@ -140,60 +141,76 @@ fn a_truncated_copy_makes_the_pixel_undetermined_and_a_healthy_one_does_not() {
 ///   is the quantity the collision labels are derived from, and `-inf` there would rewrite them.
 #[test]
 fn every_no_discard_field_in_the_reduction_reports_undetermined_together() {
-    let sl = slice();
-    let starved = EnsembleCfg::production().with_overrides(&[Override::MaxSteps(64)]);
-    let healthy = EnsembleCfg::production();
+    // **Two arms, because `ab_min` is AZ machinery and the other three are not.** Heggie has no
+    // `A*B` at all, so its `ab_min` is non-finite on every pixel including healthy ones -- which
+    // is correct and is asserted separately by `integrator_seam`. Pinning the whole test to `Az`
+    // would have left the PRODUCTION integrator untested for a rule that applies to it, so the
+    // Heggie arm runs over the three fields it actually has.
+    for (integrator, fields) in [
+        (Integrator::Az, &["energy_drift_max", "gamma_max", "dt_max", "ab_min"][..]),
+        (Integrator::Heggie, &["energy_drift_max", "gamma_max", "dt_max"][..]),
+    ] {
+        let sl = slice();
+        let starved = EnsembleCfg::production()
+            .with_overrides(&[Override::MaxSteps(64), Override::Integrator(integrator)]);
+        let healthy = EnsembleCfg::production()
+            .with_overrides(&[Override::Integrator(integrator)]);
 
-    let mut subject = 0usize;
-    let mut bad: Vec<String> = Vec::new();
-    let mut control_bad: Vec<String> = Vec::new();
+        let pick = |p: &prin_rs::ensemble::pixel::PixelOut, name: &str| match name {
+            "energy_drift_max" => p.energy_drift_max,
+            "gamma_max" => p.gamma_max,
+            "dt_max" => p.dt_max,
+            "ab_min" => p.ab_min,
+            _ => unreachable!(),
+        };
 
-    for k in 0..sl.npix() {
-        let s = pixel::evaluate::<f64>(&sl, k, &starved);
-        if s.budget_exhausted {
-            subject += 1;
-            // max-reductions saturate; the min-reduction goes to NaN. Both are "not finite".
-            for (name, v) in [
-                ("energy_drift_max", s.energy_drift_max),
-                ("gamma_max", s.gamma_max),
-                ("dt_max", s.dt_max),
-                ("ab_min", s.ab_min),
-            ] {
-                if v.is_finite() {
-                    bad.push(format!("{name} = {v:e} on a truncated pixel"));
+        let mut subject = 0usize;
+        let mut bad: Vec<String> = Vec::new();
+        let mut control_bad: Vec<String> = Vec::new();
+
+        for k in 0..sl.npix() {
+            let s = pixel::evaluate::<f64>(&sl, k, &starved);
+            if s.budget_exhausted {
+                subject += 1;
+                for name in fields {
+                    let v = pick(&s, name);
+                    if v.is_finite() {
+                        bad.push(format!("{name} = {v:e} on a truncated pixel"));
+                    }
+                }
+                // The DIRECTION, not merely non-finiteness. `dt_max = 0.0` and `ab_min = +inf`
+                // were the old readings and both are finite, so the arm above would have caught
+                // them -- but `dt_max = NaN` would not be wrong and would not be the design.
+                if s.dt_max != f64::INFINITY {
+                    bad.push(format!("dt_max should saturate to +inf, got {:e}", s.dt_max));
+                }
+                if fields.contains(&"ab_min") && !s.ab_min.is_nan() {
+                    bad.push(format!("ab_min should be NaN, got {:e}", s.ab_min));
                 }
             }
-            // And the direction is asserted, not just non-finiteness -- `dt_max = 0.0` and
-            // `ab_min = +inf` were the OLD readings and both are finite, so this arm would have
-            // caught them; `dt_max = NaN` would not be wrong but it would not be the design.
-            if !(s.dt_max == f64::INFINITY) {
-                bad.push(format!("dt_max should saturate to +inf, got {:e}", s.dt_max));
-            }
-            if !s.ab_min.is_nan() {
-                bad.push(format!("ab_min should be NaN, got {:e}", s.ab_min));
+            let h = pixel::evaluate::<f64>(&sl, k, &healthy);
+            for name in fields {
+                let v = pick(&h, name);
+                if !v.is_finite() {
+                    control_bad.push(format!("{name} = {v:e} at a generous budget"));
+                }
             }
         }
-        let h = pixel::evaluate::<f64>(&sl, k, &healthy);
-        for (name, v) in [
-            ("energy_drift_max", h.energy_drift_max),
-            ("gamma_max", h.gamma_max),
-            ("dt_max", h.dt_max),
-            ("ab_min", h.ab_min),
-        ] {
-            if !v.is_finite() {
-                control_bad.push(format!("{name} = {v:e} at a generous budget"));
-            }
-        }
-    }
 
-    assert!(subject > 0, "NO SUBJECT: nothing was budget-exhausted, so nothing is asserted.");
-    assert!(bad.is_empty(),
-        "{} findings across {} truncated pixels -- each pixel can contribute more than one, so \
-         this is a count of FINDINGS and not of pixels:\n  {}",
-        bad.len(), subject, bad.join("\n  "));
-    assert!(control_bad.is_empty(),
-        "CONTROL FAILED: healthy pixels are non-finite, so the property arm proves nothing:\n  {}",
-        control_bad.join("\n  "));
+        let who = integrator.name();
+        assert!(subject > 0, "{who}: NO SUBJECT -- nothing was budget-exhausted.");
+        assert!(
+            bad.is_empty(),
+            "{who}: {} findings across {subject} truncated pixels -- a pixel can contribute more than one, so this counts FINDINGS and not pixels:\n  {}",
+            bad.len(),
+            bad.join("\n  ")
+        );
+        assert!(
+            control_bad.is_empty(),
+            "{who}: CONTROL FAILED -- healthy pixels are non-finite, so the property arm proves nothing:\n  {}",
+            control_bad.join("\n  ")
+        );
+    }
 }
 
 // ---------------------------------------------------------------------------------------------

@@ -89,6 +89,12 @@ fn q(v: &[f64], p: f64) -> f64 {
 /// approach the trajectory actually reaches rather than the radius it was stopped at.
 fn cfg() -> EnsembleCfg {
     EnsembleCfg::production().with_overrides(&[
+        // **Pinned, and it must be.** This harness measures `d_min` in `far` to explain why AZ
+        // wins there, so the trajectories have to be AZ's. It took the integrator from the
+        // default, which was `Az` when this was written and is `Heggie` from 2026-09-02 --
+        // a silent switch that would have measured the wrong integrator's close approaches
+        // while the header still said `far` is the only AZ win.
+        Override::Integrator(prin_rs::integrate::Integrator::Az),
         Override::TMax(13.0),
         Override::NSync(32),
         Override::RCollFrac(0.0),

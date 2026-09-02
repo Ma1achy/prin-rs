@@ -868,6 +868,24 @@ cargo run --release --example logh_arms -- 256 results all 400000 all
 python3 tools/contact_sheet.py --root results far deep_interior near-field
 ```
 
+## A note on the default integrator
+
+**Everything committed to `results/` before 2026-09-02 was rendered under `Integrator::Az`, which
+was the default at the time.** The default is now `Heggie`; the reason is on the enum and is the
+cadence measurement rather than the win count.
+
+Nothing in this directory becomes wrong, and nothing needs regenerating for it. Renders carry a
+`.cfg.txt` provenance sidecar and the `.raw`/`.prnq` dumps have carried a full settings header
+since they were written, so each artefact says which integrator made it. From here on the
+declaration inverts: a **Heggie** run declares nothing (it is production) and an **AZ** run
+carries `integrator=Az`, because `overrides_vs_production` derives the line by diffing rather
+than from a hand-maintained list.
+
+Two harnesses took the integrator from the default and are now pinned to `Az` explicitly:
+`far_encounters` (its subject is why AZ wins `far`) and `heggie_machinery` (its header says the
+AZ arms are re-run there). If you re-run any other harness that does not name an integrator, it
+is now Heggie — check its sidecar before comparing against a committed number.
+
 ## A note on raster sizes
 
 The **scheduler** build is 1024² throughout (figures are 1400×800; budget side-by-sides are

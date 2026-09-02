@@ -2091,3 +2091,116 @@ is on this record, and the landing's cost was still quoted as +13% wall clock --
 gallery table carries no `evals` column and `logh_arms` does. Same shape as `refine_flagged`
 spreading by copy for six days: **a convention failing exactly where a printed column would have
 prevented it.** The fix for that class is never the instance; it is the column.
+
+**HEGGIE IS THE DEFAULT FROM 2026-09-02, AND THE REASON IS THE CADENCE MEASUREMENT — NOT THE
+SCOREBOARD.** A default justified by a win count does not survive the next investigation. The win
+is large and stable (31 of 32, `err>10` 3915 against 74, AZ's worst drift decile fixed on **100%
+of its pixels by a median 1900x**, unmoved through a full corpus regeneration under two later
+fixes with `drift p50` ratios at 0.987-1.004), but the *mechanism* is: **no reference body means
+the state is never re-registered mid-run, and re-registration is what the `config_stability`
+wedges cost.** Measured unconfounded at 256^2 with step control held constant:
+`AZ chord 5.162e-1` against `HG 4.832e-2`, **10.7x**, with three guards — `steps p50` flat to 1.3%
+(so `eta` held the step size), a confounded arm at 10x (so the harness *can* see a large chord in
+Heggie), and `refresh_h` at 13x (so it sees **boundary** sensitivity specifically). Without that
+last arm the null could have been the instrument.
+
+**AND logH LOSING DOES NOT ESTABLISH IT, THOUGH IT WAS BUILT AS THE FALSIFICATION TEST.** logH
+loses decisively — **29x to 1494x** (RK4) and **16,000x to 215,000x** (KDK) against Heggie at
+matched force evaluations, `frac better` 0.0000-0.0361, and third against the IAS15 reference
+(`heggie 1.017e-14 < az 1.736e-14 < logh_rk4 3.461e-14`). But it differs from Heggie in **two**
+ways, not one: no re-registration *and* no coordinate transformation, and the second is fatal
+here. logH reaches `d_min < 1e-10` and **never** `|dE/E| < 1e-12`, its drift *rising* with
+penetration depth where Heggie's `drift_reg` is flat at `4.4e-15` — a KS map removes the `1/r`
+from the Hamiltonian and a time transformation only slows the clock. Every region tested is
+collision-dominated (`far` collides on 1048576 of 1048576), so logH was graded almost entirely on
+the one thing it is known not to do. **A chartless method is not a coordinate regularisation with
+the coordinates left out.**
+
+**AZ IS KEPT, AND IT IS THE ONLY OCCUPANT WITH AN INDEPENDENT IMPLEMENTATION.** `xcheck` runs it
+against `reference/tb_az.py` and reads `0.000e+00` over all 32 reference points; it does **not**
+go through `EnsembleCfg`, so that gate is unaffected by the default. Heggie's correctness rests on
+five mutation-armed anchor links and a three-way agreement — strong, and internal. AZ is also
+genuinely better on **sustained hierarchy**: `far`, all 65536 pixels, a flat 0.7-0.9 decades.
+Default does not mean only.
+
+**THE DEFAULT MOVING IS SAFE BECAUSE THE CONFIG DECLARES ITSELF, NOT BECAUSE NOTHING DEPENDED ON
+IT.** `overrides_vs_production` derives the declaration by diffing, so every AZ artefact from here
+carries `integrator=Az` in its sidecar. Twelve harnesses took the integrator from the default and
+**two of them integrate with it**: `far_encounters` (whose whole subject is why AZ wins `far`) and
+`heggie_machinery`, whose own header reads *"the AZ arms are re-run here rather than quoted from
+the committed table"* — it would have re-run the AZ arms as Heggie, in a file about AZ against
+Heggie. Both are pinned. Same shape as `refine_flagged` spreading by copy: **a setting correct
+where it was born, silent where it was not.**
+
+**AND THE SEAM'S CONTROL ARM CAUGHT IT, FOR THE FIFTH TIME.**
+`the_fields_heggie_does_not_have_read_as_absent` built its AZ control from a bare
+`EnsembleCfg::production()`, so when the default moved it became Heggie-against-Heggie — a control
+comparing the thing to itself. It failed with *"AZ's ab_min is non-finite, so the Heggie assertion
+is vacuous"*, which is exactly right, and the suspect was the wrong one: `ab_min` had just been
+changed by the no-discard sweep. Measured before repairing anything — AZ fills `ab_min` on **64 of
+64** pixels of that fixture, so the fix was innocent and the default was the cause. *A fixture that
+has to be measured once has to be measured every time the physics moves*, and every time it is the
+control, not the property under test, that notices.
+
+**THAT LAST CLAUSE WAS WRONG, AND THE INTEGRATOR DEFAULT IS WHAT EXPOSED IT: `3.1e-9 -> 1.6e-9`
+IS A PLATEAU, NOT A FLOOR.** The justification arm asserted *"under the shipped limit the residual
+is already at the round-off floor at the coarsest rung"* by sampling **two** rungs, `4e-2` and
+`5e-3`. Both lie on a flat stretch. The full ladder, median `|error_ratio - 1|` over 9 near-field
+pixels:
+
+```
+       eta         AZ      x prev        Heggie      x prev
+    4.00e-2   3.0957e-9        -       1.3121e-8        -
+    2.00e-2   3.7136e-9      0.8       5.1571e-9      2.5
+    1.00e-2   3.4963e-9      1.1       3.7245e-10    13.8
+    5.00e-3   1.6396e-9      2.1       1.9414e-10     1.9
+    2.50e-3   1.8881e-10     8.7       1.4579e-11    13.3
+    1.25e-3   1.3099e-11    14.4       7.5440e-12     1.9
+    6.25e-4   8.8050e-12     1.5       1.4508e-11     0.5
+    3.13e-4   1.2351e-11     0.7          0.0e0       inf
+```
+
+AZ is flat across four rungs and then falls **8.7x and 14.4x**; `eta = 4e-2` is **~300x above the
+real floor**. Both integrators bottom out at the **same** `~1e-11` around `eta = 1.25e-3`, and
+Heggie reaches **exactly 0.0** at the finest rung. So truncation is alive under the shipped limit
+and the test passed **for a reason other than the one it stated** -- the two-rung sample landed on
+the flat part. Heggie has no plateau there, so moving the default made it fail honestly: *the
+control caught it, not the property.* The pin on `error_ratio_minus_one_falls_with_step_size`
+still stands, on the corrected reason -- the decade it walks IS the plateau, where the trend is
+flat and the ordering is scatter.
+
+**AND A FLOOR IS A LEVEL, NOT A RATIO BETWEEN TWO RUNGS.** The replacement's first cut asserted
+that refining past `1.25e-3` moves the residual by under an order, and fired immediately: Heggie
+reads **exactly `0.0`**, and `7.5e-12 / 0` is not a measurement of anything. Asserted as an
+absolute band instead. The teeth are in the second arm -- `coarse > 50x` the measured floor, which
+reads 236x (AZ) and 1750x (Heggie) -- and the denominator is the **measured rung** and not the
+band, because against the band AZ would read only 31x and the bar would have had to be lowered to
+something that no longer excludes the floor.
+
+**THE `error_ratio` NON-NEGOTIABLE'S NUMBERS ARE AZ's, AND UNDER HEGGIE THEY COMPRESS BY AN ORDER
+WITHOUT CHANGING THE CONCLUSION.** `near-field` 32^2, `StepLimit::None`, `refine_flagged` off,
+4 damaged pixels of 1024 under both:
+
+```
+                    AZ                        Heggie
+    MAD             1.1446  (sep   1.14)      1.8498  (sep  1.84)
+    max deviation 119.86    (sep 119.00)     11.242   (sep 10.11)
+```
+
+Heggie is **not worse**: its damaged population is far milder (`error_ratio` max `8.5066e7` ->
+`5.3514e1`), so both estimators separate a milder population less. The ordering -- max deviation
+separates, MAD does not -- holds under both.
+
+**But the gate's two bars were constants fitted to AZ, and under Heggie they read 8% and 1% of
+margin.** `sep_mad < 2.0` against 1.85, and `sep_maxdev > 10.0` against 10.11. Widening them would
+be a tolerance loosened to keep green. **The operative claim needs no fitted constant**: under MAD
+the damaged median does not clear `refine_threshold` and under max deviation it does -- the
+shipped value that decides whether a pixel is re-integrated, and the only threshold that matters.
+Rebased on it, running both integrators. **The Heggie margin is still only 1.12x (11.242 against
+10) and that is recorded rather than padded**: if it ever falls below, the question is whether
+`refine_threshold = 10` is right for Heggie, not whether the bar should move.
+
+**And the prediction that this test would lose its subject was wrong.** It was expected to fail on
+its own *"no damaged pixels"* guard, since Heggie reads `err>10 = 0` across the gallery. It reads
+**4 damaged of 1024**, the same count as AZ. The gallery statistic is at production settings; this
+fixture runs `StepLimit::None`, which is the kernel the test is about and where damage survives.

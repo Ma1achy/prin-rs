@@ -81,10 +81,53 @@ impl<T: Real> TrajOut<T> {
 /// tighter control than a separate integrator could be.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Integrator {
-    /// Aarseth-Zare. The default, and what every committed number in `results/` was taken under.
-    #[default]
+    /// Aarseth-Zare. **No longer the default**, and what every number committed to `results/`
+    /// before 2026-09-02 was taken under. Kept, and not only for history: it is the **only
+    /// occupant with an independent implementation to check against** — `xcheck` runs it against
+    /// `reference/tb_az.py` and reads `0.000e+00` over all 32 reference points. `reference_opts`
+    /// pins it, so that gate is unaffected by this default. AZ is also genuinely better on
+    /// **sustained hierarchy**, where it never re-registers: `far`, on all 65536 pixels, by a
+    /// flat 0.7–0.9 decades.
     Az,
-    /// Heggie 1974 global regularisation.
+    /// Heggie 1974 global regularisation. **The default from 2026-09-02.**
+    ///
+    /// # Why, and the reason is not the scoreboard
+    ///
+    /// The win is large — 31 of 32 gallery cases, `err>10` 3915 against 74, and AZ's worst drift
+    /// decile fixed on **100% of its pixels by a median 1900x** — and it survived a full corpus
+    /// regeneration under two later fixes with `drift p50` ratios at 0.987–1.004. But a default
+    /// justified by a win count does not survive the next investigation. The mechanism is:
+    ///
+    /// **Heggie has no reference body, so the state is never re-registered into a chart mid-run,
+    /// and the cost of re-registration is what the `config_stability` wedges were.** Measured
+    /// unconfounded at 256², termination off, step control held constant, every arm `nonfin <= 1`:
+    ///
+    /// ```text
+    ///     AZ  n=250 CONTROLLED   lift 2.061   chord 5.162e-1
+    ///     HG  n=250 CONTROLLED   lift 3.824   chord 4.832e-2   <- 10.7x smaller
+    ///     HG  n=250 confounded   lift 2.327   chord 4.185e-1   <- the harness CAN see a large chord
+    ///     HG  refresh_h n=125    lift 2.909   chord 5.570e-1   <- and sees BOUNDARY change
+    /// ```
+    ///
+    /// Three guards, and the last is what makes the null mean anything: `steps p50` flat to 1.3%
+    /// says `eta` held the step size, the confounded arm says the harness is not blind, and
+    /// `refresh_h` — the one arm reintroducing a boundary-dependent quantity — says it sees
+    /// **boundary** sensitivity specifically.
+    ///
+    /// # What does NOT support it, and must not be cited as if it did
+    ///
+    /// **`LogHRk4` and `LogHLeapfrog` losing does not establish the mechanism**, though they were
+    /// built as its falsification test. They lose decisively — 29x to 1494x (RK4) and 16,000x to
+    /// 215,000x (KDK) against Heggie at matched force evaluations, better on 0.0–3.6% of pixels,
+    /// and third against the IAS15 reference. But logH differs from Heggie in **two** ways, not
+    /// one: no re-registration *and* no coordinate transformation. The second is fatal here —
+    /// logH reaches `d_min < 1e-10` and **never** `|dE/E| < 1e-12`, its drift *rising* with
+    /// penetration depth where Heggie's `drift_reg` is flat at `4.4e-15`, because a KS map removes
+    /// the `1/r` from the Hamiltonian and a time transformation only slows the clock. Every region
+    /// tested is collision-dominated (`far` collides on 1048576 of 1048576 pixels), so logH was
+    /// graded almost entirely on the one thing it is known not to do.
+    /// **A chartless method is not a coordinate regularisation with the coordinates left out.**
+    #[default]
     Heggie,
     /// logH under drift-kick-drift. **The method as designed**: one force evaluation per step.
     LogHLeapfrog,

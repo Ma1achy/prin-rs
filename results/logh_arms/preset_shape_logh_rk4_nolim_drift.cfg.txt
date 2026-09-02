@@ -1,0 +1,14 @@
+image=results/logh_arms/preset_shape_logh_rk4_nolim_drift.png
+config=production + 7 override(s): n_sync=33 (production 32), step_limit=None (production Predictive), max_steps=400000 (production 30000), integrator=LogHRk4 (production Az), r_coll_frac=0.0 (production 0.001), stop_on_event=false (production true), refine_flagged=false (production true)
+res=256x256
+case=preset_shape
+arm=logh_rk4_nolim
+integrator=logh_rk4
+field=drift
+eta=1e-2 (scale 1 on production, to match FORCE EVALUATIONS)
+predictive step limit=false
+shape window=(3.1104466718093217e-6,4.0633874475532383e-1) taken from the `az` arm and SHARED
+drift ramp=(1e-12,1e2) FIXED across every case and arm
+gain ramp=+/-4 decades, FIXED and symmetric
+pass: uniform/outcome from the SCIENCE run (termination on);
+drift/errratio/gain from the DIAGNOSTIC run (r_coll=0, stop_on_event=false)

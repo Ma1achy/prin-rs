@@ -34,6 +34,20 @@ fn figure_eight() -> (Cart<f64>, [f64; 3], f64) {
 }
 
 fn closure(mode: DtauMode, clamp: bool, eta: f64) -> f64 {
+    closure_land(mode, clamp, false, eta)
+}
+
+/// **`land_iterate` is a parameter here, and defaults to OFF for the order tests.**
+///
+/// Every test in this file measures what `clamp_final_step` ALONE buys — its first-order
+/// predictor leaves an `O(h^2)` landing residual, and that residual is the subject. The secant
+/// correction removes it, which deletes the subject rather than contradicting anything: with the
+/// landing on, the figure-eight closure sits flat at its own ~5e-8 IC-precision floor and every
+/// fitted order reads ~0.
+///
+/// `the_secant_landing_beats_the_clamp_alone` below is the arm that says the excluded thing is an
+/// improvement, so this is a pin to the kernel under test and not a stale assertion kept green.
+fn closure_land(mode: DtauMode, clamp: bool, land: bool, eta: f64) -> f64 {
     let (s0, m, period) = figure_eight();
     let o = AzOpts::<f64> {
         r_coll_frac: 0.0,
@@ -41,6 +55,7 @@ fn closure(mode: DtauMode, clamp: bool, eta: f64) -> f64 {
         stop_on_escape: false,
         dtau_mode: mode,
         clamp_final_step: clamp,
+        land_iterate: land,
         ..Default::default()
     };
     let out = integrate_az_opts(s0, &m, period, 32, eta, 200_000, &o);
@@ -170,4 +185,27 @@ fn the_two_knobs_are_not_independent() {
         cd < ab / 10.0,
         "under the clamp the same switch must move the field far less: {cd:.3e} against {ab:.3e}"
     );
+}
+
+/// **The arm that justifies `closure`'s `land_iterate: false`.** A pin is honest only when what it
+/// excludes is an improvement. Measured above the figure-eight's own ~5e-8 IC floor, so a null
+/// here would mean the correction failed rather than that both arms are sitting on the floor.
+#[test]
+fn the_secant_landing_beats_the_clamp_alone() {
+    for mode in [DtauMode::FixedPerInterval, DtauMode::PerStepInterval] {
+        let eta = 0.02;
+        let off = closure_land(mode, true, false, eta);
+        let on = closure_land(mode, true, true, eta);
+        println!("{mode:?}: clamp only {off:.4e}, + secant {on:.4e}, gain {:.1}x", off / on);
+        assert!(
+            off > 5e-8,
+            "{mode:?}: NO SUBJECT -- the clamp-only arm is already at {off:.3e}, at or below the \
+             fixture's own IC floor, so there is nothing here to improve"
+        );
+        assert!(
+            on < off * 0.5,
+            "{mode:?}: the secant landing gave {on:.4e} against the clamp's {off:.4e} -- not an \
+             improvement, so pinning the order tests away from it hides a regression"
+        );
+    }
 }

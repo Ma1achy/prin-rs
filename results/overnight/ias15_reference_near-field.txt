@@ -1,0 +1,19 @@
+Scoring against an IAS15 reference. near-field at 24^2, nominal copy, termination OFF.
+
+  **The reference is checked against itself first.** Two tolerances, and the row prints
+  their disagreement. A reference that is not converged scores its own error -- which is
+  exactly how `eta/256` failed, coming back saturated at chord 2.000 for a correct mode and
+  a broken one alike.
+
+  t_max  1.0   ref self-gap p50 6.671e-16 p90 1.214e-15   incomplete 0/576   ref evals p50 2.57e3   LIVE
+             az  err p50  1.736e-14  p90  1.977e-14  evals p50    1.68e3
+         heggie  err p50  1.017e-14  p90  1.182e-14  evals p50    1.67e3
+       logh_rk4  err p50  3.461e-14  p90  3.528e-14  evals p50    1.68e3
+          chain  err p50  5.208e-15  p90  9.743e-15  evals p50    4.20e4
+
+  t_max  2.0   ref self-gap p50 NaN p90 NaN   incomplete 576/576   ref evals p50 6.00e7   REFERENCE DID NOT FINISH on over half the pixels -- it ran out of step budget rather than disagreeing, and a truncated reference reads as a tolerance catastrophe
+             az  err p50   1.962e-1  p90   1.994e-1  evals p50    7.61e3
+         heggie  err p50   1.962e-1  p90   1.994e-1  evals p50    4.37e3
+       logh_rk4  err p50   1.962e-1  p90   1.994e-1  evals p50    4.30e3
+          chain  err p50   1.962e-1  p90   1.994e-1  evals p50    1.50e5
+

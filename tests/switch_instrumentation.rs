@@ -7,8 +7,21 @@
 //! arm is `NaN` rather than `0` — a trajectory that never switched has no switch increment,
 //! which is a different statement from an increment of zero.
 
+// **Every `EnsembleCfg` in this file pins `Integrator::Az`, and the pin is not a convenience.**
+//
+// The subject of this file is AZ machinery -- `A*B` and its `TINY` floor, `DtauMode`, the LC
+// branch, the reference body, `StepLimit::Reject`. None of it exists under Heggie, which has no
+// reference body, no `A*B` and three KS charts. These configs took the integrator from the
+// default; when the default moved to `Heggie` on 2026-09-02 they ran a kernel with no such
+// machinery, and **every one of them failed on its own guard or control arm rather than on a
+// wrong number** -- *"an unplumbed ab_min is INFINITY"*, *"the cap never fired -- either
+// unplumbed or the premise is wrong"*, *"Reject at a strict parameter changed nothing"*,
+// *"the hold arm is not empty and must be finite"*. The arms written to prove each test had a
+// subject are what announced that it no longer did.
+
 use prin_rs::integrate::az::{self, AzOpts};
 use prin_rs::physics::burrau;
+use prin_rs::integrate::Integrator;
 
 fn run(keep: bool) -> az::AzOut<f64> {
     az::integrate_az_opts(
@@ -74,6 +87,7 @@ fn an_empty_arm_is_nan_and_not_zero() {
     // A very short horizon: the reference is chosen once per sync boundary, so at `t_max` small
     // enough almost nothing has deformed far enough to change the longest side.
     let cfg = EnsembleCfg {
+        integrator: Integrator::Az,
         t_max: 0.2,
         n_sync: 4,
         keep_drift_hist: true,

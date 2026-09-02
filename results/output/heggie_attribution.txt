@@ -1,0 +1,5 @@
+    Finished `release` profile [optimized] target(s) in 0.16s
+     Running `target/release/examples/heggie_attribution 256 results 400000`
+config_stability 256^2, termination OFF. Step limit per arm -- see §1/§2 above.
+t_max=50 max_steps=400000 copies=8
+

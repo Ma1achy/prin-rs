@@ -3,6 +3,7 @@
 use prin_rs::ensemble::pixel::{evaluate, EnsembleCfg};
 use prin_rs::grid;
 use prin_rs::integrate::az::StepLimit;
+use prin_rs::integrate::Integrator;
 
 /// **Refinement off, AND `StepLimit::None`.** These tests compare spread estimators *on damaged
 /// pixels*, and both mechanisms exist precisely to remove those — with either on there is nothing
@@ -16,11 +17,12 @@ use prin_rs::integrate::az::StepLimit;
 /// population outright is the strongest corroboration in the suite of what
 /// `results/step_control/README.md` measures; it is recorded here rather than worked around,
 /// and the pin is what keeps these two tests measuring the estimator they are about.
-fn render(size: usize) -> Vec<prin_rs::ensemble::pixel::PixelOut> {
+fn render(size: usize, integrator: Integrator) -> Vec<prin_rs::ensemble::pixel::PixelOut> {
     let s = grid::region("near-field", size, size, 0.05).unwrap();
     let cfg = EnsembleCfg {
         refine_flagged: false,
         step_limit: StepLimit::None,
+        integrator,
         ..Default::default()
     };
     (0..s.npix()).map(|i| evaluate::<f64>(&s, i, &cfg)).collect()
@@ -49,30 +51,58 @@ fn q(mut v: Vec<f64>, f: f64) -> f64 {
 /// and the choice is left to the user. Reported, not silently changed.
 #[test]
 fn mad_based_error_ratio_cannot_separate_damaged_pixels() {
-    let px = render(32);
-    let damaged: Vec<_> = px.iter().filter(|p| p.energy_drift_max > 1e-3).collect();
-    let healthy: Vec<_> = px.iter().filter(|p| p.energy_drift_max <= 1e-3).collect();
-    assert!(!damaged.is_empty(), "no damaged pixels in this region; the test cannot say anything");
+    // **Both integrators, and the bar is `refine_threshold` rather than a calibrated constant.**
+    //
+    // The previous form asserted `sep_mad < 2.0` and `sep_maxdev > 10.0`, both fitted to AZ
+    // (1.14 and 119.00). When the default moved to Heggie they read **1.85 and 10.11** -- 8% and
+    // **1%** of margin, a gate about to flake. Heggie is not worse here: its damaged population
+    // is far MILDER (`error_ratio` max 8.5e7 -> 53.5), so both estimators separate it less and
+    // the calibrated bars stopped fitting.
+    //
+    // Loosening them would be a tolerance widened to keep green. The operative claim needs no
+    // fitted constant at all: **under MAD the damaged median does not clear the project's own
+    // flag threshold, and under max deviation it does.** `refine_threshold` is the shipped value
+    // that decides whether a pixel is re-integrated, so it is the only threshold that matters.
+    let flag = EnsembleCfg::production().refine_threshold;
+    for integrator in [Integrator::Az, Integrator::Heggie] {
+        let px = render(32, integrator);
+        let damaged: Vec<_> = px.iter().filter(|p| p.energy_drift_max > 1e-3).collect();
+        let healthy: Vec<_> = px.iter().filter(|p| p.energy_drift_max <= 1e-3).collect();
+        let who = integrator.name();
+        assert!(!damaged.is_empty(), "{who}: no damaged pixels; the test cannot say anything");
 
-    println!("{} damaged pixels (drift_max > 1e-3), {} healthy", damaged.len(), healthy.len());
-    println!("{:>16}{:>15}{:>15}{:>14}", "statistic", "damaged med", "healthy p99", "separation");
+        println!("{who}: {} damaged (drift_max > 1e-3), {} healthy, flag threshold {flag}",
+                 damaged.len(), healthy.len());
+        println!("{:>16}{:>15}{:>15}{:>14}", "statistic", "damaged med", "healthy p99", "separation");
 
-    let mut seps = Vec::new();
-    for (name, f) in [
-        ("MAD", (|p: &&prin_rs::ensemble::pixel::PixelOut| p.error_ratio_mad) as fn(&&_) -> f64),
-        ("max deviation", |p: &&prin_rs::ensemble::pixel::PixelOut| p.error_ratio),
-    ] {
-        let dmed = q(damaged.iter().map(f).filter(|x| x.is_finite()).collect(), 0.5);
-        let hp99 = q(healthy.iter().map(f).filter(|x| x.is_finite()).collect(), 0.99);
-        println!("{name:>16}{dmed:>15.4e}{hp99:>15.4e}{:>14.2}", dmed / hp99);
-        seps.push(dmed / hp99);
+        let mut dmeds = Vec::new();
+        for (name, f) in [
+            ("MAD", (|p: &&prin_rs::ensemble::pixel::PixelOut| p.error_ratio_mad) as fn(&&_) -> f64),
+            ("max deviation", |p: &&prin_rs::ensemble::pixel::PixelOut| p.error_ratio),
+        ] {
+            let dmed = q(damaged.iter().map(f).filter(|x| x.is_finite()).collect(), 0.5);
+            let hp99 = q(healthy.iter().map(f).filter(|x| x.is_finite()).collect(), 0.99);
+            println!("{name:>16}{dmed:>15.4e}{hp99:>15.4e}{:>14.2}", dmed / hp99);
+            dmeds.push(dmed);
+        }
+
+        assert!(
+            dmeds[0] < flag,
+            "{who}: the MAD damaged median is {:.4e}, which CLEARS the flag threshold {flag} -- \
+             MAD would then flag these pixels and the reason for preferring max deviation is gone",
+            dmeds[0]
+        );
+        assert!(
+            dmeds[1] > flag,
+            "{who}: the max-deviation damaged median is {:.4e}, which does NOT clear the flag \
+             threshold {flag} -- the estimator that ships would miss its own damaged pixels",
+            dmeds[1]
+        );
     }
     println!();
-    println!("Separation is the damaged median over the healthy p99 — how far apart a");
-    println!("threshold could be placed. Near 1 means the flag cannot separate them.");
-
-    assert!(seps[0] < 2.0, "MAD-based separation was expected to be poor, got {}", seps[0]);
-    assert!(seps[1] > 10.0, "max-deviation separation should be decisive, got {}", seps[1]);
+    println!("The bar is `refine_threshold`, the shipped value that decides re-integration --");
+    println!("not a constant fitted to one integrator. MAD sits below it and max deviation");
+    println!("above it under BOTH, which is the whole content of the non-negotiable.");
 }
 
 /// The gate. The threshold comes from what a healthy f64 run actually produces, per the
@@ -86,7 +116,7 @@ fn mad_based_error_ratio_cannot_separate_damaged_pixels() {
 /// ratio sits at 1.** Both populations are printed, so nothing is hidden by the split.
 #[test]
 fn error_ratio_acceptance_near_field_t13() {
-    let px = render(32);
+    let px = render(32, Integrator::Az);
     let fin = |x: &f64| x.is_finite();
     let er: Vec<f64> = px.iter().map(|p| p.error_ratio).filter(fin).collect();
     let md: Vec<f64> = px.iter().map(|p| p.error_ratio_mad).filter(fin).collect();

@@ -1,0 +1,30 @@
+MOIRE / BANDING on a ribbon window of config_stability, 256^2, t_max = 50.
+half = 0.11477 (0.18 of the full view), centre (-0.29906, 0.25997).
+
+  `cadence` scales eta WITH n_sync so the step size is held -- `steps p50` is the
+  check. `step` holds n_sync and shrinks eta. Bands moving under the first means
+  the sync cadence draws them; under the second, the stepper; under neither,
+  physics.
+
+         arm  n_sync       eta  steps p50   lambda    promin t_end dst    on bnd   nonfin
+    baseline     125   1.00e-2    1.328e5       55      2.14     14916    0.7723        0
+  cadence x2     250   2.00e-2    1.330e5       55      2.14     14937    0.7724        0
+  cadence x4     500   4.00e-2    1.375e5       55      2.14     15011    0.7725        0
+     step /2     125   5.00e-3    2.377e5       55      2.14     14919    0.7723        0
+     step /4     125   2.50e-3    4.602e5       55      2.14     14920    0.7723        0
+
+HOW TO READ THIS
+
+**`promin` first.** A peak with prominence near 1 is the largest bin of a FLAT
+spectrum, not a band. `lambda` means nothing without it.
+
+**Then `steps p50` across the two `cadence` rows.** If it is not roughly flat the
+step size was not held and those rows measure the stepper, not the cadence --
+`dtau = eta*dt_left/(A0*B0)` is why scaling eta with n_sync is required at all.
+
+**`t_end dst` and `on bnd` are the standing cadence diagnostic.** Escape is sampled
+only at sync boundaries, so where it terminates `t_end` takes n_sync values and
+every derived field draws those steps. Read the DELTA across cadences, never the
+level: `near-field` reads 97.85% on-boundary while being completely clean, because
+its footprints sit at t_end = t_max, and the horizon is a boundary time.
+EXIT=0

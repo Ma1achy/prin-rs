@@ -1,0 +1,45 @@
+    Finished `release` profile [optimized] target(s) in 0.23s
+     Running `target/release/examples/landing_field 96 400000`
+96^2, termination OFF and r_coll = 0, predictive limit off, eta = 0.01, copies = 8
+
+  **`corr` and `land resid` are the guards.** If `corr` is zero the landing step is never
+  the binding one and every pair of rows is one run twice; if `land resid` does not fall,
+  the correction is not working and a drift difference is something else.
+
+                case   step   land   drift p50   drift p99  land resid   evals p50    corr   nonfin
+    config_stability    Rk4  false    3.047e-1     2.123e3    2.102e-5     4.844e5       0       14
+    config_stability    Rk4   true    2.980e-1     2.439e3    3.754e-6     4.934e5 28397870       15
+    config_stability    Gbs  false   9.435e-11    3.099e-3    2.001e-5     1.493e6       0        0
+    config_stability    Gbs   true   9.688e-11    3.654e-3    3.501e-6     1.525e6 28556994        0
+    config_stability    Kdk  false    4.627e-5    2.491e-2    1.240e-6     4.764e5       0        0
+    config_stability    Kdk   true    4.639e-5    2.352e-2   3.997e-15     4.781e5 22195466        0
+
+       deep_interior    Rk4  false     3.852e1     1.216e4    4.781e-5     1.511e5       0      140
+       deep_interior    Rk4   true     3.833e1     1.523e4    7.276e-9     1.534e5 7785549      130
+       deep_interior    Gbs  false    2.497e-6     1.434e0    3.650e-5     5.970e5       0        0
+       deep_interior    Gbs   true    2.424e-6    9.728e-1    2.607e-6     6.070e5 8181634        0
+       deep_interior    Kdk  false    4.329e-4    7.874e-1    2.217e-6     1.464e5       0        0
+       deep_interior    Kdk   true    4.357e-4    8.478e-1   9.770e-15     1.469e5 6501850        0
+
+          near-field    Rk4  false    3.292e-7     4.509e0    1.488e-5     1.292e5       0        0
+          near-field    Rk4   true    3.291e-7     4.553e0   1.815e-14     1.315e5 7460158        1
+          near-field    Gbs  false   9.253e-13   2.187e-10    1.487e-5     4.038e5       0        0
+          near-field    Gbs   true   9.199e-13   2.788e-10   1.799e-14     4.121e5 7457135        0
+          near-field    Kdk  false    1.277e-6    6.826e-4    1.048e-6     1.282e5       0        0
+          near-field    Kdk   true    1.277e-6    6.811e-4   3.719e-15     1.287e5 5752418        0
+
+HOW TO READ THIS
+
+**`land resid` is the quantity and `drift` is the consequence.** The figure-eight says
+the residual falls nine orders and a better-than-second-order stepper gains ~1960x. This
+asks whether that survives a chaotic field with close approaches in it.
+
+**KDK is the control.** Second order, so an O(h^2) landing was never its binding
+constraint. If it improves here too, the correction is doing something other than
+removing an order-two cap and the figure-eight account is wrong.
+
+**If the RK4 and GBS rows improve materially, that is the case for porting the secant
+landing to AZ and Heggie** -- whose measured orders of 2.08 and 2.40 are exactly what an
+O(h^2) landing allows. That port would invalidate every committed number in `results/`,
+so it is a decision and not a consequence.
+LANDING_FIELD_COMPLETE

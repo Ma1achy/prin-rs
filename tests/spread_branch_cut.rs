@@ -14,8 +14,21 @@
 //! copies. This is a demonstrated alternative that has nothing to do with switching, and
 //! nothing to do with arithmetic.
 
+// **Every `EnsembleCfg` in this file pins `Integrator::Az`, and the pin is not a convenience.**
+//
+// The subject of this file is AZ machinery -- `A*B` and its `TINY` floor, `DtauMode`, the LC
+// branch, the reference body, `StepLimit::Reject`. None of it exists under Heggie, which has no
+// reference body, no `A*B` and three KS charts. These configs took the integrator from the
+// default; when the default moved to `Heggie` on 2026-09-02 they ran a kernel with no such
+// machinery, and **every one of them failed on its own guard or control arm rather than on a
+// wrong number** -- *"an unplumbed ab_min is INFINITY"*, *"the cap never fired -- either
+// unplumbed or the premise is wrong"*, *"Reject at a strict parameter changed nothing"*,
+// *"the hold arm is not empty and must be finite"*. The arms written to prove each test had a
+// subject are what announced that it no longer did.
+
 use prin_rs::ensemble::pixel::{evaluate, EnsembleCfg};
 use prin_rs::grid;
+use prin_rs::integrate::Integrator;
 
 /// Per-pixel spreads, not a mean over them.
 ///
@@ -27,6 +40,7 @@ use prin_rs::grid;
 fn spreads<T: prin_rs::Real>(region: &str, lc_stable: bool) -> (Vec<f64>, usize) {
     let s = grid::region(region, 5, 5, 0.05).unwrap();
     let cfg = EnsembleCfg {
+        integrator: Integrator::Az,
         t_max: 13.0,
         lc_stable,
         refine_flagged: false,
@@ -64,7 +78,13 @@ fn mean_spread<T: prin_rs::Real>(region: &str, lc_stable: bool) -> (f64, usize) 
     // flag different pixel sets — so with it on, this would compare which pixels happened to
     // get a second pass rather than comparing the arithmetic. Any precision comparison has to
     // hold the pipeline fixed.
-    let cfg = EnsembleCfg { t_max: 13.0, lc_stable, refine_flagged: false, ..Default::default() };
+    let cfg = EnsembleCfg {
+        t_max: 13.0,
+        lc_stable,
+        refine_flagged: false,
+        integrator: Integrator::Az,
+        ..Default::default()
+    };
     let mut acc = 0.0;
     let mut n_bad = 0usize;
     for i in 0..s.npix() {

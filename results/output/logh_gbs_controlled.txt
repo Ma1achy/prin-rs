@@ -1,0 +1,313 @@
+    Finished `release` profile [optimized] target(s) in 0.07s
+     Running `target/release/examples/logh_arms 256 results config_stability 400000 gbs`
+256^2, arm set `gbs`, shared colour windows, max_steps=400000, refine_flagged=false.
+
+  **The UNMASKED kernel.** The repair pass re-integrates from t = 0, has no live
+  analogue, and removes the population this comparison is about.
+
+  **Arms are matched on FORCE EVALUATIONS, not steps.** RK4 spends 4 per step and KDK 1,
+  so the leapfrog arms run at eta/4. That is a NOMINAL match: the predictive limit is an
+  absolute bound, not an `eta` multiple, so it binds less at smaller `eta` and the step
+  count lands below 4x. **Read each row at the evaluations it actually spent.**
+
+  `rho/gamma` is each occupant's own regularised-Hamiltonian residual and is NOT one
+  quantity across the table: AZ's is |Gamma|/largest term, Heggie's the same for Gamma*,
+  logH's |K+B-U|/U -- which is the energy defect normalised by U, not an independent
+  constraint. Compare it down a column, never across one.
+
+
+                case             arm  drift p50  drift p99    err p99 err>10  steps p50  evals p50 nonfin budget   over escape    secs
+    config_stability          heggie  9.038e-10   6.440e-7    1.000e0      0    1.520e5    6.081e5      0      1      0 0.0068  1014.6
+    config_stability        logh_rk4   5.314e-8   3.653e-6    1.003e0      7    1.510e5    6.041e5      0      6      0 0.0068   690.9
+                            logh_rk4   gain_vs_heggie: p10 -2.49  p50 -1.75  p90 -0.92  frac better 0.0040  n 65536
+    config_stability        logh_gbs  6.806e-11   5.345e-5    1.007e0    131    1.510e5    1.820e6      0     35      0 0.0068  3470.6
+                            logh_gbs   gain_vs_heggie: p10 -1.51  p50 +1.33  p90 +2.61  frac better 0.7746  n 65536
+    config_stability  logh_gbs_nolim  7.041e-11   4.073e-3    1.292e1    718    1.202e5    1.495e6      0      0    234 0.0068  2726.0
+                      logh_gbs_nolim   gain_vs_heggie: p10 -3.01  p50 +1.35  p90 +2.63  frac better 0.7109  n 65536
+
+HOW TO READ THIS
+
+**Read the stepper-only control first.** `plain_rk4` against `plain_lf` at equal
+evaluations is the stepper's own contribution. If they differ substantially, that
+amount is inside every other comparison in the table; if they agree, the
+regularisation comparison is clean.
+
+**Then `logh_lf` against `heggie`.** That is the falsification test. logH has no chart
+and therefore no re-registration at all, which is a stronger form of the property
+Heggie's win is attributed to. If it loses, the attribution is wrong or incomplete and
+the next candidates are the KS square-root's own round-off and the per-boundary energy
+re-freeze -- a real fork that deserves its own run, not a paragraph.
+
+**`far` is prediction 2.** AZ wins it outright today, on all 65536 pixels by a flat
+0.7-0.9 decades, and that win is attributed to AZ never re-registering there. A method
+that never re-registers anywhere should not lose it.
+
+**`logh_rk4` against `logh_lf` is prediction 4.** On shell `K + B == U`, so an
+integrator that evaluates both denominators at the same point sees only a Sundman
+transformation; the leapfrog sees them at different points and that asymmetry is the
+method. If the two arms come out alike, that prediction is wrong and so is Mikkola &
+Merritt's sentence it rests on.
+
+**`err>10` is the project's own flag for *this pixel is not data*.** A count locates
+nothing -- read the gain map for where, and the decile ladder for how much.
+    Finished `release` profile [optimized] target(s) in 0.28s
+     Running `target/release/examples/logh_arms 256 results near-field 400000 gbs`
+256^2, arm set `gbs`, shared colour windows, max_steps=400000, refine_flagged=false.
+
+  **The UNMASKED kernel.** The repair pass re-integrates from t = 0, has no live
+  analogue, and removes the population this comparison is about.
+
+  **Arms are matched on FORCE EVALUATIONS, not steps.** RK4 spends 4 per step and KDK 1,
+  so the leapfrog arms run at eta/4. That is a NOMINAL match: the predictive limit is an
+  absolute bound, not an `eta` multiple, so it binds less at smaller `eta` and the step
+  count lands below 4x. **Read each row at the evaluations it actually spent.**
+
+  `rho/gamma` is each occupant's own regularised-Hamiltonian residual and is NOT one
+  quantity across the table: AZ's is |Gamma|/largest term, Heggie's the same for Gamma*,
+  logH's |K+B-U|/U -- which is the energy defect normalised by U, not an independent
+  constraint. Compare it down a column, never across one.
+
+
+                case             arm  drift p50  drift p99    err p99 err>10  steps p50  evals p50 nonfin budget   over escape    secs
+          near-field          heggie  1.451e-11  1.665e-11    1.000e0      0    4.410e4    1.764e5      0      0      0 0.0000   274.9
+          near-field        logh_rk4   1.795e-9   2.801e-9    1.000e0      0    4.358e4    1.743e5      0      0      0 0.0000   212.2
+                            logh_rk4   gain_vs_heggie: p10 -2.27  p50 -2.11  p90 -1.90  frac better 0.0000  n 65536
+          near-field        logh_gbs  1.403e-12  7.454e-12    1.000e0      0    4.358e4    5.255e5      0      0      0 0.0000  1010.3
+                            logh_gbs   gain_vs_heggie: p10 +0.64  p50 +1.02  p90 +1.28  frac better 0.9975  n 65536
+          near-field  logh_gbs_nolim  9.227e-13  1.254e-11    1.000e0      0    3.230e4    4.039e5      0      0      0 0.0000   910.3
+                      logh_gbs_nolim   gain_vs_heggie: p10 +0.83  p50 +1.20  p90 +1.44  frac better 0.9906  n 65536
+
+HOW TO READ THIS
+
+**Read the stepper-only control first.** `plain_rk4` against `plain_lf` at equal
+evaluations is the stepper's own contribution. If they differ substantially, that
+amount is inside every other comparison in the table; if they agree, the
+regularisation comparison is clean.
+
+**Then `logh_lf` against `heggie`.** That is the falsification test. logH has no chart
+and therefore no re-registration at all, which is a stronger form of the property
+Heggie's win is attributed to. If it loses, the attribution is wrong or incomplete and
+the next candidates are the KS square-root's own round-off and the per-boundary energy
+re-freeze -- a real fork that deserves its own run, not a paragraph.
+
+**`far` is prediction 2.** AZ wins it outright today, on all 65536 pixels by a flat
+0.7-0.9 decades, and that win is attributed to AZ never re-registering there. A method
+that never re-registers anywhere should not lose it.
+
+**`logh_rk4` against `logh_lf` is prediction 4.** On shell `K + B == U`, so an
+integrator that evaluates both denominators at the same point sees only a Sundman
+transformation; the leapfrog sees them at different points and that asymmetry is the
+method. If the two arms come out alike, that prediction is wrong and so is Mikkola &
+Merritt's sentence it rests on.
+
+**`err>10` is the project's own flag for *this pixel is not data*.** A count locates
+nothing -- read the gain map for where, and the decile ladder for how much.
+    Finished `release` profile [optimized] target(s) in 0.27s
+     Running `target/release/examples/logh_arms 256 results deep_interior 400000 gbs`
+256^2, arm set `gbs`, shared colour windows, max_steps=400000, refine_flagged=false.
+
+  **The UNMASKED kernel.** The repair pass re-integrates from t = 0, has no live
+  analogue, and removes the population this comparison is about.
+
+  **Arms are matched on FORCE EVALUATIONS, not steps.** RK4 spends 4 per step and KDK 1,
+  so the leapfrog arms run at eta/4. That is a NOMINAL match: the predictive limit is an
+  absolute bound, not an `eta` multiple, so it binds less at smaller `eta` and the step
+  count lands below 4x. **Read each row at the evaluations it actually spent.**
+
+  `rho/gamma` is each occupant's own regularised-Hamiltonian residual and is NOT one
+  quantity across the table: AZ's is |Gamma|/largest term, Heggie's the same for Gamma*,
+  logH's |K+B-U|/U -- which is the energy defect normalised by U, not an independent
+  constraint. Compare it down a column, never across one.
+
+
+                case             arm  drift p50  drift p99    err p99 err>10  steps p50  evals p50 nonfin budget   over escape    secs
+       deep_interior          heggie  9.298e-10   4.078e-7    1.001e0      0    1.161e5    4.642e5      0    199      0 0.0000   482.0
+       deep_interior        logh_rk4   2.650e-8   1.707e-5    1.055e0    129    1.156e5    4.623e5      0    207      0 0.0000   437.4
+                            logh_rk4   gain_vs_heggie: p10 -2.18  p50 -1.49  p90 -0.68  frac better 0.0168  n 65536
+       deep_interior        logh_gbs   2.574e-8   4.239e-3    8.414e1   1557    1.156e5    1.464e6      0    321      0 0.0000  2736.2
+                            logh_gbs   gain_vs_heggie: p10 -3.88  p50 -1.32  p90 +0.40  frac better 0.1721  n 65536
+       deep_interior  logh_gbs_nolim   8.212e-7    1.133e0    2.229e4  10514    3.685e4    5.964e5      0      6    274 0.0000  1193.5
+                      logh_gbs_nolim   gain_vs_heggie: p10 -6.32  p50 -2.73  p90 +0.08  frac better 0.1117  n 65536
+
+HOW TO READ THIS
+
+**Read the stepper-only control first.** `plain_rk4` against `plain_lf` at equal
+evaluations is the stepper's own contribution. If they differ substantially, that
+amount is inside every other comparison in the table; if they agree, the
+regularisation comparison is clean.
+
+**Then `logh_lf` against `heggie`.** That is the falsification test. logH has no chart
+and therefore no re-registration at all, which is a stronger form of the property
+Heggie's win is attributed to. If it loses, the attribution is wrong or incomplete and
+the next candidates are the KS square-root's own round-off and the per-boundary energy
+re-freeze -- a real fork that deserves its own run, not a paragraph.
+
+**`far` is prediction 2.** AZ wins it outright today, on all 65536 pixels by a flat
+0.7-0.9 decades, and that win is attributed to AZ never re-registering there. A method
+that never re-registers anywhere should not lose it.
+
+**`logh_rk4` against `logh_lf` is prediction 4.** On shell `K + B == U`, so an
+integrator that evaluates both denominators at the same point sees only a Sundman
+transformation; the leapfrog sees them at different points and that asymmetry is the
+method. If the two arms come out alike, that prediction is wrong and so is Mikkola &
+Merritt's sentence it rests on.
+
+**`err>10` is the project's own flag for *this pixel is not data*.** A count locates
+nothing -- read the gain map for where, and the decile ladder for how much.
+    Finished `release` profile [optimized] target(s) in 0.22s
+     Running `target/release/examples/logh_arms 256 results far 400000 gbs`
+256^2, arm set `gbs`, shared colour windows, max_steps=400000, refine_flagged=false.
+
+  **The UNMASKED kernel.** The repair pass re-integrates from t = 0, has no live
+  analogue, and removes the population this comparison is about.
+
+  **Arms are matched on FORCE EVALUATIONS, not steps.** RK4 spends 4 per step and KDK 1,
+  so the leapfrog arms run at eta/4. That is a NOMINAL match: the predictive limit is an
+  absolute bound, not an `eta` multiple, so it binds less at smaller `eta` and the step
+  count lands below 4x. **Read each row at the evaluations it actually spent.**
+
+  `rho/gamma` is each occupant's own regularised-Hamiltonian residual and is NOT one
+  quantity across the table: AZ's is |Gamma|/largest term, Heggie's the same for Gamma*,
+  logH's |K+B-U|/U -- which is the energy defect normalised by U, not an independent
+  constraint. Compare it down a column, never across one.
+
+
+                case             arm  drift p50  drift p99    err p99 err>10  steps p50  evals p50 nonfin budget   over escape    secs
+                 far          heggie  2.189e-12  2.234e-12    1.000e0      0    5.885e4    2.354e5      0      0      0 0.0000   165.5
+                 far        logh_rk4   3.271e-9   4.937e-9    1.001e0      0    5.862e4    2.345e5      0      0      0 0.0000   153.1
+                            logh_rk4   gain_vs_heggie: p10 -3.27  p50 -3.17  p90 -3.07  frac better 0.0000  n 65536
+                 far        logh_gbs   2.656e-7   5.150e-7    1.226e0      0    5.862e4    6.759e5      0      0      0 0.0000  1593.8
+                            logh_gbs   gain_vs_heggie: p10 -5.25  p50 -5.08  p90 -4.90  frac better 0.0000  n 65536
+                 far  logh_gbs_nolim   3.487e-8   6.411e-8    1.028e0      0    3.222e4    3.905e5      0      0      0 0.0000   679.3
+                      logh_gbs_nolim   gain_vs_heggie: p10 -4.36  p50 -4.20  p90 -4.03  frac better 0.0000  n 65536
+
+HOW TO READ THIS
+
+**Read the stepper-only control first.** `plain_rk4` against `plain_lf` at equal
+evaluations is the stepper's own contribution. If they differ substantially, that
+amount is inside every other comparison in the table; if they agree, the
+regularisation comparison is clean.
+
+**Then `logh_lf` against `heggie`.** That is the falsification test. logH has no chart
+and therefore no re-registration at all, which is a stronger form of the property
+Heggie's win is attributed to. If it loses, the attribution is wrong or incomplete and
+the next candidates are the KS square-root's own round-off and the per-boundary energy
+re-freeze -- a real fork that deserves its own run, not a paragraph.
+
+**`far` is prediction 2.** AZ wins it outright today, on all 65536 pixels by a flat
+0.7-0.9 decades, and that win is attributed to AZ never re-registering there. A method
+that never re-registers anywhere should not lose it.
+
+**`logh_rk4` against `logh_lf` is prediction 4.** On shell `K + B == U`, so an
+integrator that evaluates both denominators at the same point sees only a Sundman
+transformation; the leapfrog sees them at different points and that asymmetry is the
+method. If the two arms come out alike, that prediction is wrong and so is Mikkola &
+Merritt's sentence it rests on.
+
+**`err>10` is the project's own flag for *this pixel is not data*.** A count locates
+nothing -- read the gain map for where, and the decile ladder for how much.
+    Finished `release` profile [optimized] target(s) in 0.26s
+     Running `target/release/examples/logh_arms 256 results preset_shape 400000 gbs`
+256^2, arm set `gbs`, shared colour windows, max_steps=400000, refine_flagged=false.
+
+  **The UNMASKED kernel.** The repair pass re-integrates from t = 0, has no live
+  analogue, and removes the population this comparison is about.
+
+  **Arms are matched on FORCE EVALUATIONS, not steps.** RK4 spends 4 per step and KDK 1,
+  so the leapfrog arms run at eta/4. That is a NOMINAL match: the predictive limit is an
+  absolute bound, not an `eta` multiple, so it binds less at smaller `eta` and the step
+  count lands below 4x. **Read each row at the evaluations it actually spent.**
+
+  `rho/gamma` is each occupant's own regularised-Hamiltonian residual and is NOT one
+  quantity across the table: AZ's is |Gamma|/largest term, Heggie's the same for Gamma*,
+  logH's |K+B-U|/U -- which is the energy defect normalised by U, not an independent
+  constraint. Compare it down a column, never across one.
+
+
+                case             arm  drift p50  drift p99    err p99 err>10  steps p50  evals p50 nonfin budget   over escape    secs
+        preset_shape          heggie  3.338e-10   7.014e-7    1.000e0      0    7.058e4    2.823e5      0    219      0 0.0001   276.9
+        preset_shape        logh_rk4   1.230e-8   3.990e-6    1.000e0     11    7.000e4    2.800e5      0    222      0 0.0001   277.0
+                            logh_rk4   gain_vs_heggie: p10 -2.53  p50 -1.58  p90 -0.47  frac better 0.0361  n 65536
+        preset_shape        logh_gbs   1.329e-9   9.072e-4    1.054e0    222    7.001e4    8.552e5      0    256      0 0.0001  1290.9
+                            logh_gbs   gain_vs_heggie: p10 -3.12  p50 -0.57  p90 +1.52  frac better 0.3729  n 65536
+        preset_shape  logh_gbs_nolim   3.977e-9   2.222e-1    6.892e1   1608    3.412e4    4.664e5      0      1    117 0.0001   581.8
+                      logh_gbs_nolim   gain_vs_heggie: p10 -5.75  p50 -1.07  p90 +1.52  frac better 0.3083  n 65536
+
+HOW TO READ THIS
+
+**Read the stepper-only control first.** `plain_rk4` against `plain_lf` at equal
+evaluations is the stepper's own contribution. If they differ substantially, that
+amount is inside every other comparison in the table; if they agree, the
+regularisation comparison is clean.
+
+**Then `logh_lf` against `heggie`.** That is the falsification test. logH has no chart
+and therefore no re-registration at all, which is a stronger form of the property
+Heggie's win is attributed to. If it loses, the attribution is wrong or incomplete and
+the next candidates are the KS square-root's own round-off and the per-boundary energy
+re-freeze -- a real fork that deserves its own run, not a paragraph.
+
+**`far` is prediction 2.** AZ wins it outright today, on all 65536 pixels by a flat
+0.7-0.9 decades, and that win is attributed to AZ never re-registering there. A method
+that never re-registers anywhere should not lose it.
+
+**`logh_rk4` against `logh_lf` is prediction 4.** On shell `K + B == U`, so an
+integrator that evaluates both denominators at the same point sees only a Sundman
+transformation; the leapfrog sees them at different points and that asymmetry is the
+method. If the two arms come out alike, that prediction is wrong and so is Mikkola &
+Merritt's sentence it rests on.
+
+**`err>10` is the project's own flag for *this pixel is not data*.** A count locates
+nothing -- read the gain map for where, and the decile ladder for how much.
+    Finished `release` profile [optimized] target(s) in 0.28s
+     Running `target/release/examples/logh_arms 256 results preset_shape_h1 400000 gbs`
+256^2, arm set `gbs`, shared colour windows, max_steps=400000, refine_flagged=false.
+
+  **The UNMASKED kernel.** The repair pass re-integrates from t = 0, has no live
+  analogue, and removes the population this comparison is about.
+
+  **Arms are matched on FORCE EVALUATIONS, not steps.** RK4 spends 4 per step and KDK 1,
+  so the leapfrog arms run at eta/4. That is a NOMINAL match: the predictive limit is an
+  absolute bound, not an `eta` multiple, so it binds less at smaller `eta` and the step
+  count lands below 4x. **Read each row at the evaluations it actually spent.**
+
+  `rho/gamma` is each occupant's own regularised-Hamiltonian residual and is NOT one
+  quantity across the table: AZ's is |Gamma|/largest term, Heggie's the same for Gamma*,
+  logH's |K+B-U|/U -- which is the energy defect normalised by U, not an independent
+  constraint. Compare it down a column, never across one.
+
+
+                case             arm  drift p50  drift p99    err p99 err>10  steps p50  evals p50 nonfin budget   over escape    secs
+     preset_shape_h1          heggie  7.835e-11   7.175e-8    1.000e0      0    4.737e4    1.895e5      0      9      0 0.0008   171.6
+     preset_shape_h1        logh_rk4   4.467e-9   6.485e-7    1.000e0      9    4.672e4    1.869e5      0     11      0 0.0008   153.8
+                            logh_rk4   gain_vs_heggie: p10 -2.39  p50 -1.65  p90 -0.79  frac better 0.0044  n 65536
+     preset_shape_h1        logh_gbs  1.695e-11   5.995e-5    1.008e0    128    4.672e4    5.655e5      0     34      0 0.0008   782.7
+                            logh_gbs   gain_vs_heggie: p10 -2.03  p50 +0.71  p90 +2.68  frac better 0.6497  n 65536
+     preset_shape_h1  logh_gbs_nolim  2.037e-11   9.366e-3    2.087e1    906    3.091e4    4.020e5      0      0     67 0.0008   516.1
+                      logh_gbs_nolim   gain_vs_heggie: p10 -4.85  p50 +0.57  p90 +2.74  frac better 0.5940  n 65536
+
+HOW TO READ THIS
+
+**Read the stepper-only control first.** `plain_rk4` against `plain_lf` at equal
+evaluations is the stepper's own contribution. If they differ substantially, that
+amount is inside every other comparison in the table; if they agree, the
+regularisation comparison is clean.
+
+**Then `logh_lf` against `heggie`.** That is the falsification test. logH has no chart
+and therefore no re-registration at all, which is a stronger form of the property
+Heggie's win is attributed to. If it loses, the attribution is wrong or incomplete and
+the next candidates are the KS square-root's own round-off and the per-boundary energy
+re-freeze -- a real fork that deserves its own run, not a paragraph.
+
+**`far` is prediction 2.** AZ wins it outright today, on all 65536 pixels by a flat
+0.7-0.9 decades, and that win is attributed to AZ never re-registering there. A method
+that never re-registers anywhere should not lose it.
+
+**`logh_rk4` against `logh_lf` is prediction 4.** On shell `K + B == U`, so an
+integrator that evaluates both denominators at the same point sees only a Sundman
+transformation; the leapfrog sees them at different points and that asymmetry is the
+method. If the two arms come out alike, that prediction is wrong and so is Mikkola &
+Merritt's sentence it rests on.
+
+**`err>10` is the project's own flag for *this pixel is not data*.** A count locates
+nothing -- read the gain map for where, and the decile ladder for how much.
+GBS_CONTROLLED_COMPLETE

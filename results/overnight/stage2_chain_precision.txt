@@ -1,0 +1,30 @@
+STAGE 2: chain vs direct coordinates on `far`, 64^2, 4000 fixed steps of
+fictitious size 1.0e-3, LogH transformation, RK4, both precisions.
+
+  **PREDICTION (recorded before Stage 0 ran): chain helps at f32 and is near-invisible
+  at f64.** The f64 row is the control -- a large move there means it is not behaving as a
+  round-off fix and the f32 row cannot be attributed to precision.
+
+  Controlled to ONE thing: same transformation, stepper, step size, step count and ICs.
+  Only the coordinates differ. Chain ordering selected once and FROZEN.
+
+   prec   coords   drift p50   drift p90   drift p99  nonfin
+    f64   direct   1.036e-15   2.691e-15   4.145e-15       0
+    f64    chain   1.451e-15   3.728e-15   5.796e-15       0
+    f32   direct    2.781e-6    3.113e-6    3.336e-6       0
+    f32    chain    7.788e-7    1.223e-6    1.668e-6       0
+
+  CHAIN GAIN = log10(direct / chain), positive means chain is better
+    f64: -0.146 decades   (direct 1.036e-15, chain 1.451e-15)
+    f32: +0.553 decades   (direct 2.781e-6, chain 7.788e-7)
+
+HOW TO READ THIS
+
+**The f64 row is the control.** Chain is a round-off fix; if it moves f64 by more than a
+fraction of a decade it is doing something other than preserving digits, and the f32
+number cannot then be attributed to precision.
+
+**A null at f32 is a real answer.** It would say the `far` inversion measured in Stage 0
+is not a separation-differencing effect, and that the mechanism behind it is still
+unidentified -- which is where this investigation already stands, since the conditioning
+story proposed for `far` was refuted by its own prediction.

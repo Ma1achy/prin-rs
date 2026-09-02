@@ -9,12 +9,25 @@
 //! is decoration: an unplumbed `dt_max` is exactly `0.0`, an unplumbed `ab_min` is `INFINITY`, and
 //! an unplumbed `n_cap_hits` is `0`. Every assertion below is chosen to be false in that state.
 
+// **Every `EnsembleCfg` in this file pins `Integrator::Az`, and the pin is not a convenience.**
+//
+// The subject of this file is AZ machinery -- `A*B` and its `TINY` floor, `DtauMode`, the LC
+// branch, the reference body, `StepLimit::Reject`. None of it exists under Heggie, which has no
+// reference body, no `A*B` and three KS charts. These configs took the integrator from the
+// default; when the default moved to `Heggie` on 2026-09-02 they ran a kernel with no such
+// machinery, and **every one of them failed on its own guard or control arm rather than on a
+// wrong number** -- *"an unplumbed ab_min is INFINITY"*, *"the cap never fired -- either
+// unplumbed or the premise is wrong"*, *"Reject at a strict parameter changed nothing"*,
+// *"the hold arm is not empty and must be finite"*. The arms written to prove each test had a
+// subject are what announced that it no longer did.
+
 use prin_rs::ensemble::pixel::{self, EnsembleCfg, PixelOut};
 use prin_rs::grid::{self, Chart};
 use prin_rs::integrate::az::DtauMode;
+use prin_rs::integrate::Integrator;
 
 fn near_field(eta: f64, mode: DtauMode) -> Vec<PixelOut> {
-    let cfg = EnsembleCfg { eta, dtau_mode: mode, ..Default::default() };
+    let cfg = EnsembleCfg { eta, dtau_mode: mode, integrator: Integrator::Az, ..Default::default() };
     let (chart, cx, cy, half) = (Chart::BodyPlane, 0.0, 0.0, 0.05);
     let sl = grid::Slice::body_plane(6, 6, cx, cy, half, 2).with_chart(chart);
     (0..sl.npix()).map(|k| pixel::evaluate::<f64>(&sl, k, &cfg)).collect()
@@ -22,7 +35,7 @@ fn near_field(eta: f64, mode: DtauMode) -> Vec<PixelOut> {
 
 #[test]
 fn dt_max_is_populated_and_sits_near_the_nominal_step() {
-    let cfg = EnsembleCfg::default();
+    let cfg = EnsembleCfg { integrator: Integrator::Az, ..Default::default() };
     let px = near_field(cfg.eta, cfg.dtau_mode);
     let nominal = cfg.eta * cfg.t_max / cfg.n_sync as f64;
     for p in &px {

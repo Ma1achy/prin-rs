@@ -6,6 +6,7 @@ use prin_rs::ensemble::stats;
 use prin_rs::grid;
 use prin_rs::integrate::az::StepLimit;
 use prin_rs::integrate::az;
+use prin_rs::integrate::Integrator;
 use prin_rs::physics::{energy, Cart};
 use prin_rs::Vec2;
 
@@ -122,12 +123,24 @@ fn error_ratio_minus_one_falls_with_step_size() {
     let mut total = 0usize;
     let (mut first_max, mut last_max) = (0.0f64, 0.0f64);
     for (k, eta) in [4e-2f64, 2e-2, 1e-2, 5e-3].into_iter().enumerate() {
-        // **Pinned to `StepLimit::None`, and that pin is the finding.** Under the shipped
+        // **Pinned to `StepLimit::None`, and that pin is the finding -- but the reason first
+        // given for it was wrong and is corrected here.** The original read: *under the shipped
         // `Predictive` limit the residual is already at the round-off floor at the COARSEST
-        // rung -- `3.1e-9` falling to `1.6e-9` across the decade, non-monotone because it is
-        // arithmetic scatter and not truncation. This test exists to watch truncation fall, so
-        // it has to run where truncation is what is there. See the second arm below, which is
-        // the statement the pin depends on.
+        // rung, 3.1e-9 falling to 1.6e-9 across the decade, non-monotone because it is
+        // arithmetic scatter and not truncation.*
+        //
+        // Those two numbers are real and they are a **PLATEAU, not a floor**. The full ladder
+        // under the shipped limit runs 3.10e-9, 3.71e-9, 3.50e-9, 1.64e-9 and then falls **8.7x
+        // and 14.4x** to 1.31e-11. So `eta = 4e-2` is ~300x above the actual floor and
+        // truncation is very much alive under the limit; what the two-rung sample measured was
+        // the flat part. It was caught only when the integrator default moved to `Heggie`,
+        // which has no plateau there and failed the assertion honestly.
+        //
+        // The pin still stands, on the honest reason: this test watches truncation fall over a
+        // decade at coarse `eta`, and under the limit that decade is the plateau, where the
+        // trend is flat and the ordering is arithmetic scatter. See
+        // `the_residual_has_a_floor_and_the_coarse_plateau_is_not_it`, which measures the ladder
+        // for both integrators and asserts the plateau is not the floor.
         let cfg = EnsembleCfg {
             eta,
             t_max: 4.0,
@@ -168,30 +181,85 @@ fn error_ratio_minus_one_falls_with_step_size() {
     );
 }
 
-/// **And under the shipped limit the residual is already at the floor at the coarsest rung.**
+/// **The residual under the shipped limit has a floor, and `eta = 4e-2` is 300x above it.**
 ///
-/// This is the arm the pin above depends on, and without it that pin would look like a test
-/// weakened to keep passing. Under `StepLimit::Predictive` at `eta = 4e-2` the median
-/// `|error_ratio - 1|` sits at ~`3e-9` — round-off, not truncation — and shrinking `eta` eightfold
-/// does not move it by an order. A test written to watch truncation fall cannot run here: there
-/// is no truncation left to watch.
+/// # What this replaces, and why it had to be replaced
+///
+/// The previous form asserted *"under `StepLimit::Predictive` at `eta = 4e-2` the median
+/// `|error_ratio - 1|` sits at round-off, and shrinking `eta` eightfold does not move it by an
+/// order"* — sampling exactly two rungs, `4e-2` and `5e-3`. **It passed for a reason other than
+/// the one it stated.** Both of those points lie on a *plateau*, not on the floor. The full
+/// ladder, median over 9 near-field pixels:
+///
+/// ```text
+///        eta         AZ      x prev        Heggie      x prev
+///     4.00e-2   3.0957e-9        -       1.3121e-8        -
+///     2.00e-2   3.7136e-9      0.8       5.1571e-9      2.5
+///     1.00e-2   3.4963e-9      1.1       3.7245e-10    13.8
+///     5.00e-3   1.6396e-9      2.1       1.9414e-10     1.9
+///     2.50e-3   1.8881e-10     8.7       1.4579e-11    13.3
+///     1.25e-3   1.3099e-11    14.4       7.5440e-12     1.9
+///     6.25e-4   8.8050e-12     1.5       1.4508e-11     0.5
+///     3.13e-4   1.2351e-11     0.7          0.0e0       inf
+/// ```
+///
+/// AZ is flat across the first four rungs and then falls **8.7x and 14.4x**. So truncation is
+/// very much alive under the shipped limit; what the two-rung test measured was the flat part.
+/// It was exposed by the integrator default moving to `Heggie`, which has no plateau there and
+/// failed the assertion honestly — *the control caught it, not the property*.
+///
+/// # What is actually true, and is asserted here
+///
+/// Both integrators reach the **same** floor, `~1e-11`, at `eta ~ 1.25e-3`, and refining past it
+/// buys nothing (ratios 1.5, 0.7 and 0.5 — noise about a floor). That is the real statement, and
+/// it is the one the pin above needs: a test written to watch truncation fall must run **above**
+/// `1.25e-3` or it has no subject, and `error_ratio_minus_one_falls_with_step_size` does.
+///
+/// The plateau is asserted **explicitly as not-the-floor**, so the earlier reading cannot come
+/// back by someone sampling two rungs again.
 #[test]
-fn the_shipped_limit_is_already_at_the_floor_at_the_coarsest_step() {
+fn the_residual_has_a_floor_and_the_coarse_plateau_is_not_it() {
     let s = grid::region("near-field", 3, 3, 0.05).unwrap();
-    let med = |eta: f64| {
-        let cfg = EnsembleCfg { eta, t_max: 4.0, n_sync: 10, ..Default::default() };
-        let mut d: Vec<f64> = (0..s.npix())
-            .map(|i| (evaluate::<f64>(&s, i, &cfg).error_ratio - 1.0).abs())
-            .collect();
-        d.sort_by(|a, b| a.partial_cmp(b).unwrap());
-        d[d.len() / 2]
-    };
-    let (coarse, fine) = (med(4e-2), med(5e-3));
-    println!("shipped limit: median |ratio-1| {coarse:.4e} at eta=4e-2, {fine:.4e} at eta=5e-3");
-    assert!(coarse < 1e-7, "the coarsest rung is not at the floor: {coarse:.4e}");
-    assert!(
-        fine > coarse / 10.0,
-        "an eightfold step cut moved it more than an order ({coarse:.4e} -> {fine:.4e}), \
-         so truncation still dominates and the pin above is not justified"
-    );
+    // **Both integrators, because the difference between them is the finding.** The old form
+    // ran on whichever was the default, and when that moved from `Az` to `Heggie` it failed --
+    // correctly, and for a reason the two-rung sample could not show.
+    for integrator in [Integrator::Az, Integrator::Heggie] {
+        let med = |eta: f64| {
+            let cfg = EnsembleCfg { eta, t_max: 4.0, n_sync: 10, integrator, ..Default::default() };
+            let mut d: Vec<f64> = (0..s.npix())
+                .map(|i| (evaluate::<f64>(&s, i, &cfg).error_ratio - 1.0).abs())
+                .collect();
+            d.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            d[d.len() / 2]
+        };
+        let coarse = med(4e-2);
+        let at_floor = med(1.25e-3);
+        let past_floor = med(3.125e-4);
+        println!(
+            "{:>7}: {coarse:.4e} at eta=4e-2, {at_floor:.4e} at 1.25e-3, {past_floor:.4e} at 3.125e-4",
+            integrator.name()
+        );
+
+        // 1. There IS a floor, asserted as an ABSOLUTE LEVEL and not as a ratio between rungs.
+        //    The first cut used a ratio and fired at once: Heggie reaches EXACTLY 0.0 at
+        //    eta = 3.125e-4, which is the floor arriving, and `7.5e-12 / 0` is not a measurement.
+        //    A floor is a level. 1e-10 sits an order above where both bottom out.
+        const FLOOR: f64 = 1e-10;
+        assert!(
+            at_floor < FLOOR && past_floor < FLOOR,
+            "{}: not in the floor band by eta=1.25e-3 ({at_floor:.4e}, then {past_floor:.4e}) -- the ladder needs another rung before anything below can be called a floor",
+            integrator.name()
+        );
+
+        // 2. The coarse rung is NOT that floor. The arm with teeth: it fails if anyone
+        //    reinstates "4e-2 is already at the floor". Measured margins are 236x (AZ) and
+        //    1750x (Heggie), against a bar of 50x -- and against the FLOOR BAND rather than
+        //    the measured value AZ would read only 31x, which is why the denominator is the
+        //    rung and not the band.
+        assert!(
+            coarse > 50.0 * at_floor.max(1e-13),
+            "{}: eta=4e-2 reads {coarse:.4e} against a floor of {at_floor:.4e}, under 50x -- if the coarse rung really is at the floor then truncation is gone and the pin above has no subject, which is exactly the reading this test exists to prevent",
+            integrator.name()
+        );
+    }
 }

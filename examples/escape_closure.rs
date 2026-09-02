@@ -91,6 +91,13 @@ fn sample(chart: &Chart, body: usize, cx: f64, cy: f64, half: f64, n: usize)
 
 fn opts(r_coll: f64, rule: EscapeRule<f64>, k: usize, stop_esc: bool) -> AzOpts<'static, f64> {
     AzOpts {
+        // The landing correction at its production value. Named rather than inherited: this
+        // project has been bitten three times by two option structs disagreeing on one field.
+        land_iterate: true,
+        land_max_iters: 4,
+        // Zero, the shipped default. These runs are about the escape criterion; hysteresis
+        // changes WHICH reference body is chosen at a boundary and would vary a second thing.
+        ref_hysteresis: 0.0,
         step_limit: prin_rs::integrate::az::StepLimit::None,
         step_blend: prin_rs::integrate::az::StepBlend::Min,
         blend_p: 4.0,

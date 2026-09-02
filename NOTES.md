@@ -1895,3 +1895,870 @@ Two cautions that came out of using it:
   under a second. **Read the order, not the error** -- an error falls for many reasons; only the
   order says the leading term changed.
 
+
+---
+
+## PARKED: the logarithmic Hamiltonian (logH), and why it is the next thing
+
+Queued behind the 1024^2 gallery and `far_hierarchy`. Written down rather than left in a
+conversation because it changes what the Heggie result means.
+
+### What the literature check found
+
+The AZ-vs-Heggie comparison is **not new**. Mikkola's *A Comparison of Regularization Methods for
+few-body interactions* puts all three side by side in its Figure 6 — Heggie's global method, CHAIN,
+and what he calls **"Zare's cartwheel method"** — and gives Heggie's algorithm in full (§5,
+Eqs. 16-22), matching what `src/integrate/heggie/` transcribes.
+
+**CHAIN has the same re-selection problem, checked more often than AZ checks it.** §7: *"There is
+also a check for need of a new chain after every integration step"*, a new chain forming whenever an
+unchained vector is shorter than the smallest chained vector at either end. So "the chart is rebuilt
+as the configuration changes" is structural to CHAIN too, not peculiar to AZ.
+
+**What could not be found in two searches:** any quantified cost of chain-switching or reference
+re-selection — the literature says *when* the chain is rebuilt, not what rebuilding costs in error —
+and nothing evaluating any method on coherence across **neighbouring initial conditions**. That is
+consistent with the axis being unexplored, but two searches is not a literature review. Aarseth's
+book chapter and Mikkola & Aarseth (1993) are the next reads.
+
+### The gap in OUR work, and it is the important part
+
+**Mikkola's own recommendation is neither method.** It is the logarithmic Hamiltonian
+
+```
+    Lambda = ln(T + B) - ln(U),      B = U - T
+```
+
+integrated with a leapfrog, or its non-canonical generalisation TTL. These are **algorithmic**
+regularisation: a time transformation and a good integrator, with **no coordinate transformation at
+all**. His words: *"In more general cases one may recommend the logH-method."*
+
+And logH has **no chart whatsoever** — no reference body, no chain, nothing to re-select. That is a
+*stronger* form of the property the Heggie win has been attributed to. **If the re-registration
+mechanism is the real story, logH should match or beat Heggie.** If it does not, the mechanism is
+wrong and the Heggie result needs a different explanation.
+
+### Why it is cheap to try
+
+`src/integrate/leapfrog.rs` already exists. logH is that plus a time transformation and a `B`
+accumulator; Mikkola's toy implementation is about thirty lines:
+
+```
+    X(s):  dt = s/(T + B);  r += dt * p;  t += dt
+    V(s):  p += (s/U) dU/dr;  B += (s/U) dU/dt
+    step:  X(h/2) V(h) X(h/2)
+```
+
+Leapfrog alone is not enough — Mikkola uses it as the base for Gragg-Bulirsch-Stoer extrapolation.
+**That is a real scope item and not a footnote**: comparing a GBS-extrapolated logH against an RK4
+Heggie would be scoring the integrator, not the regularisation, and this project's whole AZ/Heggie
+comparison is fair *because* both run the same RK4 under the same step control. Either give logH the
+same RK4 treatment and accept it is not how the method is meant to be used, or run all three under
+GBS. Say which.
+
+### What it would settle
+
+  1. Whether the re-registration mechanism explains the Heggie win, or only correlates with it.
+  2. Whether the whole KS/coordinate-transformation family is the wrong branch for this application.
+  3. `far` — logH is chartless, so if it also loses `far` the cause is not the chart at all.
+
+### BUILT. Predictions recorded before the 256^2 run, and what was already seen
+
+logH is implemented: `src/integrate/logh/`, four `Integrator` variants (`LogHLeapfrog`,
+`LogHRk4`, and the two `Plain*` controls, which are the same code path with `LhTime::None`), 22
+tests across `logh_hamiltonian_fd`, `logh_march` and `logh_seam`. Phase D is
+`examples/logh_arms.rs` at 256^2 over the six cases the 1024^2 gallery finished.
+
+**The four predictions, in the state they were written before the run:**
+
+  1. `logh_lf >= heggie` overall, if re-registration is the mechanism.
+  2. logH should also win `far`, where AZ wins today on all 65536 pixels by a flat 0.7-0.9
+     decades. That win is attributed to AZ never re-registering there; a method that never
+     re-registers anywhere should not lose it.
+  3. The drift field tracks FTLE positively, as the leapfrog's does and AZ's does not.
+  4. **Added during planning:** `logh_rk4` behaves as a Sundman-transformed RK4 and loses most
+     of the advantage, because `K + B == U` on shell and RK4 evaluates both denominators at the
+     same point. If it matches `logh_lf`, this is wrong and so is Mikkola & Merritt's sentence
+     it rests on.
+
+**AND PREDICTION 3's TARGET NEEDED CORRECTING BEFORE IT COULD BE USED.** The number on record is
+FTLE-vs-drift `+0.3048` for leapfrog and `-0.0820` for AZ. Read against the shifted controls in
+the same table (`+0.0240` and `-0.1022`), **AZ's is a null, not a negative correlation** -- its
+control is larger in magnitude. And the FTLE is computed *on the plain leapfrog*
+(`src/physics/ftle.rs:26`), so the row that works has the **same integrator on both sides**. The
+honest target is "leapfrog's drift tracks FTLE and AZ's does not", with the shared-arm confound
+carried alongside any number quoted. Fixing it properly means an FTLE per occupant, which is
+propagating a tangent vector through a regularised chart and is a separate build.
+
+**WHAT HAS ALREADY BEEN SEEN, AND WHY IT IS NOT A RESULT.** Two things landed during
+implementation and both bear on the predictions, so they are recorded here rather than
+discovered later in a table:
+
+  - **Prediction 4 is already supported, on the sharpest fixture available.** KDK traverses the
+    two-body radial collision for all three pairs at identical step counts; RK4 does not
+    complete at any step size tried. That is `tests/logh_march.rs`, not a field.
+  - **Prediction 2 looks likely to FAIL.** A 24^2 smoke run of `logh_arms` on `far` put
+    `logh_lf` **5.3 decades behind Heggie** and `logh_rk4` 3.2 behind. That is a 576-pixel grid
+    at `max_steps = 60000`, run to check the harness prints, and this project has been burned
+    twice by coarse grids -- one understated a maximum eightfold, another overstated a median
+    twenty-sixfold. **It is not a result and is not quoted as one.** It is recorded because
+    seeing it before the real run is exactly the circumstance in which a prediction quietly gets
+    softened, and the prediction above is left as written.
+
+**And a third thing that is a result, from the tests rather than the field:** logH does **not**
+meet BRIEF §5's collision gate. `d_min < 1e-10` yes at `eta <= 3e-5`; `|dE/E| < 1e-12` never --
+its drift *rises* with penetration depth, 1.1e-9 to 2.3e-6, where Heggie reads `5.422e-27` with
+`drift_reg` flat at 4.4e-15. Heggie's KS map removes the `1/r` from the Hamiltonian; logH only
+slows the clock, so the encounter has to be **resolved** rather than removed, and there is no
+second, better-conditioned energy to report instead. **A chartless method is not a coordinate
+regularisation with the coordinates left out**, and if prediction 1 fails this is the first
+place to look for why.
+
+### THE FALSIFICATION TEST IS CONFOUNDED, AND THE CONFOUND IS MEASURED
+
+Two of six cases at 256^2, unmasked kernel, diagnostic pass:
+
+```
+                     drift p50   vs heggie   frac better    evals p50   err>10
+  far      az         2.824e-13      +0.89        1.0000      3.938e5        0
+           heggie     2.189e-12          -             -      2.354e5        0
+           logh_rk4    3.271e-9      -3.17        0.0000      2.345e5        0
+           logh_lf     4.709e-7      -5.33        0.0000      1.477e5        0
+           plain_rk4    3.165e2     -14.16        0.0000      1.056e5    65536
+           plain_lf     3.130e5     -17.15        0.0000      1.056e5    65536
+
+  deep_    az          1.345e-9      -0.15        0.4287      9.479e5      438
+  interior heggie     9.298e-10          -             -      4.642e5        0
+           logh_rk4    2.650e-8      -1.49        0.0168      4.623e5      129
+           logh_lf     4.541e-5      -4.68        0.0001      1.942e5      598
+           plain_rk4    2.240e2     -11.36        0.0000      1.056e5    65536
+           plain_lf     1.869e2     -11.31        0.0000      1.056e5    65536
+```
+
+**Prediction 1 fails on both, by 5.33 and 4.68 decades.** The plan says that means the
+re-registration attribution is wrong. **It does not, and the reason is now measured rather than
+suspected.**
+
+The syllogism was: logH has *no* re-registration, which is stronger than Heggie's *none after
+the first*, so if re-registration is the mechanism logH should match or beat it. That is valid
+only if logH is otherwise at least as good as Heggie, and it is not. `tests/logh_march.rs`
+already shows logH missing BRIEF §5's collision gate -- `d_min < 1e-10` yes, `|dE/E| < 1e-12`
+never, drift *rising* with penetration depth where Heggie's `drift_reg` is flat at 4.4e-15 --
+because a KS map removes the `1/r` from the Hamiltonian and a time transformation only slows the
+clock.
+
+And **every region tested is collision-dominated**: `results/output/integrator_gallery_1024.txt`
+gives
+`coll` of 1048576/1048576 on `far`, 1033184 on `deep_interior`, 850590 on `preset_shape`. So
+logH is being graded almost entirely on the one thing it is known not to do, and its deficit
+there says nothing about re-registration either way. **This is the same class of error the
+project keeps catching -- two things compared that differ in more than one way -- arrived at from
+the other side: not a knob held fixed whose effect goes unattributed, but a knob NOT held fixed
+that was treated as if it were.**
+
+**THE UNCONFOUNDED MEASUREMENT IS CADENCE SENSITIVITY, NOT ABSOLUTE ACCURACY.** Double `n_sync`
+at fixed step size (scaling `eta`, and `closure_k` with it) and measure how far the drift field
+moves. AZ moves **0.44-0.52 decades**, Heggie **0.048**. That is a *difference within one
+integrator*, so each occupant's own singularity handling cancels out of it, and logH -- which
+re-registers zero times -- must land at Heggie's level or below if the mechanism is real,
+however poor its absolute drift is. `examples/heggie_machinery.rs` is the harness; logH arms go
+in after the sweep.
+
+### AND PREDICTION 4 IS REFUTED IN THE DIRECTION I DID NOT CONSIDER
+
+`logh_rk4` was predicted to lose most of the method's advantage, degenerating to a Sundman
+transformation because `K + B == U` on shell. It does not lose to `logh_lf` -- it **beats** it,
+by 2.16 decades on `far` and 3.23 on `deep_interior`, and by ~1.8 and ~2.5 after correcting for
+the evaluation shortfall. The prediction assumed `logh_lf` was the ceiling.
+
+The arithmetic behind it may still hold; its predicted *consequence* is false, because at these
+depths a fourth-order stepper's accuracy outweighs whatever the leapfrog's structure buys. The
+one place the structure is decisive is the **exact** collision, where RK4 does not complete at
+all and KDK traverses for all three pairs. So there is a crossover in encounter depth, measured
+at both ends and not in between.
+
+### THE STEPPER-ONLY CONTROL GIVES OPPOSITE ANSWERS ON THE TWO CASES, WHICH IS WHY IT IS RUN
+
+At exactly matched evaluations (1.056e5 on both arms, both cases): `far` reads `3.165e2` against
+`3.130e5`, **three decades**, and `deep_interior` reads `2.240e2` against `1.869e2`, **0.08
+decades**. So the stepper contributes heavily where the field is dominated by one clean
+two-body encounter and essentially nothing where it is chaotic. A single case would have
+licensed either "the stepper is in every comparison" or "the comparison is clean", and both
+would have been wrong somewhere.
+
+### CORRECTION, ONE CASE LATER: THE COLLISION EXPLANATION IS NOT SUPPORTED, AND THE CONTROL IS SATURATED
+
+`near-field` landed and refutes the mechanism I offered above for logH's deficit. Decades against
+Heggie, with each region's collision fraction beside it:
+
+```
+             case    coll   hg/az   logh_lf   logh_rk4   lf-rk4    plain_rk4    plain_lf
+              far   1.000   -0.89     -5.33      -3.17    -2.16    3.165e+02   3.130e+05
+    deep_interior   0.985   +0.16     -4.69      -1.45    -3.23    2.240e+02   1.869e+02
+       near-field   0.024   +0.65     -4.94      -2.09    -2.85    1.486e+02   9.576e+01
+```
+
+**`logh_lf`'s deficit is flat at 4.7-5.3 decades while the collision fraction runs from 100% to
+2.4%.** So "logH is being graded almost entirely on the one thing it is known not to do" is
+wrong: the deficit is the same where collisions are rare. Withdrawn. The `logh_rk4` gaps do not
+order by collision fraction either -- 3.17, 1.45, 2.09 against 1.000, 0.985, 0.024.
+
+**AND THE STEPPER-ONLY CONTROL IS SATURATED ON EVERY FIELD CASE, SO ITS DIFFERENCES MEASURE
+NOTHING.** Both `plain_*` arms carry `err>10` on **all 65536 pixels** of all three regions --
+this project's own flag for *this pixel is not data* -- with drift at `1e2` to `1e5`. The "three
+decades on `far`, 0.08 on `deep_interior`" quoted above is a difference between two meaningless
+numbers, and the conclusion drawn from it (that the stepper's contribution is case-dependent) is
+withdrawn with it. A fixed step of `4e-3` cannot resolve any of these regions, which is exactly
+what `the_control_is_a_fixed_step_integrator` says it is.
+
+Where the control is **not** saturated it does measure the stepper: on the figure-eight,
+`LhTime::None` reads order 4.52 under RK4 and 1.85 under KDK, and at matched evaluations RK4 is
+ahead by about **2 decades**. That is the same size as the measured `logh_lf` against `logh_rk4`
+gap (2.16, 3.23, 2.85), so most of the leapfrog arm's deficit is its **order**, not its
+regularisation.
+
+**Which makes the like-for-like comparison `logh_rk4` against `heggie`, both RK4 under the same
+step control: -3.17, -1.45, -2.09 decades.** That is the number the regularisation question turns
+on, and it is two to three decades rather than five.
+
+**What survives from the entry above:** the general confound -- logH differs from Heggie in more
+than one way, so an absolute-accuracy comparison cannot isolate re-registration -- and therefore
+the case for the cadence measurement, which is a difference within one integrator and cancels
+whatever each occupant's absolute accuracy is. What does not survive is my account of *which*
+difference was doing the work. I named collisions, and the collision fraction says no.
+
+### THE SWEEP LANDED, AND THE SIGNAL IS THE VARIANCE, NOT THE ACCURACY
+
+Six cases, eight arms, 256^2, diagnostic pass, unmasked kernel. Decades against Heggie, sorted,
+with the **spread across the six regions**:
+
+```
+          az:  -4.50  -3.02  -1.67  -0.65  -0.16  +0.89    spread 5.39 decades
+    logh_rk4:  -3.17  -2.09  -1.77  -1.76  -1.57  -1.45    spread 1.72
+     logh_lf:  -5.33  -4.99  -4.94  -4.87  -4.69  -4.21    spread 1.12
+```
+
+**AZ's deficit against Heggie swings 5.4 decades across the corpus; logH's swings 1.7, and the
+bare leapfrog's 1.1.** Both AZ and logH are measured against the same no-re-registration
+baseline, so the comparison is like for like -- and the arm *with* re-registration is the one
+whose error depends on the field, by a factor of three to five.
+
+That is the strongest evidence in the whole run for the re-registration story, and it is **not**
+the axis the falsification test was written on. Absolute accuracy asks "is logH better"; the
+answer is no. Variance asks "does the chart machinery make the error field-dependent"; the answer
+looks like yes. The leapfrog arm being the *most* consistent of the three fits the same reading:
+its error is dominated by its ORDER, which is a property of the method, where AZ's is dominated
+by events that depend on where in the chart the trajectory goes.
+
+**Suggestive, not conclusive.** Six points, and a spread is a weak statistic on six points; the
+cadence measurement remains the pre-registered test, because it is a difference *within* one
+integrator rather than a spread across regions.
+
+### AND logH BEATS AZ ON THE CHART CASES, WHICH THE FIRST FOUR ROWS DID NOT SHOW
+
+```
+    config_stability   -0.10       preset_shape      +1.46
+          near-field   -1.44       preset_shape_h1   +2.74
+                 far   -4.06
+       deep_interior   -1.29
+```
+
+`preset_shape_h1` is the chart where AZ carries **2222 not-data pixels**; `logh_rk4` carries
+**9**, and beats it by 2.74 decades. `preset_shape`: AZ 703, logH 11. **The robustness column is
+where logH's advantage over AZ is unambiguous and it is large on every case** -- `err>10` of
+423 -> 7, 438 -> 129, 703 -> 11, 2222 -> 9 -- even on the cases where its drift is worse.
+
+Reporting the first four cases as "logH is competitive with AZ" understated it: on the two
+presets it is decisively ahead. A four-case read of a six-case corpus, and the two missing cases
+were the ones that differed.
+
+### AND THE `plain_*` SATURATION IS 86%, NOT 100%, ON `config_stability`
+
+The claim "err>10 on all 65536 pixels, both arms" was measured on `far`, `deep_interior` and
+`near-field`, where it holds. `config_stability` reads 56199 and 47012. No practical difference
+-- a drift of `8.4e2` is not data either way -- but the claim was about three cases and does not
+generalise to the fourth.
+
+### THE LANDING FIELD TEST USED A DIAGNOSTIC THIS PROJECT ALREADY DOCUMENTS AS BLIND TO IT
+
+Both guards passed and the answer was flat:
+
+```
+    near-field  Rk4  land off   drift 3.292e-7   land resid 1.488e-5   corr 0
+    near-field  Rk4  land on    drift 3.291e-7   land resid 1.815e-14  corr 7460158
+```
+
+The residual falls **nine orders**, the correction fires **7.5 million times**, and the drift
+moves by **0.03%**. Same on every case and stepper.
+
+**That is not a negative result, it is the wrong instrument, and CLAUDE.md:1292 says so
+already:** *"A DIAGNOSTIC FIELD IS SPECIFIC TO A CLASS OF DEFECT, AND ENERGY DRIFT IS BLIND TO
+THIS ONE... The overshoot displaces the state in TIME and the AZ energy is nearly stationary
+along the flow."* That entry is about the overshoot clamp, which is the same defect one revision
+earlier, and it ends *"ask what the diagnostic would say about the defect you are hunting BEFORE
+reading it as clean."*
+
+The figure-eight measured **closure** -- a position and velocity error, which a displacement in
+time changes directly. The field harness measured **energy drift**, which is nearly invariant
+along the flow, so a state displaced in time carries almost the same energy. The two tests
+disagree because they measure different things, and the landing correction improves the one the
+field harness cannot see.
+
+**So the port question is unanswered, not answered no.** What it needs is a trajectory
+diagnostic on a field -- a shape chord against a much finer reference, the way `dtau_mode` pairs
+were compared -- not `energy_drift_max`.
+
+### AND GBS LOOKS LIKE IT BEATS HEGGIE, WHICH CONTRADICTS THE ANSWER GIVEN TWO MESSAGES EARLIER
+
+Decades, GBS against the `logh_arms` table:
+
+```
+                       vs heggie      vs az   vs logh_rk4
+    config_stability      +0.98      +2.65         +2.75
+          near-field      +1.20      +1.84         +3.29
+       deep_interior      -3.43      -3.27         -1.97
+```
+
+Two of three cases ahead of Heggie, and `nonfin` runs RK4 14 -> GBS 0 on `config_stability` and
+140 -> 0 on `deep_interior`. Cost is 3-4x the evaluations.
+
+**This is NOT a controlled comparison and must not be quoted as one.** The GBS rows run with the
+predictive step limit **off** and the `logh_arms` rows run with it **on**, which is the knob
+measured to be worth up to 13 decades on `far` and to be fatal at an exact collision. Different
+resolutions too (96^2 against 256^2), which per-trajectory statistics tolerate but which should
+be said. The controlled run is `logh_gbs` as an arm of `logh_arms` under the same limit as
+everything else, and it is the obvious next thing.
+
+"logH does not beat Heggie" was answered on the bare leapfrog and the RK4 arm. Under the
+configuration Mikkola actually recommends it may well; that is now a live question rather than a
+settled one.
+
+### THE LANDING CORRECTION DOES TRANSFER — AND ITS VALUE ORDERS INVERSELY WITH CHAOS
+
+Re-run against a **trajectory** diagnostic (shape chord against a converged GBS reference at
+`eta/16`, with a second reference at `eta/32` as the convergence guard) instead of energy drift.
+`gain = chord_off / chord_on`:
+
+```
+                          t=1     t=2     t=4     t=8    chord off @ t=8
+    near-field       Rk4  0.997  41.118  41.180  22.454     2.458e-5
+                     Kdk  1.000   0.855   0.889   0.979
+    config_stability Rk4  1.000   6.893   1.966   1.587     2.190e-5
+                     Kdk  1.000   1.002   1.006   1.002
+    deep_interior    Rk4  2.396   1.168   0.993   0.983     1.417e0   <- SATURATED
+                     Kdk  0.990   0.998   1.000   0.997
+```
+
+**Up to 41x, where `energy_drift_max` read 1.00.** The blind-instrument diagnosis is confirmed
+from the other side: the same correction, the same runs, a diagnostic that can see a displacement
+in time.
+
+**And the ordering is the mechanism, not scatter.** `near-field` is the tamest region in the
+corpus -- `d_min/R = 3.8e-3`, 2.4% of pixels collide -- and gains 22-41x. `config_stability` is
+chaotic and collision-heavy: 1.6-6.9x. `deep_interior` is the most chaotic: **nothing** past
+`t = 2`. The landing contributes a roughly fixed error per boundary, so it matters in proportion
+to how little else is going wrong.
+
+**`deep_interior` at `t = 8` is a dead row and says so on its face**: `chord off = 1.417` against
+a maximum of 2.000 on the shape sphere. That is chaotic saturation, which the harness was
+designed to expose rather than average over.
+
+**The KDK control never improves, in twelve cells out of twelve** -- 0.855 to 1.006, and
+*slightly worse* where it moves at all, paying for corrections a second-order method cannot use.
+That is what licenses reading the RK4 column: a correction that improved every arm would not be
+removing an order-two cap.
+
+### WHAT THAT MEANS FOR THE PORT, WITH THE DECISION LEFT OPEN
+
+For AZ and Heggie the correction would buy **a large trajectory improvement in tame regions,
+nothing where chaos dominates, for 2-7% more force evaluations**. And it is not an academic
+quantity here: the shipping science field is `spread_shape`, which is trajectory-derived, so the
+rendered field in tame regions would move.
+
+Against: it invalidates every committed number in `results/`, and the regions it helps most are
+the ones already at `1e-11` drift where nothing was visibly wrong.
+
+Both halves are now measured rather than argued. The decision is not taken here.
+
+---
+
+# Session: GBS sweep, the no-discard fix, the secant landing, and two overnight stages
+
+## THE GBS VERDICT: ONE CLEAN WIN IN SIX, AND IT NEVER WINS A TAIL
+
+Controlled sweep, 256^2, matched force-evaluation convention, same step control, both limit arms,
+`refine_flagged` off. Gain is against Heggie, positive means GBS better:
+
+```
+  near-field         +1.02          win, err>10 = 0
+  config_stability   +1.33 median   bulk win, 131 not-data, p10 -1.51
+  preset_shape_h1    +0.66 median   bulk win, 128 not-data, p99 2.9 dec worse
+  preset_shape       -0.60          loss, 222 not-data
+  deep_interior      -1.44          loss, 1557 not-data
+  far                -4.20          uniform loss, p10..p90 spread only 0.35 dec
+```
+
+At **~3x the force evaluations** throughout, and **Heggie reads `err>10 = 0` on all six**. Wherever
+GBS does not win outright it produces a not-data population Heggie does not have. `far` is the
+extreme: a 0.35-decade spread across 65536 pixels is a constant offset, not a bad tail.
+
+**`logh_rk4` lost all six**, by 1.46 to 3.17 decades. That settles the pre-registered prediction 4
+in the direction it was written: on shell `K + B == U`, so an integrator evaluating both
+denominators at the same point sees only a Sundman transformation.
+
+**Six reference arms reproduced the committed corpus bit-for-bit**, including `preset_shape_h1` at
+`7.835e-11`, which is checkable against the figure recorded in CLAUDE.md rather than against a
+file.
+
+## THE STEP LIMIT FOLLOWS A RULE -- AND IT IS RESOLUTION-SENSITIVE, WHICH I FIRST OVERSTATED
+
+At 256^2, six cases, no exceptions: the predictive limit is essential exactly where overshoots
+occur without it, and a tax where they do not.
+
+```
+                     nolim overshoot events   what the limit does
+  far                          0              7.6x WORSE, +73% evals
+  near-field                   0              mildly worse, +23% evals
+  preset_shape_h1             67              err>10   906 ->  128
+  preset_shape               117              err>10  1608 ->  222
+  config_stability           234              err>10   718 ->  131
+  deep_interior              274              err>10 10514 -> 1557
+```
+
+**The caveat, which I stated as "no exceptions" before measuring it:** at **128^2** on
+`config_stability` the limit *hurts* -- `err>10` 28 with it against 9 without -- where at 256^2 it
+helps 718 -> 131. Same case, same statistic, opposite verdict at two resolutions. The rule holds at
+the resolution that ships; the confidence does not transfer downward.
+
+Not a contradiction and worth stating exactly: the sweep's `over` column **sums** `n_overshoot`
+events across pixels while `gbs_tail` **counts pixels** with any. 234 events and 1 pixel are
+different quantities.
+
+## `gbs_unconverged` WAS COMPUTED ON EVERY MARCH AND READ BY NOTHING
+
+Third instance of this pattern after `ab_floored` and `ab_min`. It stopped at `LhOut` and never
+reached `MarchOut` or `PixelOut`, so no render, dump, criterion or test could see it. Now plumbed.
+
+It fires on **83% of pixels** on `config_stability`, at a rate of **6.3e-4 per macro-step** -- so
+GBS is not failing constantly, it is that a trajectory of ~5.3e5 macro-steps almost always
+accumulates one. A per-pixel boolean over a long march saturates for the same reason
+`n_cap_hits > 0` did.
+
+**Which makes it useless as a discriminator, and the harness labels that rather than scoring it.**
+It covers 1.0000 of the hot set at a lift of **1.203**; chance alone would cover 23.3 of 28.
+`budget_exhausted` is the sharp one -- lift **146** -- but covers only 3.6% of the tail. Nothing in
+either tail is unexplained, and no single site attributes it.
+
+## `logh_arms`' `budget` COLUMN IS OVER TWICE THE DENOMINATOR OF EVERY OTHER COLUMN IN ITS ROW
+
+Counted over `px.iter().chain(dpx.iter())` -- both passes -- while `err>10`, `drift`, `nonfin`,
+`steps`, `evals` and `over` are over the diagnostic pass alone. A truncated run in the science pass
+cannot contribute to `err>10` at all, so "35 of 131" was never a subset claim.
+
+**And the obvious repair for reading it was wrong.** I argued `nonfin = 0` proves the diagnostic
+pass carries no truncation, since `budget_exhausted` sets `finite = false`. It does not: the drift
+reduction *filtered non-finite copies out*, so a dead copy left the pixel finite. Which is the next
+finding.
+
+## A FAILED COPY WAS BEING DISCARDED FROM `energy_drift_max`, AND IT FAILED CHAOS-SELECTIVELY
+
+`if dr.is_finite() { drift_max = drift_max.max(dr) }` **dropped** a diverged or truncated copy and
+left the pixel reporting a healthy-looking maximum over the survivors. That is the no-discard rule
+broken, and it breaks in the worst direction: a copy goes non-finite because its integration was
+hard, integration is hard at a close encounter, and close encounters are what the instrument
+exists to measure.
+
+**`finite` means different things in different occupants.** `az::driver` sets it false only when
+the state itself goes non-finite and leaves it `true` for a run it truncated; `logh::driver` sets
+it false for both. The first patch keyed on `finite` and `tests/no_discard.rs` failed **64 of 64**.
+The reduction now tests `o.finite && !o.budget_exhausted`, which needs no knowledge of the driver.
+
+`+inf` and not `NaN`, because these are max-reductions and infinity is the absorbing element.
+**`d_min` is deliberately untouched**: it is a *min*-reduction with no absorbing element for
+"undetermined", and `-inf` would read as a collision at every threshold and rewrite the outcome
+labels.
+
+The test carries the control arm -- the same pixels at a generous budget must come back finite --
+because a reduction hard-wired to return `inf` passes the property arm exactly as well as a correct
+one.
+
+## THE SECANT LANDING IS PORTED TO AZ, HEGGIE AND THE NUMPY REFERENCE, AND xcheck IS 4/4
+
+`clamp_final_step` sizes the landing step from `dt/dtau` read *before* it, a first-order predictor,
+so the clock is corrected to the boundary and the state is not. That `O(h^2)` residual is what
+holds the measured convergence order at 2.08 (AZ) and 2.40 (Heggie) rather than at RK4's four.
+
+Porting it to Rust alone broke `short_horizons_match_to_1e13` and `long_horizon_t13` while
+`algebra_matches_the_reference` stayed green -- the equations untouched, the trajectory changed.
+**Fix both sides or the cross-check disagrees for the right reason**: `reference/tb_az.py` carries
+`LAND_ITERATE_DEFAULT` and a vectorised secant that leaves unselected lanes bit-for-bit alone.
+
+With both sides ported, **xcheck is 4/4** -- two independently written implementations of the
+correction, Rust scalar and NumPy vectorised, agreeing to 1e-10 on a Burrau trajectory. That is a
+stronger statement than either side passing alone.
+
+`land_iterate` defaults **true in all three `*Opts` structs and in `EnsembleCfg`**, deliberately:
+this session was bitten three separate times by two option structs disagreeing about one field
+(`step_limit` between `AzOpts`/`HgOpts`, `finite` between drivers, and the stale hardcoded
+`land_iterate: false` in `pixel.rs` whose justification had expired).
+
+**A fixture moved under it for the fifth time.**
+`the_relative_mask_desaturates_where_the_absolute_one_does_not` ran at `t_max = 2.0` -- the
+anti-pattern this project has recorded three times -- and went vacuous, because the landing removes
+a *spatially varying* first-order error at every boundary, so the hot mask became coherent and
+stopped fragmenting (40.3% -> 0%). Repaired by pinning to `t = 13` **and** replacing the calibrated
+`rel_multi > 0.2` with a **paired** comparison against the absolute mask, which is the claim the
+test is actually making and needs no constant. Re-pinning the constant would have been a tolerance
+loosened to keep green.
+
+## OVERNIGHT STAGE 0: `far`'s AZ WIN INVERTS AT f32, AND MY MECHANISM WAS WRONG
+
+Predictions were written to `results/overnight/PREDICTIONS.md` before the run. Saturation guard
+reads **LIVE at both precisions** -- 16368 / 16347 distinct drift values, distribution overlap
+0.0004 -- so the comparison has a subject.
+
+```
+      az  f64  drift p50  2.823e-13   err>10   0
+  heggie  f64  drift p50  2.189e-12   err>10   0    AZ better 0.890 dec, 100% of pixels
+      az  f32  drift p50   1.175e-4   err>10  25
+  heggie  f32  drift p50   2.022e-5   err>10   0    HEGGIE better 0.768 dec, 100% of pixels
+```
+
+**I predicted the advantage would WIDEN and argued against the brief's rule. The brief was right.**
+I reasoned that `Gamma*`'s degree-six algebra would lose the most digits at low precision. The
+measurement says AZ is the precision-sensitive arm: f64 -> f32 costs AZ a factor of **4e8** against
+Heggie's **9e6**, about 44x more. **No replacement mechanism is offered** -- the failed one was
+mine and inventing a second in the same breath is the move the original brief ruled out.
+
+Chain coordinates (Stage 2) are justified on the brief's rule, and are a round-off fix predicted to
+show hardest at exactly the precision where the effect lives.
+
+## OVERNIGHT STAGE 1: REVERSIBILITY IS STABLE AND IS NOT MEASURING CHAOS
+
+March to `t_max`, negate velocities, march back, compare COM-centred positions. No reference
+trajectory, one scalar per pixel, 2x cost.
+
+**Two harness defects had to be fixed before any number meant anything.** The residual was first
+computed on **absolute** positions: AZ and Heggie reconstruct from relative coordinates and place
+the COM at the origin, logH integrates absolute positions and leaves it where the decode put it, so
+the two families sat a constant translation apart -- `(-0.0125, +2.4875)` on `far`, identical for
+all three bodies. Every other comparison in this project is translation-invariant, which is why it
+had never mattered. Read raw it reported the COM offset as a flat, `eta`-independent error of
+`4.016e-1`. And `AzOpts::default()`/`HgOpts::default()` disagreed on the step limit, so the arms ran
+under different step control.
+
+**PREDICTION 1 (reversibility tracks FTLE better than drift) is REFUTED across all four cases.**
+Null everywhere against the shifted control, and most decisively on `deep_interior`, the case with
+the widest FTLE range (2.29-4.98), where every arm reads -0.01 to -0.04 against controls of the
+same size.
+
+**PREDICTION 1b fired and killed the normalisation arm.** `rev/amp` correlates with FTLE at -0.92
+to -0.999 -- not "much less", a near-deterministic anti-correlation. It is `exp(-lambda t)` wearing
+another name. Fully characterised: the correlation is set by whether the amplification's variation
+exceeds the residual's and nothing else, which is why it reads -0.98 on `near-field` (FTLE spans
+1.22-2.35) and only -0.09 for `logh_rk4` on `far` (FTLE spans 0.01, but that arm's `rev` spread is
+64%).
+
+**The premise, not the arithmetic, is what fails.** `deep_interior` has `lambda t ~ 42.6`, so
+round-off times `e^{lambda t}` predicts a residual of order **100** -- complete irreversibility.
+Measured: **7.175e-6**, eight orders out. Reversibility is not round-off carried through the tangent
+flow, and no claim about what it *is* is offered here.
+
+**What survives:** the magnitudes are stable and resolution-independent (`near-field` az
+`3.943e-10` at 64^2 against `3.950e-10` at 128^2), and it reports a failure mode energy drift
+cannot see -- **GBS saturates rather than converging, and worsens under refinement**
+(`7.556e-12 -> 1.801e-11` over a 16x cut). It made one successful prediction: it ranked
+`logh_gbs` worst on `far`, saturated, **before** the sweep's `far` GBS row existed, and that row
+came back at -4.20 decades.
+
+**Two cautions against my own tables.** The AZ/Heggie reversibility ordering **flips by case and is
+never at matched cost** -- AZ wins `far` and `deep_interior` at 1.7x and 2x Heggie's evaluations,
+Heggie wins `config_stability` at 1.2x AZ's -- so it is not an ordering. And the half-frame shifted
+control reads 0.32-0.34 on `near-field`, large enough that it may not be destroying the spatial
+relationship there, in which case it licenses nothing on that case in either direction.
+
+## TTL IS BUILT AND VALIDATED, AND IT LOSES — MONOTONICALLY WORSE WITH MASS RATIO
+
+Mikkola & Aarseth, CMDA **84** (2002) 343. `Omega = sum w_ij / r_ij` replaces logH's mass-weighted
+`U`, with `W` carried in the state and advanced by `dW = (dOmega/dt) dt`.
+
+**The weight choice makes the control an identity.** `w_ij = mbar^2` gives `Omega === U` exactly at
+equal masses, so the `q = 1` row is an algebraic identity rather than a near-agreement. `w_ij = 1`
+would have been simpler and left `Omega` on a different scale from `U`, so a comparison at fixed
+`eta` would have scored the step size instead of the transformation.
+
+`W` is registered **once at `t = 0`** and carried across every boundary — it is the analogue of
+`B`, and re-seeding it per interval would discard the off-shell information the transformation runs
+on and make the march depend on `n_sync`. `LhState` went 13 -> 14 components; `to_array13` is now
+`to_array14` so a length mismatch is a compile error rather than a silent index shift.
+
+**Validation, `tests/logh_ttl.rs`, five tests each with a non-vacuity arm:**
+
+- `Omega === U` at equal masses to 1e-15, paired with the arm that they differ >10% at 90:1.
+- `omega_dot` finite-differenced against `omega`, with a sign-flip mutation arm asserted to fire.
+  Step `1e-3`, not `1e-8`: `Omega` is smooth and `O(1)`, so a small step surrenders digits to
+  cancellation for nothing.
+- **The `W`-vs-`Omega` gap converges at SECOND ORDER: `1.500e-5 -> 3.748e-6 -> 9.368e-7`, ratios
+  `4.00` and `4.00`.** The first cut of this test asserted an absolute `< 1e-6`, measured `3.7e-6`,
+  and would have been "fixed" by halving the step. An absolute tolerance cannot separate
+  second-order error working as designed from a wrong `dW`; a convergence ratio can — a wrong term
+  does not converge and a first-order one converges at 2x.
+- End to end: equal-mass `|dr| 4.113e-14`, 90:1 ratio `|dr| 2.498e-5`.
+
+**The sweep, `examples/ttl_mass_ratio.rs`, near-field configurations at 48^2, KDK, masses varied
+and nothing else:**
+
+```
+      q   drift p50 logh    drift p50 ttl   gain(logH/TTL)   TTL cost
+      1        8.363e-6         8.363e-6          -0.000      1.000x
+      2        1.124e-5         5.786e-6          +0.288      0.999x
+      5        1.147e-5         1.268e-5          -0.044      0.997x
+     20        7.862e-6         2.334e-5          -0.472      0.996x
+    100        2.683e-6         1.854e-5          -0.840      0.997x
+   1000        2.369e-7         1.671e-5          -1.848      0.997x
+```
+
+Control exact at `q = 1`. `err>10` and `nonfin` **zero on every arm at every rung**, so neither
+side is dead. Cost at parity throughout, so this is not a quality-for-work trade.
+
+**The prediction — TTL beats logH at high ratio, ties at equal mass — is REFUTED on its first
+arm.** No mechanism is offered.
+
+The fact worth carrying: **the gap widens because logH IMPROVES 35x across the ladder**
+(`8.4e-6 -> 2.4e-7`) while TTL stays flat near `1.7e-5`. Untested and stated as such: at `q = 1000`
+the masses are `(0.4998, 0.4998, 0.0005)`, close to a two-body problem plus a test particle, and
+whether that is still a mass-ratio sweep or a near-integrable limit is a separate measurement.
+
+**IAS15 is not built.** Gauss-Radau nodes, a predictor-corrector loop and its own step control; its
+only role here is a reference arm, since its per-lane variable work is already measured as fatal on
+GPU (`warps hit 1.0000`).
+
+## STAGE 2: CHAIN COORDINATES BUY 3.6x AT f32 AND NOTHING AT f64 — THE PREDICTION HOLDS
+
+Mikkola & Aarseth, CMDA **57** (1993) 439. `src/integrate/logh/chain.rs`. For three bodies the
+chain is two vectors: `X1 = r_b - r_a`, `X2 = r_c - r_b`, and the third separation is `|X1 + X2|`
+— a **sum of small quantities** rather than a **difference of large ones**.
+
+**The ordering is FROZEN, selected once at registration.** Choosing a chain ordering is a
+*re-registration*, the same class of act as AZ picking a reference body, which is the mechanism
+this whole logH investigation exists to isolate. A chain that re-selects at sync boundaries
+reintroduces exactly what logH was built to have none of. The re-selecting variant is a named arm
+and never the default.
+
+It is a **diagnostic** integrator: no events, no closure escape, no `t_end`, no outcome labels, so
+its numbers are **not comparable with the committed corpus**. It is deliberately too small to be
+mistaken for a gallery arm.
+
+**Result, `far` at 64^2, 4000 fixed fictitious steps of 1e-3, LogH + RK4, same ICs both arms:**
+
+```
+  prec   coords    drift p50    drift p90    drift p99   nonfin
+   f64   direct    1.036e-15    2.691e-15    4.145e-15        0
+   f64    chain    1.451e-15    3.728e-15    5.796e-15        0
+   f32   direct     2.781e-6     3.113e-6     3.336e-6        0
+   f32    chain     7.788e-7     1.223e-6     1.668e-6        0
+
+  gain = log10(direct/chain):   f64 -0.146      f32 +0.553
+```
+
+**PREDICTION 2 — "chain helps at f32 and is near-invisible at f64" — CONFIRMED**, and it was
+written before Stage 0 ran. The f64 control is what licenses the f32 reading: both f64 arms sit at
+the ~1e-15 round-off floor, so `-0.146` is noise between two floors and not a cost.
+
+### Four defects found building it, three by tests that carried a negative control
+
+- **A SIGN ERROR IN BOTH RELATIVE ACCELERATIONS.** `a1` and `a2` had the `g1` term inverted. The
+  march "worked" and produced trajectories; energy drift read **77.5**. Caught by differencing
+  against `newton::accel` with a **swapped-pair negative control** — an index assertion alone would
+  have passed on a transposition, the standing `shape_pl` lesson at a new site.
+- **THE MARCH FIXTURE WAS UNRESOLVABLE, NOT WRONG.** The tight pair sits at `2.2e-3`, orbital
+  period `~2.5e-4`, so an *unregularised* step of `1e-3` is four periods long. That is what the
+  time transformation exists for, and the first cut of the test used `LhTime::None`.
+- **A NON-COM-CENTRED FIXTURE GAVE A FLAT DRIFT CURVE — `1.890e-6` at three step sizes.** Read
+  literally that is *the* wrong-equation signature. It was the frame: `to_cart` returns a
+  COM-centred configuration because a chain has no COM degree of freedom, while `e0` was computed
+  on the uncentred input, so the two energies differed by the COM kinetic energy — a constant,
+  independent of step size. *A construction that assumes a COM-centred input returns a drifting
+  system without one*, now at a third site, and the flat curve is what diagnosed it.
+- **THE SEPARATION TEST PASSES VACUOUSLY AND THE FILE SAYS SO.** Chain and direct give
+  **identical** f32 separations (`1.213e-7` both), because `from_cart` performs the same
+  subtraction once. A one-shot conversion is *structurally incapable* of showing the benefit — it
+  is dynamical, accruing over a march as the vectors are carried instead of reconstructed. The
+  test now asserts they are identical, which is the honest claim; asserting an improvement there
+  would have been a test that cannot fail in the direction that matters.
+
+**And the convergence check replaced an absolute bound, twice.** The march drift reads
+`2.068e-8 -> 1.275e-9 -> 8.358e-11`, ratios **16.2 and 15.3** — fourth order, twice. An absolute
+threshold cannot separate "fourth-order truncation working as designed" from "the equations are
+wrong", and this file had already caught a sign error a magnitude test would have passed. The
+rungs are pinned **above** the fixture's own `~4e-12` round-off floor: below it the same ladder
+reads ratios 5.8 then 1.4, which is the floor and not a failure.
+
+## STAGE 4: IAS15 IS BUILT — MACHINE PRECISION, AND TWO INDEX BUGS ON THE WAY
+
+Rein & Spiegel, MNRAS **446** (2015) 1424. `src/integrate/ias15.rs`. Fifteenth-order Gauss-Radau,
+adaptive, error following Brouwer's law.
+
+**It is a REFERENCE ARM, not a production candidate**, and that verdict is measured rather than
+assumed: its predictor-corrector iterates a variable number of times per step — measured **min 5,
+max 12** over 200 steps — which is the per-lane variable work already recorded as fatal on GPU
+(`warps hit 1.0000`, worst lane 5.2 million retries). The variability is *asserted*, because it is
+the property and not a defect to hide.
+
+**Why it is worth having:** this project has no reference. `eta/256` came back **saturated** —
+chord 2.000, antipodal, scoring a correct mode and a broken one alike.
+
+```
+  fixed step dt = 0.1                     drift 3.469e-16
+  adaptive, t = 200, 5697 steps           drift 5.204e-15   (244432 evals, mean 5.99 iters)
+```
+
+### The conversion matrix is COMPUTED, not transcribed — and that decision paid twice
+
+The `g -> b` conversion is 21 magic constants in the reference implementations. Two sign errors in
+this project's AZ algebra were invisible until someone finite-differenced the Hamiltonian. So the
+matrix is built by expanding the Newton basis into the monomial basis, and the test checks it
+against the **defining identity** at random points with a perturbed-matrix negative control — a
+transcribed table can only be tested against a copy of itself.
+
+**The first cut was off by one and it still integrated.** `g_k` multiplies
+`prod_{i=0..=k}(t - h_i)` and `h_0 = 0`, so every basis polynomial carries a factor of `t`: the
+interpolant has no constant term and IAS15's `b_k` is the coefficient of `h^(k+1)`, not `h^k`.
+Recording the product *before* multiplying, and indexing from `t^0`, shifts the matrix one place.
+It compiled, it ran, it produced trajectories — **energy drift 7.8e-1 at `t = 200`** against the
+`1e-15` the method is for, and a halving that bought **3.6x** where fifteenth order gives ~32000x.
+Exactly the "wrong algebra looks like physics" failure mode, in new code, caught by an accuracy
+test rather than by inspection.
+
+**And the second bug was in the harness, not the method.** With the matrix fixed, the *fixed-step*
+drift was already `3.469e-16` while the *adaptive* run read `1.282e-7`. The step controller was
+being handed a **hardcoded constant** where `max |b_6|` belongs, so it degraded silently to
+"multiply `dt` by a fixed factor every step" and looked like an integrator fault. `step` now
+returns `b_6` rather than letting a caller supply it.
+
+`next_dt` clamps its growth factor to `[0.2, 4.0]`: an unbounded step control is how this project
+recorded a single step advancing the clock by `2.209e128`.
+
+## SCORING AGAINST TRUTH: HEGGIE IS CLOSEST, AND THE REFERENCE HAS A MEASURED HORIZON
+
+`examples/ias15_reference.rs`. The first measurement in this project of **distance from the true
+trajectory** rather than energy drift (a self-consistency check) or a difference between two arms
+(which cannot say which is right).
+
+`near-field` at 24^2, nominal copy, termination off, `t_max = 1`:
+
+```
+  ref self-gap p50 6.671e-16   incomplete 0/576   LIVE
+         az  err p50  1.736e-14   evals p50 1.68e3
+     heggie  err p50  1.017e-14   evals p50 1.67e3     <- closest to truth
+   logh_rk4  err p50  3.461e-14   evals p50 1.68e3
+      chain  err p50  5.208e-15   evals p50 4.20e4     <- 25x the cost, NOT comparable
+```
+
+**Heggie is 1.71x closer to truth than AZ and 3.4x closer than logH's RK4 arm, at matched force
+evaluations** (all three within 1%). The reference agrees with itself to `6.7e-16`, three orders
+below the errors it measures.
+
+**And the tolerance pair was varied, which is what makes it robust.** `(1e-9, 1e-11)` and
+`(1e-11, 1e-12)` give arm scores agreeing to **under 0.3%** — az `1.735e-14` against `1.736e-14`,
+heggie `1.014e-14` against `1.017e-14`. A reference that moved when tightened would have been
+scoring itself.
+
+### THE REFERENCE'S HORIZON IS `t ~ 1.85`, AND THAT IS THE CASE FOR REGULARISATION AS A NUMBER
+
+At `t_max = 2` the reference stalls, identically at both tolerances:
+
+```
+  eps 1e-11:  reached t = 1.8759, 4,000,000 steps, final dt = 1.742e-13
+  eps 1e-12:  reached t = 1.8596, 4,000,000 steps, final dt = 1.343e-13
+```
+
+There is a close approach at `t ~ 1.87`, and an **unregularised** integrator cannot step through
+it however high its order: `dt` collapses onto the floor and the remaining `0.13` would need
+`~1e12` steps. AZ, Heggie and logH cross the same encounter in ~1.7e3 force evaluations, because
+the time transformation shrinks the *physical* step while the fictitious step stays `O(1)`.
+
+Neither a tighter tolerance nor a bigger budget extends this — both tolerances stall in the same
+place. **A regularised reference (IAS15 on the logH-transformed equations) is what would.**
+
+### FOUR TRUNCATIONS REPORTED AS VALUES, IN ONE HARNESS
+
+Every one produced a plausible number in the correct units:
+
+- **chain with a stray `eta`** — integrated ~1% of the span, reported `1.509e-1` as an *error*.
+- **chain matched on a step COUNT** — under LogH the physical time per fictitious step varies, so
+  a fixed count lands wherever it lands: `1.363e-2`. Fixed by marching to the state's own clock
+  with an explicit guard that the span landed.
+- **the reference hitting its step budget** — at `eps <= 1e-13` the step control drives `dt` onto
+  its floor and covers **0.4% of the span**; the harness `return`ed silently and the self-gap read
+  `1.510e-1`, which looks exactly like a tolerance catastrophe. `reference` now returns *whether it
+  finished*, and there is a separate verdict for it.
+- **and my reading of that one.** I dismissed the budget explanation by quoting
+  `ref evals p50 2.57e3` — "nowhere near 4,000,000" — but that is `ev_a`, the *first* reference's
+  cost, and the arm that failed was the second, whose cost was never captured. **I diagnosed one
+  arm by reading the other's.** Both are carried now.
+
+The usable tolerance range is measured rather than chosen: `1e-11` and `1e-12` complete in 36 and
+96 steps; `1e-13` and `1e-14` burn the whole budget reaching `t = 0.0044` and `t = 0.0023`.
+
+## TWO SATURATED DIAGNOSTICS REPLACED, AND BOTH REPLACEMENTS ANSWER
+
+### `rev/amp` was never a second quantity — the fitted slope is ZERO, not one
+
+The divided form `rev / exp(lambda t)` **assumes** the residual grows as `exp(lambda t)` with a
+slope of exactly 1. Regressing `ln(rev)` on `lambda * t_max` instead, on `deep_interior` at 64^2:
+
+```
+        az  slope -0.0024      heggie  slope -0.0040      logh_rk4  slope -0.0057
+   logh_lf  slope -0.0053    logh_gbs  slope -0.0043
+```
+
+**Zero, where the amplification model requires 1.0.** So reversibility carries no `exp(lambda t)`
+dependence at all, there is nothing to normalise out, and the fitted residual carries the same
+information as the raw quantity — Spearman against FTLE `-0.006` to `+0.013`, all inside their
+shifted controls, exactly as `rev` itself is.
+
+This replaces the earlier order-of-magnitude argument (`deep_interior` predicts a residual of order
+100 and measures `7.175e-6`) with a direct fit, and it explains the `-0.92 to -0.999` correlations
+the divided form produced: **dividing by something that varies enormously when the numerator does
+not returns the divisor with a minus sign.** The divided form was manufacturing a signal, not
+mis-scaling one.
+
+### `gbs_unconverged` as a RATE concentrates the entire tail in its top quintile
+
+The boolean `gbs_unconverged > 0` fires on **83%** of pixels and scores a lift of **1.203** while
+"covering" 1.0000 of the hot set — close to what chance alone gives. The cause is arithmetic: a
+trajectory of ~5e5 macro-steps almost always accumulates one unconverged step at a rate of only
+`6.3e-4` per step, so a per-pixel boolean saturates by construction. Same shape as `n_cap_hits > 0`
+firing on every pixel.
+
+The rate is unbounded and continuous. `config_stability` at 128^2, `logh_gbs`:
+
+```
+  unconverged RATE: 13590 distinct values over 16384 pixels
+  quintile 1  rate <= 2.065e-6   hot   0 of 3276   lift 0.00
+  quintile 2  rate <= 4.546e-6   hot   0 of 3277   lift 0.00
+  quintile 3  rate <= 1.527e-5   hot   0 of 3277   lift 0.00
+  quintile 4  rate <= 6.704e-5   hot   0 of 3277   lift 0.00
+  quintile 5  rate <= 1.159e-1   hot  26 of 3277   lift 5.00
+```
+
+**Every not-data pixel is in the top quintile and none is anywhere else.** `lift 5.00` is the
+arithmetic ceiling for a quintile, so this is perfect concentration rather than a good score.
+
+That is the attribution the boolean could not make: **GBS's tail is exactly where its extrapolation
+misses its own tolerance most often** — not budget truncation, not overshoot, at a rate two to five
+orders above the rest of the frame.
+
+**The transferable form: the fix for a saturated count is not a better threshold on the same count,
+it is a quantity with range.** 13,590 distinct values against a boolean's two.
+
+The `logh_gbs_nolim` arm corroborates more weakly, which is what a smaller hot population should do:
+all **8** of its not-data pixels fall in the top two rate quintiles (lift 3.75 and 1.25) against the
+same boolean reading **1.198**. With 8 hot pixels rather than 26 there is less to concentrate.
+
+**And one number in that block must not be read as a finding: `n_overshoot > 0` scores
+`lift 2048.000` on ONE firing.** A ratio computed on `n = 1` can only come out at the ceiling or at
+zero -- it is `1/(8/16384)` and says nothing about overshoot. The harness prints the fire count
+beside every lift so this is visible rather than quotable, which is the same discipline that stopped
+`gbs_unconverged > 0`'s "covers 1.0000 of the hot set" being read as coverage.

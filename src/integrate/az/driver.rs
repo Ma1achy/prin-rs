@@ -147,6 +147,10 @@ pub struct AzOut<T> {
     /// fails the comparison while looking exactly like a transcription error.
     pub refs: Vec<u8>,
     pub steps: usize,
+    /// Extra steps spent on secant landing corrections. **Zero is ambiguous**: it means either
+    /// `land_iterate` is off, or every landing step hit its tolerance first. A harness comparing
+    /// arms must print the flag beside it.
+    pub land_iters: u64,
     pub finite: bool,
     pub budget_exhausted: bool,
     /// Termination events, per BRIEF §2.4. Collisions are sampled **inside** the RK4 loop;
@@ -410,6 +414,21 @@ pub struct AzOpts<'a, T> {
     /// here is real and independently measured; it is not the cause of that appearance.
     pub clamp_final_step: bool,
     /// Which per-step limit bounds the step. See [`StepLimit`].
+    /// **Secant-correct the step that lands on a sync boundary.**
+    ///
+    /// `clamp_final_step` sizes the landing step from `dt/dtau` read *before* the step. That is a
+    /// first-order predictor, so its landing residual is `O(h^2)` and it caps the observable
+    /// convergence order at two however good the stepper is — measured on the figure-eight, AZ
+    /// reads 2.08 clamped against 1.06 unclamped, and the residual is what stops it going higher.
+    /// This iterates `ds *= want/got` on the same interval-local clock, which is a secant on
+    /// `t(ds)` with the free exact point `t(0) = 0`.
+    ///
+    /// Defaulted **on**, and the same default in `HgOpts` and `LhOpts`: this project has now been
+    /// bitten three times by two option structs disagreeing about one field, most recently today
+    /// by `step_limit` and by `finite`.
+    pub land_iterate: bool,
+    /// Cap on secant iterations per landing step. Each one is a real step and is counted.
+    pub land_max_iters: usize,
     pub step_limit: StepLimit,
     /// **Hysteresis on the reference-body choice.** `0` is the plain `argmax`.
     ///
@@ -454,6 +473,8 @@ impl<T: Real> Default for AzOpts<'_, T> {
     fn default() -> Self {
         Self {
             forced_refs: None,
+            land_iterate: true,
+            land_max_iters: 4,
             step_limit: StepLimit::None,
             step_limit_f: 0.0,
             ref_hysteresis: 0.0,
@@ -531,6 +552,8 @@ pub fn reference_opts<T: Real>(
 ) -> AzOpts<'_, T> {
     AzOpts {
         forced_refs,
+        land_iterate: true,
+        land_max_iters: 4,
         step_limit: StepLimit::None,
         step_limit_f: 0.0,
         ref_hysteresis: 0.0,
@@ -855,6 +878,7 @@ pub fn integrate_az_opts<T: Real>(
     let mut drift_hist: Vec<T> = Vec::with_capacity(if opts.keep_drift_hist { n_sync } else { 0 });
     let mut total_steps = 0usize;
     let mut finite = true;
+    let mut land_iters = 0u64;
     let mut budget_exhausted = false;
     // Recording only. `dt_max` is the largest physical step any interval took; `n_cap_hits`
     // counts steps at `PerStepInterval`'s entry-sizing cap. Neither changes a trajectory.
@@ -1038,6 +1062,38 @@ pub fn integrate_az_opts<T: Real>(
                 }
                 h = h * T::lit(0.5);
             };
+            // **THE LANDING CORRECTION.** `clamp_final_step` predicts this step's size from
+            // `dt/dtau` read *before* it is taken, which is first order, so the state arrives near
+            // the boundary and the clock is then set to it exactly. The clock is corrected and the
+            // state is not — that residual is `O(h^2)` and it is what holds AZ's measured order at
+            // 2.08 rather than at RK4's four.
+            //
+            // The condition is the loop's **own** exit test evaluated on the state just reached,
+            // not a second prediction of it: a mid-interval step has nothing to land on, and
+            // correcting one would only make it smaller.
+            //
+            // `h` and not `ss.dtau`, because a `Reject` retry may have halved it — the secant has
+            // to start from the step actually taken.
+            if opts.clamp_final_step
+                && opts.land_iterate
+                && s.t >= dt_left - land_tol::<T>(true, dt_left)
+            {
+                let want = dt_left - t_before;
+                let tol_abs = dt_left * T::LAND_EPS_REL;
+                let mut cur = h;
+                for _ in 0..opts.land_max_iters {
+                    let got = s.t - t_before;
+                    if !got.is_finite() || got <= T::zero() || (got - want).abs() <= tol_abs {
+                        break;
+                    }
+                    // Secant on `t(ds)` with `t(0) = 0` as the free exact first point.
+                    cur = cur * want / got;
+                    s = rk4::step(&sys, &s_save, e, cur);
+                    steps += 1;
+                    land_iters += 1;
+                }
+            }
+
             let dt_took = s.t - t_before;
             if dt_took.is_finite() && dt_took > dt_max {
                 dt_max = dt_took;
@@ -1241,6 +1297,7 @@ pub fn integrate_az_opts<T: Real>(
     AzOut {
         state: cart,
         t,
+        land_iters,
         drift,
         d_min_ref,
         d_min_true,

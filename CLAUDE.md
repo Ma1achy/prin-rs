@@ -1761,3 +1761,745 @@ global `eta/256` pays 256x everywhere for a local failure. Their value is diagno
 large — *`eta/256` brings every flagged pixel to `error_ratio` 1.000* is what proves this is
 ordinary under-resolution rather than a wrong equation, a saturating cap or a threshold, which is
 why it is the **ground truth** in the comparison and not a candidate in it.
+
+**`Gamma*` IS DEGREE SIX JOINTLY AND AT MOST QUADRATIC IN EACH SINGLE COMPONENT, SO THE `h^2` FD
+TEST HAS NO SUBJECT.** `R_i = Q_ix^2 + Q_iy^2` enters every term of Heggie's `Gamma*` at most
+linearly and `W_i = L(Q_i)P_i` is linear in each argument, so the third derivative with respect to
+any one coordinate is **identically zero** — and that is exactly what central differencing
+truncates at. Measured: median FD error **3.3e-16 at `h = 1.0`**, a hundred-per-cent perturbation
+of every component, **rising** as `h` falls at the `1/h` roundoff law (29x over 128x). A floor at
+every reachable step, not a slope. AZ's version of the same test works only because its `Gamma`
+carries `A B m_b m_c/|R3|`, which has third derivatives in abundance. **Asserting "no truncation"
+alone would be asserting the harness produces small numbers**, which a broken harness does equally
+well — so the replacement carries a control arm that adds a deliberately cubic term and requires
+the same harness over the same states to recover `0.25`, which it does **at every rung**. The
+transferable form: when a test ported from a sibling cannot be written, ask what property of the
+new object removed its subject before weakening the threshold.
+
+**THE `1/m` RISK HEGGIE WARNS ABOUT IS NOT LIVE ON THIS CORPUS, AND THE BOUND OVERSTATES IT BY
+ORDERS.** `Gamma*` carries `1/m_1, 1/m_2, 1/m_3` and Heggie §4 says Eq. (21) is inapplicable if a
+mass vanishes — a risk the Heggie port introduces that AZ never had. `Chart::Latent` saturates its
+logits at `MU_MAX = 5`, which admits masses of order `e^-10`. Measured over 2,097,152 systems at
+512^2, every pixel and all `E+1` copies: `config_stability` reads **`min m = 0.245`, `max 1/m =
+4.08`, mass ratio 1.745**, presets exactly `1/3` and `3`. The saturation bound is a statement about
+the chart family; the windows actually rendered sit nowhere near it. `examples/heggie_mass_floor.rs`
+is read-only and integrates nothing.
+
+**HEGGIE'S Eq. (18) IS VERIFIED AS THE JACOBIAN OF Eq. (17) IN FULL 3D, NOT ON THE PLANAR SLICE.**
+The planar reduction `A_i = 2 L(Q_i)^T` is the one step of the transcription the paper does not
+state, and checking it only where `Q_3 = Q_4 = 0` would leave the two out-of-plane columns untested
+— which is what makes the reduction a claim rather than a definition. Finite-differenced in four
+dimensions it agrees to **4.1e-10**, and restricted it equals `2 L(Q)^T` **exactly** while the
+transposed block differs by **8.0**. Same shape as the standing `shape_pl` result: an index
+assertion alone passes on a transposition, so the negative control is the test.
+
+**HEGGIE'S COLLISION RESULT IS PAIR-INDEPENDENT TO THE DIGIT, AND THAT IS THE GLOBALITY AS A
+NUMBER.** The two-body radial collision run three times, once per pair: `d_min = 5.422e-27` and
+**39455 steps, identical for all three**, with drift 4.4e-15 / 3.8e-15 / 4.9e-15. AZ's version of
+this test must first assert that the colliding pair is one of the two *regularised* ones — if the
+geometry put it on the third side the test would measure nothing — and its acceptance is
+`d_min < 1e-10`. Seventeen orders, and no configuration-dependent preamble. A Heggie
+implementation that passed for one pair and not the others would be AZ wearing a different name,
+which is what makes the three-way form the test rather than a repetition of it.
+
+**HEGGIE IS NOT MORE EXPENSIVE HERE, AND HIS OWN 1.6x IS PER STEP AND NOT PER TRAJECTORY.**
+Burrau to `t = 6` at `eta = 1e-4`: **677,714 steps against AZ's 683,748, a ratio of 0.99**, with
+drift **2.95e-14 against 2.69e-13** and the two trajectories agreeing to 5.4e-10. His §3 quotes
+~1.6x *computing time per step* because `Gamma*` has more terms — that is a FLOPs statement and
+survives; the step **count** does not follow it, because the step size is set by the time
+transformation and `dt = R1R2R3 dtau` is not `dt = A B dtau`. Quote the two separately.
+
+**THE CONVERGENCE ORDER IS 2.40 CLAMPED AND 1.03 UNCLAMPED, so `clamp_final_step` is a
+correctness property on this integrator too.** Figure-eight closure across `eta in [0.02, 0.001]`:
+`1.23e-5 -> 9.22e-9` clamped, `4.61e-2 -> 2.08e-3` unclamped. AZ reads 2.08 and 1.06 on the same
+fixture. The unclamped arm is the control and it is what makes the clamped number mean anything —
+without it, second order could be the stepper rather than the landing.
+
+**THE LABEL-INDEPENDENCE QUOTE DOES NOT REPRODUCE AS COVARIANCE, AND IT IS A MOTIVATING QUOTE FOR
+THE PORT.** Heggie §3: *"the success of the time-reversals ... does not depend on any judicious
+choice for the initial labelling of the bodies, which is the case with the method of Aarseth and
+Zare."* Measured over all five non-identity label permutations of Burrau to `t = 6`: Heggie
+**1.76e-14**, **AZ 3.23e-15** — AZ is *better*. Relabelling is physically empty and AZ's reference
+body is chosen from geometry, so both are covariant; what Heggie describes is his own Table III
+setup, where AZ needs the bodies labelled so the regularised pairs are the ones that close. That
+is a statement about setting a run up, not about covariance. The argument for this port rests on
+the **re-registration count**, which is measured, and not on this sentence.
+
+**AND THE SAME "WHAT ORDER IS IT IN THIS VARIABLE" QUESTION DECIDES THE FD STEP TWICE.** Eq. (6)
+is exactly quadratic in the momenta, so `q_dot` is exactly differenced at any step — but at
+`h = 1e-6` the difference cancels a `-m_j m_k/|q_i|` term that is *independent of `p`* and reaches
+`1e3` when a separation is small, and the test read **1.6e-7**, entirely that cancellation
+amplified by `1/h`. At `h = 1` it reads **1.9e-13** with the mutation arm still at 4.9e-1. Same
+shape as `Gamma*` being exactly differenced, one level down: ask what order the function is in the
+variable **before** choosing the step, and a small step is not the conservative choice.
+
+**AND THE NEGATIVE RESOLVES INTO THE ARGUMENT: RE-REGISTRATION IS *WHY* THIS AZ IS
+LABEL-INSENSITIVE.** Freezing the reference body with `forced_refs` and re-running the same five
+label permutations: **free 3.227e-15, frozen 3.411e-6 — a factor of 1.06e9**, on a run whose free
+arm switches reference only 4 times in 64 boundaries. So Heggie's §3 contrast is real and is drawn
+against a **fixed-reference** AZ; this port does not exhibit it because it already pays the price
+that buys it off, and **the wedges are that price**. Robustness against a bad initial pick and a
+discontinuity across neighbouring pixels are the same mechanism seen from two sides. The quote
+still cannot be cited as covariance — that reading is refuted at 3.2e-15 — but the property behind
+it is live, and this is the discriminating measurement rather than the plausible story.
+
+**PHASE 4 CONFIRMS THE PREDICTION AT 256^2, AND ALL THREE GUARDS FIRE.** `config_stability`,
+termination off in both integrators, step control held constant at `Predictive f=0.02`, every arm
+`nonfin <= 1`:
+
+```
+    AZ  n=250 CONTROLLED   lift 2.061   chord 5.162e-1
+    HG  n=250 CONTROLLED   lift 3.824   chord 4.832e-2      <- 10.7x smaller
+    HG  n=250 confounded   lift 2.327   chord 4.185e-1      <- the harness sees change
+    HG  refresh_h n=125    lift 2.909   chord 5.570e-1      <- and sees BOUNDARY change
+```
+
+`hot lift` is out of a possible 4.0. **Removing re-registration removed the cadence sensitivity**,
+and the 64^2 and 256^2 tables agree to within 10%, so it is not a small-grid artefact. The guards
+are what make the null mean anything: `steps p50` flat to 1.3% across the HG controlled rows (AZ's
+moves 10%) says `eta` held the step size; the confounded arm at 10x says the harness *can* see a
+large chord in Heggie; and `refresh_h` at 13x — the one arm that reintroduces a boundary-dependent
+quantity — says it sees **boundary** sensitivity specifically. Without that last arm the null could
+have been the instrument.
+
+**THE THREE ORDERS OF DRIFT ARE NOT HEGGIE'S -- THEY ARE HEGGIE TIMES THE STEP LIMIT, AND THREE
+CELLS OF A 2x2 CANNOT SAY SO.** Measured on `config_stability` at 256^2, `drift p50` with
+non-finite counts:
+
+```
+                  limit OFF            limit ON          the limit buys
+    AZ        1.223e-6 (nf 897)    4.209e-8 (nf 0)            29x
+    HG        6.374e-8 (nf  25)    5.591e-11 (nf 1)         1140x
+    HG vs AZ        19x                 753x
+```
+
+**Heggie alone is 19x; `StepLimit::Predictive` alone is 29x; 19 x 29 = 551 against an observed
+753, so they are roughly independent and multiplicative.** "Heggie has three orders less drift" was
+being read off the limit-ON row alone and attributes the whole product to the regularisation. The
+missing cell was AZ-without-the-limit, and it existed only because the harness was built to compare
+integrators and the limit was held constant as a *fairness* control -- a knob held fixed is a knob
+whose effect is unattributed.
+
+**AND HEGGIE DOES NOT TAKE 22% MORE STEPS.** With the limit off: **AZ 1.228e5, HG 1.224e5**,
+identical. The +24% is the predictive limit binding harder on Heggie, not the algebra, so the true
+per-step tax is the 1.36x per call and nothing else.
+
+**THE ACCURACY CANNOT BE SPENT AS SPEED, BECAUSE `eta` IS NOT WHAT SETS THE COST.** Coarsening
+`eta` 8x moves `steps p50` only 1.520e5 -> 8.987e4, **1.69x**, where fourth-order arithmetic
+predicted 2.5-3x cheaper at matched drift. With the limit off the same 8x gives **7.4x** (1.224e5
+-> 1.660e4), the `1/eta` scaling restored -- so the predictive limit is the binding constraint and
+`eta` is nearly inert above it. The floor is real: the best equal-work cell is `HG eta x8` at
+**0.98x AZ's work for 21x less drift**, and going below it means switching the limit off, which
+costs 1040 non-finite pixels of 65536.
+
+**THE UNCONFOUNDED HEGGIE ADVANTAGE IS ROBUSTNESS, AND IT WAS NOT BEING QUOTED.** With the limit
+off, non-finite pixels run **AZ 897 against HG 25, a factor of 36** -- owing nothing to the step
+limit and nothing to drift. At `eta x8` with no limit it is 379 against 1040, which inverts, so the
+advantage is a property of the ordinary regime and not a universal one. State the regime.
+
+**AND THE 1974 COST FIGURE DOES NOT TRANSFER — BUT THE APPARENT WIN IS AZ'S CROSS-CHECK DISCIPLINE,
+NOT THE METHOD.** Measured per `deriv` call, single-threaded, same call count both sides:
+`AZ 20.29 ns`, `HG Eq.(20)/(21) 17.82 ns` (**0.88x**), `HG Eqs.(22)-(24) 27.40 ns` (**1.36x**)
+against Heggie's own ~1.6x. The planar reduction is why — his 4-vectors collapse to 2-vectors and
+his 4x3 `A_i` to a 2x2 block. **But AZ's `deriv` calls `r3.powf(3.0)` rather than `r3*r3*r3`
+deliberately**, to route through the same libm call NumPy does; timed in isolation that is
+`6.42 ns` against `0.43 ns`, so **up to 28% of AZ's per-call cost is ulp fidelity and not algebra**.
+Against AZ's algebra alone the ratios are ~1.22x and ~1.88x, and the cost win evaporates. Total
+compute on `config_stability` is the step ratio times the call ratio — `1.23 x 1.36 = 1.67x` as
+shipped — and **neither factor alone is the cost**.
+
+**THE TWO INTEGRATORS WERE BEING COMPARED ON TWO DIFFERENT MEASUREMENTS, AND THE ERROR FLATTERED
+THE NEW ONE.** `AzOut::drift` is the energy of the **returned Cartesian state**; `HgOut::drift` was
+the energy of the **regularised state**, which is a different quantity. On the two-body radial
+collision they differ by **280x** (4.432e-15 against 1.245e-12) and by up to **7100x** under
+refinement. Every Heggie drift number quoted before this — including the whole Phase 4 table — was
+the regularised one against AZ's Cartesian one. Fixed: `drift` is Cartesian on both, and
+`drift_reg` is carried beside it because the *gap* is the finding.
+
+**AND THE GAP IS CONDITIONING, NOT INTEGRATION — WHICH IS WHAT REGULARISATION BUYS, AS A NUMBER.**
+Across a 32x refinement on that fixture, `drift_reg` is **flat at 4.4e-15 to 9.8e-14** while
+`drift` **rises** 1.245e-12 to 5.4e-10, with `d_min = 5.422e-27` at every rung. The integration is
+at its round-off floor and the *readout* is what degrades: after passing through an exact collision
+the Cartesian energy is `kinetic - potential` cancelling from enormous terms to `O(1)`, while the
+regularised energy carries the potential as a constant-order term. Heggie reaches sixteen orders
+deeper than BRIEF's `d_min < 1e-10` gate asks and pays for it only in the readout. So the collision
+gate is asserted on `drift_reg`, and **the justification is a committed test rather than a
+sentence** — `the_cartesian_energy_is_ill_conditioned_after_an_exact_collision` fails if `drift`
+ever *falls* with `eta`, which is what would make the Cartesian number the honest one.
+
+Two hypotheses were refuted on the way, both by measurements that looked like they would confirm
+them: the reference point (`|h0 - e0|/|e0| = 2.2e-16`, negligible) and the `sum q_i` constraint
+(`|cart - enl| = 0` exactly). Both diagnostics started from the returned state and so were blind to
+the one thing that had changed.
+
+**HEGGIE FIXES AZ's WORST DECILE ON 100% OF ITS PIXELS BY 3.28 DECADES, AND THE WHOLE-FRAME MEDIAN
+SHOWS 1.14x.** `config_stability` at 256^2, unmasked kernel, both integrators under the same
+predictive limit and the same step budget. Gain `= log10(drift_AZ/drift_HG)` conditioned on **AZ's
+own drift decile**:
+
+```
+    d0 [2.9e-11,2.9e-9]   gain p50 -1.21   frac better 0.232
+    d4 [2.5e-8, 4.8e-8]   gain p50 -0.06   frac better 0.487
+    d7 [3.2e-7, 1.3e-6]   gain p50 +1.48   frac better 0.917
+    d8 [1.3e-6, 9.5e-6]   gain p50 +1.59   frac better 0.996
+    d9 [9.5e-6, 9.3e-4]   gain p50 +3.28   frac better 1.000
+```
+
+Two real, opposite, spatially separated effects: **1900x on the damaged decile with zero
+exceptions**, and ~16x the other way on the tame decile where drift is already 1e-10. A median over
+both is the one statistic guaranteed to show nothing, and it read 4.240e-8 against 4.824e-8. The
+quantile ladder was not enough either — it says the distribution moved and cannot say **where**.
+What answers it is the **gain map**, an image: `log10(drift_AZ/drift_HG)` on a FIXED symmetric
+diverging ramp, blue where Heggie is lower. 59.9% of the frame better, 42.4% by over a decade, in
+coherent arms.
+
+**And two aggregates were quoted as locating structure in the same ten minutes.** `err>10 = 7` was
+read as "the wedges are gone under AZ" — a **count** cannot locate anything — and `drift p50` as
+"Heggie changes nothing" on a frame that is visibly inhomogeneous. The eye reached the right answer
+first, because the structure is spatial and every statistic reached for was not. *Never conclude
+"no effect" from an aggregate without the per-pixel distribution* now has a fourth site, and this
+one was self-inflicted immediately after invoking the rule's sibling about renders.
+
+**`refine_flagged` MASKS THE COMPARISON ENTIRELY, AND THE SIDECAR IS WHAT CAUGHT IT.** The first
+`integrator_gallery` render used `EnsembleCfg::production()`, which has the repair pass **on**, and
+`config_stability` showed no wedges under EITHER integrator — a clean Heggie panel that said
+nothing, because the AZ panel was clean too. Caught by reading the panel's own `.cfg.txt`, where
+`refine_flagged` was absent from the override list and therefore at its production value. Always
+render the comparison with the repair pass **off**: it is batch-only, it has no live-playhead
+analogue, and it removes the very population the comparison is about.
+
+**`stop_on_event` CONTAMINATED THE DRIFT DIAGNOSTIC AND PRODUCED FIVE WRONG CONCLUSIONS IN A
+ROW.** A trajectory stopped by an event is parked **at** a close approach, and the Cartesian energy
+there is a cancellation of two enormous terms. Measured on `far`, termination off -> on: AZ
+`2.588e-13 -> 2.129e-12` (**8x**), Heggie `2.925e-12 -> 7.872e-8` (**27000x**), while Heggie's
+`drift_reg` stays at `1.081e-11`. **The readout was being measured, not the integrator.** Heggie
+suffers it more because its reconstruction is longer -- regularised -> enlarged (dividing by
+`2 R_i`, three times) -> Cartesian through the mass-weighted differences of Eqs. (10)/(12) -- where
+AZ's `phys_from_state` divides once. Same physics, more cancellation.
+
+What that one flag corrupted: (1) "Heggie is 560x worse on `deep interior`" -- untruncated it is
+**14x better**; (2) "Heggie is worse on three of five Burrau regions" -- it wins **five of six**;
+(3) "`near-field` has a Heggie tail AZ does not", p99 `1.882e-6` -- clean it is **1.665e-11**,
+better than AZ's `1.087e-10`; (4) "AZ wins the tame deciles" -- clean, `d0` reads gain **+0.66**
+with 75% of pixels better; (5) `config_stability`'s magnitude, understated **40x at the median**.
+**The science field and the diagnostic field want opposite settings, and one run cannot serve
+both** -- `_uniform`/`_outcome` need termination on because the outcome class *is* the physics,
+`_drift`/`_gain` need it off. Two passes, and each panel's sidecar names which.
+
+It was caught by a test written for a **different** hypothesis -- whether Eq. (24)'s control term
+was a floor -- which happened to run at `r_coll = 0` and disagreed with the gallery by orders.
+
+**THE CLEAN COMPARISON: HEGGIE WINS FIVE OF SIX, AND `far` IS AZ's ON EVERY PIXEL.** 256^2,
+diagnostic pass, `refine_flagged` off, same predictive limit and step budget both sides:
+
+```
+              case   AZ drift p50   HG drift p50   AZ err>10  HG err>10   gain p50  frac better
+  config_stability       4.209e-8      9.038e-10         423          0      +1.67        0.908
+        near-field      6.446e-11      1.451e-11           0          0      +0.71        0.666
+         mid-field      6.000e-10      1.203e-11           0          0      +1.70        0.992
+               far      2.824e-13      2.189e-12           0          0      -0.89        0.000
+        body2_core      7.316e-11      1.459e-11           0          0      +0.71        0.649
+     deep_interior       1.345e-9      9.298e-10         438          0      +0.15        0.571
+```
+
+`err>10` -- the project's own flag for *this pixel is not data* -- runs **423 and 438 on AZ and
+zero on Heggie**. And `far` is a clean, complete loss: `frac better 0.000`, all 65536 pixels, a
+flat 0.7-0.9 decades. That **fits** the mechanism rather than contradicting it — `far` is smooth
+and wide, no pair ever approaches, so there is no unregularised third side to remove and the
+longer reconstruction chain costs a constant with nothing bought back. **Outcome labels agree on
+0 of 65536 pixels in every region** and 55 of 65536 on `config_stability`: two independently
+derived regularisations of the same physics, agreeing.
+
+**THE FULL GALLERY: HEGGIE WINS 31 OF 32 CASES, AND `err>10` RUNS 3916 AGAINST 73.** 256^2,
+diagnostic pass, `refine_flagged` off, same predictive limit and step budget on both sides, 32
+cases -- `config_stability`, the five Burrau regions, and every chart in the gallery. **And the 73
+are not Heggie's**: every one falls in a case where AZ reports the *same* count (`latent_mass`
+9->9, `latent_oblique_a` 14->14, `mass_simplex` 38->38, `latent_mass_h3` 2->2). Those are chart
+properties -- non-finite `shape_vec` from a genuine triple collision, the instrument reporting
+rather than a fault. **Every integration failure clears completely**: 423, 438, 703, 2222, 33, and
+eight smaller, all to zero.
+
+**Regenerated 2026-09-01 under the no-discard fix and the secant landing. The headline holds and
+one clause does not.** Heggie still wins 31 of 32, the one Heggie-worse case is still
+`burrau_nu_k`, and `err>10` moves 3916 -> **3915** and 73 -> **74**; `drift p50` ratios run
+0.987-1.004 over all 64 rows, so the landing does not move the median drift. *"Every integration
+failure clears completely"* is now **12 of 13**: `deep_interior` reads AZ 434 / Heggie **1**. The
+cause is separable and was separated -- `error_ratio` (`pixel.rs:766`) is computed from the energy
+arrays and never consults `budget_exhausted`, so the no-discard fix cannot touch it and the mover
+is the landing. One pixel of 65536, in the region already on record as never resolvable at these
+settings. And **the no-discard fix fires on exactly the rows that carry `budget_exhausted` and
+nowhere else** -- eight rows gain `nonfin`, 56 are unmoved, and `deep_interior heggie` reads
+0 -> 199 against a budget count of 199, the row the code comment cites.
+
+The standout is `preset_shape_h1`: AZ `drift p50 = 2.479e-6` with **2222 not-data pixels**, Heggie
+`7.835e-11` with **zero**, gain **+4.42 decades**. That is the chart already on record as the one
+case where the refinement criterion fails outright -- 16 leaves against a complete 4096, widest
+dynamic range in the set -- so the hardest chart for the scheduler is also the one the integrator
+change helps most.
+
+**`far` IS THE ONLY AZ WIN, AND THE MECHANISM STORY FOR IT IS WRONG.** `frac better 0.000` -- all
+65536 pixels, a flat 0.7-0.9 decades. It was written up as fitting the mechanism ("smooth and wide,
+no pair approaches, nothing to regularise"), and the gallery refutes that: `latent_shape` sits at
+`5.34e-13` and is tamer still, and Heggie takes it on **100%** of pixels by 1.81 decades. The one
+distinguishing feature left is **scale** -- `far` spans body positions to 13 units where the latent
+charts sit at `R = 1` by algebraic identity, and `Gamma*` is degree six in the coordinates where
+AZ's `Gamma` is linear in `A` and `B`. That is a **conditioning** story, not an invariance one, so
+it is not excluded by the gauge test reading exactly `0.000e0`. **Unmeasured, and labelled as a
+guess.**
+
+**EVERY `filter(is_finite)` IN A REDUCTION IS A SILENT DISCARD, AND FIXING THE INSTANCE THAT WAS
+POINTED AT IS HOW THE DEFECT SURVIVES.** All 26 sites were read and they fall in **three classes,
+only one of which is the bug** -- a blanket repair breaks the other two. **(A) A reduction feeding
+a number**: `pixel.rs`'s `energy_drift_max`, `gamma_max`, `dt_max`, `ab_min` and `scheduler.rs`'s
+`error_ratio_max`, `worst_energy_drift`. All six now report undetermined. **(B) A ramp or axis
+window** -- `render.rs`, `colour.rs::range_q`, `prinq.rs`, `png.rs`, `plot.rs` -- **correct**,
+because `colour::drift_rgb` paints the non-finite veto set magenta *separately*, so an
+undetermined pixel renders as one instead of being mixed into the ramp. **(C) A guard that
+declines to compute** -- `scheduler.rs:726` needs all four children finite, `spatial.rs:196`
+returns an **all-hot** mask rather than an empty one, `az/driver.rs`'s `+inf` *is* how "not in
+force" is spelled, `adaptive.rs` returns `None` -- **correct**.
+
+**The direction of the repair differs by reduction and is not a detail.** A **max** takes `+inf`,
+the absorbing element. A **min** takes `NaN`, because there is no safe saturating value: `ab_min`
+under the old form returned `+inf` when every copy was unusable, which reads as *the bodies never
+came close*. `d_min` is deliberately **left alone** for the same reason one level up -- it is what
+the collision labels are derived from and `-inf` would rewrite them.
+
+**`dt_max` is the sharpest case: it folded from `0.0`**, so a pixel whose every copy was unusable
+reported *the largest step it took was zero* -- from the diagnostic built to catch a step of
+`2.209e128`. It and `ab_min` sat **eight lines below** `energy_drift_max` in the same reduction and
+survived the fix, a full corpus regeneration and a passing suite, because
+`tests/no_discard.rs` checked **one field**. It now asserts over every no-discard field at once,
+and reverting `dt_max` alone makes it fire (`should saturate to +inf, got 4.062e-3`).
+
+**A FIX AT ONE LAYER CAN DEGRADE A BUG AT THE LAYER ABOVE.** `scheduler.rs` filtered non-finite
+out of its quad reduction, so before the `pixel.rs` repair a truncated pixel contributed a finite,
+plausible drift and at least reached the `max`; after it, that pixel is `+inf` and the filter drops
+it entirely, and a quad whose footprints are **all** undetermined folds to `0.0` -- perfectly
+clean. Check the consumers of a value whose domain you widen.
+
+**Still open and deliberately not taken:** `scheduler.rs:378-380` filters `ensemble_spread` before
+the quantiles that feed `signal()`. `quantile` returns `NaN` on empty and `decide`'s
+`!(spread > tau)` sends `NaN` to **`Decision::Keep`** -- a quad where nothing could be integrated
+reports *refinement does not pay*. `Decision::Collapsed` exists for undetermined quads, but
+`between_collapsed()` tests `n_distinct_ic < n_footprints`, a **decode** collapse; a quad with
+distinct ICs whose every footprint diverged never reaches it. **Two ways to be undetermined and one
+`Decision`.** Corpus-invalidating, so it wants its own measurement first.
+
+**AND THE RULE EXISTED WHILE THE INSTRUMENTATION DID NOT ENFORCE IT.** *Read `steps`, not `secs`*
+is on this record, and the landing's cost was still quoted as +13% wall clock -- because the
+gallery table carries no `evals` column and `logh_arms` does. Same shape as `refine_flagged`
+spreading by copy for six days: **a convention failing exactly where a printed column would have
+prevented it.** The fix for that class is never the instance; it is the column.
+
+**HEGGIE IS THE DEFAULT FROM 2026-09-02, AND THE REASON IS THE CADENCE MEASUREMENT — NOT THE
+SCOREBOARD.** A default justified by a win count does not survive the next investigation. The win
+is large and stable (31 of 32, `err>10` 3915 against 74, AZ's worst drift decile fixed on **100%
+of its pixels by a median 1900x**, unmoved through a full corpus regeneration under two later
+fixes with `drift p50` ratios at 0.987-1.004), but the *mechanism* is: **no reference body means
+the state is never re-registered mid-run, and re-registration is what the `config_stability`
+wedges cost.** Measured unconfounded at 256^2 with step control held constant:
+`AZ chord 5.162e-1` against `HG 4.832e-2`, **10.7x**, with three guards — `steps p50` flat to 1.3%
+(so `eta` held the step size), a confounded arm at 10x (so the harness *can* see a large chord in
+Heggie), and `refresh_h` at 13x (so it sees **boundary** sensitivity specifically). Without that
+last arm the null could have been the instrument.
+
+**AND logH LOSING DOES NOT ESTABLISH IT, THOUGH IT WAS BUILT AS THE FALSIFICATION TEST.** logH
+loses decisively — **29x to 1494x** (RK4) and **16,000x to 215,000x** (KDK) against Heggie at
+matched force evaluations, `frac better` 0.0000-0.0361, and third against the IAS15 reference
+(`heggie 1.017e-14 < az 1.736e-14 < logh_rk4 3.461e-14`). But it differs from Heggie in **two**
+ways, not one: no re-registration *and* no coordinate transformation, and the second is fatal
+here. logH reaches `d_min < 1e-10` and **never** `|dE/E| < 1e-12`, its drift *rising* with
+penetration depth where Heggie's `drift_reg` is flat at `4.4e-15` — a KS map removes the `1/r`
+from the Hamiltonian and a time transformation only slows the clock. Every region tested is
+collision-dominated (`far` collides on 1048576 of 1048576), so logH was graded almost entirely on
+the one thing it is known not to do. **A chartless method is not a coordinate regularisation with
+the coordinates left out.**
+
+**AZ IS KEPT, AND IT IS THE ONLY OCCUPANT WITH AN INDEPENDENT IMPLEMENTATION.** `xcheck` runs it
+against `reference/tb_az.py` and reads `0.000e+00` over all 32 reference points; it does **not**
+go through `EnsembleCfg`, so that gate is unaffected by the default. Heggie's correctness rests on
+five mutation-armed anchor links and a three-way agreement — strong, and internal. AZ is also
+genuinely better on **sustained hierarchy**: `far`, all 65536 pixels, a flat 0.7-0.9 decades.
+Default does not mean only.
+
+**THE DEFAULT MOVING IS SAFE BECAUSE THE CONFIG DECLARES ITSELF, NOT BECAUSE NOTHING DEPENDED ON
+IT.** `overrides_vs_production` derives the declaration by diffing, so every AZ artefact from here
+carries `integrator=Az` in its sidecar. Twelve harnesses took the integrator from the default and
+**two of them integrate with it**: `far_encounters` (whose whole subject is why AZ wins `far`) and
+`heggie_machinery`, whose own header reads *"the AZ arms are re-run here rather than quoted from
+the committed table"* — it would have re-run the AZ arms as Heggie, in a file about AZ against
+Heggie. Both are pinned. Same shape as `refine_flagged` spreading by copy: **a setting correct
+where it was born, silent where it was not.**
+
+**AND THE SEAM'S CONTROL ARM CAUGHT IT, FOR THE FIFTH TIME.**
+`the_fields_heggie_does_not_have_read_as_absent` built its AZ control from a bare
+`EnsembleCfg::production()`, so when the default moved it became Heggie-against-Heggie — a control
+comparing the thing to itself. It failed with *"AZ's ab_min is non-finite, so the Heggie assertion
+is vacuous"*, which is exactly right, and the suspect was the wrong one: `ab_min` had just been
+changed by the no-discard sweep. Measured before repairing anything — AZ fills `ab_min` on **64 of
+64** pixels of that fixture, so the fix was innocent and the default was the cause. *A fixture that
+has to be measured once has to be measured every time the physics moves*, and every time it is the
+control, not the property under test, that notices.
+
+**THAT LAST CLAUSE WAS WRONG, AND THE INTEGRATOR DEFAULT IS WHAT EXPOSED IT: `3.1e-9 -> 1.6e-9`
+IS A PLATEAU, NOT A FLOOR.** The justification arm asserted *"under the shipped limit the residual
+is already at the round-off floor at the coarsest rung"* by sampling **two** rungs, `4e-2` and
+`5e-3`. Both lie on a flat stretch. The full ladder, median `|error_ratio - 1|` over 9 near-field
+pixels:
+
+```
+       eta         AZ      x prev        Heggie      x prev
+    4.00e-2   3.0957e-9        -       1.3121e-8        -
+    2.00e-2   3.7136e-9      0.8       5.1571e-9      2.5
+    1.00e-2   3.4963e-9      1.1       3.7245e-10    13.8
+    5.00e-3   1.6396e-9      2.1       1.9414e-10     1.9
+    2.50e-3   1.8881e-10     8.7       1.4579e-11    13.3
+    1.25e-3   1.3099e-11    14.4       7.5440e-12     1.9
+    6.25e-4   8.8050e-12     1.5       1.4508e-11     0.5
+    3.13e-4   1.2351e-11     0.7          0.0e0       inf
+```
+
+AZ is flat across four rungs and then falls **8.7x and 14.4x**; `eta = 4e-2` is **~300x above the
+real floor**. Both integrators bottom out at the **same** `~1e-11` around `eta = 1.25e-3`, and
+Heggie reaches **exactly 0.0** at the finest rung. So truncation is alive under the shipped limit
+and the test passed **for a reason other than the one it stated** -- the two-rung sample landed on
+the flat part. Heggie has no plateau there, so moving the default made it fail honestly: *the
+control caught it, not the property.* The pin on `error_ratio_minus_one_falls_with_step_size`
+still stands, on the corrected reason -- the decade it walks IS the plateau, where the trend is
+flat and the ordering is scatter.
+
+**AND A FLOOR IS A LEVEL, NOT A RATIO BETWEEN TWO RUNGS.** The replacement's first cut asserted
+that refining past `1.25e-3` moves the residual by under an order, and fired immediately: Heggie
+reads **exactly `0.0`**, and `7.5e-12 / 0` is not a measurement of anything. Asserted as an
+absolute band instead. The teeth are in the second arm -- `coarse > 50x` the measured floor, which
+reads 236x (AZ) and 1750x (Heggie) -- and the denominator is the **measured rung** and not the
+band, because against the band AZ would read only 31x and the bar would have had to be lowered to
+something that no longer excludes the floor.
+
+**THE `error_ratio` NON-NEGOTIABLE'S NUMBERS ARE AZ's, AND UNDER HEGGIE THEY COMPRESS BY AN ORDER
+WITHOUT CHANGING THE CONCLUSION.** `near-field` 32^2, `StepLimit::None`, `refine_flagged` off,
+4 damaged pixels of 1024 under both:
+
+```
+                    AZ                        Heggie
+    MAD             1.1446  (sep   1.14)      1.8498  (sep  1.84)
+    max deviation 119.86    (sep 119.00)     11.242   (sep 10.11)
+```
+
+Heggie is **not worse**: its damaged population is far milder (`error_ratio` max `8.5066e7` ->
+`5.3514e1`), so both estimators separate a milder population less. The ordering -- max deviation
+separates, MAD does not -- holds under both.
+
+**But the gate's two bars were constants fitted to AZ, and under Heggie they read 8% and 1% of
+margin.** `sep_mad < 2.0` against 1.85, and `sep_maxdev > 10.0` against 10.11. Widening them would
+be a tolerance loosened to keep green. **The operative claim needs no fitted constant**: under MAD
+the damaged median does not clear `refine_threshold` and under max deviation it does -- the
+shipped value that decides whether a pixel is re-integrated, and the only threshold that matters.
+Rebased on it, running both integrators. **The Heggie margin is still only 1.12x (11.242 against
+10) and that is recorded rather than padded**: if it ever falls below, the question is whether
+`refine_threshold = 10` is right for Heggie, not whether the bar should move.
+
+**And the prediction that this test would lose its subject was wrong.** It was expected to fail on
+its own *"no damaged pixels"* guard, since Heggie reads `err>10 = 0` across the gallery. It reads
+**4 damaged of 1024**, the same count as AZ. The gallery statistic is at production settings; this
+fixture runs `StepLimit::None`, which is the kernel the test is about and where damage survives.
+
+**THE WEDGES WERE A NUMERICAL ARTEFACT AND THE STEP CONTROL IS WHAT REMOVED THEM -- NOT HEGGIE,
+AND THE DEFAULT'S FIRST WRITTEN JUSTIFICATION SAID OTHERWISE.** Measured on the object that was
+actually circled, using `circled_ics.rs`'s own mask verbatim (`examples/wedge_census.rs`,
+`results/wedge/`), `config_stability` at `t_max = 50`, 512^2, colour window shared from AZ:
+
+```
+        arm     nonfin   render-dense   field-dense   field bnd str
+  az_prefix       1153         0.0026        0.2058          0.7549
+         az          0         0.0001        0.1524          0.5878
+     heggie          0         0.0001        0.1524          0.5913
+   logh_rk4          0         0.0001        0.1524          0.5913
+  plain_rk4          0         0.0001        0.1524          0.5918
+```
+
+`az_prefix` is AZ with `FixedPerInterval`, no landing clamp and no step limit -- **and the
+subject control passes**: 0.0026 of the frame against the record's 0.0018 at 1024^2 (1935 px of
+1048576), same order, so the mask reproduces what was circled. Turning the three fixes on takes
+it **26x down** and non-finite to zero. **The panels say the same thing far more clearly than the
+table** -- `az_prefix` has pale wedges with straight edges severing the ribbons and magenta
+speckle inside them; `az` post-fix has continuous ribbons and neither.
+
+**`heggie` is indistinguishable from post-fix AZ, and so is `plain_rk4`, which has no
+regularisation at all.** Not because the arms are inert: measured on the same slice, **all 9216
+pixels move** and `chord max` reaches **1.907** of a possible 2.0. But `chord p50` is **1.2e-6**
+(Heggie) and **4.1e-6** (plain RK4) -- a millionth of the shape sphere, invisible at 8 bits.
+**Post-fix, this slice is integrator-insensitive at the median.**
+
+**`refine_flagged` was OFF in every arm**, so none of this is the batch repair pass. All three
+fixes are per-step and local -- `PerStepInterval` recomputes `A*B` per step, `clamp_final_step`
+lands on the boundary instead of overshooting, and `StepLimit::Predictive` is one divide from
+values `phys_from_state` already returns at +1.9% of the steps. **They all have live-playhead
+analogues, which is the property `refine_flagged` lacks.**
+
+**Not attributed:** the census turns all three off together, so it says *the step-control work*
+and cannot say which of the three. The record separates them -- `dtau` alone 30109 -> 2071, with
+the clamp -> 178, and the limit taking `err>10` 0.1110 -> 0.0000 with overshoot 634 -> 0.
+
+**And I twice read a null as a broken harness rather than measuring it.** First the census's four
+post-fix arms agreeing to three digits was called impossible; the per-pixel measurement said they
+differ on every pixel at 1e-6. **The harness had no *"the flag is not inert"* guard**, which
+`tests/integrator_seam.rs` carries for exactly this -- had the override genuinely not applied
+there would have been no way to tell.
+
+**THE LIVE-PLAYHEAD CRITERION, AS A TEST RATHER THAN A THING TO REMEMBER.** The target design
+marches trajectories forward and renders as it goes. At playhead time `t` the only things known
+are the initial conditions and the trajectory **up to `t`**. So for any proposed remedy, ask:
+
+> **Could this decision be made by a trajectory that has only reached `t`, without re-running it
+> from `t = 0` and without knowing anything after `t`?**
+
+If no, it is a batch workaround whatever its measured effect. Classified:
+
+**Live-compatible.** `StepLimit::Predictive` -- one divide from values `phys_from_state` already
+returns at the current step. `DtauMode::PerStepInterval` -- recomputes `A*B` per step from the
+current state. `clamp_final_step` and `land_iterate` -- local to the interval being closed.
+In-loop event detection with a **bounded** confirmation lag such as `escape_confirm` -- it commits
+one sync interval late, which is forward-only and not retroactive. Any per-trajectory constant
+drawn at `t = 0` from the pixel index, as the Halton ensemble offsets already are. Choosing a
+different integrator.
+
+**NOT live-compatible, whatever the number says.** `refine_flagged` -- re-integrates a whole
+trajectory from `t = 0` at finer `eta` after seeing its `error_ratio`; under a playhead a pixel
+bad at `t = 30` cannot be repaired at `t = 30.1` without redoing thirty time units. Any rule keyed
+on `t_end`, which is not known until it happens. Any two-pass render. A global `eta` chosen after
+seeing the result -- though a *fixed* smaller `eta` is fine, it is only cost.
+
+**Live-compatible and still not a fix -- the category that is easy to miss.** A per-pixel dither
+of the step phase would break a spatial beat by decohering it, and it passes the criterion
+cleanly. But it converts a **coherent** artefact into **incoherent noise of the same amplitude**,
+and this project's own rule is that *amplitude cannot tell a small real signal from noise;
+coherence can*. Dithering removes the evidence rather than the error, and would make the artefact
+undiagnosable while leaving every trajectory as wrong as before. **A remedy that only changes the
+spatial correlation of an error is cosmetic; say so before measuring how good it looks.**
+
+**THE WEDGES ARE THE PREDICTIVE STEP LIMIT ALONE, AND THE THREE STEP-CONTROL FIXES DO THREE
+DIFFERENT JOBS.** Ablated one at a time on `config_stability` at 512^2, `t_max = 50`:
+
+```
+        arm    nonfin  x none |    dense  x none | lgst | field-dense
+       none      1153   1.000 |   0.0026   1.000 |   28 |     0.2058
+  dtau_only        32   0.028 |   0.0026   1.000 |   32 |     0.1918
+ clamp_only      1531   1.328 |   0.0024   0.923 |   33 |     0.1886
+ limit_only         0   0.000 |   0.0001   0.038 |    5 |     0.1537
+        all         0   0.000 |   0.0001   0.038 |    5 |     0.1524
+```
+
+**`limit_only` reproduces `all` on every column.** The `dtau` fix removes the **magenta** (1153 ->
+32) and leaves the wedges **untouched at 0.0026** -- the two artefacts were never one defect. And
+**the clamp alone makes non-finite worse**, 1153 -> 1531, which is the standing *"the `dtau` fix
+shipped without its partner and on its own it made the images worse"* in mirror image; the pairing
+is symmetric. Neither is removable: the clamp is what takes the marched order 1.06 -> 2.08 and this
+census measures wedges only.
+
+**And the cure is the one the literature names.** `StepLimit::Predictive` is
+`dtau <= f*d_min/(|v_rel|*A*B)` -- a **pericentre-resolution** condition. Rauch & Holman 1999 (AJ
+117, 1087) show the Wisdom-Holman mapping goes artificially chaotic through **overlap of step-size
+resonances** unless the step resolves periapse, and quote `T_p/20`; this ships at `f = 0.02`, 1/50.
+The wedges were a step-size resolution failure at close approach.
+
+**THE RIBBON BANDING IS REAL STRUCTURE: IT IS THE BOUND PAIR'S ORBITAL PHASE WINDING THROUGH IC
+SPACE.** Full record and reproduction in `results/osc/README.md`.
+
+Twenty-four ICs spanning one band, `n_sync = 20000`, termination off: they are **the same
+trajectory shifted in orbital phase** -- best-lag correlation **0.9999-1.0000** -- and the lag
+grows **LINEARLY**, 0.025 -> 0.190 over `t = 5..45` with ratios exactly 2/1, 3/2, 4/3, ... That is
+a **frequency beat** between two slightly different pair periods, not a divergence. The pair
+**hardens**, `T = 3.125 -> 2.500`; the shape signal runs at twice the orbital frequency, so one
+shape cycle is 1.25. One full cycle of accumulated phase is **79.8 px** against the raw field's
+coarse tier at **80.95 px**. The finer tiers are its harmonic ladder (1.0, 0.033, 5.6e-3, 1.7e-3,
+6e-4, about 3x per harmonic); `80.95/12.64 = 6.40`, so the visible striations sit near the sixth
+harmonic and the high-pass that reveals them is what removes the fundamental above them.
+
+**SIX MECHANISMS EXCLUDED, EACH BY AN ARM THAT COULD HAVE CONFIRMED IT.** The first four were
+measured on a ribbon window with a per-row spectrum; the last two on the `z1` zoom window with a
+2D one.
+
+```
+    sync cadence        n_sync x4 at held step size    lambda 55 -> 55, prom 2.14 -> 2.14
+    stepper             eta/4, steps p50 x3.47         lambda 55 -> 55, prom 2.14 -> 2.14
+    8-bit quantisation  measured on the FLOAT field    lambda 54,       prom 1.99
+    sub-pixel aliasing  8x supersampling               prom 1.38 -> 1.33
+    substep count       profiled along the normal      22 steps/band over 8 copies, no staircase
+    the sampler         6 stencils, offsets/count/ext  lambda + angle identical to 4 figures
+```
+
+The stepper arm re-run at the zoom window reads high-passed correlation **0.96-0.99** against
+shifted controls of -0.04 to -0.13, on an arm proven live (56.3% of pixels moved, worst 10.6/255).
+The substep count is the **sharpest beat in the whole table** (prom 152858) and still not the
+cause: 22 steps per band summed over 8 copies, ~2.8 per trajectory, where one revolution costs
+hundreds -- it is banded *because the trajectories are*. The pixel grid: `z1` against `z2` at 1:1
+reads **-0.03 to -0.06**. The sampler: Halton/PCG, `E+1` of 4/8/16, extent 0.25/0.5/1.0, and
+prominence **rises** with sample count and extent where a sampling artefact would weaken; the
+banding is present in **seven nominal single-trajectory fields** at one orientation, where nothing
+is sampled at all.
+
+**Two readings of that evidence were wrong and the conclusion was right.** *"I predicted the 8-bit
+arm would show nothing"* -- refuted then, and it stands: the float field carries the modulation.
+But *"prominence ~2, a broad soft modulation, not a sharp moire; if it reads as moire the cause is
+a viewer resampling it"* was the **instrument**, not the field. A per-row spectrum with no detrend
+is swamped by the ribbon gradient at `k <= 2`; detrended, the 2D peak reads `lambda 12.64 px at
+69.8 deg` with **prominence 10837**, stable across high-pass sigma 1.5-6 and four search bands.
+And *"`steps p50` spanning 3.47x with the field unmoved is what CONVERGENCE looks like"* was the
+right observation under the wrong name -- the field is unmoved because the bands are **physics**,
+independent of the stepper by construction.
+
+**AND THE WINDOW IS A REGULAR ISLAND INSIDE A MOSTLY-CHAOTIC SLICE -- ONE SLICE HOLDS BOTH
+REGIMES.** Correlation 0.9999 between ICs a whole band apart means neighbouring trajectories are
+**not diverging** there (Trani et al. 2024, arXiv:2403.03247). Surveyed over 96 probes:
+
+```
+    config_stability   4 regular / 10 decorrelated   corr p50 0.7990
+    config_basin      16 / 0    1.0000     preset_shape     0 / 16   0.1448
+    preset_prho       16 / 0    1.0000     preset_plambda  14 / 2    1.0000
+    preset_shape_pl   10 / 6    0.9966
+```
+
+This **supplies the mechanism for the standing chart-tameness result**: *a chart's tameness is set
+by WHICH COORDINATES it varies* was measured through `alpha` interdecile and leaf counts;
+`preset_shape` is chaotic at **every** probe and `preset_prho` regular at every probe, measured on
+the trajectories. `config_basin` has **no beat at all** (lag exactly 0 on a live signal) because
+its window is **70x tighter**, so the pair period does not vary across it -- predicting no ribbon
+banding there, untested. So `spread_shape` is a **phase beat** in the regular patches and
+**divergence** everywhere else; the criterion cannot tell them apart and two trajectories plus a
+correlation can.
+
+**Colour does not decide it.** Hue is `hue_ab(shape_vec)` -- the terminal configuration, not the
+dynamics. Within `config_stability`: red/orange splits **3-3**, blue is **0 of 6** regular
+(corr p50 0.6539), green 1 of 3. Blue reads chaotic; the sample is **thin** and that is a lead,
+not a result.
+
+**LAG 0 AND CORRELATION 1.0 ARE THREE STATES WEARING ONE NUMBER.** `config_basin` returned exactly
+that on all 16 probes -- which is what a regular island looks like, AND two identical inputs, AND
+two frozen outputs. `examples/band_guard.rs` separates them by `|dr|`, `|dv|` and the late-window
+signal amplitude; all 64 probes are live. It also caught the standing keying trap: `preset_prho`
+and `preset_plambda` read `|dr|` **exactly 0** with `|dv|` of 8e-2 to 2e-1, so a position-keyed
+check reports a collapsed decode where a constant-configuration slice is behaving correctly.
+
+**The deep-zoom moire is this structure crossing the grid, and only supersampling the FIELD
+touches it.** At `z4` the peak sits at `lambda 2.44 px, angle 106 deg` -- the Nyquist floor at a
+**folded** angle where every resolved tier reads 64-79. Marching a finer grid and box-averaging
+gives L high-frequency rms **1.000 -> 0.873 -> 0.565** at 1, 4, 9 samples per pixel: it falls, so
+it is an alias, and it does not converge because the harmonic ladder has a rung below any sampling
+rate. **`colour::rgb_resolved` cannot reach it** -- it supersamples *hue* and holds `l` fixed,
+because `spread_shape` is a footprint statistic with no per-copy analogue. At `z4` it moves **1
+pixel of 36864**; at `z1`, where OKLab `a` spans 0.20071 against 0.00292, it moves **1878
+(5.09%)**, so the mechanism is healthy and the depth is what has nothing to average.
+`Scheme::Pcg` decoheres the fringe without reducing it -- *a remedy that only changes the spatial
+correlation of an error is cosmetic*, at a second site. The earlier guess that a **viewer**
+resampling the modulation was the remaining cause is withdrawn: the aliasing is in the render, at
+depth, and measurable.
+
+**A QUAD THAT INTEGRATED NOTHING READ AS `Keep`, AND THE MECHANISM ON RECORD WAS THE SMALLER
+HALF.** The open item said `reduce` filters non-finite before the within-arm quantiles, so an
+empty vector gives `quantile -> NaN` and `decide`'s `!(spread > tau)` sends `NaN` to
+`Decision::Keep`. That path is real and, at the shipped step control, **essentially never taken**.
+Measured at `N = 8` with every footprint budget-exhausted and **all 512 copies flagged unusable**,
+`ensemble_spread` is finite on **every one**: a truncated state is a perfectly good number, it is
+simply not the number the statistic claims.
+
+```
+                            budget  nonfin   spread_med  err_ratio_max  worst_drift
+    near-field production     0/64   0/512    2.584e-3      1.0020        2.500e-6
+    near-field steps64       64/64 512/512    4.580e-4      1.0000            inf
+    deep int.  steps64       64/64 512/512    1.221e-3      1.0000            inf
+```
+
+`near-field`'s starved spread is **5.6x smaller** than its healthy one -- it reads as *better*
+resolved -- while `deep interior`'s moves the other way, so it is not a bias that could be
+corrected for. **`error_ratio_max` reads 1.0000, exactly its converged value**, because every copy
+stopped at the same early point and so agrees perfectly with the others: the statistic whose job
+is to say *this pixel is not data* reports the ideal. Of the whole reduction only
+`worst_energy_drift` (`+inf`) and `n_nonfinite` (512/512) told the truth, and `decide` read
+neither. Mutating the new guard off prints the defect in its own words -- **13 `keep` and 5
+`split`** on a tree where nothing integrated.
+
+**So a predicate written on the stated mechanism would have been a guard that cannot fire.**
+`scheduler::footprint_undetermined` keys on *either* a non-finite `ensemble_spread` **or** an
+unusable copy, deliberately strict at one of `E+1` because the alternative is a fraction with a
+threshold in it. It is **inert where the integration succeeds** -- `n_nonfinite = 0` on all three
+regions at production settings, so no production tree moves. `Decision::Undetermined` is a
+*second* variant and not a widening of `Collapsed`: a collapsed decode is repeated ICs and
+refining makes it worse, an undetermined quad has distinct ICs and finer `eta` is its remedy --
+different causes, different remedies, and a stop-reason breakdown that pools them is the thing the
+breakdown exists to prevent. **`error_ratio`'s blindness is recorded and not repaired**: it is
+computed from the energy arrays and never consults the driver's usability flag, and moving it
+moves every `error_ratio` in the corpus.
+
+**THE SCHEDULER CORPUS PREDATES EVERY INTEGRATOR FIX, AND "REGENERATE" WAS THE WRONG WORD FOR
+IT.** `charts/`, `criterion/`, `vertical/`, `charts_ranked/`, `criterion_ranked/`, `sweep/`,
+`refinement/`, `animated/`, `animated_ranked/` -- 1009 files and **188 `.prnq`** -- are all
+**25-26 August**. `5cc8dec` (`dtau`), `f7d2a31` (landing clamp), `2eb9e8f` (predictive limit),
+`a526360` (no-discard + secant landing), `84830a1` (Heggie default) and `Decision::Undetermined`
+are all **27 August or later**; `find ... -newermt 2026-08-27` over those directories returns
+**nothing**. The `k_frac` repair does not help, because `charts_ranked/` is 26 August too. Scale
+of what moved: the `dtau` fix alone flipped **348,314 of 1,048,576** labels on
+`config_stability`, the step limit took `err>10` **0.1110 -> 0.0000**, the default took it
+**3915 -> 74** across 32 cases. **The arithmetic survives** -- the accounting tautology, `level`
+at `|rho| = 0.993` against the DP label, nested split sets, tile-the-root, `dp_optimal` as the
+ceiling, prefix-min, breadth-first as the baseline, `n_hot` under a quantile rule, the four stop
+reasons. **Every field-conditional number does not**: all `error(B)` curves, the
+`frac_hot_between/median` verdict, the `tau`/`alpha_hi`/`k_frac`/`N`/`E` sweeps, the per-level
+`captured` ladder, the regional spread medians, the treadmill, the mask saturation fractions. Kept
+as the *before*; full statement at the head of `results/README.md`.
+
+**THE CRITERION'S INPUT FIELD WAS RE-ORDERED, NOT RESCALED, AND `Floor` COLLAPSES 17 -> 0.**
+`examples/corpus_scope.rs`, five Burrau regions at 64^2 and budget 2000, corpus kernel against
+production, everything else held. `rho` is the headline because the criterion is a **ranking** and
+*a ranking is invariant to a monotone rescaling; a threshold is not* -- a rescale leaves it at 1.0.
+
+```
+region             moved    spr pre    spr now  rat p50       rho   antip | lv pre lv now differ
+near-field        1.0000   1.525e-3   2.677e-4    0.179    0.6359  0.0000 |    46     64  12/33
+mid-field         1.0000   9.399e-8   7.008e-8    0.746    0.8351  0.0000 |    16     16   0/21
+far               1.0000   1.892e-8   1.512e-8    0.798    0.5887  0.0000 |    16     16   0/21
+body2 core        1.0000   1.894e-3   5.998e-4    0.374    0.6456  0.0000 |    43     64  12/41
+deep interior     0.9998   5.808e-5   8.478e-6    0.146    0.7281  0.0034 |    22     16   5/21
+```
+
+`rho` runs **0.59-0.84 everywhere**, so the ordering moved and every criterion *comparison* is
+affected rather than only its numbers. **`Decision::Floor` collapses 17 -> 0, 16 -> 1, 9 -> 1** --
+a *branch* changing behaviour, not a value changing magnitude, and the strongest single reason the
+re-measurement is a re-derivation. The mechanism: `Floor` fires at `alpha < alpha_lo`, i.e. when
+refining did not reduce the spread, and a spread inflated by **integration failure** is exactly
+what looks irreducible, because the failure is a property of the trajectory and halving the cell
+does not halve it. Churn on shared quads is 36% / 29% / 24%. **`far` and `mid-field` decide
+nothing** -- 16 leaves, `keep:16`, both arms, the standing `tau`-below-the-bulk degeneracy -- so
+their `differ = 0` is degeneracy and not stability, and of five regions only three say anything.
+
+**`far` IS FLAT IN THE BULK UNDER BOTH KERNELS, AND THE NEW ONE ADDS A TWO-DECADE TAIL.** Its
+ratio band is **0.795-0.802** -- a rescale to within 0.9% -- beside `rho = 0.5887`, the lowest in
+the table, which is a contradiction until the ladder is printed: p01-p90 spans **2.8% (pre) and
+1.4% (now)**, so within the bulk there is **no ordering to preserve** and `rho` measures noise
+reshuffling. *Two different faults give the same flat curve: a bad ordering and no ordering*, and
+this is the second. Above p90 the new kernel carries a tail the old one does not -- p99
+`1.917e-8 -> 1.926e-6`, max `1.921e-8 -> 4.403e-6`. `far` is the **control** region, on record as
+*what a featureless field looks like* with thirteen criteria giving the identical leaf set; that
+was measured on a field with **no tail at all**, and a tail is what a criterion ranks on.
+
+**A `pre` ARM BUILT FROM THE FOUR FAMOUS FIXES IS NOT THE OLD KERNEL, AND ONLY ITS OWN CONTROL
+SAYS SO.** Diffing `EnsembleCfg` at `0114be4` against `production()`, **seventeen fields did not
+exist** in the corpus era; naming `dtau_mode`, `clamp_final_step`, `step_limit` and `integrator`
+leaves thirteen at today's values inside an arm labelled *pre*. The one that bites is
+**`escape_rule`**: the closure criterion landed at `71de13f` on 27 August, *after* the corpus, and
+`spread_event` reads the event class. A third arm measures it -- **inert on four regions, 361
+outcome labels on `deep interior`**, one of the three regions the corpus covers.
+
+**AND `f64::max` IGNORES `NaN`, SO `ensemble_spread` SWALLOWS AN UNDETERMINED SHAPE SPREAD.**
+Predicted the `pre` arm would carry non-finite pixels; `nonfin` read **0/4096 on both arms in every
+region**, apparently refuting it. It does carry them -- `deep interior` has **11 footprints with a
+`NaN` `spread_shape` against 0 under `now`** -- and they are invisible in that column because
+`ensemble_spread = sp_shape.max(sp_event)` returns the *event* spread when the shape spread is
+`NaN`. **The physics was predicted correctly and the statistic chosen could not see it**: *ask what
+a diagnostic would say about the defect you are hunting before reading it as clean.* It also closed
+a gap in the same PR's own guard -- `footprint_undetermined` caught all 11, but through its
+`n_nonfinite` arm **by coincidence**, since every one also had an unusable copy; a triple collision
+reaches the same state with every copy usable. The predicate now tests `spread_shape` directly. The
+`f64::max` swallowing is a `pixel.rs` defect and is **not repaired**, because propagating the `NaN`
+changes `ensemble_spread` itself and moves every tree and every render.

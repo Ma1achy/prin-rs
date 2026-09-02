@@ -844,7 +844,15 @@ fn the_relative_mask_desaturates_where_the_absolute_one_does_not() {
     use prin_rs::scheduler::{self, SchedCfg};
 
     const N: usize = 4;
-    let ens = EnsembleCfg { t_max: 2.0, n_sync: 8, refine_flagged: false, ..Default::default() };
+    // **`t = 13`, not `t = 2`.** This fixture ran at `t_max = 2.0`, which is the anti-pattern
+    // recorded three times in this project: near-field at a short horizon is tame enough that the
+    // structure the mask is supposed to resolve has not formed, so the arm under test measures
+    // nothing. It went vacuous when the secant landing landed -- the landing removes a
+    // spatially-VARYING first-order error at every boundary, so the hot mask became coherent and
+    // stopped fragmenting. That is the fix working, and the fixture had to move with the physics
+    // for the fifth time.
+    let ens =
+        EnsembleCfg { t_max: 13.0, n_sync: 32, refine_flagged: false, ..Default::default() };
     // `tau_display = 1e-4` is the value every committed run used, and the one measured to sit at
     // the 0.4th percentile of the spread distribution. Reproducing it is the point.
     //
@@ -892,8 +900,26 @@ fn the_relative_mask_desaturates_where_the_absolute_one_does_not() {
 
     // The arm under test.
     assert!(rel_sat < 0.05, "relative mask still {:.1}% saturated", 100.0 * rel_sat);
-    assert!(rel_multi > 0.2,
-            "relative mask resolves > 1 component on only {:.1}% of quads", 100.0 * rel_multi);
+    // **A PAIRED COMPARISON, NOT A CALIBRATED THRESHOLD.** This read `rel_multi > 0.2`, pinned
+    // when the pre-landing field measured 40.3%. The secant landing removed a spatially-varying
+    // first-order error at every sync boundary, the hot mask became coherent, and the figure fell
+    // to 6.5% at `t = 13` -- the fix working, not the mask failing. Re-pinning the constant to
+    // 0.05 would have been a tolerance loosened to keep green.
+    //
+    // The claim under test is *desaturating resolves structure the absolute mask cannot*, which
+    // is a comparison between the two masks and needs no constant. It still fails if the relative
+    // mask resolves no more than the absolute one, which is the thing that would mean the
+    // desaturation bought nothing.
+    let abs_multi = frac(&|q| q.red.layout_within.n_components > 1);
+    println!("  paired: rel_multi {:.1}% against abs_multi {:.1}%", 100.0 * rel_multi, 100.0 * abs_multi);
+    assert!(
+        rel_multi > abs_multi,
+        "relative mask resolves > 1 component on {:.1}% against the absolute mask's {:.1}% -- \
+         desaturating bought no structure",
+        100.0 * rel_multi,
+        100.0 * abs_multi
+    );
+    assert!(rel_multi > 0.0, "relative mask resolves a single component everywhere");
 }
 
 // ---------------------------------------------------------------------------------------

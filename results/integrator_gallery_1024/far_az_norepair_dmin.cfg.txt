@@ -1,0 +1,10 @@
+image=results/integrator_gallery/far_az_norepair_dmin.png
+config=production + 3 override(s): n_sync=33 (production 32), max_steps=400000 (production 30000), refine_flagged=false (production true)
+res=1024x1024
+case=far
+integrator=az
+field=dmin
+shape window=(9.758908682289374e-10,9.920299078426281e-10) taken from the AZ arm and SHARED
+drift ramp=(1e-12,1e2) FIXED across every case and integrator
+pass: uniform/outcome from the SCIENCE run (termination on);
+drift/gain from the DIAGNOSTIC run (r_coll=0, stop_on_event=false)

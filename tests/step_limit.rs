@@ -4,9 +4,22 @@
 //! it**, so the first property is that nothing moves. The second is that each mode *can* move
 //! something — a limit that never engages passes an inertness test perfectly.
 
+// **Every `EnsembleCfg` in this file pins `Integrator::Az`, and the pin is not a convenience.**
+//
+// The subject of this file is AZ machinery -- `A*B` and its `TINY` floor, `DtauMode`, the LC
+// branch, the reference body, `StepLimit::Reject`. None of it exists under Heggie, which has no
+// reference body, no `A*B` and three KS charts. These configs took the integrator from the
+// default; when the default moved to `Heggie` on 2026-09-02 they ran a kernel with no such
+// machinery, and **every one of them failed on its own guard or control arm rather than on a
+// wrong number** -- *"an unplumbed ab_min is INFINITY"*, *"the cap never fired -- either
+// unplumbed or the premise is wrong"*, *"Reject at a strict parameter changed nothing"*,
+// *"the hold arm is not empty and must be finite"*. The arms written to prove each test had a
+// subject are what announced that it no longer did.
+
 use prin_rs::ensemble::pixel::{self, EnsembleCfg, PixelOut};
 use prin_rs::grid::{self, Chart};
 use prin_rs::integrate::az::{DtauMode, StepLimit};
+use prin_rs::integrate::Integrator;
 
 const MODES: [StepLimit; 4] =
     [StepLimit::Reject, StepLimit::Predictive, StepLimit::AbGrowth, StepLimit::Global];
@@ -49,7 +62,13 @@ fn run_mode(
     dtau_mode: DtauMode,
 ) -> Vec<PixelOut> {
     let cfg =
-        EnsembleCfg { step_limit: limit, step_limit_f: f, dtau_mode, ..Default::default() };
+        EnsembleCfg {
+            step_limit: limit,
+            step_limit_f: f,
+            dtau_mode,
+            integrator: Integrator::Az,
+            ..Default::default()
+        };
     let sl = grid::region(region, n, n, 0.05).unwrap().with_chart(Chart::BodyPlane);
     (0..sl.npix()).map(|k| pixel::evaluate::<f64>(&sl, k, &cfg)).collect()
 }
@@ -140,7 +159,11 @@ fn the_tripwire_is_silent_on_a_tame_region() {
 /// An assert that fires on a deliberate mode is a broken assert.
 #[test]
 fn the_tripwire_does_not_fire_on_the_deliberate_overshoot_mode() {
-    let cfg = EnsembleCfg { clamp_final_step: false, ..Default::default() };
+    let cfg = EnsembleCfg {
+        clamp_final_step: false,
+        integrator: Integrator::Az,
+        ..Default::default()
+    };
     let sl = grid::region("near-field", 4, 4, 0.05).unwrap().with_chart(Chart::BodyPlane);
     let px: Vec<PixelOut> =
         (0..sl.npix()).map(|k| pixel::evaluate::<f64>(&sl, k, &cfg)).collect();

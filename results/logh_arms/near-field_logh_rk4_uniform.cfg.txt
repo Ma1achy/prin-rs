@@ -1,0 +1,14 @@
+image=results/logh_arms/near-field_logh_rk4_uniform.png
+config=production + 4 override(s): n_sync=33 (production 32), max_steps=400000 (production 30000), integrator=LogHRk4 (production Az), refine_flagged=false (production true)
+res=256x256
+case=near-field
+arm=logh_rk4
+integrator=logh_rk4
+field=uniform
+eta=1e-2 (scale 1 on production, to match FORCE EVALUATIONS)
+predictive step limit=true
+shape window=(5.714279036374248e-6,1.1764813845366224e-4) taken from the `az` arm and SHARED
+drift ramp=(1e-12,1e2) FIXED across every case and arm
+gain ramp=+/-4 decades, FIXED and symmetric
+pass: uniform/outcome from the SCIENCE run (termination on);
+drift/errratio/gain from the DIAGNOSTIC run (r_coll=0, stop_on_event=false)

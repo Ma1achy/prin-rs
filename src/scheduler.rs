@@ -321,6 +321,89 @@ fn compute_quad<T: crate::Real>(
     (red, px)
 }
 
+/// Max over footprints, with a non-finite footprint treated as a **measurement outcome**.
+///
+/// §4.3's no-discard rule at the aggregation layer. The earlier form was
+/// `.filter(|x| x.is_finite()).fold(0.0, f64::max)`, which discarded exactly the footprints the
+/// two statistics using it exist to flag — and the `pixel.rs` no-discard fix made that strictly
+/// **worse**, not better. Before it, a budget-truncated pixel contributed a finite,
+/// healthy-looking drift and at least reached the `max`; after it that pixel is `+inf`, the
+/// filter dropped it entirely, and a quad whose footprints were *all* undetermined folded to
+/// `0.0` — reading as perfectly clean. *A statistic can report maximum confidence precisely when
+/// it is least informed*, at a second site and caused by the repair of the first.
+///
+/// **`NaN` and `+inf` are not the same and are not collapsed**, following `band_of`'s
+/// convention — `NaN` to the bottom, `+inf` to the top:
+///
+/// - `+inf` — a copy went non-finite, so [`crate::ensemble::stats::max_dev`] returned an
+///   infinite deviation *by design*, or `pixel.rs` marked the pixel unusable. The quad is
+///   undetermined and propagates that.
+/// - `NaN` — `error_ratio` is `0/0` because `sigma_E(0) == 0`: a collapsed decode, or a
+///   configuration family where the statistic is structurally undefined (released from rest,
+///   every `L_z` is zero — the reason there is no `L_z` version of `error_ratio` at all). Not
+///   evidence of damage. It neither sets the result nor is silently counted as clean.
+/// - nothing finite and no `+inf` — `NaN`, **never `0.0`**. A quad nothing is known about must
+///   not report the best value the scale admits.
+///
+/// Note the asymmetry is real and not tidiness: `f64::max` already ignores `NaN`, so dropping
+/// the filter alone would have looked correct while still folding an all-`NaN` quad to `0.0`.
+pub fn max_no_discard(it: impl Iterator<Item = f64>) -> f64 {
+    let mut worst = f64::NEG_INFINITY;
+    let mut any = false;
+    for x in it {
+        if x.is_nan() {
+            continue;
+        }
+        any = true;
+        if x > worst {
+            worst = x;
+        }
+    }
+    if any {
+        worst
+    } else {
+        f64::NAN
+    }
+}
+
+/// Can the within-arm signal be read from this footprint at all?
+///
+/// **Two causes, both counted, and the second is the one that fires.**
+///
+/// 1. `ensemble_spread` is not a number. `spread_shape` over a copy with a non-finite shape
+///    vector — a triple collision, or a diverged trajectory. Real, and at the shipped step
+///    control it is rare: measured across `deep interior`, `near-field` and `far`, a quad with
+///    every footprint budget-exhausted has **zero** footprints failing this test.
+/// 2. **`ensemble_spread` swallowed a `NaN`.** It is `sp_shape.max(sp_event)`, and Rust's
+///    `f64::max` **ignores `NaN`** — so a footprint whose shape spread is undetermined reports its
+///    *event* spread as an ordinary number. Measured on `deep interior` under the pre-fix kernel:
+///    **11 footprints carry a `NaN` `spread_shape` and all 11 report a finite `ensemble_spread`.**
+///    A triple collision reaches this with every copy still flagged usable, since `shape_vec` is
+///    `NaN` at `I = 0` while the state stays finite.
+/// 3. **A copy was flagged unusable and the spread was computed anyway.** `PixelOut::n_nonfinite`
+///    counts copies the driver marked `!finite` — budget exhaustion included — and by the
+///    standing *never discard an ensemble copy* rule the shape spread is taken over all `E+1`
+///    regardless. When the copy stopped early its shape vector is a perfectly finite number that
+///    is simply not the number the statistic claims, so the quad reports an ordinary spread over
+///    a sample it does not have.
+///
+/// The third is what makes `Decision::Undetermined` reachable at all; a predicate written on the
+/// first alone is dead code wearing a guard's name. **The second is tested explicitly rather than
+/// left to the third to cover**: on this corpus all 11 of those footprints also carried an
+/// unusable copy, so the guard caught them by coincidence — and coincidence is not coverage.
+///
+/// The `f64::max` swallowing is a defect in `pixel.rs` and is **not repaired there**: propagating
+/// the `NaN` would change `ensemble_spread` itself, which moves every tree and every render, and
+/// it wants its own attribution rather than riding along with this one.
+///
+/// **Deliberately strict: one unusable copy of `E+1` marks the footprint.** The alternative is a
+/// fraction with a threshold in it, and a fixed threshold picked without measurement is what this
+/// project keeps having to withdraw. It costs nothing where the integration succeeds — all three
+/// regions above read `n_nonfinite = 0` at production settings, so no production tree moves.
+pub fn footprint_undetermined(p: &PixelOut) -> bool {
+    !p.ensemble_spread.is_finite() || !p.spread_shape.is_finite() || p.n_nonfinite > 0
+}
+
 /// Reduce `N x N` footprints to one quad number per field.
 ///
 /// `tau` is needed here and not only at decision time because the §3.1/§3.2 signals are
@@ -333,6 +416,10 @@ pub fn reduce(px: &[PixelOut], n: usize, tau: f64, hot_rule: HotRule, t_max: f64
     let mut sp: Vec<f64> = px.iter().map(|p| p.ensemble_spread).filter(finite).collect();
     let mut sh: Vec<f64> = px.iter().map(|p| p.spread_shape).filter(finite).collect();
     let mut ev: Vec<f64> = px.iter().map(|p| p.spread_event).filter(finite).collect();
+    // How much of the quad the quantiles below are actually speaking for. Counted here, beside
+    // the filter, rather than recomputed downstream from a second pass that could drift out of
+    // agreement with it.
+    let n_undetermined = px.iter().filter(|p| footprint_undetermined(p)).count() as u32;
     let nfin = sp.len().max(1) as f64;
     let mean = sp.iter().sum::<f64>() / nfin;
     let Between {
@@ -354,18 +441,11 @@ pub fn reduce(px: &[PixelOut], n: usize, tau: f64, hot_rule: HotRule, t_max: f64
         spread_p90: quantile(&mut sp, 0.9),
         spread_shape_median: quantile(&mut sh, 0.5),
         spread_event_median: quantile(&mut ev, 0.5),
-        error_ratio_max: px
-            .iter()
-            .map(|p| p.error_ratio)
-            .filter(|x| x.is_finite())
-            .fold(0.0f64, f64::max),
-        worst_energy_drift: px
-            .iter()
-            .map(|p| p.energy_drift_max)
-            .filter(|x| x.is_finite())
-            .fold(0.0f64, f64::max),
+        error_ratio_max: max_no_discard(px.iter().map(|p| p.error_ratio)),
+        worst_energy_drift: max_no_discard(px.iter().map(|p| p.energy_drift_max)),
         n_nonfinite: px.iter().map(|p| p.n_nonfinite as u32).sum(),
         n_footprints: px.len() as u32,
+        n_undetermined,
 
         between_shape: b_shape,
         between_event: b_event,
@@ -825,6 +905,21 @@ pub fn decide(tree: &QuadTree, i: usize, cfg: &SchedCfg) -> Decision {
     // collapsed quad is collapsed under every criterion at once.
     if q.red.between_collapsed() {
         return Decision::Collapsed;
+    }
+
+    // **The second way to be undetermined**, and until this landed it had no decision at all.
+    // A quad none of whose footprints could be read fell through to the spread gate below and
+    // came out `Keep` — *refinement does not pay*, about a patch where nothing integrated. Not
+    // by the `NaN` route the defect was first written up as: measured, the spread is an ordinary
+    // finite number computed over truncated copies, and in `near-field` it is 5.6x *smaller* than
+    // the healthy quad's. See `QuadReduction::within_undetermined`.
+    //
+    // Tested after `Collapsed` because identical ICs are the cause and divergence is downstream
+    // of them; both can hold and the more fundamental label wins. Stopping is right — the
+    // trajectories are hard for physical reasons and four smaller quads are four harder ones —
+    // but it must be **countable**, which is the whole difference from `Keep`.
+    if q.red.within_undetermined() {
+        return Decision::Undetermined;
     }
 
     // **Uniform mode turns the criterion off entirely.** Not "sets a permissive threshold" --

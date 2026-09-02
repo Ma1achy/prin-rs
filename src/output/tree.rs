@@ -14,7 +14,7 @@ use crate::quad::QuadTree;
 use crate::scheduler::{SchedCfg, SchedStats};
 
 pub const MAGIC: &[u8; 4] = b"PRNQ";
-pub const VERSION: u32 = 3;
+pub const VERSION: u32 = 4;
 // v2 appends the between-footprint arm, the matched-count controls, the hot-set layout, the
 // escape-gradient pair, the cost column and the IC-distinctness count. Records are
 // self-describing by `FIELDS`, so a v1 reader that indexes by name still works; one that
@@ -25,6 +25,13 @@ pub const VERSION: u32 = 3;
 // correctly and only a reader that trusts the record length breaks. Both readers in this
 // project -- `principia_prnq_parser.py` and `examples/gallery_table.rs` -- parse the `fields=`
 // line by name and are unaffected.
+//
+// v4 appends `n_undetermined` — footprints whose `ensemble_spread` could not be read, as
+// distinct from `n_nonfinite`, which counts non-finite *copies* and so carries an `E+1` larger
+// denominator. One column, at the end, for the same reason v2 and v3 appended: a name-parsing
+// reader is unaffected and a positional one that stops at 58 still reads every v3 field. The
+// new `decision` code `11 = undetermined` is likewise appended, so 0-10 in every committed dump
+// still decode to what they decoded to.
 //
 // Read `n_hot_rel_*` as the constant it is: under a quantile hot rule it is `N^2/2` on every
 // quad. The signal in those blocks is `n_components`, `largest_component` and
@@ -55,9 +62,11 @@ pub const FIELDS: &[&str] = &[
     "n_hot_rel_between", "n_components_rel_between", "largest_component_rel_between",
     "perimeter_ratio_rel_between",
     "grad_rms_within", "grad_rms_between",
+    // --- v4: how much of the quad the within-arm quantiles are speaking for ---
+    "n_undetermined",
 ];
 
-pub fn record(t: &QuadTree, i: usize) -> [f64; 58] {
+pub fn record(t: &QuadTree, i: usize) -> [f64; 59] {
     let q = &t.nodes[i];
     let nan = f64::NAN;
     [
@@ -119,6 +128,7 @@ pub fn record(t: &QuadTree, i: usize) -> [f64; 58] {
         q.red.layout_rel_between.perimeter_ratio,
         q.red.grad_rms_within,
         q.red.grad_rms_between,
+        q.red.n_undetermined as f64,
     ]
 }
 

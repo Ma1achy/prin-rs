@@ -1,0 +1,50 @@
+    Finished `release` profile [optimized] target(s) in 0.13s
+     Running `target/release/examples/landing_traj 32`
+32^2, shape chord against a converged reference (GBS, land ON, eta/16)
+
+  **`chord` saturates at 2.000 (antipodal) once chaos dominates, and a saturated row is
+  dead.** The horizon is swept short for that reason: where `off` and `on` are both near
+  2.0 the comparison says nothing, whatever the ratio between them.
+
+               case   step     t   chord off    chord on      gain   ref chord
+   config_stability    Rk4     1  4.5555e-13  4.5559e-13     1.000  8.0825e-14
+   config_stability    Kdk     1   2.5680e-7   2.5680e-7     1.000  8.0825e-14
+   config_stability    Rk4     2   1.5583e-5   2.2605e-6     6.893  4.4678e-13
+   config_stability    Kdk     2   6.5814e-4   6.5705e-4     1.002  4.4678e-13
+   config_stability    Rk4     4   1.3218e-5   6.7248e-6     1.966  8.5939e-13
+   config_stability    Kdk     4   7.7348e-4   7.6858e-4     1.006  8.5939e-13
+   config_stability    Rk4     8   2.1904e-5   1.3800e-5     1.587  1.9654e-12
+   config_stability    Kdk     8   9.6981e-4   9.6782e-4     1.002  1.9654e-12
+
+         near-field    Rk4     1  5.5233e-14  5.5372e-14     0.997  3.6013e-14
+         near-field    Kdk     1   7.1145e-8   7.1145e-8     1.000  3.6013e-14
+         near-field    Rk4     2   9.8995e-6   2.4076e-7    41.118  5.4551e-13
+         near-field    Kdk     2   4.0871e-5   4.7790e-5     0.855  5.4551e-13
+         near-field    Rk4     4   2.4538e-5   5.9585e-7    41.180  3.5619e-12
+         near-field    Kdk     4   1.2913e-4   1.4522e-4     0.889  3.5619e-12
+         near-field    Rk4     8   2.4579e-5   1.0946e-6    22.454  5.2046e-12
+         near-field    Kdk     8   3.9723e-4   4.0584e-4     0.979  5.2046e-12
+
+      deep_interior    Rk4     1   5.3594e-6   2.2369e-6     2.396  2.2761e-12
+      deep_interior    Kdk     1   1.3538e-4   1.3672e-4     0.990  2.2761e-12
+      deep_interior    Rk4     2   1.2202e-4   1.0444e-4     1.168  1.1859e-11
+      deep_interior    Kdk     2   6.9199e-3   6.9356e-3     0.998  1.1859e-11
+      deep_interior    Rk4     4   3.6385e-1   3.6640e-1     0.993   1.3730e-9
+      deep_interior    Kdk     4   1.2540e-2   1.2537e-2     1.000   1.3730e-9
+      deep_interior    Rk4     8    1.4172e0    1.4415e0     0.983   1.4788e-7
+      deep_interior    Kdk     8   3.0432e-1   3.0510e-1     0.997   1.4788e-7
+
+HOW TO READ THIS
+
+**`ref chord` is the guard.** It is the distance between the reference and a second
+reference at half its step. If it is not far below `chord off`, the reference is not
+converged and the row is measuring reference error rather than the arms.
+
+**`gain` is `off / on`.** Above 1 the correction helps the trajectory. The figure-eight
+says 1960x for RK4; if a field says ~1, the correction is a periodic-orbit result and
+does not transfer, and the case for porting it to AZ and Heggie fails on the evidence
+rather than on a blind instrument.
+
+**KDK remains the control**: second order, never limited by an O(h^2) landing, so its
+gain must stay near 1 whatever the others do.
+LANDING_TRAJ_COMPLETE

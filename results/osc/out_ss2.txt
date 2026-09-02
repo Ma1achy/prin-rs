@@ -1,0 +1,16 @@
+SUPERSAMPLE at zf = 0.015, output 192^2. `f` is samples per output pixel edge.
+The colour window is taken ONCE at f = 1 and shared -- a per-factor window would
+rescale each panel and the amplitudes would stop being comparable.
+
+  f = 1  copies kept on 36864 of 36864 px;  plain != resolved on 1 px  -> NOT INERT
+  f = 1   marched 192^2 = 36864 pixels
+  f = 2  copies kept on 147456 of 147456 px;  plain != resolved on 0 px  -> INERT -- the comparison is dead
+  f = 2   marched 384^2 = 147456 pixels
+  f = 3  copies kept on 331776 of 331776 px;  plain != resolved on 0 px  -> INERT -- the comparison is dead
+  f = 3   marched 576^2 = 331776 pixels
+
+`plain` isolates the FIELD sampling; `ssres` adds the shipped hue supersampler on
+top. If the cross-hatch falls with `f` in `plain` it is an alias of real structure.
+If `ssres` moves it and `plain` does not, it was the hue channel; the lightness
+channel has no per-copy analogue and `rgb_resolved` cannot reach it.
+EXIT=0

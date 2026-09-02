@@ -1,0 +1,14 @@
+image=results/logh_arms/preset_shape_h1_logh_gbs_errratio.png
+config=production + 6 override(s): n_sync=33 (production 32), max_steps=400000 (production 30000), integrator=LogHGbs (production Az), r_coll_frac=0.0 (production 0.001), stop_on_event=false (production true), refine_flagged=false (production true)
+res=256x256
+case=preset_shape_h1
+arm=logh_gbs
+integrator=logh_gbs
+field=errratio
+eta=1e-2 (scale 1 on production, to match FORCE EVALUATIONS)
+predictive step limit=true
+shape window=(4.5838613124704935e-6,4.0721917738011687e-1) taken from the `az` arm and SHARED
+drift ramp=(1e-12,1e2) FIXED across every case and arm
+gain ramp=+/-4 decades, FIXED and symmetric
+pass: uniform/outcome from the SCIENCE run (termination on);
+drift/errratio/gain from the DIAGNOSTIC run (r_coll=0, stop_on_event=false)

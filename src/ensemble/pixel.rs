@@ -3,6 +3,9 @@
 use crate::decode::Path;
 use crate::grid::Slice;
 use crate::integrate::az::{self, AzOpts, DtauMode, RefPolicy};
+use crate::integrate::heggie::{self, HgDtauMode, HgOpts};
+use crate::integrate::logh::{self, LhDsMode, LhOpts};
+use crate::integrate::{Integrator, MarchOut};
 use crate::outcome::{self, Outcome, State};
 use crate::physics::{energy, shape};
 use crate::Real;
@@ -69,11 +72,31 @@ pub struct EnsembleCfg {
     /// The soft-minimum exponent; `1.0` is the harmonic form, large is the hard `min`.
     pub blend_p: f64,
     pub eta: f64,
+    /// **Secant-correct the step that lands on each sync boundary.**
+    ///
+    /// `clamp_final_step` sizes that step from a first-order predictor, so its residual is
+    /// `O(h^2)` and it caps the observable convergence order at two — AZ measures 2.08 and Heggie
+    /// 2.40 on the figure-eight, which is exactly what an `O(h^2)` landing allows. Correcting it
+    /// takes RK4's figure-eight closure from `5.43e-5` to `2.77e-8`, a factor of 1960, for ~7%
+    /// more force evaluations.
+    ///
+    /// One field for all three occupants, and the same default in each `*Opts` struct: this
+    /// project has been bitten three times by two option structs disagreeing about one field.
+    pub land_iterate: bool,
+    /// Cap on secant iterations per landing step. Each is a real step and is counted.
+    pub land_max_iters: usize,
     pub max_steps: usize,
     pub ref_policy: RefPolicy,
     /// Conditioned inverse LC branch. Default true; false reproduces the reference's
     /// original branch, for measuring what the conditioning is worth.
     pub lc_stable: bool,
+    /// Which integrator marches each copy. See [`Integrator`].
+    ///
+    /// **`Az` is the default and every committed number in `results/` was taken under it.** A
+    /// configuration that silently reproduces the old behaviour needs a guard rather than a
+    /// convention, so this appears in `overrides_vs_production` and therefore in every
+    /// provenance header and sidecar.
+    pub integrator: Integrator,
     /// `r_coll` as a **fraction of the initial hyperradius** `R`, fixed at `t = 0`. Never an
     /// absolute length and never co-moving (BRIEF §2.5).
     ///
@@ -194,9 +217,12 @@ impl EnsembleCfg {
             closure_k: 1,
             stop_on_escape: false,
             eta: 0.01,
+            land_iterate: true,
+            land_max_iters: 4,
             max_steps: 30_000,
             ref_policy: RefPolicy::PerCopy,
             lc_stable: true,
+            integrator: Integrator::default(),
             r_coll_frac: 1e-3,
             stop_on_event: true,
             refine_flagged: true,
@@ -417,6 +443,9 @@ pub struct PixelOut {
     /// that has to be zero. It was `2.209e128` on one step and undetected for six days because
     /// nothing asserted it.
     pub n_overshoot: u64,
+    /// GBS macro-steps that hit the level cap without meeting tolerance, summed over copies.
+    /// **Zero is ambiguous across arms** — see [`crate::integrate::MarchOut::gbs_unconverged`].
+    pub gbs_unconverged: u64,
     /// The nominal copy's reference-body sequence, one entry per sync boundary. Empty unless
     /// [`EnsembleCfg::keep_ref_path`] is set.
     ///
@@ -458,6 +487,12 @@ pub struct PixelOut {
     /// `spread / cost` only pays if the cost distribution is wide, and this is what says
     /// whether it is.
     pub total_substeps: u64,
+    /// Force evaluations, summed over all `E+1` copies exactly as `total_substeps` is.
+    ///
+    /// **`total_substeps` is not comparable across integrators that use different steppers.** AZ,
+    /// Heggie and the RK4 logH arms spend four evaluations per step; the leapfrog arms spend one.
+    /// Any cost table with more than one stepper in it has to match and report on this.
+    pub total_force_evals: u64,
 
     /// Every copy's `shape_vec`, in copy order. Empty unless
     /// [`EnsembleCfg::keep_copy_shapes`] is set.
@@ -567,6 +602,9 @@ pub fn evaluate_at<T: Real>(slice: &Slice, idx: usize, cfg: &EnsembleCfg, eta_v:
     let eta = T::lit(eta_v);
 
     let base = AzOpts::<T> {
+        // Named, never inherited: `AzOpts` and `HgOpts` have disagreed on a default twice.
+        land_iterate: cfg.land_iterate,
+        land_max_iters: cfg.land_max_iters,
         keep_boundary_shapes: cfg.keep_boundary_shapes,
         keep_drift_hist: cfg.keep_drift_hist,
         forced_refs: None,
@@ -587,23 +625,134 @@ pub fn evaluate_at<T: Real>(slice: &Slice, idx: usize, cfg: &EnsembleCfg, eta_v:
         stop_on_escape: cfg.stop_on_escape,
     };
 
+    // Heggie's options, built from the same `cfg`. Three of AZ's knobs have no analogue and are
+    // **dropped explicitly rather than silently**:
+    //   - `forced_refs` / `RefPolicy::Shared`: there is no reference body to share. Under Heggie
+    //     the shared policy is a no-op, and that is a property of the method rather than an
+    //     unimplemented feature.
+    //   - `StepLimit::{Reject, AbGrowth, Global}`: only the predictive limit is ported, because
+    //     it is the one that won and the other three are named axes of a measurement that has
+    //     been made. A non-predictive limit therefore maps to *no* limit here, not to a default
+    //     one, so a config asking for a limit Heggie does not have gets no limit and says so.
+    //   - `ref_hysteresis`, `lc_stable`'s branch role: `lc_stable` still selects the inverse LC
+    //     map, which Heggie uses three times per registration rather than twice.
+    let hg = HgOpts::<T> {
+        // Named, never inherited -- see the `AzOpts` block above.
+        land_iterate: cfg.land_iterate,
+        land_max_iters: cfg.land_max_iters,
+        time: heggie::HgTime::default(),
+        dtau_mode: match cfg.dtau_mode {
+            DtauMode::FixedPerInterval => HgDtauMode::FixedPerInterval,
+            DtauMode::PerStepRemaining => HgDtauMode::PerStepRemaining,
+            DtauMode::PerStepInterval => HgDtauMode::PerStepInterval,
+        },
+        clamp_final_step: cfg.clamp_final_step,
+        step_limit_f: if cfg.step_limit == az::StepLimit::Predictive {
+            T::lit(cfg.step_limit_f)
+        } else {
+            T::zero()
+        },
+        r_coll_frac: T::lit(cfg.r_coll_frac),
+        stop_on_event: cfg.stop_on_event,
+        stop_on_escape: cfg.stop_on_escape,
+        escape_rule: cfg.escape_rule.lift(),
+        closure_k: cfg.closure_k,
+        escape_every: cfg.escape_every,
+        escape_confirm: cfg.escape_confirm,
+        keep_boundary_shapes: cfg.keep_boundary_shapes,
+        keep_drift_hist: cfg.keep_drift_hist,
+        refresh_h_at_boundary: false,
+        lc_stable: cfg.lc_stable,
+    };
+
+    // logH's options, for the four chartless occupants. What is dropped, and why:
+    //   - `forced_refs` / `RefPolicy::Shared`, `ref_hysteresis`, `lc_stable`: there is no chart
+    //     at all here, so there is no reference body, no branch and nothing to share. That is the
+    //     property under test rather than an unimplemented feature.
+    //   - `escape_every` / `escape_confirm`: both are about testing escape *between* sync
+    //     boundaries, and they are vacuous under `EscapeRule::Closure`, which is production and
+    //     is defined from the boundary series. Dropped rather than wired to something inert.
+    //   - `StepLimit`: mapped the same way as Heggie's — only the predictive arm is ported, and
+    //     anything else maps to *no* limit rather than to a default one. **But note the default
+    //     differs**: `LhOpts::default()` carries `step_limit_f = 0.0` because the limit defeats
+    //     the time transformation at a collision, so a `cfg` that does not ask for `Predictive`
+    //     gets logH's own preferred setting rather than a crippled one.
+    let (lh_time, lh_stepper) =
+        cfg.integrator.logh_arms().unwrap_or((logh::LhTime::LogH, logh::Stepper::Rk4));
+    let lh = LhOpts::<T> {
+        time: lh_time,
+        stepper: lh_stepper,
+        ds_mode: match cfg.dtau_mode {
+            DtauMode::FixedPerInterval => LhDsMode::FixedPerInterval,
+            DtauMode::PerStepRemaining => LhDsMode::PerStepRemaining,
+            DtauMode::PerStepInterval => LhDsMode::PerStepInterval,
+        },
+        clamp_final_step: cfg.clamp_final_step,
+        step_limit_f: if cfg.step_limit == az::StepLimit::Predictive {
+            T::lit(cfg.step_limit_f)
+        } else {
+            T::zero()
+        },
+        r_coll_frac: T::lit(cfg.r_coll_frac),
+        stop_on_event: cfg.stop_on_event,
+        stop_on_escape: cfg.stop_on_escape,
+        escape_rule: cfg.escape_rule.lift(),
+        closure_k: cfg.closure_k,
+        keep_boundary_shapes: cfg.keep_boundary_shapes,
+        keep_drift_hist: cfg.keep_drift_hist,
+        // GBS is not reachable from any existing `EnsembleCfg` knob, so these take the driver's
+        // defaults. They are named here rather than left to `..Default::default()` because a
+        // struct literal that silently inherits is how a setting stops being visible, and every
+        // panel's sidecar reads its settings from the config rather than from here.
+        // **From the config, like the other two.** This used to be a hardcoded `false`, on the
+        // sound reasoning that AZ and Heggie had no landing correction and giving logH one would
+        // have been an arm asymmetry in a comparison whose point is that the arms differ in one
+        // named way. Both now have it, so the reason has expired and the literal would have
+        // become exactly the kind of silently-stale setting this file has been bitten by twice.
+        land_iterate: cfg.land_iterate,
+        land_max_iters: cfg.land_max_iters,
+        gbs_tol: T::lit(logh::driver::GBS_TOL),
+        gbs_k_max: logh::driver::GBS_K_MAX,
+    };
+
+    let march = |s: crate::physics::Cart<T>, mm: &[T; 3], forced: Option<&[u8]>| -> MarchOut<T> {
+        match cfg.integrator {
+            Integrator::Az => az::integrate_az_opts(
+                s, mm, t_max, cfg.n_sync, eta, cfg.max_steps,
+                &AzOpts { forced_refs: forced, ..base },
+            )
+            .into(),
+            Integrator::Heggie => {
+                heggie::integrate_hg(s, mm, t_max, cfg.n_sync, eta, cfg.max_steps, &hg).into()
+            }
+            // One arm for all four chartless occupants: they differ only in `lh.time` and
+            // `lh.stepper`, which `Integrator::logh_arms` has already resolved. The `Plain*`
+            // controls are literally this code path with the time transformation switched off.
+            Integrator::LogHLeapfrog
+            | Integrator::LogHRk4
+            | Integrator::PlainLeapfrog
+            | Integrator::PlainRk4
+            | Integrator::LogHGbs
+            | Integrator::PlainGbs => {
+                logh::integrate_lh(s, mm, t_max, cfg.n_sync, eta, cfg.max_steps, &lh).into()
+            }
+        }
+    };
+
     // The nominal copy first: its reference-body choices are what the shared policy hands to
-    // the others.
-    let nominal =
-        az::integrate_az_opts(copies[0].s, &copies[0].m, t_max, cfg.n_sync, eta, cfg.max_steps, &base);
+    // the others. Under Heggie `refs` is empty, so `Shared` hands over an empty slice and the
+    // per-copy path is taken anyway — the same behaviour, reached without a special case.
+    let nominal = march(copies[0].s, &copies[0].m, None);
     let nominal_refs = nominal.refs.clone();
 
-    let mut outs = Vec::with_capacity(n);
+    let mut outs: Vec<MarchOut<T>> = Vec::with_capacity(n);
     outs.push(nominal);
     for c in copies.iter().skip(1) {
         let forced = match cfg.ref_policy {
-            RefPolicy::Shared => Some(nominal_refs.as_slice()),
-            RefPolicy::PerCopy => None,
+            RefPolicy::Shared if !nominal_refs.is_empty() => Some(nominal_refs.as_slice()),
+            _ => None,
         };
-        outs.push(az::integrate_az_opts(
-            c.s, &c.m, t_max, cfg.n_sync, eta, cfg.max_steps,
-            &AzOpts { forced_refs: forced, ..base },
-        ));
+        outs.push(march(c.s, &c.m, forced));
     }
 
     let e0: Vec<T> = copies
@@ -781,14 +930,37 @@ pub fn evaluate_at<T: Real>(slice: &Slice, idx: usize, cfg: &EnsembleCfg, eta_v:
                 d_true = d_true.min(b);
             }
         }
+        // **A FAILED COPY IS AN OUTCOME, NOT MISSING DATA.** These two reductions used to read
+        // `if x.is_finite() { max }`, which *discarded* a diverged copy and left the pixel with a
+        // finite, healthy-looking maximum over the copies that survived. That is the no-discard
+        // violation the project's own rule names, and it fails chaos-selectively: a copy goes
+        // non-finite because its integration was hard, integration is hard at a close encounter,
+        // and close encounters are what the instrument exists to measure. The statistic was
+        // therefore biased against exactly the regions it is pointed at.
+        //
+        // `budget_exhausted` is tested **separately from `finite`, because the occupants do not
+        // agree on what `finite` means**: `az::driver` sets it false only when the state itself
+        // goes non-finite and leaves it `true` for a run it truncated, while `logh::driver` sets
+        // it false for both. Keying on `finite` alone therefore caught the truncation in one
+        // integrator and missed it in another -- `tests/no_discard.rs` failed 64 of 64 on exactly
+        // that. A truncated run has a perfectly finite drift **at the point it stopped**, and
+        // reading it reports the error of a trajectory that never finished. Measured on
+        // `deep_interior`, 199 pixel-outs carried `budget_exhausted` while `nonfin` read 0.
+        //
+        // `+inf` and not `NaN`: these are max-reductions, so infinity is the absorbing element
+        // and the pixel reports "undetermined" by saturating rather than by poisoning a sort.
+        // `colour::drift_rgb` already paints the non-finite veto set magenta, so an undetermined
+        // pixel renders as one instead of as a tame value.
+        //
+        // **`d_min` above is deliberately NOT changed.** It is a *min*-reduction, which has no
+        // absorbing element for "undetermined" — `-inf` would read as a collision at every
+        // threshold and silently rewrite the collision labels the whole outcome encoding rests
+        // on. Same violation, different repair, and not this one.
+        let usable = o.finite && !o.budget_exhausted;
         let dr = o.drift.to_f64().unwrap();
-        if dr.is_finite() {
-            drift_max = drift_max.max(dr);
-        }
+        drift_max = if usable && dr.is_finite() { drift_max.max(dr) } else { f64::INFINITY };
         let g = o.gamma_max.to_f64().unwrap();
-        if g.is_finite() {
-            gamma_max = gamma_max.max(g);
-        }
+        gamma_max = if usable && g.is_finite() { gamma_max.max(g) } else { f64::INFINITY };
         for (k, r) in o.refs.iter().enumerate() {
             if nominal_refs.get(k).is_some_and(|nr| nr != r) {
                 ref_disagree += 1;
@@ -894,19 +1066,42 @@ pub fn evaluate_at<T: Real>(slice: &Slice, idx: usize, cfg: &EnsembleCfg, eta_v:
         copy_outcomes: if cfg.keep_copy_outcomes { packed.clone() } else { Vec::new() },
         event_class: stats::event_class_at(&outs[0].tight, packed[0], cfg.n_sync - 1),
         total_substeps: outs.iter().map(|o| o.steps as u64).sum(),
+        total_force_evals: outs.iter().map(|o| o.force_evals as u64).sum(),
         ab_floored: outs.iter().any(|o| o.ab_floored),
-        ab_min: outs
-            .iter()
-            .map(|o| o.ab_min.to_f64().unwrap())
-            .filter(|x| x.is_finite())
-            .fold(f64::INFINITY, f64::min),
+        // **The same no-discard violation as `drift_max` above, in the same reduction, left
+        // here when that one was fixed.** The repair was applied field by field where the defect
+        // was block-wide. Worth stating plainly: the failure mode is "fixed the instance that was
+        // pointed at", not any subtlety in these two.
+        //
+        // `ab_min` is a **min** and gets `NaN`, not an absorbing element, for the reason given
+        // above for `d_min`: a min has no safe saturating value. `-inf` would read as "`A*B`
+        // reached zero"; `+inf` -- what the old form returned when every copy was unusable --
+        // reads as *the bodies never came close*, the calmest answer available. Nothing
+        // thresholds on `ab_min`, so `NaN` costs nothing and is this project's spelling for
+        // undetermined.
+        ab_min: {
+            let any_bad = outs.iter().any(|o| {
+                !o.finite || o.budget_exhausted || !o.ab_min.to_f64().unwrap().is_finite()
+            });
+            if any_bad {
+                f64::NAN
+            } else {
+                outs.iter().map(|o| o.ab_min.to_f64().unwrap()).fold(f64::INFINITY, f64::min)
+            }
+        },
+        // `dt_max` is a **max**, so `+inf` saturates exactly as `drift_max` does. The old form
+        // folded from `0.0`, so a pixel whose every copy was unusable reported *the largest step
+        // it took was zero* -- from the diagnostic built to catch a step of `2.209e128`.
         dt_max: outs
             .iter()
-            .map(|o| o.dt_max.to_f64().unwrap())
-            .filter(|x| x.is_finite())
+            .map(|o| {
+                let v = o.dt_max.to_f64().unwrap();
+                if o.finite && !o.budget_exhausted && v.is_finite() { v } else { f64::INFINITY }
+            })
             .fold(0.0, f64::max),
         n_cap_hits: outs.iter().map(|o| o.n_cap_hits as u64).sum(),
         n_overshoot: outs.iter().map(|o| o.n_overshoot as u64).sum(),
+        gbs_unconverged: outs.iter().map(|o| o.gbs_unconverged as u64).sum(),
         n_retry: outs.iter().map(|o| o.n_retry as u64).sum(),
         ref_path: if cfg.keep_ref_path { outs[0].refs.clone() } else { Vec::new() },
         ref_tie_path: if cfg.keep_ref_path {

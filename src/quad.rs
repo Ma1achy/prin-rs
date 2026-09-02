@@ -50,6 +50,24 @@ pub struct QuadReduction {
     pub worst_energy_drift: f64,
     pub n_nonfinite: u32,
     pub n_footprints: u32,
+    /// Footprints the **within-arm signal cannot be read from**. See
+    /// [`crate::scheduler::footprint_undetermined`] for the predicate and the two causes it
+    /// covers.
+    ///
+    /// **A different denominator from `n_nonfinite`, and stating which is the point.**
+    /// `n_nonfinite` sums unusable *copies* over the quad and so ranges to
+    /// `n_footprints * (E+1)`; this counts *footprints*, and ranges to `n_footprints`. Two counts
+    /// of "how bad is it here" differing by a factor of `E+1` would otherwise sit adjacent in the
+    /// dump with nothing saying so.
+    ///
+    /// Carried as a count and not folded into the quantiles because **there is no saturating
+    /// value for a quantile** — a max can take `+inf` and a min `NaN`, but a median over a partial
+    /// sample is simply a median over a different sample. So the quantile says what the
+    /// determined footprints did and this says how many there were.
+    ///
+    /// The between arm needs no equivalent — it does not filter at all, and `spatial::hot_mask`
+    /// treats non-finite as *hot* by design.
+    pub n_undetermined: u32,
 
     // ---------------------------------------------------------------------------------
     // The between-footprint arm.
@@ -292,6 +310,71 @@ impl QuadReduction {
     pub fn between_collapsed(&self) -> bool {
         self.n_distinct_ic < self.n_footprints
     }
+
+    /// Is this quad's within-footprint arm **undetermined** — no footprint readable?
+    ///
+    /// The second way to be undetermined, and until now it had no [`Decision`].
+    ///
+    /// **The mechanism on record was the smaller half of it.** The stated defect was that
+    /// `reduce` filters non-finite before the within-arm quantiles, so an empty vector gives
+    /// `quantile -> NaN` and `decide`'s `!(spread > tau)` sends `NaN` to `Decision::Keep`. That
+    /// path is real and, at the shipped step control, essentially never taken — measured on
+    /// `deep interior`, `near-field` and `far` at 8x8, a quad with **all 64 footprints
+    /// budget-exhausted and all 512 copies flagged unusable** reads `ensemble_spread` **finite on
+    /// every one**. The truncated states are perfectly good numbers; they are just not the
+    /// numbers the statistic claims.
+    ///
+    /// So the live failure is not a `NaN` reaching the gate. It is an **ordinary finite spread
+    /// computed over a contaminated sample**, and it reads as *better* resolved than the healthy
+    /// quad: `near-field` gives `spread_median` **4.58e-4** starved against **2.58e-3** whole, a
+    /// factor of 5.6 in the flattering direction, while `deep interior` moves the other way
+    /// (1.22e-3 against 1.46e-4) — so it is not even a bias that could be corrected for.
+    /// *A statistic can report maximum confidence precisely when it is least informed*, at the
+    /// site that decides the tree.
+    ///
+    /// **`error_ratio_max` does not catch it and reads its converged value.** On those same
+    /// all-unusable quads it is **1.0000** — exactly what `error_ratio` reads under exact
+    /// dynamics — because every copy stopped at the same early point and so agrees perfectly with
+    /// the others. `error_ratio` is computed from the energy arrays and never consults the
+    /// driver's usability flag, which is already on record as the reason the no-discard fix could
+    /// not touch it; the consequence for the scheduler is stated here rather than repaired,
+    /// because repairing it moves every `error_ratio` in the corpus and wants its own
+    /// attribution. Of the reduction's fields only `worst_energy_drift` (`+inf`) and
+    /// `n_nonfinite` (512/512) told the truth, and `decide` read neither.
+    ///
+    /// **Distinct from [`Self::between_collapsed`] and not merged into it**, because the causes
+    /// and the remedies differ and a stop-reason breakdown that pools them is the thing the
+    /// breakdown exists to prevent:
+    ///
+    /// - *collapsed* — the **decode** repeats: fewer distinct ICs than footprints. Refining the
+    ///   cell makes it worse, never better, because a smaller cell brings the ICs closer.
+    /// - *undetermined* — the ICs are distinct and the **integration** failed on all of them.
+    ///   Re-integrating at finer `eta` is the remedy (BRIEF §2.5's repair pass), and no amount of
+    ///   subdivision is.
+    ///
+    /// Both can hold at once; `decide` tests `collapsed` first, because identical ICs are the
+    /// cause and the divergence is downstream of them.
+    ///
+    /// **The partial case is deliberately not a decision.** A quad with 63 of 64 footprints
+    /// undetermined reports a median over one sample, which is a real defect and a *threshold*
+    /// question — and a fixed threshold chosen without measurement is what this project keeps
+    /// having to withdraw. `n_undetermined` is carried in the dump so the partial case is
+    /// countable; nothing acts on it yet, and this comment is here so that is read as a choice
+    /// rather than an oversight.
+    pub fn within_undetermined(&self) -> bool {
+        self.n_footprints > 0 && self.n_undetermined >= self.n_footprints
+    }
+
+    /// Fraction of footprints the within-arm signal could not be read from, in `[0, 1]`.
+    ///
+    /// `NaN` on an empty quad, never 0 — the same convention [`Self::structure`] follows, and for
+    /// the same reason: nothing measured must not report the best value the scale admits.
+    pub fn frac_undetermined(&self) -> f64 {
+        if self.n_footprints == 0 {
+            return f64::NAN;
+        }
+        self.n_undetermined as f64 / self.n_footprints as f64
+    }
 }
 
 /// Whether the spatial-structure term enters the decision, and how.
@@ -514,6 +597,11 @@ pub enum Decision {
     /// *countable*, not inferred. A `Split` here would be indistinguishable from a
     /// criterion-driven one, which is the same failure the stop-reason column exists to prevent.
     BalanceForced,
+    /// **The integration failed on every footprint**: the ICs are distinct, the trajectories are
+    /// not. See [`QuadReduction::within_undetermined`] for why this is not [`Decision::Collapsed`].
+    ///
+    /// Appended rather than inserted, so codes 0-10 in every committed `.prnq` still decode.
+    Undetermined,
 }
 
 impl Decision {
@@ -530,6 +618,7 @@ impl Decision {
             Decision::MaxRelDepth => "max_rel_depth",
             Decision::Collapsed => "collapsed",
             Decision::BalanceForced => "balance",
+            Decision::Undetermined => "undetermined",
         }
     }
     pub fn code(self) -> u8 {
@@ -545,6 +634,7 @@ impl Decision {
             Decision::MaxRelDepth => 8,
             Decision::Collapsed => 9,
             Decision::BalanceForced => 10,
+            Decision::Undetermined => 11,
         }
     }
 }

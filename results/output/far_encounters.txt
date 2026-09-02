@@ -1,0 +1,31 @@
+48^2, t_max = 13, r_coll = 0 (no termination), refine_flagged = false
+
+           region  d_min p01        p10        p50        p99         R d_min/R p50 spread p99/p01
+              far   6.568e-7   6.744e-7   7.132e-7   7.731e-7    6.2249    1.146e-7        1.18
+        mid-field   1.342e-4   1.388e-4   1.477e-4   1.621e-4    3.3448    4.415e-5        1.21
+       near-field   1.762e-3   3.371e-3   8.423e-3   1.088e-2    2.2361    3.767e-3        6.17
+       body2 core   1.142e-5   1.015e-3   8.377e-3   1.208e-2    2.2361    3.746e-3     1057.73
+    deep interior  8.122e-11   1.753e-8   4.678e-6   1.238e-3    1.3693    3.416e-6 15246478.20
+
+DISCRIMINATOR: move the sampled body further out. If `far`'s encounter is between the
+two bodies the slice does NOT vary, `d_min` must barely move; if it follows the body the
+slice does vary, the reading above is wrong.
+
+               body 0 at    d_min p50        ratio spread p99/p01
+             (1.0, 13.0)    7.1324e-7       1.0000         1.18
+             (2.0, 26.0)    1.0874e-8       0.0152         1.10
+             (4.0, 52.0)   1.6335e-10       0.0002         1.05
+           (10.0, 130.0)   6.4587e-13       0.0000         1.02
+
+HOW TO READ THIS
+
+**A region named for a large separation is not a region without an encounter.** `far`
+names where the SAMPLED body sits. Bodies 1 and 2 hold their Burrau positions on every
+pixel of the slice, so their mutual encounter is the same one everywhere -- which is why
+`d_min` is both the deepest here and the most uniform.
+
+This matters for every comparison on `far`: an integrator is being graded on a region
+whose whole frame contains a near-collision, not on a smooth field. The unregularised
+control failing on all of it is then the expected result rather than a surprise, and
+logH doing worst there is the collision finding at field scale -- it slows the clock but
+does not remove the singularity, so the encounter still has to be RESOLVED.

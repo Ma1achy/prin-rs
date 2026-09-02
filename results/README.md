@@ -8,6 +8,59 @@ named example, and the images and dumps come from `src/bin/prin.rs`. Committed a
 findings document whose numbers cannot be checked without a 20-minute re-run is a summary rather
 than a record.
 
+## THE SCHEDULER CORPUS IS SUPERSEDED, AND REPLACING IT IS A RE-MEASUREMENT
+
+**Read this before quoting any number from `charts/`, `criterion/`, `vertical/`,
+`charts_ranked/`, `criterion_ranked/`, `sweep/`, `refinement/`, `animated/` or
+`animated_ranked/`.** They are 1009 files and **188 `.prnq` dumps**, and every one of them was
+written on **25-26 August**. Every change to the integrator landed on **27 August or later**:
+
+| landed | commit | what moved |
+|---|---|---|
+| 08-27 21:19 | `5cc8dec` | `DtauMode::PerStepInterval` — `dtau` re-sized per step |
+| 08-28 01:10 | `f7d2a31` | `clamp_final_step` — the march stopped overshooting the boundary |
+| 08-29 19:00 | `2eb9e8f` | `StepLimit::Predictive` — the pericentre-resolution step limit |
+| 09-01 12:51 | `a526360` | the no-discard fix, and the secant landing |
+| 09-02 02:52 | `84830a1` | `Integrator::Heggie` became the default |
+| 09-02 | this PR | `Decision::Undetermined` — a quad that integrated nothing stops as itself |
+
+Not one file under those directories has been touched since **27 August**, checkable with
+`find results/charts ... -newermt 2026-08-27`, which returns nothing. They also predate the
+`k_frac` default moving off `1.0`, which is already documented below — and which is why
+`charts_ranked/` and `criterion_ranked/` exist. That fix does not help here: **the ranked runs are
+26 August too.**
+
+The measured size of what moved is not small. On `config_stability` the `dtau` fix alone flipped
+**348,314 of 1,048,576 outcome labels** and took non-finite pixels **30109 -> 178**; the step
+limit took `err>10` **0.1110 -> 0.0000** with overshoots **634 -> 0**; the integrator default
+takes `err>10` across 32 gallery cases from **3915 to 74**. `ensemble_spread` is a statistic over
+the terminal shape vectors of trajectories every one of those changed.
+
+**So this is not a regeneration and the word matters.** Re-running the old harnesses produces new
+numbers under old headings, and the standing rule on this project is that a documented
+reproduction command can be wrong and only running it finds out. What the corpus can still
+support is the arithmetic — findings that hold whatever values `err_sum` contains:
+
+- the accounting identity `error_of(leaves) == err_sum(root) - sum(gains)` is a tautology
+- `level` scores `|rho| = 0.993` against the DP label, so every correlation must be blocked by it
+- the DP's split sets are strictly nested in budget (`1 -> 0` flips exactly zero at every rung)
+- a leaf set scored against a finite reference must **tile the root**, and the `(level, ix, iy)`
+  round-trip is what catches a half-cell error
+- `greedy_lookahead_1` is a reference and never a bound; `dp_optimal` is the ceiling and is cheap
+- take the **prefix-min**: a split can make the image worse
+- on a smooth field, ranking by spread **is** breadth-first — so `far` degenerating is correct
+- the baseline is `Rank::Uniform`, not random
+- under a quantile hot rule `n_hot` is set by the rule, so `frac_hot` carries nothing
+- there are **four** stop reasons and a leaf count without its breakdown says nothing
+
+What it cannot support is every number: all `error(B)` curves and the `frac_hot_between/median`
+verdict, the `tau` / `alpha_hi` / `k_frac` / `N` / `E` sweeps, the per-level `captured` ladder and
+the headroom percentages, the regional spread medians, the treadmill result, and the mask
+saturation fractions. Those are all field-conditional and the field moved.
+
+The dumps are **kept, not deleted** — they are the *before*, the same standing `charts_ranked/`
+gave the unranked runs, and a re-measurement wants something to diff against.
+
 ## Images
 
 `<region>_outcome.png` and `<region>_spread.png`, 256×256, f64, `t = 13`, `E+1 = 8`,
@@ -825,10 +878,82 @@ presets, with `keep_drift_hist` on so the drift series and `AzOut::refs` share o
 increment: within a trajectory, the drift increment at a boundary where the reference **changed**
 exceeds the increment where it **held** on 82.7%-99.0% of pixels in every slice tested.
 
+## `integrator_gallery/`, `integrator_gallery_1024/` — AZ against Heggie
+
+From `examples/integrator_gallery.rs`. Two arms per case, two passes each: the **science** pass
+with termination on (the outcome class *is* the physics) and the **diagnostic** pass with it off
+(a trajectory parked at a close approach makes the Cartesian energy a cancellation of two enormous
+terms, which corrupted five conclusions in a row once). `refine_flagged` is **off** — the repair
+pass is batch-only, has no live-playhead analogue, and removes the very population the comparison
+is about.
+
+- **`integrator_gallery/`** — the canonical set. **32 cases at 256²**, complete. Table:
+  `output/integrator_gallery.txt`. This is what every gallery claim in `CLAUDE.md` is measured on.
+- **`integrator_gallery_1024/`** — **7 cases at 1024²**, incomplete and stale; see its own README.
+  Table: `output/integrator_gallery_1024.txt`, which `NOTES.md` reads its collision fractions from.
+
+```sh
+cargo run --release --example integrator_gallery -- 256 results all 400000 0
+```
+
+Argument two is the **output root**. Point it somewhere else for a validation pass.
+
+## `logh_arms/`, `logh_arms_gbs_sweep/` — six occupants on one trajectory
+
+From `examples/logh_arms.rs`. Eight arms at 256²: `az`, `heggie`, `logh_rk4`, `logh_lf`, their
+`_nolim` twins, and `plain_rk4` / `plain_lf`. The plain pair is the **stepper-only control** — the
+same code path with the time transformation switched off, so it is literally the regularisation
+removed and nothing else.
+
+That control earned its keep twice. It separates stepper from regularisation, as designed; and
+when the secant landing was verified against the committed baseline it came back **bitwise
+identical on 12 of 12 rows while every one of the 36 time-transformed rows moved** — the landing
+acts on a boundary residual that exists only where `dt` is a function of the state, and the split
+falls exactly there with no exception on either side.
+
+`sheets/` holds contact sheets from `tools/contact_sheet.py --root <dir> <case>...`. A sheet is a
+**layout, not a rendering decision**: the drift ramp is fixed at `1e-12..1e2`, the gain ramp a
+fixed symmetric ±4 decades, and the shape window is taken once from the `az` arm and shared, so an
+auto-ranged montage would undo all three.
+
+```sh
+cargo run --release --example logh_arms -- 256 results all 400000 all
+python3 tools/contact_sheet.py --root results far deep_interior near-field
+```
+
+## A note on the default integrator
+
+**Everything committed to `results/` before 2026-09-02 was rendered under `Integrator::Az`, which
+was the default at the time.** The default is now `Heggie`; the reason is on the enum and is the
+cadence measurement rather than the win count.
+
+Nothing in this directory becomes wrong, and nothing needs regenerating for it. Renders carry a
+`.cfg.txt` provenance sidecar and the `.raw`/`.prnq` dumps have carried a full settings header
+since they were written, so each artefact says which integrator made it. From here on the
+declaration inverts: a **Heggie** run declares nothing (it is production) and an **AZ** run
+carries `integrator=Az`, because `overrides_vs_production` derives the line by diffing rather
+than from a hand-maintained list.
+
+Two harnesses took the integrator from the default and are now pinned to `Az` explicitly:
+`far_encounters` (its subject is why AZ wins `far`) and `heggie_machinery` (its header says the
+AZ arms are re-run there). If you re-run any other harness that does not name an integrator, it
+is now Heggie — check its sidecar before comparing against a committed number.
+
 ## A note on raster sizes
 
-Everything generated in this build is **1024²** (figures are 1400×800; budget side-by-sides are
-2048×1024). Anything smaller in `results/` predates it.
+The **scheduler** build is 1024² throughout (figures are 1400×800; budget side-by-sides are
+2048×1024), and anything smaller among those artefacts predates it.
+
+**That is not a rule for the whole tree, and reading it as one is how a resolution mismatch
+nearly destroyed a committed set.** The integrator work is deliberately **256²** —
+`integrator_gallery/`, `logh_arms/`, `logh_arms_gbs_sweep/` — because its statistics are
+per-trajectory (drift, `err>10`, force evaluations) and those are resolution-independent, so 16x
+the samples buys nothing a number can use. `integrator_gallery_1024/` is the high-resolution
+subset kept for the eye, and it is seven cases against the 256² set's thirty-two.
+
+So: **read a directory's own README for its resolution.** Chord statistics are the exception that
+makes this matter — no chord ratio may be quoted from a coarse grid, and both signs of that error
+are on this project's record.
 
 If an image looks blurry, **measure its pixel dimensions first**. Wireframe lines are written with
 integer pixel `set` calls and adaptive texels are nearest-neighbour, so neither can be soft in the

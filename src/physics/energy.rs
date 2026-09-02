@@ -33,6 +33,20 @@ pub fn potential<T: Real>(r: &[Vec2<T>; 3], m: &[T; 3], eps2: T) -> T {
     pe
 }
 
+/// `U = +sum_pairs G m_i m_j / sqrt(|d|^2 + eps2)`, the **positive** potential.
+///
+/// Exactly `-potential(..)`, and it exists as a named function rather than a minus sign at the
+/// call site for the reason [`kinetic`] gives one line up: the logarithmic Hamiltonian is
+/// `ln(T + B) - ln(U)` with `U > 0`, so a port that writes the negation inline has two sign
+/// conventions live in one expression and no name for either. `ln` of a negative number is NaN,
+/// which is a loud failure — but it is loud at the wrong place, in a driver rather than here.
+///
+/// The identity is asserted rather than assumed: `tests/logh_hamiltonian_fd.rs` checks
+/// `potential_pos == -potential` bitwise.
+pub fn potential_pos<T: Real>(r: &[Vec2<T>; 3], m: &[T; 3], eps2: T) -> T {
+    -potential(r, m, eps2)
+}
+
 /// Centre of mass.
 pub fn com<T: Real>(r: &[Vec2<T>; 3], m: &[T; 3]) -> Vec2<T> {
     let mtot = m[0] + m[1] + m[2];

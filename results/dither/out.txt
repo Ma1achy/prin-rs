@@ -1,0 +1,13 @@
+DITHER CHECK, 384^2, zoom_frac 0.06 into a smooth ribbon. ONE march.
+window (3.931716468981471e-6,4.903591084119781e-1)
+
+                render   flat pairs of which float
+                        (identical) actually moved
+                 plain      0.1184        0.1184
+          supersampled      0.1162        0.1162
+ supersampled + dither      0.0613        0.0613
+
+`flat pairs` that the float DID move is the banding, stated directly. Dither must
+drive it toward zero while the image keeps the same local mean -- it trades an
+artificial contour for sub-LSB noise, and the float was exact all along.
+EXIT=0

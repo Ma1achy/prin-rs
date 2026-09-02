@@ -457,3 +457,90 @@ recognisable slice there is no way to judge whether the physics or the colouring
   `z0 + u*q1 + v*q2` and the preset is reproduced by framing at `(0,0)` with `half = 1.0`. That
   is one fewer place for a factor of two to hide, but it does mean a preset is only the
   reference's preset **at that framing** — nothing in the type system says so.
+
+---
+
+## Corpus regeneration — found 2026-09-01, during the post-landing regeneration
+
+**Open, and ordered. Fix before regenerating, or the corpus is mixed-version again.**
+
+- [x] **`scheduler.rs:357-366` discards the pixels the no-discard fix exists to surface.**
+      **Fixed** — `scheduler::max_no_discard`, with `tests/no_discard.rs` gaining two tests whose
+      discriminating arm computes the old filtered form on the same data and asserts it disagrees.
+      Both `error_ratio_max` and `worst_energy_drift` reduce with
+      `.filter(|x| x.is_finite()).fold(0.0, f64::max)`. `stats::max_dev` returns
+      `T::infinity()` for a non-finite copy *by design*, and `pixel.rs:959` now returns `+inf`
+      for a budget-truncated pixel — so **the `pixel.rs` fix made this site's blind spot
+      strictly larger**, and a quad whose pixels are all undetermined folds to `0.0` and reads
+      as perfectly clean. Not a tree defect: `worst_energy_drift` is *"trust, measured alongside
+      and never enforced"* (`quad.rs:48`) and is no `Criterion` variant. It is a defect in every
+      `.prnq` / `.qcache` column and every `signal_audit` row. `render.rs:88` filters the same
+      field and is **correct** — it sets a ramp window and `drift_rgb` paints the veto set
+      magenta separately. Convention for the propagated value is already settled by `band_of`:
+      **`NaN` to the bottom, `+inf` to the top.**
+- [!] **NOT a regeneration — a re-measurement, and the word was wrong here.** This line read
+      *"Then regenerate `charts/`, `criterion/`, `vertical/`"*, which is what you write when the
+      code under a corpus has changed in one place. It has changed in six, and the corpus is
+      **25-26 August** while every integrator change is **27 August or later** — `5cc8dec` the
+      `dtau` fix, `f7d2a31` the landing clamp, `2eb9e8f` the predictive step limit, `a526360` the
+      no-discard fix and the secant landing, `84830a1` Heggie as default, and this PR's
+      `Decision::Undetermined`. `find results/charts results/criterion results/vertical
+      results/charts_ranked results/criterion_ranked -newermt 2026-08-27` returns **nothing**.
+      1009 files, 188 `.prnq`.
+
+      Re-running the old harnesses would put new numbers under old headings, which is exactly the
+      failure already on record at `pan_sequence` and `slice_gallery`. The full statement of what
+      the corpus can and cannot still support — the arithmetic survives, every field-conditional
+      number does not — is at the head of `results/README.md`. The dumps are **kept as the
+      before**, the same standing `charts_ranked/` gave the unranked runs.
+
+- [ ] **Scope the re-measurement before running it.** How far did the criterion's *input field*
+      actually move on the three Burrau regions at `t = 13`? One run per region, old settings
+      against new, `ensemble_spread` per footprint. If it moved everywhere the criterion work is
+      a full re-derivation; if `far` barely moved and `near-field` moved a lot, it is targeted.
+      Costs one morning and decides the shape of the work.
+
+**Corpus defects found, independent of any code change:**
+
+- [x] **The 256² 32-case gallery table is not in the tree.** **Fixed** — regenerated and at
+      `results/output/integrator_gallery.txt`; the 1024² one moved to `..._1024.txt`.
+      Was: `results/output/integrator_gallery.txt`
+      is appended to by every run and its 256² section — the artefact CLAUDE.md's
+      *"Heggie wins 31 of 32, `err>10` 3916 against 73"* rests on — was overwritten by the later
+      1024² run. It survives only at `70cfbc4`. Landing `results_regen/` fixes this.
+- [x] **The committed gallery panels and the committed gallery table are different runs at
+      different resolutions.** **Resolved by separation, not by overwriting** — the 1024² set is
+      at `results/integrator_gallery_1024/` with a README, the canonical path holds the complete
+      256² set, and `results/README.md`'s blanket "everything is 1024²" claim is corrected.
+      Was: `results/integrator_gallery/` is **1024², 7 cases, interrupted**
+      (`mid-field` has an `az` arm and no `heggie` arm); every gallery claim in CLAUDE.md is
+      **256², 32 cases**. `NOTES.md:2050` reads the 1024² one. Neither supersedes the other and
+      the 1024² set must not be overwritten by a 256² regeneration — see
+      `results_regen/README.md`.
+- [~] **Fifteen `results/` subdirectories are undocumented in `results/README.md`** — the
+      integrator ones are now documented (`integrator_gallery/`, `integrator_gallery_1024/`,
+      `logh_arms/`, `logh_arms_gbs_sweep/`). Twelve remain.
+      Was: — 1655 files,
+      including `integrator_gallery/` (246), `logh_arms/` (550), `step_control/` (487),
+      `logh_arms_gbs_sweep/` (122), `closure/` (34), `escgate/` (16), `overnight/` (12),
+      `ttl/` (1). And `results/README.md:830` still asserts *"everything generated in this build
+      is 1024²"*, which `logh_arms/` at 256² already contradicts.
+
+**Correction to CLAUDE.md, measured:** *"Every integration failure clears completely: 423, 438,
+703, 2222, 33, and eight smaller, all to zero"* is now **12 of 13**. Under the secant landing
+`deep_interior` reads AZ 434 / Heggie **1**. The cause is separable and was separated:
+`error_ratio` (`pixel.rs:766`) never consults `budget_exhausted`, so the no-discard fix cannot
+touch it — the mover is the landing. One pixel of 65536, in the region already on record as
+*not resolved at the shipping settings and never will be*.
+
+**Found while verifying, and recorded rather than re-rendered:** six panels in
+`results/integrator_gallery_1024/` — `far_az_norepair_{dmin,drift,outcome,spread,tend,uniform}` —
+carry mtime **31 Aug 09:35:30** and were committed by **`a526360` (1 Sep 12:51)**, the commit that
+landed the no-discard fix and the secant landing. **They predate the code in their own commit by
+27 hours.** That is the `220d928` failure at a second site — *commit renders in the same commit as
+the code that made them, or name the commit in the filename* — hit one commit after the rule was
+written down.
+
+**And `tools/contact_sheet.py` hardcoded its output root**, the third site after `criterion_metric`
+and `pan_sequence`. Fixed: `--root`, and it refuses a directory that does not exist rather than
+creating one.

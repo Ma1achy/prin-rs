@@ -1,0 +1,414 @@
+warning: variable does not need to be mutable
+   --> examples/integrator_gallery.rs:276:17
+    |
+276 |             let mut er: Vec<f64> =
+    |                 ----^^
+    |                 |
+    |                 help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+   --> examples/integrator_gallery.rs:431:29
+    |
+431 |                         let mut g: Vec<f64> = (0..dpx.len())
+    |                             ----^
+    |                             |
+    |                             help: remove this `mut`
+
+warning: `prin-rs` (example "integrator_gallery") generated 2 warnings (run `cargo fix --example "integrator_gallery" -p prin-rs` to apply 2 suggestions)
+    Finished `release` profile [optimized] target(s) in 0.18s
+     Running `target/release/examples/integrator_gallery 1024 results preset_shape_h1 400000 0`
+1024^2, both integrators, shared colour windows, max_steps=400000, refine_flagged=false.
+
+  **The UNMASKED kernel.** This is what a live playhead gets: the repair pass
+  re-integrates from t = 0 and has no live analogue.
+
+                  case  int  drift p50  drift p99    err p99  err>10  nonfin  budget  escape    coll    secs
+       preset_shape_h1   az   1.023e-6   1.591e-1    6.259e2   32941       0     191     926  604730  1611.3
+                            p01 2.074e-9  p10 2.240e-8  p25 1.040e-7  p50 1.023e-6  p75 1.441e-5  p90 1.156e-4  max 1.650e212
+       preset_shape_h1 heggie  5.160e-11   7.126e-8    1.000e0       6       0      87     916  604764  2744.1
+                            p01 1.364e-12  p10 7.152e-12  p25 1.788e-11  p50 5.160e-11  p75 2.027e-10  p90 2.550e-9  max 1.321e-3
+                            gain decades: p10 1.68  p50 4.33  p90 6.51  max 223.41   frac better 0.9921   frac >1 decade 0.9602
+                            AZ drift decile -> gain (decades, + means Heggie lower):
+                              d0 [3.89e-11,2.24e-8]  n 104859  gain p50   2.09  frac better 0.957
+                              d1 [2.24e-8,6.89e-8]  n 104858  gain p50   3.18  frac better 0.978
+                              d2 [6.89e-8,1.51e-7]  n 104859  gain p50   2.99  frac better 0.992
+                              d3 [1.51e-7,3.11e-7]  n 104858  gain p50   3.15  frac better 0.996
+                              d4 [3.11e-7,1.02e-6]  n 104859  gain p50   3.86  frac better 0.998
+                              d5 [1.02e-6,3.66e-6]  n 104858  gain p50   4.69  frac better 0.999
+                              d6 [3.66e-6,9.03e-6]  n 104859  gain p50   5.20  frac better 1.000
+                              d7 [9.03e-6,2.58e-5]  n 104858  gain p50   5.59  frac better 1.000
+                              d8 [2.58e-5,1.16e-4]  n 104854  gain p50   6.03  frac better 1.000
+                              d9 [1.16e-4,1.65e212]  n 104844  gain p50   7.17  frac better 1.000
+       preset_shape_h1  AZ vs HG: chord p50 5.180e-5  max 1.904e0  labels differ 120/1048576 (0.0001)
+
+HOW TO READ THIS
+
+**`_drift` is the panel to read for a numerical question, not `_uniform`.** The science
+fields show a defect only after it has propagated into a spread or a label; the drift
+map shows it at source, as coherent structure with the non-finite pixels inside it.
+
+**`_outcome` is the panel that separates a colouring artefact from real structure.**
+Arcs that vanish under the discrete map and edges that survive and sharpen are the
+standing signature: the banding is a colouring artefact, the crisp edges are not.
+
+**`chord max` of 2.000 is antipodal and is NOT evidence of anything.** Two correct
+integrators through a chaotic region must diverge over t = 13 or 50. These images answer
+whether the structure got cleaner. They do not answer whether the pixels agree, and no
+chord between the two integrators can.
+warning: variable does not need to be mutable
+   --> examples/integrator_gallery.rs:276:17
+    |
+276 |             let mut er: Vec<f64> =
+    |                 ----^^
+    |                 |
+    |                 help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+   --> examples/integrator_gallery.rs:431:29
+    |
+431 |                         let mut g: Vec<f64> = (0..dpx.len())
+    |                             ----^
+    |                             |
+    |                             help: remove this `mut`
+
+warning: `prin-rs` (example "integrator_gallery") generated 2 warnings (run `cargo fix --example "integrator_gallery" -p prin-rs` to apply 2 suggestions)
+    Finished `release` profile [optimized] target(s) in 0.23s
+     Running `target/release/examples/integrator_gallery 1024 results config_stability 400000 0`
+1024^2, both integrators, shared colour windows, max_steps=400000, refine_flagged=false.
+
+  **The UNMASKED kernel.** This is what a live playhead gets: the repair pass
+  re-integrates from t = 0 and has no live analogue.
+
+                  case  int  drift p50  drift p99    err p99  err>10  nonfin  budget  escape    coll    secs
+      config_stability   az   3.364e-8   8.650e-4    3.791e0    7136       0       8    7207  472227  5716.0
+                            p01 3.016e-10  p10 1.777e-9  p25 6.031e-9  p50 3.364e-8  p75 4.788e-7  p90 1.089e-5  max 4.536e14
+      config_stability heggie  5.042e-10   6.192e-7    1.001e0       7       0      17    7202  472277  9072.7
+                            p01 6.692e-12  p10 3.956e-11  p25 1.225e-10  p50 5.042e-10  p75 2.756e-9  p90 2.122e-8  max 2.613e-3
+                            gain decades: p10 0.17  p50 1.78  p90 4.26  max 22.25   frac better 0.9203   frac >1 decade 0.7291
+                            AZ drift decile -> gain (decades, + means Heggie lower):
+                              d0 [2.06e-11,1.78e-9]  n 104859  gain p50   0.87  frac better 0.833
+                              d1 [1.78e-9,4.20e-9]  n 104858  gain p50   1.17  frac better 0.896
+                              d2 [4.20e-9,8.47e-9]  n 104859  gain p50   1.27  frac better 0.888
+                              d3 [8.47e-9,1.63e-8]  n 104858  gain p50   1.42  frac better 0.886
+                              d4 [1.63e-8,3.36e-8]  n 104859  gain p50   1.42  frac better 0.884
+                              d5 [3.36e-8,6.85e-8]  n 104858  gain p50   1.60  frac better 0.899
+                              d6 [6.85e-8,2.28e-7]  n 104859  gain p50   2.13  frac better 0.945
+                              d7 [2.28e-7,1.09e-6]  n 104858  gain p50   2.79  frac better 0.975
+                              d8 [1.09e-6,1.09e-5]  n 104859  gain p50   3.58  frac better 0.996
+                              d9 [1.09e-5,4.54e14]  n 104858  gain p50   4.83  frac better 1.000
+      config_stability  AZ vs HG: chord p50 2.661e-5  max 1.999e0  labels differ 854/1048576 (0.0008)
+
+HOW TO READ THIS
+
+**`_drift` is the panel to read for a numerical question, not `_uniform`.** The science
+fields show a defect only after it has propagated into a spread or a label; the drift
+map shows it at source, as coherent structure with the non-finite pixels inside it.
+
+**`_outcome` is the panel that separates a colouring artefact from real structure.**
+Arcs that vanish under the discrete map and edges that survive and sharpen are the
+standing signature: the banding is a colouring artefact, the crisp edges are not.
+
+**`chord max` of 2.000 is antipodal and is NOT evidence of anything.** Two correct
+integrators through a chaotic region must diverge over t = 13 or 50. These images answer
+whether the structure got cleaner. They do not answer whether the pixels agree, and no
+chord between the two integrators can.
+warning: variable does not need to be mutable
+   --> examples/integrator_gallery.rs:276:17
+    |
+276 |             let mut er: Vec<f64> =
+    |                 ----^^
+    |                 |
+    |                 help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+   --> examples/integrator_gallery.rs:431:29
+    |
+431 |                         let mut g: Vec<f64> = (0..dpx.len())
+    |                             ----^
+    |                             |
+    |                             help: remove this `mut`
+
+warning: `prin-rs` (example "integrator_gallery") generated 2 warnings (run `cargo fix --example "integrator_gallery" -p prin-rs` to apply 2 suggestions)
+    Finished `release` profile [optimized] target(s) in 0.16s
+     Running `target/release/examples/integrator_gallery 1024 results deep_interior 400000 0`
+1024^2, both integrators, shared colour windows, max_steps=400000, refine_flagged=false.
+
+  **The UNMASKED kernel.** This is what a live playhead gets: the repair pass
+  re-integrates from t = 0 and has no live analogue.
+
+                  case  int  drift p50  drift p99    err p99  err>10  nonfin  budget  escape    coll    secs
+         deep_interior   az   1.019e-9   4.189e-5    3.353e0    8320       0     648       0 1033184  8143.7
+                            p01 6.990e-11  p10 2.565e-10  p25 5.050e-10  p50 1.019e-9  p75 2.078e-9  p90 4.942e-9  max 7.208e16
+         deep_interior heggie  5.882e-10   4.041e-7    1.003e0      28       0    2535       0 1033184  4670.0
+                            p01 1.951e-11  p10 9.596e-11  p25 2.187e-10  p50 5.882e-10  p75 2.697e-9  p90 1.611e-8  max 2.459e-3
+                            gain decades: p10 -1.16  p50 0.19  p90 1.28  max 26.46   frac better 0.5849   frac >1 decade 0.1608
+                            AZ drift decile -> gain (decades, + means Heggie lower):
+                              d0 [1.88e-12,2.56e-10]  n 104859  gain p50  -0.40  frac better 0.227
+                              d1 [2.56e-10,4.27e-10]  n 104858  gain p50  -0.10  frac better 0.437
+                              d2 [4.27e-10,5.88e-10]  n 104859  gain p50   0.10  frac better 0.552
+                              d3 [5.88e-10,7.69e-10]  n 104858  gain p50   0.15  frac better 0.576
+                              d4 [7.69e-10,1.02e-9]  n 104859  gain p50   0.16  frac better 0.570
+                              d5 [1.02e-9,1.33e-9]  n 104858  gain p50   0.28  frac better 0.620
+                              d6 [1.33e-9,1.76e-9]  n 104859  gain p50   0.41  frac better 0.675
+                              d7 [1.76e-9,2.49e-9]  n 104858  gain p50   0.38  frac better 0.652
+                              d8 [2.49e-9,4.94e-9]  n 104859  gain p50   0.43  frac better 0.668
+                              d9 [4.94e-9,7.21e16]  n 104858  gain p50   1.54  frac better 0.873
+         deep_interior  AZ vs HG: chord p50 4.501e-6  max 1.709e-3  labels differ 0/1048576 (0.0000)
+
+HOW TO READ THIS
+
+**`_drift` is the panel to read for a numerical question, not `_uniform`.** The science
+fields show a defect only after it has propagated into a spread or a label; the drift
+map shows it at source, as coherent structure with the non-finite pixels inside it.
+
+**`_outcome` is the panel that separates a colouring artefact from real structure.**
+Arcs that vanish under the discrete map and edges that survive and sharpen are the
+standing signature: the banding is a colouring artefact, the crisp edges are not.
+
+**`chord max` of 2.000 is antipodal and is NOT evidence of anything.** Two correct
+integrators through a chaotic region must diverge over t = 13 or 50. These images answer
+whether the structure got cleaner. They do not answer whether the pixels agree, and no
+chord between the two integrators can.
+warning: variable does not need to be mutable
+   --> examples/integrator_gallery.rs:276:17
+    |
+276 |             let mut er: Vec<f64> =
+    |                 ----^^
+    |                 |
+    |                 help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+   --> examples/integrator_gallery.rs:431:29
+    |
+431 |                         let mut g: Vec<f64> = (0..dpx.len())
+    |                             ----^
+    |                             |
+    |                             help: remove this `mut`
+
+warning: `prin-rs` (example "integrator_gallery") generated 2 warnings (run `cargo fix --example "integrator_gallery" -p prin-rs` to apply 2 suggestions)
+    Finished `release` profile [optimized] target(s) in 0.17s
+     Running `target/release/examples/integrator_gallery 1024 results far 400000 0`
+1024^2, both integrators, shared colour windows, max_steps=400000, refine_flagged=false.
+
+  **The UNMASKED kernel.** This is what a live playhead gets: the repair pass
+  re-integrates from t = 0 and has no live analogue.
+
+                  case  int  drift p50  drift p99    err p99  err>10  nonfin  budget  escape    coll    secs
+                   far   az  2.823e-13  3.456e-13    1.000e0       0       0       0       0 1048576  2749.9
+                            p01 2.344e-13  p10 2.546e-13  p25 2.672e-13  p50 2.823e-13  p75 2.986e-13  p90 3.147e-13  max 4.326e-13
+                   far heggie  2.189e-12  2.234e-12    1.000e0       0       0       0       0 1048576  1955.2
+                            p01 2.155e-12  p10 2.170e-12  p25 2.179e-12  p50 2.189e-12  p75 2.201e-12  p90 2.212e-12  max 2.283e-12
+                            gain decades: p10 -0.93  p50 -0.89  p90 -0.84  max -0.71   frac better 0.0000   frac >1 decade 0.0000
+                            AZ drift decile -> gain (decades, + means Heggie lower):
+                              d0 [1.89e-13,2.55e-13]  n 104859  gain p50  -0.95  frac better 0.000
+                              d1 [2.55e-13,2.64e-13]  n 104858  gain p50  -0.93  frac better 0.000
+                              d2 [2.64e-13,2.70e-13]  n 104859  gain p50  -0.91  frac better 0.000
+                              d3 [2.70e-13,2.76e-13]  n 104858  gain p50  -0.90  frac better 0.000
+                              d4 [2.76e-13,2.82e-13]  n 104859  gain p50  -0.89  frac better 0.000
+                              d5 [2.82e-13,2.88e-13]  n 104858  gain p50  -0.89  frac better 0.000
+                              d6 [2.88e-13,2.95e-13]  n 104859  gain p50  -0.88  frac better 0.000
+                              d7 [2.95e-13,3.03e-13]  n 104858  gain p50  -0.87  frac better 0.000
+                              d8 [3.03e-13,3.15e-13]  n 104859  gain p50  -0.85  frac better 0.000
+                              d9 [3.15e-13,4.33e-13]  n 104858  gain p50  -0.83  frac better 0.000
+                   far  AZ vs HG: chord p50 2.725e-7  max 8.677e-7  labels differ 0/1048576 (0.0000)
+
+HOW TO READ THIS
+
+**`_drift` is the panel to read for a numerical question, not `_uniform`.** The science
+fields show a defect only after it has propagated into a spread or a label; the drift
+map shows it at source, as coherent structure with the non-finite pixels inside it.
+
+**`_outcome` is the panel that separates a colouring artefact from real structure.**
+Arcs that vanish under the discrete map and edges that survive and sharpen are the
+standing signature: the banding is a colouring artefact, the crisp edges are not.
+
+**`chord max` of 2.000 is antipodal and is NOT evidence of anything.** Two correct
+integrators through a chaotic region must diverge over t = 13 or 50. These images answer
+whether the structure got cleaner. They do not answer whether the pixels agree, and no
+chord between the two integrators can.
+warning: variable does not need to be mutable
+   --> examples/integrator_gallery.rs:276:17
+    |
+276 |             let mut er: Vec<f64> =
+    |                 ----^^
+    |                 |
+    |                 help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+   --> examples/integrator_gallery.rs:431:29
+    |
+431 |                         let mut g: Vec<f64> = (0..dpx.len())
+    |                             ----^
+    |                             |
+    |                             help: remove this `mut`
+
+warning: `prin-rs` (example "integrator_gallery") generated 2 warnings (run `cargo fix --example "integrator_gallery" -p prin-rs` to apply 2 suggestions)
+    Finished `release` profile [optimized] target(s) in 0.14s
+     Running `target/release/examples/integrator_gallery 1024 results preset_shape 400000 0`
+1024^2, both integrators, shared colour windows, max_steps=400000, refine_flagged=false.
+
+  **The UNMASKED kernel.** This is what a live playhead gets: the repair pass
+  re-integrates from t = 0 and has no live analogue.
+
+                  case  int  drift p50  drift p99    err p99  err>10  nonfin  budget  escape    coll    secs
+          preset_shape   az   1.078e-7   1.497e-2    1.719e1   12646       0      57     188  850590  1424.3
+                            p01 1.884e-10  p10 9.651e-10  p25 4.681e-9  p50 1.078e-7  p75 3.734e-6  p90 3.781e-5  max 1.490e169
+          preset_shape heggie  1.686e-10   6.762e-7    1.000e0       0       0    2971     184  850620  3278.8
+                            p01 1.747e-12  p10 1.016e-11  p25 2.889e-11  p50 1.686e-10  p75 2.281e-9  p90 2.576e-8  max 1.526e-3
+                            gain decades: p10 0.80  p50 2.41  p90 5.15  max 177.87   frac better 0.9659   frac >1 decade 0.8754
+                            AZ drift decile -> gain (decades, + means Heggie lower):
+                              d0 [3.18e-12,9.65e-10]  n 104859  gain p50   1.56  frac better 0.939
+                              d1 [9.65e-10,2.48e-9]  n 104858  gain p50   1.82  frac better 0.958
+                              d2 [2.48e-9,8.76e-9]  n 104859  gain p50   1.95  frac better 0.947
+                              d3 [8.76e-9,3.02e-8]  n 104858  gain p50   2.15  frac better 0.938
+                              d4 [3.02e-8,1.08e-7]  n 104859  gain p50   2.12  frac better 0.928
+                              d5 [1.08e-7,4.94e-7]  n 104858  gain p50   2.57  frac better 0.965
+                              d6 [4.94e-7,2.13e-6]  n 104859  gain p50   3.06  frac better 0.988
+                              d7 [2.13e-6,6.92e-6]  n 104858  gain p50   3.72  frac better 0.998
+                              d8 [6.92e-6,3.78e-5]  n 104859  gain p50   4.31  frac better 0.999
+                              d9 [3.78e-5,1.49e169]  n 104856  gain p50   5.60  frac better 1.000
+          preset_shape  AZ vs HG: chord p50 4.239e-5  max 1.893e0  labels differ 50/1048576 (0.0000)
+
+HOW TO READ THIS
+
+**`_drift` is the panel to read for a numerical question, not `_uniform`.** The science
+fields show a defect only after it has propagated into a spread or a label; the drift
+map shows it at source, as coherent structure with the non-finite pixels inside it.
+
+**`_outcome` is the panel that separates a colouring artefact from real structure.**
+Arcs that vanish under the discrete map and edges that survive and sharpen are the
+standing signature: the banding is a colouring artefact, the crisp edges are not.
+
+**`chord max` of 2.000 is antipodal and is NOT evidence of anything.** Two correct
+integrators through a chaotic region must diverge over t = 13 or 50. These images answer
+whether the structure got cleaner. They do not answer whether the pixels agree, and no
+chord between the two integrators can.
+warning: variable does not need to be mutable
+   --> examples/integrator_gallery.rs:276:17
+    |
+276 |             let mut er: Vec<f64> =
+    |                 ----^^
+    |                 |
+    |                 help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+   --> examples/integrator_gallery.rs:431:29
+    |
+431 |                         let mut g: Vec<f64> = (0..dpx.len())
+    |                             ----^
+    |                             |
+    |                             help: remove this `mut`
+
+warning: `prin-rs` (example "integrator_gallery") generated 2 warnings (run `cargo fix --example "integrator_gallery" -p prin-rs` to apply 2 suggestions)
+    Finished `release` profile [optimized] target(s) in 0.13s
+     Running `target/release/examples/integrator_gallery 1024 results near-field 400000 0`
+1024^2, both integrators, shared colour windows, max_steps=400000, refine_flagged=false.
+
+  **The UNMASKED kernel.** This is what a live playhead gets: the repair pass
+  re-integrates from t = 0 and has no live analogue.
+
+                  case  int  drift p50  drift p99    err p99  err>10  nonfin  budget  escape    coll    secs
+            near-field   az  6.416e-11  1.084e-10    1.000e0       0       0       0       0   24649  3704.7
+                            p01 1.077e-12  p10 5.313e-12  p25 1.092e-11  p50 6.416e-11  p75 7.891e-11  p90 9.682e-11  max 1.173e-10
+            near-field heggie  1.451e-11  1.664e-11    1.000e0       0       0       0       0   24649  3295.2
+                            p01 1.191e-11  p10 1.250e-11  p25 1.314e-11  p50 1.451e-11  p75 1.578e-11  p90 1.626e-11  max 1.683e-11
+                            gain decades: p10 -0.48  p50 0.70  p90 0.82  max 0.87   frac better 0.6611   frac >1 decade 0.0000
+                            AZ drift decile -> gain (decades, + means Heggie lower):
+                              d0 [3.50e-14,5.31e-12]  n 104859  gain p50  -0.64  frac better 0.000
+                              d1 [5.31e-12,9.20e-12]  n 104858  gain p50  -0.36  frac better 0.000
+                              d2 [9.20e-12,1.27e-11]  n 104859  gain p50  -0.16  frac better 0.000
+                              d3 [1.27e-11,2.10e-11]  n 104858  gain p50   0.03  frac better 0.611
+                              d4 [2.10e-11,6.42e-11]  n 104859  gain p50   0.67  frac better 1.000
+                              d5 [6.42e-11,7.16e-11]  n 104858  gain p50   0.73  frac better 1.000
+                              d6 [7.16e-11,7.64e-11]  n 104859  gain p50   0.76  frac better 1.000
+                              d7 [7.64e-11,8.41e-11]  n 104858  gain p50   0.78  frac better 1.000
+                              d8 [8.41e-11,9.68e-11]  n 104859  gain p50   0.80  frac better 1.000
+                              d9 [9.68e-11,1.17e-10]  n 104858  gain p50   0.82  frac better 1.000
+            near-field  AZ vs HG: chord p50 7.926e-6  max 4.783e-5  labels differ 0/1048576 (0.0000)
+
+HOW TO READ THIS
+
+**`_drift` is the panel to read for a numerical question, not `_uniform`.** The science
+fields show a defect only after it has propagated into a spread or a label; the drift
+map shows it at source, as coherent structure with the non-finite pixels inside it.
+
+**`_outcome` is the panel that separates a colouring artefact from real structure.**
+Arcs that vanish under the discrete map and edges that survive and sharpen are the
+standing signature: the banding is a colouring artefact, the crisp edges are not.
+
+**`chord max` of 2.000 is antipodal and is NOT evidence of anything.** Two correct
+integrators through a chaotic region must diverge over t = 13 or 50. These images answer
+whether the structure got cleaner. They do not answer whether the pixels agree, and no
+chord between the two integrators can.
+warning: variable does not need to be mutable
+   --> examples/integrator_gallery.rs:276:17
+    |
+276 |             let mut er: Vec<f64> =
+    |                 ----^^
+    |                 |
+    |                 help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+   --> examples/integrator_gallery.rs:431:29
+    |
+431 |                         let mut g: Vec<f64> = (0..dpx.len())
+    |                             ----^
+    |                             |
+    |                             help: remove this `mut`
+
+warning: `prin-rs` (example "integrator_gallery") generated 2 warnings (run `cargo fix --example "integrator_gallery" -p prin-rs` to apply 2 suggestions)
+    Finished `release` profile [optimized] target(s) in 0.39s
+     Running `target/release/examples/integrator_gallery 1024 results all 400000 0`
+1024^2, both integrators, shared colour windows, max_steps=400000, refine_flagged=false.
+
+  **The UNMASKED kernel.** This is what a live playhead gets: the repair pass
+  re-integrates from t = 0 and has no live analogue.
+
+                  case  int  drift p50  drift p99    err p99  err>10  nonfin  budget  escape    coll    secs
+      config_stability  (already rendered, skipping)
+            near-field  (already rendered, skipping)
+             mid-field   az  5.989e-10  8.569e-10    1.000e0       0       0       0       0 1048576  3360.2
+                            p01 2.906e-10  p10 3.357e-10  p25 4.186e-10  p50 5.989e-10  p75 6.908e-10  p90 7.427e-10  max 1.217e-9
+warning: variable does not need to be mutable
+   --> examples/integrator_gallery.rs:276:17
+    |
+276 |             let mut er: Vec<f64> =
+    |                 ----^^
+    |                 |
+    |                 help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+   --> examples/integrator_gallery.rs:447:29
+    |
+447 |                         let mut g: Vec<f64> = (0..dpx.len())
+    |                             ----^
+    |                             |
+    |                             help: remove this `mut`
+
+warning: `prin-rs` (example "integrator_gallery") generated 2 warnings (run `cargo fix --example "integrator_gallery" -p prin-rs` to apply 2 suggestions)
+    Finished `release` profile [optimized] target(s) in 0.11s
+     Running `target/release/examples/integrator_gallery 1024 results all 400000 0`
+1024^2, both integrators, shared colour windows, max_steps=400000, refine_flagged=false.
+
+  **The UNMASKED kernel.** This is what a live playhead gets: the repair pass
+  re-integrates from t = 0 and has no live analogue.
+
+                  case  int  drift p50  drift p99    err p99  err>10  nonfin  budget  escape    coll    secs
+      config_stability  (already rendered, skipping)
+            near-field  (already rendered, skipping)

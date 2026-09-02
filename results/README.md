@@ -61,6 +61,35 @@ saturation fractions. Those are all field-conditional and the field moved.
 The dumps are **kept, not deleted** — they are the *before*, the same standing `charts_ranked/`
 gave the unranked runs, and a re-measurement wants something to diff against.
 
+## `scope/` — what the integrator fixes did to the criterion's input, and the three prerequisites
+
+Four files, and they are the reason the scheduler corpus above is superseded rather than merely
+old. `PREDICTION.md` was written before any of it ran and carries its own outcomes; `README.md`
+is the record for `corpus_scope`; `PREREQS.md` is the record for the three checks that had to
+pass before rebuilding.
+
+| file | from | what it answers |
+|---|---|---|
+| `corpus_scope.txt` | `examples/corpus_scope.rs` | how far the criterion's **input field** moved: `rho` 0.59-0.84, so the ordering was re-made and no criterion comparison survives |
+| `far_control.txt` | `examples/far_control.rs` | is `far` still the control — bulk yes, tail no, criteria no |
+| `floor_justify.txt` | `examples/floor_justify.rs` | does `Decision::Floor` still fire — not on Burrau, unchanged on `preset_shape` |
+| `PREREQS.md` | — | all three, with the escape-pair comparison that gated them |
+
+**Three things in there change how a number above should be read.**
+
+The `error(B)` machinery was **not running production**: `criterion_metric`, `oracle_audit` and
+`signal_audit` pinned `escape_rule: Reference` with `stop_on_escape: true`. `near-field` and `far`
+are unaffected by that at `t = 13`; `deep interior` carries **202 quads with escapes under the old
+pair and zero under production**. So every `deep interior` `error(B)` number here predates the
+closure criterion.
+
+`far`'s bulk is still featureless — flat to 1.9-2.6% under both kernels — but it gains a tail
+above **p99**: 82 pixels of 16384, in 11 components, with drift, `t_end`, `d_min` and termination
+**indistinguishable from the bulk**. Unexplained, and recorded as unexplained.
+
+`Decision::Floor` goes 17 -> 0, 16 -> 1, 9 -> 1 on Burrau and is **bitwise unmoved at 8 of 16 on
+`preset_shape`**. Any `Floor` count quoted from a Burrau region here is void; the chart ones stand.
+
 ## Images
 
 `<region>_outcome.png` and `<region>_spread.png`, 256×256, f64, `t = 13`, `E+1 = 8`,

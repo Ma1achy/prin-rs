@@ -106,17 +106,25 @@ fn main() {
     let res: usize = arg(4, 1024);
     // **The knob that made the whole committed gallery a uniform-mode render.** `k_frac = 1`
     // takes the top 100% of the frontier, so the ranking runs and changes nothing. It was the
-    // silent default when `results/charts` was made; it is now an argument with the swept value
-    // as its default, and passing `1.0` reproduces the old corpus bitwise and writes to the old
-    // directory. Nothing is overwritten in either direction.
+    // silent default when the first `results/charts` was made; it is now an argument with the
+    // shipped value as its default, and passing `1.0` writes to `charts_unranked` instead --
+    // so the control cannot land on top of the corpus.
     let k_frac: f64 = arg(5, scheduler::K_FRAC_RANKED);
     let crit = std::env::args()
         .nth(6)
         .map(|c| Criterion::parse(&c).expect("criterion"))
         .unwrap_or(Criterion::Within);
+    // **The naming is inverted from what it was, because the split it encoded is gone.**
+    // `charts_ranked` was the *after* of the `k_frac` change; `k_frac = 0.25` has been the
+    // shipped default since PR #21, so the after IS the corpus and the canonical name should
+    // hold the canonical run. The unranked arm keeps a name that says what it is.
+    //
+    // The old `results/charts` and `results/charts_ranked` were both written 25-26 August and
+    // are superseded by every integrator fix from 27 August on; they are recoverable at
+    // `9d48510` and are not preserved under a third name here. `results/README.md` says so.
     let ranked = k_frac < scheduler::K_FRAC_UNRANKED;
-    let dir = if ranked { "results/charts_ranked" } else { "results/charts" };
-    let adir = if ranked { "results/animated_ranked" } else { "results/animated" };
+    let dir = if ranked { "results/charts" } else { "results/charts_unranked" };
+    let adir = if ranked { "results/animated" } else { "results/animated_unranked" };
     let _ = std::fs::create_dir_all(dir);
     let _ = std::fs::create_dir_all(adir);
 

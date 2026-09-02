@@ -480,6 +480,11 @@ fn main() {
             if let Some(uni) = uni {
                 println!("\n  CAPTURED = (uniform - row)/(uniform - dp). 1.0 = optimum, 0.0 = breadth-first,");
                 println!("  negative = worse than raster order. `--` where the denominator is degenerate.");
+                println!("  **READ `headroom/err` FIRST.** Where it is small, uniform is already nearly");
+                println!("  optimal, there is almost nothing to capture, and `captured` is a MAGNIFIED view");
+                println!("  of a small absolute gap rather than a percentage -- it printed -11940 once from");
+                println!("  a headroom of 1.15e-5. The standing rule covers a ZERO denominator; this is the");
+                println!("  finer case of a SMALL one, and the honest fix is to print the scale, not hide it.");
                 print!("{:>22}", "headroom uni-dp");
                 let mut denom = Vec::new();
                 for (j, &b) in budgets.iter().enumerate() {
@@ -488,6 +493,12 @@ fn main() {
                     print!(" {d:>9.2e}");
                 }
                 println!();
+                print!("{:>22}", "headroom/err");
+                for (j, _) in budgets.iter().enumerate() {
+                    let r = denom[j] / uni[j].abs().max(1e-300);
+                    if uni[j].abs() > 0.0 { print!(" {r:>9.2e}") } else { print!("        --") }
+                }
+                println!("   <- the scale `captured` is normalised by");
                 for (name, curve) in &rows {
                     if name.starts_with("random") || name == "uniform" {
                         continue;

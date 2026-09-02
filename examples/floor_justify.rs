@@ -66,15 +66,40 @@ fn q(v: &[f64], p: f64) -> f64 {
     f[(((f.len() - 1) as f64) * p).round() as usize]
 }
 
+/// Every target as `(name, chart, cx, cy, half, body)`, Burrau regions and gallery charts alike.
+///
+/// **`preset_shape` is the control that decides whether the Burrau answer generalises.** It is on
+/// record as *the only tree in the corpus exercising the alpha gate* -- 8 `floor` + 8 `keep`, 16
+/// leaves against a complete 4096, zero spread-gate failures. So if `Floor` stops firing on Burrau
+/// under the fixed kernel, the honest question is immediately whether it stops firing *anywhere*;
+/// concluding "no subject" from five Burrau regions would be a claim about the regions.
+fn targets(names: &[String]) -> Vec<(String, prin_rs::grid::Chart, f64, f64, f64, usize)> {
+    let mut out = Vec::new();
+    for n in names {
+        if let Some(&(_, cx, cy, body)) = prin_rs::grid::REGIONS.iter().find(|r| r.0 == n.as_str()) {
+            out.push((n.clone(), prin_rs::grid::Chart::BodyPlane, cx, cy, 0.05, body));
+        } else if let Some((nm, ch, cx, cy, half)) =
+            prin_rs::grid::gallery_cases().into_iter().find(|c| c.0 == n.as_str())
+        {
+            out.push((nm.to_string(), ch, cx, cy, half, 0));
+        } else {
+            println!("  UNKNOWN TARGET `{n}` -- not a Burrau region and not a gallery chart");
+        }
+    }
+    out
+}
+
 fn main() {
     let budget: usize = std::env::args().nth(1).and_then(|s| s.parse().ok()).unwrap_or(2000);
     let regions: Vec<String> = {
         let r: Vec<String> = std::env::args().skip(2).collect();
         if r.is_empty() {
-            ["near-field", "body2 core", "deep interior", "mid-field", "far"]
+            ["near-field", "body2 core", "deep interior", "mid-field", "far",
+             "preset_shape", "preset_shape_h1"]
                 .iter().map(|s| s.to_string()).collect()
         } else { r }
     };
+    let tg = targets(&regions);
     let pre = pre_kernel();
     let now = EnsembleCfg::production().with_overrides(&[Override::RefineFlagged(false)]);
     println!("DOES `Decision::Floor` STILL FIRE ON A CLEAN SUBSTRATE?  budget {budget} quads\n");
@@ -87,18 +112,17 @@ fn main() {
     println!("{:<14} {:>4} {:>7} {:>8} {:>8} {:>8} {:>8} {:>8} {:>8}",
              "region", "arm", "n_alpha", "p10", "p25", "p50", "p75", "p90", "frac<0.2");
     let mut trees = Vec::new();
-    for r in &regions {
-        let Some((_, cx, cy, body)) = prin_rs::grid::REGIONS.iter().find(|x| x.0 == *r).cloned()
-        else { continue };
+    for (r, chart, cx, cy, half, body) in &tg {
+        let (cx, cy, half, body) = (*cx, *cy, *half, *body);
         let cfg = SchedCfg {
             n: 8, bootstrap_levels: 2, budget, tau_display: 1e-4,
-            hot_rule: HotRule::Quantile(0.5), alpha_hi: 0.2,
-            camera: Some(Camera::framing(cx, cy, 0.05, 1024)),
+            hot_rule: HotRule::Quantile(0.5), alpha_hi: 0.2, chart: *chart,
+            camera: Some(Camera::framing(cx, cy, half, 1024)),
             ..Default::default()
         };
         let mut per_arm = Vec::new();
         for (tag, ens) in [("pre", &pre), ("now", &now)] {
-            let (t, _) = scheduler::descend(cx, cy, 0.05, body, &cfg, ens, Precision::F64);
+            let (t, _) = scheduler::descend(cx, cy, half, body, &cfg, ens, Precision::F64);
             let al: Vec<f64> =
                 t.nodes.iter().filter_map(|n| n.alpha).filter(|a| a.is_finite()).collect();
             let no_alpha = t.nodes.iter().filter(|n| n.red.n_footprints > 0 && n.alpha.is_none()).count();
@@ -129,9 +153,8 @@ fn main() {
     print!("{:<14} {:>4}", "region", "arm");
     for a in ladder { print!("{:>10}", format!("lo={a}")); }
     println!("{:>10}", "leaves");
-    for r in &regions {
-        let Some((_, cx, cy, body)) = prin_rs::grid::REGIONS.iter().find(|x| x.0 == *r).cloned()
-        else { continue };
+    for (r, chart, cx, cy, half, body) in &tg {
+        let (cx, cy, half, body) = (*cx, *cy, *half, *body);
         for (tag, ens) in [("pre", &pre), ("now", &now)] {
             print!("{:<14} {tag:>4}", if tag == "pre" { r.as_str() } else { "" });
             let mut leaves = 0;
@@ -139,10 +162,11 @@ fn main() {
                 let cfg = SchedCfg {
                     n: 8, bootstrap_levels: 2, budget, tau_display: 1e-4,
                     hot_rule: HotRule::Quantile(0.5), alpha_hi: 0.2, alpha_lo: a_lo,
-                    camera: Some(Camera::framing(cx, cy, 0.05, 1024)),
+                    chart: *chart,
+                    camera: Some(Camera::framing(cx, cy, half, 1024)),
                     ..Default::default()
                 };
-                let (t, _) = scheduler::descend(cx, cy, 0.05, body, &cfg, ens, Precision::F64);
+                let (t, _) = scheduler::descend(cx, cy, half, body, &cfg, ens, Precision::F64);
                 let f = t.nodes.iter().filter(|n| n.is_leaf() && n.decision == Decision::Floor).count();
                 leaves = t.leaves().count();
                 print!("{f:>10}");

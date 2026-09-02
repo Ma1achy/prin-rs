@@ -8,3 +8,36 @@ jagged one (tests/straightness.rs measures 0.00000 and 0.71743 at matched area).
 
                                    -- RENDERED PANEL -- |    -- spread_shape FIELD -- |
         arm  nonfin     pale    dense     lgst  bnd str |    dense     lgst  bnd str |   jacc   shp p99
+  [all] dense 0.0001 lgst 5 bnd NaN | field dense 0.1524 lgst 4559 bnd 0.5878
+  [none] dense 0.0026 lgst 28 bnd NaN | field dense 0.2058 lgst 10810 bnd 0.7549
+  [dtau_only] dense 0.0026 lgst 32 bnd NaN | field dense 0.1918 lgst 9171 bnd 0.7103
+  [clamp_only] dense 0.0024 lgst 33 bnd NaN | field dense 0.1886 lgst 3439 bnd 0.6798
+  [limit_only] dense 0.0001 lgst 5 bnd NaN | field dense 0.1537 lgst 4747 bnd 0.6112
+       none    1153   0.0230   0.0026       28      NaN |   0.2058    10810   0.7549 |  0.071    0.4934
+  dtau_only      32   0.0205   0.0026       32      NaN |   0.1918     9171   0.7103 |  0.070    0.4931
+ clamp_only    1531   0.0202   0.0024       33      NaN |   0.1886     3439   0.6798 |  0.068    0.4929
+ limit_only       0   0.0129   0.0001        5      NaN |   0.1537     4747   0.6112 |  0.054    0.4914
+        all       0   0.0127   0.0001        5      NaN |   0.1524     4559   0.5878 |  0.053    0.4915
+
+HOW TO READ THIS
+
+**`az_prefix` FIRST.** It is AZ with the step-control fixes off -- the kernel the
+wedges were first seen under. If it does not carry a large dense component with a
+STRAIGHT boundary, this metric cannot see the artefact and every row below it is
+void. A null from a metric that never had a subject is this project's most
+frequently catalogued failure.
+
+**Then `az` against `heggie`.** `az` is the post-fix kernel, so what it still
+carries is the RESIDUAL the step-control work did not remove -- which is what the
+re-registration mechanism predicts Heggie should not have.
+
+**The two mask columns are each other's control.** The rendered one is the mask
+`circled_ics.rs` defined and is comparable with what was circled; the field one is
+`spread_shape` above the shared AZ window's top, which is what saturation means,
+with no 8-bit round trip and no chroma term. `jacc` is their agreement. If they
+disagree, the render is adding or hiding something and no row should be quoted.
+
+**`plain_rk4` is the no-reference-body control.** It has no chart to re-register
+into, so it cannot have the artefact -- but its field is wrecked, which is what
+says a low `bnd str` means straight and not merely empty. Read `dense` beside it.
+EXIT=0

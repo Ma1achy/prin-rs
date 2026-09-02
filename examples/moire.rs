@@ -126,10 +126,7 @@ fn main() {
     const ETA0: f64 = 1e-2;
     let arms: Vec<(&str, usize, f64)> = vec![
         ("baseline", N0, ETA0),
-        ("cadence x2", 2 * N0, 2.0 * ETA0),   // step size HELD
-        ("cadence x4", 4 * N0, 4.0 * ETA0),   // step size HELD
-        ("step /2", N0, ETA0 / 2.0),          // cadence HELD
-        ("step /4", N0, ETA0 / 4.0),          // cadence HELD
+        ("step /4", N0, ETA0 / 4.0),          // one contrast arm; the sweep is already done
     ];
 
     println!("MOIRE / BANDING on a ribbon window of config_stability, {res}^2, t_max = 50.");
@@ -141,8 +138,9 @@ fn main() {
     println!("  physics.");
     println!();
     println!(
-        "{:>12} {:>7} {:>9} {:>10} {:>8} {:>9} {:>9} {:>9} {:>8}",
-        "arm", "n_sync", "eta", "steps p50", "lambda", "promin", "t_end dst", "on bnd", "nonfin"
+        "{:>12} {:>7} {:>9} {:>10} {:>8} {:>9} {:>8} {:>9} {:>9} {:>9} {:>8}",
+        "arm", "n_sync", "eta", "steps p50", "lam:8bit", "prom", "lam:f64", "prom", "t_end dst",
+        "on bnd", "nonfin"
     );
 
     let mut window: Option<(f64, f64)> = None;
@@ -173,6 +171,15 @@ fn main() {
             })
             .collect();
         let (lam, prom) = banding(&lum, res);
+        // **The discriminating measurement.** `lum` is the RENDERED 8-bit luminance, so a smooth
+        // field contoured by the ramp's 1/255 steps produces bands that owe nothing to the
+        // integrator. Measured on the underlying FLOAT field the same window must show them too,
+        // or they are a display artefact and no step or cadence can remove them.
+        let fld: Vec<f64> = px
+            .iter()
+            .map(|p| if p.spread_shape.is_finite() { p.spread_shape } else { f64::NAN })
+            .collect();
+        let (flam, fprom) = banding(&fld, res);
 
         let dt = 50.0 / n_sync as f64;
         let te: Vec<f64> = px.iter().map(|p| p.t_end).filter(|x| x.is_finite()).collect();
@@ -184,13 +191,15 @@ fn main() {
         steps.sort_unstable();
 
         println!(
-            "{:>12} {:>7} {:>9.2e} {:>10.3e} {:>8} {:>9.2} {:>9} {:>9.4} {:>8}",
+            "{:>12} {:>7} {:>9.2e} {:>10.3e} {:>8} {:>9.2} {:>8} {:>9.2} {:>9} {:>9.4} {:>8}",
             label,
             n_sync,
             eta,
             steps[steps.len() / 2] as f64,
             lam,
             prom,
+            flam,
+            fprom,
             d.len(),
             on_b as f64 / te.len().max(1) as f64,
             px.iter().filter(|p| !p.spread_shape.is_finite()).count()

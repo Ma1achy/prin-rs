@@ -1,0 +1,14 @@
+AA CHECK on config_stability, 384^2, zoom_frac 1, t_max = 50.
+ONE march, two colourings -- 8 samples per pixel, already computed.
+
+    render     lambda     promin
+     point         41       1.38
+  resolved         41       1.33
+
+pixels changed 57812 of 147456 (0.3921), worst channel delta 111 of 255
+
+**A render that moves nothing is inert and the banding is not aliasing.** If the
+bands are `t_end` quantised to sync boundaries, every copy in a footprint snaps to
+the same boundary and averaging them cannot help -- that is the discriminating
+prediction, and it is why this is a toggle rather than a replacement.
+EXIT=0

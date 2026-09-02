@@ -2278,3 +2278,53 @@ and this project's own rule is that *amplitude cannot tell a small real signal f
 coherence can*. Dithering removes the evidence rather than the error, and would make the artefact
 undiagnosable while leaving every trajectory as wrong as before. **A remedy that only changes the
 spatial correlation of an error is cosmetic; say so before measuring how good it looks.**
+
+**THE WEDGES ARE THE PREDICTIVE STEP LIMIT ALONE, AND THE THREE STEP-CONTROL FIXES DO THREE
+DIFFERENT JOBS.** Ablated one at a time on `config_stability` at 512^2, `t_max = 50`:
+
+```
+        arm    nonfin  x none |    dense  x none | lgst | field-dense
+       none      1153   1.000 |   0.0026   1.000 |   28 |     0.2058
+  dtau_only        32   0.028 |   0.0026   1.000 |   32 |     0.1918
+ clamp_only      1531   1.328 |   0.0024   0.923 |   33 |     0.1886
+ limit_only         0   0.000 |   0.0001   0.038 |    5 |     0.1537
+        all         0   0.000 |   0.0001   0.038 |    5 |     0.1524
+```
+
+**`limit_only` reproduces `all` on every column.** The `dtau` fix removes the **magenta** (1153 ->
+32) and leaves the wedges **untouched at 0.0026** -- the two artefacts were never one defect. And
+**the clamp alone makes non-finite worse**, 1153 -> 1531, which is the standing *"the `dtau` fix
+shipped without its partner and on its own it made the images worse"* in mirror image; the pairing
+is symmetric. Neither is removable: the clamp is what takes the marched order 1.06 -> 2.08 and this
+census measures wedges only.
+
+**And the cure is the one the literature names.** `StepLimit::Predictive` is
+`dtau <= f*d_min/(|v_rel|*A*B)` -- a **pericentre-resolution** condition. Rauch & Holman 1999 (AJ
+117, 1087) show the Wisdom-Holman mapping goes artificially chaotic through **overlap of step-size
+resonances** unless the step resolves periapse, and quote `T_p/20`; this ships at `f = 0.02`, 1/50.
+The wedges were a step-size resolution failure at close approach.
+
+**THE RIBBON BANDING IS REAL STRUCTURE, AND FOUR MECHANISMS WERE EXCLUDED BY MEASUREMENTS BUILT TO
+DETECT THEM.** Per-row power spectrum on a ribbon window, peak wavelength with its prominence over
+the median bin:
+
+```
+    sync cadence        n_sync x4 at held step size   lambda 55 -> 55, prom 2.14 -> 2.14
+    stepper             eta /4, steps p50 x3.47       lambda 55 -> 55, prom 2.14 -> 2.14
+    8-bit quantisation  measured on the FLOAT field   lambda 54,       prom 1.99
+    sub-pixel aliasing  8x supersampling              prom 1.38 -> 1.33
+```
+
+**I predicted the third would show nothing** -- that the bands were the ramp contouring a smooth
+field at 1/255 steps, which would have explained why they were pinned to three digits across
+genuinely different trajectories. **Refuted: the float field carries the same modulation.**
+
+The invariance is then the answer rather than the puzzle: **`steps p50` spanning 3.47x with the
+field unmoved is what CONVERGENCE looks like.** The window sits inside a ribbon, a tame region, and
+a converged region is *supposed* to return the same answer under refinement. The banding is a real
+feature of `spread_shape` there.
+
+**Prominence ~2 is weak and the number must not be over-read**: `lambda ~ 55` px on a 256^2 window
+is a broad soft modulation, about five cycles across the frame, not a sharp moiré. If it *reads* as
+moire on screen, the most likely remaining cause is a **viewer resampling a real 55 px modulation**
+-- which is a display concern (spec §4.3), not a render or physics one.

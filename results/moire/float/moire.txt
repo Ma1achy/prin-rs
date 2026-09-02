@@ -6,12 +6,9 @@ half = 0.11477 (0.18 of the full view), centre (-0.29906, 0.25997).
   the sync cadence draws them; under the second, the stepper; under neither,
   physics.
 
-         arm  n_sync       eta  steps p50   lambda    promin t_end dst    on bnd   nonfin
-    baseline     125   1.00e-2    1.328e5       55      2.14     14916    0.7723        0
-  cadence x2     250   2.00e-2    1.330e5       55      2.14     14937    0.7724        0
-  cadence x4     500   4.00e-2    1.375e5       55      2.14     15011    0.7725        0
-     step /2     125   5.00e-3    2.377e5       55      2.14     14919    0.7723        0
-     step /4     125   2.50e-3    4.602e5       55      2.14     14920    0.7723        0
+         arm  n_sync       eta  steps p50 lam:8bit      prom  lam:f64      prom t_end dst    on bnd   nonfin
+    baseline     125   1.00e-2    1.328e5       55      2.14       54      1.99     14916    0.7723        0
+     step /4     125   2.50e-3    4.602e5       55      2.14       54      1.99     14920    0.7723        0
 
 HOW TO READ THIS
 

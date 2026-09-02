@@ -8,6 +8,59 @@ named example, and the images and dumps come from `src/bin/prin.rs`. Committed a
 findings document whose numbers cannot be checked without a 20-minute re-run is a summary rather
 than a record.
 
+## THE SCHEDULER CORPUS IS SUPERSEDED, AND REPLACING IT IS A RE-MEASUREMENT
+
+**Read this before quoting any number from `charts/`, `criterion/`, `vertical/`,
+`charts_ranked/`, `criterion_ranked/`, `sweep/`, `refinement/`, `animated/` or
+`animated_ranked/`.** They are 1009 files and **188 `.prnq` dumps**, and every one of them was
+written on **25-26 August**. Every change to the integrator landed on **27 August or later**:
+
+| landed | commit | what moved |
+|---|---|---|
+| 08-27 21:19 | `5cc8dec` | `DtauMode::PerStepInterval` — `dtau` re-sized per step |
+| 08-28 01:10 | `f7d2a31` | `clamp_final_step` — the march stopped overshooting the boundary |
+| 08-29 19:00 | `2eb9e8f` | `StepLimit::Predictive` — the pericentre-resolution step limit |
+| 09-01 12:51 | `a526360` | the no-discard fix, and the secant landing |
+| 09-02 02:52 | `84830a1` | `Integrator::Heggie` became the default |
+| 09-02 | this PR | `Decision::Undetermined` — a quad that integrated nothing stops as itself |
+
+Not one file under those directories has been touched since **27 August**, checkable with
+`find results/charts ... -newermt 2026-08-27`, which returns nothing. They also predate the
+`k_frac` default moving off `1.0`, which is already documented below — and which is why
+`charts_ranked/` and `criterion_ranked/` exist. That fix does not help here: **the ranked runs are
+26 August too.**
+
+The measured size of what moved is not small. On `config_stability` the `dtau` fix alone flipped
+**348,314 of 1,048,576 outcome labels** and took non-finite pixels **30109 -> 178**; the step
+limit took `err>10` **0.1110 -> 0.0000** with overshoots **634 -> 0**; the integrator default
+takes `err>10` across 32 gallery cases from **3915 to 74**. `ensemble_spread` is a statistic over
+the terminal shape vectors of trajectories every one of those changed.
+
+**So this is not a regeneration and the word matters.** Re-running the old harnesses produces new
+numbers under old headings, and the standing rule on this project is that a documented
+reproduction command can be wrong and only running it finds out. What the corpus can still
+support is the arithmetic — findings that hold whatever values `err_sum` contains:
+
+- the accounting identity `error_of(leaves) == err_sum(root) - sum(gains)` is a tautology
+- `level` scores `|rho| = 0.993` against the DP label, so every correlation must be blocked by it
+- the DP's split sets are strictly nested in budget (`1 -> 0` flips exactly zero at every rung)
+- a leaf set scored against a finite reference must **tile the root**, and the `(level, ix, iy)`
+  round-trip is what catches a half-cell error
+- `greedy_lookahead_1` is a reference and never a bound; `dp_optimal` is the ceiling and is cheap
+- take the **prefix-min**: a split can make the image worse
+- on a smooth field, ranking by spread **is** breadth-first — so `far` degenerating is correct
+- the baseline is `Rank::Uniform`, not random
+- under a quantile hot rule `n_hot` is set by the rule, so `frac_hot` carries nothing
+- there are **four** stop reasons and a leaf count without its breakdown says nothing
+
+What it cannot support is every number: all `error(B)` curves and the `frac_hot_between/median`
+verdict, the `tau` / `alpha_hi` / `k_frac` / `N` / `E` sweeps, the per-level `captured` ladder and
+the headroom percentages, the regional spread medians, the treadmill result, and the mask
+saturation fractions. Those are all field-conditional and the field moved.
+
+The dumps are **kept, not deleted** — they are the *before*, the same standing `charts_ranked/`
+gave the unranked runs, and a re-measurement wants something to diff against.
+
 ## Images
 
 `<region>_outcome.png` and `<region>_spread.png`, 256×256, f64, `t = 13`, `E+1 = 8`,

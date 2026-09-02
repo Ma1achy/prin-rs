@@ -2395,3 +2395,56 @@ pixel of 36864**; at `z1`, where OKLab `a` spans 0.20071 against 0.00292, it mov
 correlation of an error is cosmetic*, at a second site. The earlier guess that a **viewer**
 resampling the modulation was the remaining cause is withdrawn: the aliasing is in the render, at
 depth, and measurable.
+
+**A QUAD THAT INTEGRATED NOTHING READ AS `Keep`, AND THE MECHANISM ON RECORD WAS THE SMALLER
+HALF.** The open item said `reduce` filters non-finite before the within-arm quantiles, so an
+empty vector gives `quantile -> NaN` and `decide`'s `!(spread > tau)` sends `NaN` to
+`Decision::Keep`. That path is real and, at the shipped step control, **essentially never taken**.
+Measured at `N = 8` with every footprint budget-exhausted and **all 512 copies flagged unusable**,
+`ensemble_spread` is finite on **every one**: a truncated state is a perfectly good number, it is
+simply not the number the statistic claims.
+
+```
+                            budget  nonfin   spread_med  err_ratio_max  worst_drift
+    near-field production     0/64   0/512    2.584e-3      1.0020        2.500e-6
+    near-field steps64       64/64 512/512    4.580e-4      1.0000            inf
+    deep int.  steps64       64/64 512/512    1.221e-3      1.0000            inf
+```
+
+`near-field`'s starved spread is **5.6x smaller** than its healthy one -- it reads as *better*
+resolved -- while `deep interior`'s moves the other way, so it is not a bias that could be
+corrected for. **`error_ratio_max` reads 1.0000, exactly its converged value**, because every copy
+stopped at the same early point and so agrees perfectly with the others: the statistic whose job
+is to say *this pixel is not data* reports the ideal. Of the whole reduction only
+`worst_energy_drift` (`+inf`) and `n_nonfinite` (512/512) told the truth, and `decide` read
+neither. Mutating the new guard off prints the defect in its own words -- **13 `keep` and 5
+`split`** on a tree where nothing integrated.
+
+**So a predicate written on the stated mechanism would have been a guard that cannot fire.**
+`scheduler::footprint_undetermined` keys on *either* a non-finite `ensemble_spread` **or** an
+unusable copy, deliberately strict at one of `E+1` because the alternative is a fraction with a
+threshold in it. It is **inert where the integration succeeds** -- `n_nonfinite = 0` on all three
+regions at production settings, so no production tree moves. `Decision::Undetermined` is a
+*second* variant and not a widening of `Collapsed`: a collapsed decode is repeated ICs and
+refining makes it worse, an undetermined quad has distinct ICs and finer `eta` is its remedy --
+different causes, different remedies, and a stop-reason breakdown that pools them is the thing the
+breakdown exists to prevent. **`error_ratio`'s blindness is recorded and not repaired**: it is
+computed from the energy arrays and never consults the driver's usability flag, and moving it
+moves every `error_ratio` in the corpus.
+
+**THE SCHEDULER CORPUS PREDATES EVERY INTEGRATOR FIX, AND "REGENERATE" WAS THE WRONG WORD FOR
+IT.** `charts/`, `criterion/`, `vertical/`, `charts_ranked/`, `criterion_ranked/`, `sweep/`,
+`refinement/`, `animated/`, `animated_ranked/` -- 1009 files and **188 `.prnq`** -- are all
+**25-26 August**. `5cc8dec` (`dtau`), `f7d2a31` (landing clamp), `2eb9e8f` (predictive limit),
+`a526360` (no-discard + secant landing), `84830a1` (Heggie default) and `Decision::Undetermined`
+are all **27 August or later**; `find ... -newermt 2026-08-27` over those directories returns
+**nothing**. The `k_frac` repair does not help, because `charts_ranked/` is 26 August too. Scale
+of what moved: the `dtau` fix alone flipped **348,314 of 1,048,576** labels on
+`config_stability`, the step limit took `err>10` **0.1110 -> 0.0000**, the default took it
+**3915 -> 74** across 32 cases. **The arithmetic survives** -- the accounting tautology, `level`
+at `|rho| = 0.993` against the DP label, nested split sets, tile-the-root, `dp_optimal` as the
+ceiling, prefix-min, breadth-first as the baseline, `n_hot` under a quantile rule, the four stop
+reasons. **Every field-conditional number does not**: all `error(B)` curves, the
+`frac_hot_between/median` verdict, the `tau`/`alpha_hi`/`k_frac`/`N`/`E` sweeps, the per-level
+`captured` ladder, the regional spread medians, the treadmill, the mask saturation fractions. Kept
+as the *before*; full statement at the head of `results/README.md`.

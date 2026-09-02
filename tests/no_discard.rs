@@ -53,15 +53,39 @@
 //! is `NaN` for "never diverged" and `frac_diverged` beside it carries that half explicitly,
 //! counting non-crossers **in the denominator**.
 //!
-//! # Still open, and deliberately not fixed here because it moves every tree
+//! # Closed: the quad that integrated nothing — and the stated mechanism was the smaller half
 //!
-//! `scheduler.rs:378-380` filters `ensemble_spread` before the quantiles that feed `signal()`.
-//! `quantile` returns `NaN` on empty, and `decide`'s `!(spread > tau)` sends `NaN` to
-//! **`Decision::Keep`** — a quad where nothing could be integrated reports *refinement does not
-//! pay*. `Decision::Collapsed` exists for undetermined quads but `between_collapsed()` tests
-//! `n_distinct_ic < n_footprints`, a **decode** collapse; a quad with distinct ICs whose every
-//! footprint diverged does not reach it. Two ways to be undetermined, one `Decision`. Changing
-//! it is corpus-invalidating and wants its own measurement first.
+//! The open item was that `scheduler.rs` filters `ensemble_spread` before the within-arm
+//! quantiles, so an empty vector gives `quantile -> NaN` and `decide`'s `!(spread > tau)` sends
+//! `NaN` to **`Decision::Keep`**: a quad where nothing could be integrated reporting *refinement
+//! does not pay*.
+//!
+//! **That path is real and, at the shipped step control, essentially never taken.** Measured at
+//! `N = 8` on `deep interior`, `near-field` and `far`, a quad with every footprint
+//! budget-exhausted and **all 512 copies flagged unusable** reads `ensemble_spread` finite on
+//! every one of them: a truncated state is a perfectly good number, it is simply not the number
+//! the statistic claims. So the live failure is an **ordinary finite spread over a contaminated
+//! sample**, and every field that existed before it reads clean:
+//!
+//! | quad | budget | nonfin copies | `spread_median` | `error_ratio_max` | `worst_drift` |
+//! |---|---|---|---|---|---|
+//! | near-field, production | 0/64 | 0/512 | 2.584e-3 | 1.0020 | 2.500e-6 |
+//! | near-field, `MaxSteps=64` | 64/64 | 512/512 | **4.580e-4** | **1.0000** | inf |
+//! | deep interior, `MaxSteps=64` | 64/64 | 512/512 | **1.221e-3** | **1.0000** | inf |
+//!
+//! `near-field`'s starved spread is **5.6x smaller** than its healthy one — it reads as *better*
+//! resolved — while `deep interior`'s moves the other way, so it is not a bias that could be
+//! corrected for. And `error_ratio_max` is **1.0000, exactly its converged value**, because every
+//! copy stopped at the same early point and so agrees perfectly with the others: the statistic
+//! whose job is to say *this pixel is not data* reports the ideal. Only `worst_energy_drift`
+//! (`+inf`, from the fix above) and `n_nonfinite` (512/512) told the truth, and `decide` read
+//! neither.
+//!
+//! Closed by `QuadReduction::n_undetermined` + `Decision::Undetermined`, keyed on
+//! `scheduler::footprint_undetermined` — *not* on the spread being `NaN`, which would have been
+//! a guard that could not fire. **`error_ratio`'s blindness is recorded and not repaired here**:
+//! it is computed from the energy arrays and never consults the driver's usability flag, and
+//! moving it moves every `error_ratio` in the corpus, which wants its own attribution.
 //!
 
 use prin_rs::ensemble::pixel::{self, EnsembleCfg};
@@ -316,4 +340,128 @@ fn a_quad_with_nothing_determinable_reads_nan_and_never_zero() {
     assert!(fold(&all_nan).is_nan(), "all-undefined must be NaN, not the best value on the scale");
     assert_eq!(fold(&mixed), 3.0, "NaN must not poison a quad that has determinable footprints");
     assert_eq!(fold(&with_inf), f64::INFINITY, "an undetermined footprint must propagate");
+}
+
+// ---------------------------------------------------------------------------------------
+// The quad that integrated nothing
+// ---------------------------------------------------------------------------------------
+
+/// Both arms of the guard, and the discriminating arm that says the defect was real.
+///
+/// The **property**: a quad none of whose footprints could be read stops as
+/// `Decision::Undetermined`. The **control**: the same quad, integrated properly, does not — a
+/// guard that always fires passes as easily as one that never does. The **discriminating arm**:
+/// on the starved quad every pre-existing field reads clean, so nothing before `n_undetermined`
+/// could have told the two apart.
+#[test]
+fn a_quad_that_integrated_nothing_stops_as_undetermined_and_a_healthy_one_does_not() {
+    use prin_rs::quad::Decision;
+    use prin_rs::render::Precision;
+    use prin_rs::scheduler::{self, SchedCfg};
+
+    let sched = SchedCfg { n: 8, budget: 24, tau_display: 1e-4, ..Default::default() };
+    // `near-field` at t = 13, the region the scheduler tests are pinned to.
+    let (cx, cy, half) = (1.0, 3.0, 0.05);
+
+    let starved = EnsembleCfg::production().with_overrides(&[Override::MaxSteps(64)]);
+    let healthy = EnsembleCfg::production();
+
+    let (t_starved, _) = scheduler::descend(cx, cy, half, 0, &sched, &starved, Precision::F64);
+    let (t_healthy, _) = scheduler::descend(cx, cy, half, 0, &sched, &healthy, Precision::F64);
+
+    let computed = |t: &prin_rs::quad::QuadTree| -> Vec<prin_rs::quad::Quad> {
+        t.nodes.iter().filter(|q| q.red.n_footprints > 0).cloned().collect()
+    };
+    let (cs, ch) = (computed(&t_starved), computed(&t_healthy));
+
+    // The test has a subject: the starved arm really did fail to integrate.
+    assert!(cs.len() >= 4 && ch.len() >= 4, "too few quads computed: {} / {}", cs.len(), ch.len());
+    assert!(
+        cs.iter().all(|q| q.red.n_undetermined == q.red.n_footprints),
+        "NO SUBJECT: the starved arm produced readable footprints, so this test asserts nothing"
+    );
+
+    // The property.
+    let n_undet = cs.iter().filter(|q| q.decision == Decision::Undetermined).count();
+    assert!(
+        n_undet > 0,
+        "starved arm produced no Undetermined decision; stop reasons were {:?}",
+        cs.iter().map(|q| q.decision.name()).collect::<Vec<_>>()
+    );
+
+    // The control: the healthy arm must reach none of it, and must reach it by having readable
+    // footprints rather than by never being asked.
+    assert!(
+        ch.iter().all(|q| q.red.n_undetermined == 0),
+        "the healthy arm has undetermined footprints, so the control is not clean"
+    );
+    assert!(
+        ch.iter().all(|q| q.decision != Decision::Undetermined),
+        "the healthy arm stopped as Undetermined; the guard fires on good data"
+    );
+
+    // The discriminating arm. On a starved quad every field that existed before this change
+    // reads like ordinary data -- which is why the defect survived.
+    let q = cs.iter().find(|q| q.decision == Decision::Undetermined).unwrap();
+    assert!(
+        q.red.spread_median.is_finite(),
+        "the NaN route was taken, so this quad is not the case the fix is about"
+    );
+    assert!(
+        (q.red.error_ratio_max - 1.0).abs() < 1e-6,
+        "error_ratio_max reads {:.6}, not its converged 1.0 -- the table in the header is stale \
+         and the discriminating arm needs re-measuring",
+        q.red.error_ratio_max
+    );
+
+    // And it is NOT the other way of being undetermined: the decode is fine, the integration is
+    // not. Without this the new variant could be a second name for `Collapsed`.
+    assert!(
+        !q.red.between_collapsed(),
+        "the starved quad's decode collapsed too, so this does not separate the two causes"
+    );
+}
+
+/// `Collapsed` and `Undetermined` are independent, and `decide` reports the cause when both hold.
+///
+/// A decode collapse is the *cause* -- identical ICs -- and divergence is downstream of it, so
+/// the more fundamental label wins. Asserted rather than left to the reading order of the source.
+#[test]
+fn a_collapsed_decode_outranks_a_failed_integration_when_both_hold() {
+    use prin_rs::quad::{Decision, QuadReduction, QuadTree};
+    use prin_rs::scheduler::{decide, SchedCfg};
+
+    // `bootstrap_levels = 0` so the root is actually decided rather than split blind.
+    let cfg = SchedCfg { n: 8, bootstrap_levels: 0, tau_display: 1e-4, ..Default::default() };
+    let mut tree = QuadTree::new(1.0, 3.0, 0.05, cfg.n, 0);
+
+    let base = QuadReduction {
+        n_footprints: 64,
+        n_distinct_ic: 64,
+        n_undetermined: 0,
+        spread_median: 1.0,
+        ..Default::default()
+    };
+
+    // Neither: an ordinary quad reaches the policy branches.
+    tree.nodes[0].red = base;
+    assert!(!matches!(decide(&tree, 0, &cfg), Decision::Collapsed | Decision::Undetermined));
+
+    // Integration failed, decode fine.
+    tree.nodes[0].red = QuadReduction { n_undetermined: 64, ..base };
+    assert_eq!(decide(&tree, 0, &cfg), Decision::Undetermined);
+
+    // Decode collapsed, integration fine.
+    tree.nodes[0].red = QuadReduction { n_distinct_ic: 63, ..base };
+    assert_eq!(decide(&tree, 0, &cfg), Decision::Collapsed);
+
+    // Both: the cause wins.
+    tree.nodes[0].red = QuadReduction { n_distinct_ic: 63, n_undetermined: 64, ..base };
+    assert_eq!(decide(&tree, 0, &cfg), Decision::Collapsed);
+
+    // Partial is deliberately NOT a decision -- 63 of 64 footprints unreadable still reaches the
+    // policy branches. If that ever becomes a threshold this assertion is what has to be argued
+    // with, rather than the change landing silently.
+    tree.nodes[0].red = QuadReduction { n_undetermined: 63, ..base };
+    assert!(!matches!(decide(&tree, 0, &cfg), Decision::Collapsed | Decision::Undetermined));
 }

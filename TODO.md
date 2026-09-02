@@ -478,8 +478,27 @@ recognisable slice there is no way to judge whether the physics or the colouring
       field and is **correct** — it sets a ramp window and `drift_rgb` paints the veto set
       magenta separately. Convention for the propagated value is already settled by `band_of`:
       **`NaN` to the bottom, `+inf` to the top.**
-- [ ] **Then** regenerate `charts/`, `criterion/`, `vertical/` — the groups that read those
-      columns. Not started; nothing in this pass touched them.
+- [!] **NOT a regeneration — a re-measurement, and the word was wrong here.** This line read
+      *"Then regenerate `charts/`, `criterion/`, `vertical/`"*, which is what you write when the
+      code under a corpus has changed in one place. It has changed in six, and the corpus is
+      **25-26 August** while every integrator change is **27 August or later** — `5cc8dec` the
+      `dtau` fix, `f7d2a31` the landing clamp, `2eb9e8f` the predictive step limit, `a526360` the
+      no-discard fix and the secant landing, `84830a1` Heggie as default, and this PR's
+      `Decision::Undetermined`. `find results/charts results/criterion results/vertical
+      results/charts_ranked results/criterion_ranked -newermt 2026-08-27` returns **nothing**.
+      1009 files, 188 `.prnq`.
+
+      Re-running the old harnesses would put new numbers under old headings, which is exactly the
+      failure already on record at `pan_sequence` and `slice_gallery`. The full statement of what
+      the corpus can and cannot still support — the arithmetic survives, every field-conditional
+      number does not — is at the head of `results/README.md`. The dumps are **kept as the
+      before**, the same standing `charts_ranked/` gave the unranked runs.
+
+- [ ] **Scope the re-measurement before running it.** How far did the criterion's *input field*
+      actually move on the three Burrau regions at `t = 13`? One run per region, old settings
+      against new, `ensemble_spread` per footprint. If it moved everywhere the criterion work is
+      a full re-derivation; if `far` barely moved and `near-field` moved a lot, it is targeted.
+      Costs one morning and decides the shape of the work.
 
 **Corpus defects found, independent of any code change:**
 

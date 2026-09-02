@@ -366,6 +366,32 @@ pub fn max_no_discard(it: impl Iterator<Item = f64>) -> f64 {
     }
 }
 
+/// Can the within-arm signal be read from this footprint at all?
+///
+/// **Two causes, both counted, and the second is the one that fires.**
+///
+/// 1. `ensemble_spread` is not a number. `spread_shape` over a copy with a non-finite shape
+///    vector — a triple collision, or a diverged trajectory. Real, and at the shipped step
+///    control it is rare: measured across `deep interior`, `near-field` and `far`, a quad with
+///    every footprint budget-exhausted has **zero** footprints failing this test.
+/// 2. **A copy was flagged unusable and the spread was computed anyway.** `PixelOut::n_nonfinite`
+///    counts copies the driver marked `!finite` — budget exhaustion included — and by the
+///    standing *never discard an ensemble copy* rule the shape spread is taken over all `E+1`
+///    regardless. When the copy stopped early its shape vector is a perfectly finite number that
+///    is simply not the number the statistic claims, so the quad reports an ordinary spread over
+///    a sample it does not have.
+///
+/// The second is what makes `Decision::Undetermined` reachable at all; a predicate written on the
+/// first alone is dead code wearing a guard's name.
+///
+/// **Deliberately strict: one unusable copy of `E+1` marks the footprint.** The alternative is a
+/// fraction with a threshold in it, and a fixed threshold picked without measurement is what this
+/// project keeps having to withdraw. It costs nothing where the integration succeeds — all three
+/// regions above read `n_nonfinite = 0` at production settings, so no production tree moves.
+pub fn footprint_undetermined(p: &PixelOut) -> bool {
+    !p.ensemble_spread.is_finite() || p.n_nonfinite > 0
+}
+
 /// Reduce `N x N` footprints to one quad number per field.
 ///
 /// `tau` is needed here and not only at decision time because the §3.1/§3.2 signals are
@@ -378,6 +404,10 @@ pub fn reduce(px: &[PixelOut], n: usize, tau: f64, hot_rule: HotRule, t_max: f64
     let mut sp: Vec<f64> = px.iter().map(|p| p.ensemble_spread).filter(finite).collect();
     let mut sh: Vec<f64> = px.iter().map(|p| p.spread_shape).filter(finite).collect();
     let mut ev: Vec<f64> = px.iter().map(|p| p.spread_event).filter(finite).collect();
+    // How much of the quad the quantiles below are actually speaking for. Counted here, beside
+    // the filter, rather than recomputed downstream from a second pass that could drift out of
+    // agreement with it.
+    let n_undetermined = px.iter().filter(|p| footprint_undetermined(p)).count() as u32;
     let nfin = sp.len().max(1) as f64;
     let mean = sp.iter().sum::<f64>() / nfin;
     let Between {
@@ -403,6 +433,7 @@ pub fn reduce(px: &[PixelOut], n: usize, tau: f64, hot_rule: HotRule, t_max: f64
         worst_energy_drift: max_no_discard(px.iter().map(|p| p.energy_drift_max)),
         n_nonfinite: px.iter().map(|p| p.n_nonfinite as u32).sum(),
         n_footprints: px.len() as u32,
+        n_undetermined,
 
         between_shape: b_shape,
         between_event: b_event,
@@ -862,6 +893,21 @@ pub fn decide(tree: &QuadTree, i: usize, cfg: &SchedCfg) -> Decision {
     // collapsed quad is collapsed under every criterion at once.
     if q.red.between_collapsed() {
         return Decision::Collapsed;
+    }
+
+    // **The second way to be undetermined**, and until this landed it had no decision at all.
+    // A quad none of whose footprints could be read fell through to the spread gate below and
+    // came out `Keep` — *refinement does not pay*, about a patch where nothing integrated. Not
+    // by the `NaN` route the defect was first written up as: measured, the spread is an ordinary
+    // finite number computed over truncated copies, and in `near-field` it is 5.6x *smaller* than
+    // the healthy quad's. See `QuadReduction::within_undetermined`.
+    //
+    // Tested after `Collapsed` because identical ICs are the cause and divergence is downstream
+    // of them; both can hold and the more fundamental label wins. Stopping is right — the
+    // trajectories are hard for physical reasons and four smaller quads are four harder ones —
+    // but it must be **countable**, which is the whole difference from `Keep`.
+    if q.red.within_undetermined() {
+        return Decision::Undetermined;
     }
 
     // **Uniform mode turns the criterion off entirely.** Not "sets a permissive threshold" --

@@ -1068,15 +1068,36 @@ pub fn evaluate_at<T: Real>(slice: &Slice, idx: usize, cfg: &EnsembleCfg, eta_v:
         total_substeps: outs.iter().map(|o| o.steps as u64).sum(),
         total_force_evals: outs.iter().map(|o| o.force_evals as u64).sum(),
         ab_floored: outs.iter().any(|o| o.ab_floored),
-        ab_min: outs
-            .iter()
-            .map(|o| o.ab_min.to_f64().unwrap())
-            .filter(|x| x.is_finite())
-            .fold(f64::INFINITY, f64::min),
+        // **The same no-discard violation as `drift_max` above, in the same reduction, left
+        // here when that one was fixed.** The repair was applied field by field where the defect
+        // was block-wide. Worth stating plainly: the failure mode is "fixed the instance that was
+        // pointed at", not any subtlety in these two.
+        //
+        // `ab_min` is a **min** and gets `NaN`, not an absorbing element, for the reason given
+        // above for `d_min`: a min has no safe saturating value. `-inf` would read as "`A*B`
+        // reached zero"; `+inf` -- what the old form returned when every copy was unusable --
+        // reads as *the bodies never came close*, the calmest answer available. Nothing
+        // thresholds on `ab_min`, so `NaN` costs nothing and is this project's spelling for
+        // undetermined.
+        ab_min: {
+            let any_bad = outs.iter().any(|o| {
+                !o.finite || o.budget_exhausted || !o.ab_min.to_f64().unwrap().is_finite()
+            });
+            if any_bad {
+                f64::NAN
+            } else {
+                outs.iter().map(|o| o.ab_min.to_f64().unwrap()).fold(f64::INFINITY, f64::min)
+            }
+        },
+        // `dt_max` is a **max**, so `+inf` saturates exactly as `drift_max` does. The old form
+        // folded from `0.0`, so a pixel whose every copy was unusable reported *the largest step
+        // it took was zero* -- from the diagnostic built to catch a step of `2.209e128`.
         dt_max: outs
             .iter()
-            .map(|o| o.dt_max.to_f64().unwrap())
-            .filter(|x| x.is_finite())
+            .map(|o| {
+                let v = o.dt_max.to_f64().unwrap();
+                if o.finite && !o.budget_exhausted && v.is_finite() { v } else { f64::INFINITY }
+            })
             .fold(0.0, f64::max),
         n_cap_hits: outs.iter().map(|o| o.n_cap_hits as u64).sum(),
         n_overshoot: outs.iter().map(|o| o.n_overshoot as u64).sum(),

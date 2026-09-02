@@ -20,6 +20,50 @@
 //! must come back finite. Without it, a reduction hard-wired to return `inf` would pass the
 //! property arm exactly as well as the correct one.
 
+//! # The full audit: every `filter(is_finite)` in the tree, classified
+//!
+//! Fixing the instance that was pointed at is how this defect survived in the first place, so
+//! all 26 sites were read. **Three classes, and only one is the bug** — a blanket repair would
+//! have broken the other two.
+//!
+//! **A — silent discard in a reduction that feeds a number. THE BUG.**
+//!
+//! | site | old | all-unusable read as |
+//! |---|---|---|
+//! | `pixel.rs` `energy_drift_max`, `gamma_max` | `if is_finite { max }` | a survivor's finite max |
+//! | `scheduler.rs` `error_ratio_max`, `worst_energy_drift` | `.filter(..).fold(0.0, max)` | **`0.0`** — perfectly clean |
+//! | `pixel.rs` `dt_max` | `.filter(..).fold(0.0, max)` | **`0.0`** — "the largest step was zero" |
+//! | `pixel.rs` `ab_min` | `.filter(..).fold(INFINITY, min)` | **`+inf`** — "never came close" |
+//!
+//! All four now report undetermined. `dt_max` is the sharpest: it is the diagnostic built to
+//! catch a step of `2.209e128`, and it folded from `0.0`.
+//!
+//! **B — a ramp or axis window. CORRECT, and a "fix" would break it.** `render.rs:87-91,126`,
+//! `colour.rs:530`, `prinq.rs:198`, `png.rs:184`, `plot.rs:87,279,423`. These set a colour or
+//! plot range, and `colour::drift_rgb` paints the non-finite veto set **magenta separately**, so
+//! an undetermined pixel renders as one rather than being mixed into the ramp. `range_q`'s own
+//! doc gives the reason percentiles are used at all: one footprint at `1e12` would compress
+//! every other pixel into the bottom of the range.
+//!
+//! **C — a guard that declines to compute, or a value whose non-finite case is meaningful.
+//! CORRECT.** `scheduler.rs:726` requires all four children finite before reading an exponent;
+//! `spatial.rs:196` returns an **all-hot** mask (undetermined) rather than an empty one;
+//! `az/driver.rs:640`'s `+inf` *is* how "this constraint is not in force" is spelled;
+//! `adaptive.rs:47` returns `None` below two points; `scheduler.rs:449`'s `first_divergence_t`
+//! is `NaN` for "never diverged" and `frac_diverged` beside it carries that half explicitly,
+//! counting non-crossers **in the denominator**.
+//!
+//! # Still open, and deliberately not fixed here because it moves every tree
+//!
+//! `scheduler.rs:378-380` filters `ensemble_spread` before the quantiles that feed `signal()`.
+//! `quantile` returns `NaN` on empty, and `decide`'s `!(spread > tau)` sends `NaN` to
+//! **`Decision::Keep`** — a quad where nothing could be integrated reports *refinement does not
+//! pay*. `Decision::Collapsed` exists for undetermined quads but `between_collapsed()` tests
+//! `n_distinct_ic < n_footprints`, a **decode** collapse; a quad with distinct ICs whose every
+//! footprint diverged does not reach it. Two ways to be undetermined, one `Decision`. Changing
+//! it is corpus-invalidating and wants its own measurement first.
+//!
+
 use prin_rs::ensemble::pixel::{self, EnsembleCfg};
 use prin_rs::ensemble::provenance::Override;
 use prin_rs::grid;
@@ -76,6 +120,80 @@ fn a_truncated_copy_makes_the_pixel_undetermined_and_a_healthy_one_does_not() {
         healthy_n - healthy_finite,
         healthy_n
     );
+}
+
+/// **The block-wide form of the property, and the reason it exists.**
+///
+/// The first version of this file checked `energy_drift_max` alone. `gamma_max` was fixed beside
+/// it because it was in the same expression — and `dt_max` and `ab_min`, eight lines further down
+/// the *same reduction*, were left filtering. They survived a fix, a full corpus regeneration and
+/// a passing test suite. **A field-specific test is what let a block-wide defect through**, so
+/// this arm asserts over every no-discard field at once and a new one has to be added here to
+/// pass.
+///
+/// The two directions are not the same repair and the test knows it:
+///
+/// - `energy_drift_max`, `gamma_max`, `dt_max` are **max**-reductions — `+inf` is the absorbing
+///   element and the pixel saturates to undetermined.
+/// - `ab_min` is a **min** and takes `NaN`, because a min has no safe saturating value. That is
+///   the same reasoning `d_min` is documented under, and `d_min` is deliberately left alone: it
+///   is the quantity the collision labels are derived from, and `-inf` there would rewrite them.
+#[test]
+fn every_no_discard_field_in_the_reduction_reports_undetermined_together() {
+    let sl = slice();
+    let starved = EnsembleCfg::production().with_overrides(&[Override::MaxSteps(64)]);
+    let healthy = EnsembleCfg::production();
+
+    let mut subject = 0usize;
+    let mut bad: Vec<String> = Vec::new();
+    let mut control_bad: Vec<String> = Vec::new();
+
+    for k in 0..sl.npix() {
+        let s = pixel::evaluate::<f64>(&sl, k, &starved);
+        if s.budget_exhausted {
+            subject += 1;
+            // max-reductions saturate; the min-reduction goes to NaN. Both are "not finite".
+            for (name, v) in [
+                ("energy_drift_max", s.energy_drift_max),
+                ("gamma_max", s.gamma_max),
+                ("dt_max", s.dt_max),
+                ("ab_min", s.ab_min),
+            ] {
+                if v.is_finite() {
+                    bad.push(format!("{name} = {v:e} on a truncated pixel"));
+                }
+            }
+            // And the direction is asserted, not just non-finiteness -- `dt_max = 0.0` and
+            // `ab_min = +inf` were the OLD readings and both are finite, so this arm would have
+            // caught them; `dt_max = NaN` would not be wrong but it would not be the design.
+            if !(s.dt_max == f64::INFINITY) {
+                bad.push(format!("dt_max should saturate to +inf, got {:e}", s.dt_max));
+            }
+            if !s.ab_min.is_nan() {
+                bad.push(format!("ab_min should be NaN, got {:e}", s.ab_min));
+            }
+        }
+        let h = pixel::evaluate::<f64>(&sl, k, &healthy);
+        for (name, v) in [
+            ("energy_drift_max", h.energy_drift_max),
+            ("gamma_max", h.gamma_max),
+            ("dt_max", h.dt_max),
+            ("ab_min", h.ab_min),
+        ] {
+            if !v.is_finite() {
+                control_bad.push(format!("{name} = {v:e} at a generous budget"));
+            }
+        }
+    }
+
+    assert!(subject > 0, "NO SUBJECT: nothing was budget-exhausted, so nothing is asserted.");
+    assert!(bad.is_empty(),
+        "{} findings across {} truncated pixels -- each pixel can contribute more than one, so \
+         this is a count of FINDINGS and not of pixels:\n  {}",
+        bad.len(), subject, bad.join("\n  "));
+    assert!(control_bad.is_empty(),
+        "CONTROL FAILED: healthy pixels are non-finite, so the property arm proves nothing:\n  {}",
+        control_bad.join("\n  "));
 }
 
 // ---------------------------------------------------------------------------------------------

@@ -2046,3 +2046,48 @@ charts sit at `R = 1` by algebraic identity, and `Gamma*` is degree six in the c
 AZ's `Gamma` is linear in `A` and `B`. That is a **conditioning** story, not an invariance one, so
 it is not excluded by the gauge test reading exactly `0.000e0`. **Unmeasured, and labelled as a
 guess.**
+
+**EVERY `filter(is_finite)` IN A REDUCTION IS A SILENT DISCARD, AND FIXING THE INSTANCE THAT WAS
+POINTED AT IS HOW THE DEFECT SURVIVES.** All 26 sites were read and they fall in **three classes,
+only one of which is the bug** -- a blanket repair breaks the other two. **(A) A reduction feeding
+a number**: `pixel.rs`'s `energy_drift_max`, `gamma_max`, `dt_max`, `ab_min` and `scheduler.rs`'s
+`error_ratio_max`, `worst_energy_drift`. All six now report undetermined. **(B) A ramp or axis
+window** -- `render.rs`, `colour.rs::range_q`, `prinq.rs`, `png.rs`, `plot.rs` -- **correct**,
+because `colour::drift_rgb` paints the non-finite veto set magenta *separately*, so an
+undetermined pixel renders as one instead of being mixed into the ramp. **(C) A guard that
+declines to compute** -- `scheduler.rs:726` needs all four children finite, `spatial.rs:196`
+returns an **all-hot** mask rather than an empty one, `az/driver.rs`'s `+inf` *is* how "not in
+force" is spelled, `adaptive.rs` returns `None` -- **correct**.
+
+**The direction of the repair differs by reduction and is not a detail.** A **max** takes `+inf`,
+the absorbing element. A **min** takes `NaN`, because there is no safe saturating value: `ab_min`
+under the old form returned `+inf` when every copy was unusable, which reads as *the bodies never
+came close*. `d_min` is deliberately **left alone** for the same reason one level up -- it is what
+the collision labels are derived from and `-inf` would rewrite them.
+
+**`dt_max` is the sharpest case: it folded from `0.0`**, so a pixel whose every copy was unusable
+reported *the largest step it took was zero* -- from the diagnostic built to catch a step of
+`2.209e128`. It and `ab_min` sat **eight lines below** `energy_drift_max` in the same reduction and
+survived the fix, a full corpus regeneration and a passing suite, because
+`tests/no_discard.rs` checked **one field**. It now asserts over every no-discard field at once,
+and reverting `dt_max` alone makes it fire (`should saturate to +inf, got 4.062e-3`).
+
+**A FIX AT ONE LAYER CAN DEGRADE A BUG AT THE LAYER ABOVE.** `scheduler.rs` filtered non-finite
+out of its quad reduction, so before the `pixel.rs` repair a truncated pixel contributed a finite,
+plausible drift and at least reached the `max`; after it, that pixel is `+inf` and the filter drops
+it entirely, and a quad whose footprints are **all** undetermined folds to `0.0` -- perfectly
+clean. Check the consumers of a value whose domain you widen.
+
+**Still open and deliberately not taken:** `scheduler.rs:378-380` filters `ensemble_spread` before
+the quantiles that feed `signal()`. `quantile` returns `NaN` on empty and `decide`'s
+`!(spread > tau)` sends `NaN` to **`Decision::Keep`** -- a quad where nothing could be integrated
+reports *refinement does not pay*. `Decision::Collapsed` exists for undetermined quads, but
+`between_collapsed()` tests `n_distinct_ic < n_footprints`, a **decode** collapse; a quad with
+distinct ICs whose every footprint diverged never reaches it. **Two ways to be undetermined and one
+`Decision`.** Corpus-invalidating, so it wants its own measurement first.
+
+**AND THE RULE EXISTED WHILE THE INSTRUMENTATION DID NOT ENFORCE IT.** *Read `steps`, not `secs`*
+is on this record, and the landing's cost was still quoted as +13% wall clock -- because the
+gallery table carries no `evals` column and `logh_arms` does. Same shape as `refine_flagged`
+spreading by copy for six days: **a convention failing exactly where a printed column would have
+prevented it.** The fix for that class is never the instance; it is the column.

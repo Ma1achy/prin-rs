@@ -116,12 +116,37 @@ fn main() {
         full * n * n * (ens.n_extra + 1)
     );
 
+    // **The ladder, plus the COMPLETE-LEVEL counts it used to skip.**
+    //
+    // `5, 11, 23, 47, ...` is `4k+1`, which lands one split past a complete tree every time and
+    // never *on* one: a complete tree to level `L` holds `(4^(L+1)-1)/3` quads -- 21, 85, 341,
+    // 1365, 5461 -- and none of those is a rung. That mattered the moment `headroom/err` showed
+    // all three regions taking their minimum at `B = 383`, the first rung past the complete
+    // level-4 tree of **341**. Whether the dip sits *at* a complete level or merely near one is
+    // the difference between "uniform is optimal when its frontier is flat" and a coincidence,
+    // and the old ladder could not tell them apart because it never sampled the point.
+    //
+    // Cheaper and sharper than the obvious alternative: re-running at `levels = 7` tests whether
+    // the cliff is the tree running out, costs 4x, and needs 8.9 GB for the boundary shapes --
+    // measured, it OOMs on an 18 GB machine. This tests the mechanism directly for nothing.
     let budgets: Vec<usize> = {
         let mut b = vec![5usize];
         while *b.last().unwrap() * 2 < full {
             b.push(b.last().unwrap() * 2 + 1);
         }
         b.push(full);
+        // The complete-level counts, merged in and de-duplicated so the ladder stays sorted and
+        // every prior rung keeps its place -- a reader comparing against an older table must see
+        // the same columns plus new ones, not a shifted set.
+        let mut lvl = 1usize;
+        let mut acc = 1usize;
+        while acc < full {
+            b.push(acc);
+            lvl *= 4;
+            acc += lvl;
+        }
+        b.sort_unstable();
+        b.dedup();
         b
     };
 

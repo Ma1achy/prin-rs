@@ -112,10 +112,60 @@ reading it as a signal property; this is the same fact showing up as behaviour.
 
 `perim_within` and `frac_hot_within` do the same thing in `far`, for the same reason.
 
+## The cliff was a LADDER ARTEFACT, and the real structure is a COMB
+
+**Withdrawn: "the cliff at `B = 383`".** The budget ladder is `5, 11, 23, 47, ...` -- that is
+`4k+1`, which lands one split **past** a complete tree every time and never **on** one. A complete
+tree to level `L` holds `(4^(L+1)-1)/3` quads: **21, 85, 341, 1365, 5461**, and not one of them
+was ever a rung. So when all three regions put their headroom minimum at `B = 383`, they were
+agreeing about the ladder's nearest approach to **341**, not about the field. *Which rung of a
+sweep is degenerate is a fact about the region* -- and which rung is **missing** is a fact about
+the ladder.
+
+With the complete-level counts merged in, `headroom/err`:
+
+```
+B =              1     5     11      21      23      47      85      95     191     341     383     767    1365    1535    3071
+near-field       0     0  3.8e-3  2.8e-2  2.8e-2  5.1e-2  5.9e-2  6.7e-2  9.1e-2  4.7e-4  5.8e-4  9.5e-4 -6.9e-16 1.8e-3  3.5e-3
+far              0     0 1.2e-13  1.7e-2  1.7e-2  1.3e-2  3.3e-3  2.7e-3  2.8e-3 -1.5e-16 4.3e-4  2.1e-3 -4.2e-15 4.9e-3  8.6e-3
+deep interior    0     0     0    1.2e-16 1.2e-16 1.1e-2    0     2.9e-3  1.7e-2  2.2e-3  8.8e-3  5.2e-2  8.8e-5  1.2e-2  8.3e-2
+```
+
+**At a budget that buys a complete tree, breadth-first IS the exact optimum**, bit for bit:
+
+```
+                B =    21        85       341      1365
+  near-field  dp    0.30018   0.28283   0.20081   0.10026
+              uni   0.30018   0.28283   0.20090   0.10026
+  deep int.   dp    0.23890   0.17346   0.11399   0.06129
+              uni   0.23890   0.17346   0.11424   0.06129
+```
+
+That is **not** a tautology. `Dp::labels` optimises over *all* tree-shaped leaf sets at that count,
+and an unbalanced tree of the same size was free to win. It does not: on this field, at a budget
+affording a complete level, no allocation beats the flat one.
+
+**So the structure is a comb, not a cliff.** Headroom returns to machine zero at every complete
+level and rises between them, and the reframing of item B is exact:
+
+> **A criterion can only ever win between complete levels.** How much is available is set by how
+> far the budget sits from the next complete tree, not by the region being "hard".
+
+The tooth heights are regional and their trend with depth differs: `near-field`'s shrink
+(9.1e-2 at `B = 191`, then 9.5e-4 in the next interval), `deep interior`'s **grow**
+(1.7e-2, then 5.2e-2, then 8.3e-2). That is the real regional difference, and the earlier reading
+-- *"uniform is optimal above `B = 383` in near-field"* -- is wrong: uniform is optimal **at**
+complete levels and near-optimal between them **in near-field only**, while `deep interior` opens
+up with depth.
+
 ## What this does not answer
 
-Whether the cliff at `B = 383` is a property of the **field** or of `levels = 6` -- the full tree
-is 5461 quads, so the cliff sits at 7% of it. `levels = 7` is the test and has not been run.
+Whether the teeth would keep shrinking in `near-field` past level 5, which needs `levels = 7`.
+**That run is blocked by memory and the number is worth recording**: `keep_boundary_shapes` holds
+`quads x 64 x 8 x 33 x 3 f64` -- **2.2 GB at `levels = 6` and 8.9 GB at `levels = 7`** -- and it
+OOMs on an 18 GB machine. Reaching level 7 means turning it off, which drops `running_max`,
+`first_div` and `term_grad` from that table, including the best early performer. A deliberate
+trade, not a retry.
 
 And `deep interior`'s `.qcache` was, briefly, the only stale one in `results/criterion/` after an
 interrupted run regenerated its two siblings. The whole run was relaunched rather than the gap

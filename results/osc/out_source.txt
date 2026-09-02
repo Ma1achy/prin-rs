@@ -1,0 +1,14 @@
+OSCILLATION SOURCE at the `z1` window, 256^2, fields dumped as raw f64.
+
+           arm        E+1     spread p50      spread sd
+     halton_E8          8    2.728268e-6    7.016484e-2
+        pcg_E8          8    3.023393e-6    7.141157e-2
+     halton_E4          4    2.527047e-6    6.040599e-2
+    halton_E16         16    3.099331e-6    7.408811e-2
+      jitter_q          8    2.174116e-6    6.214075e-2
+      jitter_f          8    4.356991e-6    7.971480e-2
+       jitter0          8   5.551115e-17   3.631475e-17
+
+`jitter0` must read spread p50 and sd EXACTLY 0 -- every copy is the cell centre.
+If it does not, `spread_shape` is not the ensemble quantity the argument assumes.
+EXIT=0

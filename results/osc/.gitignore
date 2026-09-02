@@ -1,0 +1,5 @@
+# Regenerable float dumps, 25 MB. The commands that make them are in README.md; the panels and
+# tables derived from them are committed.
+fields/
+fields_z4/
+phase/

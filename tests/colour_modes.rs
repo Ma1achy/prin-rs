@@ -345,3 +345,44 @@ fn averaging_after_the_map_is_not_the_same_as_averaging_directions() {
     println!("resolve-after {after:?}\nblend-before  {before:?}\nmax diff {d:.6}");
     assert!(d > 1e-6, "the orders must differ on a nonlinear map, else the caveat is vacuous");
 }
+
+/// **The display-stage dither, and why it is not the cheating kind.**
+///
+/// It must (a) move a value by less than one LSB, (b) be deterministic so renders reproduce
+/// byte-for-byte, (c) average to zero so the local mean carries the true value, and (d) break the
+/// plateaus that a sub-LSB gradient quantises into.
+#[test]
+fn the_display_dither_is_sub_lsb_deterministic_and_zero_mean() {
+    use prin_rs::output::compose::dither_lsb;
+    let lab = [0.5f64, 0.02, -0.03];
+
+    // Deterministic: same pixel, same answer. Required of every committed artefact here.
+    assert_eq!(dither_lsb(lab, 7, 11, 1.0), dither_lsb(lab, 7, 11, 1.0));
+    // And it varies across pixels, or it is a constant offset and does nothing.
+    assert_ne!(dither_lsb(lab, 7, 11, 1.0), dither_lsb(lab, 8, 11, 1.0));
+
+    // Sub-LSB, and chroma untouched -- the measured banding is pure lightness.
+    let mut worst = 0.0f64;
+    let mut sum = 0.0f64;
+    let n = 4096;
+    for i in 0..n {
+        let d = dither_lsb(lab, i % 64, i / 64, 1.0);
+        assert_eq!([d[1], d[2]], [lab[1], lab[2]], "chroma must not move");
+        worst = worst.max((d[0] - lab[0]).abs());
+        sum += d[0] - lab[0];
+    }
+    assert!(worst <= 1.0 / 255.0 + 1e-12, "must stay within one LSB, got {worst}");
+    let mean = sum / n as f64;
+    assert!(mean.abs() < 2.0e-5, "must average to zero or it shifts the image: {mean}");
+
+    // (d) It breaks a plateau. A ramp moving 1/5 of an LSB per pixel quantises to runs of 5;
+    // with dither the output must take more than one value over that run.
+    let step = 1.0 / (255.0 * 5.0);
+    let q = |v: f64| (v * 255.0).round() as i64;
+    let plain: Vec<i64> = (0..10).map(|i| q(0.5 + i as f64 * step)).collect();
+    let dith: Vec<i64> = (0..10).map(|i| q(dither_lsb([0.5 + i as f64 * step, 0.0, 0.0], i, 3, 1.0)[0])).collect();
+    let uniq = |v: &[i64]| { let mut s = v.to_vec(); s.sort(); s.dedup(); s.len() };
+    println!("plateau: plain {plain:?} ({} distinct), dithered {dith:?} ({} distinct)",
+             uniq(&plain), uniq(&dith));
+    assert!(uniq(&dith) > uniq(&plain), "dither must break the plateau");
+}

@@ -2328,3 +2328,74 @@ feature of `spread_shape` there.
 is a broad soft modulation, about five cycles across the frame, not a sharp moiré. If it *reads* as
 moire on screen, the most likely remaining cause is a **viewer resampling a real 55 px modulation**
 -- which is a display concern (spec §4.3), not a render or physics one.
+
+**CORRECTED, AND THE MECHANISM IS NOW MEASURED: THE BANDS ARE THE BOUND PAIR'S ORBITAL PHASE
+WINDING THROUGH IC SPACE.** *"Prominence ~2, a broad soft modulation, not a sharp moire"* was a
+**per-row** spectrum with no detrend. The broad ribbon gradient is `k <= 2` and swamps the band;
+removed, the 2D peak reads `lambda = 12.64 px at 69.8 deg` with **prominence 10837**, stable
+across high-pass sigma 1.5-6 and four search bands. Full record in `results/osc/README.md`.
+
+Twenty-four ICs spanning one band, `n_sync = 20000`, termination off: they are **the same
+trajectory shifted in orbital phase** -- best-lag correlation **0.9999-1.0000**, and the lag grows
+**linearly** (0.025 -> 0.190 over `t = 5..45`, ratios exactly 2/1, 3/2, 4/3, ...). A frequency
+beat between two slightly different pair periods, **not a divergence**. The pair **hardens**,
+`T = 3.125 -> 2.500`; the shape signal runs at twice the orbital frequency, so one shape cycle is
+1.25. One full cycle of accumulated phase is **79.8 px** against the raw field's coarse tier at
+**80.95 px**. The finer tiers are its harmonic ladder (1.0, 0.033, 5.6e-3, 1.7e-3, 6e-4 -- about
+3x per harmonic); `80.95/12.64 = 6.40`, so the visible striations sit near the sixth harmonic and
+the high-pass that revealed them is what removed the fundamental above them.
+
+**Four candidates were killed, each by the arm that could have confirmed it.** The stepper: 3.07x
+the steps, high-passed correlation **0.96-0.99** against shifted controls of -0.04 to -0.13, on an
+arm proven live (56.3% of pixels moved, worst 10.6/255). The substep count: banded with the
+sharpest beat in the table (prom 152858) but **not a staircase** -- 22 steps per band summed over
+8 copies, ~2.8 per trajectory, where one revolution costs hundreds; it is banded *because the
+trajectories are*. The pixel grid: `z1` against `z2` at 1:1 reads **-0.03 to -0.06**. The sampler:
+six stencils -- Halton/PCG, `E+1` of 4/8/16, extent 0.25/0.5/1.0 -- give **`lambda` and angle
+identical to four figures**, and prominence *rises* with sample count and extent (a sampling
+artefact weakens); it is present in **seven nominal single-trajectory fields** at one orientation,
+where nothing is sampled at all.
+
+**AND THE WINDOW IS A REGULAR ISLAND INSIDE A MOSTLY-CHAOTIC SLICE -- ONE SLICE HOLDS BOTH
+REGIMES.** Correlation 0.9999 between ICs a whole band apart means neighbouring trajectories are
+**not diverging** there (Trani et al. 2024, arXiv:2403.03247). Surveyed over 96 probes, six charts:
+
+```
+    config_stability   4 regular / 10 decorrelated   corr p50 0.7990
+    config_basin      16 / 0    1.0000     preset_shape     0 / 16   0.1448
+    preset_prho       16 / 0    1.0000     preset_plambda  14 / 2    1.0000
+    preset_shape_pl   10 / 6    0.9966
+```
+
+This **supplies the mechanism for the standing chart-tameness result**: *a chart's tameness is set
+by WHICH COORDINATES it varies* was measured through `alpha` interdecile and leaf counts;
+`preset_shape` is chaotic at **every** probe and `preset_prho` regular at every probe, measured on
+the trajectories. `config_basin` has **no beat at all** (lag exactly 0 on a live signal) because
+its window is **70x tighter**, so the pair period does not vary across it -- predicting no ribbon
+banding there, untested. So `spread_shape` is measuring a **phase beat** in the regular patches and
+**divergence** everywhere else; the criterion cannot tell them apart and two trajectories plus a
+correlation can.
+
+**Colour does not decide it.** Hue is `hue_ab(shape_vec)` -- the terminal configuration, not the
+dynamics. Within `config_stability`: red/orange splits **3-3**, blue is **0 of 6** regular
+(corr p50 0.6539), green 1 of 3. Blue reads chaotic; the sample is **thin** and that is a lead,
+not a result.
+
+**LAG 0 AND CORRELATION 1.0 ARE THREE STATES WEARING ONE NUMBER.** `config_basin` returned exactly
+that on all 16 probes -- which is what a regular island looks like, AND two identical inputs, AND
+two frozen outputs. `examples/band_guard.rs` separates them by `|dr|`, `|dv|` and the late-window
+signal amplitude; all 64 probes are live. It also caught the standing keying trap: `preset_prho`
+and `preset_plambda` read `|dr|` **exactly 0** with `|dv|` of 8e-2 to 2e-1, so a position-keyed
+check reports a collapsed decode where a constant-configuration slice is behaving correctly.
+
+**The deep-zoom moire is this structure crossing the grid, and supersampling the FIELD is the only
+thing that touches it.** At `z4` the peak sits at `lambda 2.44 px, angle 106 deg` -- the Nyquist
+floor at a **folded** angle where every resolved tier reads 64-79. Marching a finer grid and
+box-averaging gives L high-frequency rms **1.000 -> 0.873 -> 0.565** at 1, 4, 9 samples per pixel:
+it falls, so it is an alias, and it does not converge because the harmonic ladder has a rung below
+any sampling rate. **`colour::rgb_resolved` cannot reach it** -- it supersamples *hue* and holds
+`l` fixed, because `spread_shape` is a footprint statistic with no per-copy analogue. At `z4` it
+moves **1 pixel of 36864**; at `z1`, where OKLab `a` spans 0.20071 against 0.00292, it moves
+**1878 (5.09%)**, so the mechanism is healthy and the depth is what has nothing to average.
+`Scheme::Pcg` decoheres the fringe without reducing it -- *a remedy that only changes the spatial
+correlation of an error is cosmetic*, at a second site.

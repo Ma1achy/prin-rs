@@ -105,3 +105,60 @@ pub fn finish(lab: Option<[f64; 3]>, invalid: [u8; 3]) -> [u8; 3] {
         None => invalid,
     }
 }
+
+// -------------------------------------------------------------------------------------------
+// Display stage (§4.3) — terminal, settings not nodes
+// -------------------------------------------------------------------------------------------
+
+/// **Sub-LSB dither before 8-bit quantisation.** The cure for contour banding on a smooth field.
+///
+/// A gradient whose float value moves less than `1/255` per pixel quantises to **plateaus**, and
+/// the plateau edges read as contour lines. Measured on `config_stability`, one row of a red
+/// ribbon: **18 of 254 adjacent pairs render to identical bytes while all 18 have a different
+/// underlying float** — the field moves and the output does not. In flatter regions the plateaus
+/// run 5 px and wider.
+///
+/// **This is NOT the ribbon banding, and saying it was is a claim this project went on to
+/// refute.** The bands in `config_stability`'s ribbons are the bound pair's orbital phase winding
+/// through IC space — measured on the FLOAT field, invariant to a 3.07x step change and to every
+/// sampler variant, and present in seven single-trajectory observables at one orientation
+/// (`results/osc/README.md`). Quantisation plateaus are a real and separate display artefact, and
+/// this function is for those. *A remedy aimed at the wrong cause is still a remedy for
+/// something*, but the write-up has to say which.
+///
+/// # This is not the dither that would have been cheating
+///
+/// A per-pixel dither of the **step phase** would decorrelate integration error — converting a
+/// coherent artefact into incoherent noise of the same amplitude, removing the evidence rather
+/// than the error. This is the opposite case and the distinction is the whole point: the error
+/// being removed here is **purely a display encoding artefact**. The float is exact, the 8-bit
+/// grid is what cannot represent it, and dithering trades an artificial contour for sub-LSB noise
+/// that carries the true value in its local mean. Nothing about the data is hidden, because
+/// nothing about the data was wrong.
+///
+/// # Deterministic, so renders stay reproducible
+///
+/// The offset is a hash of `(x, y)`, not an RNG: two runs of the same render are byte-identical,
+/// which this project requires of every committed artefact. Triangular PDF over `[-1, 1]` LSB —
+/// the standard choice, because a uniform dither leaves the quantisation error correlated with
+/// the signal and a triangular one does not.
+///
+/// Applied at the display stage, so it is a **setting and not a node**: the codegen never sees
+/// it and it is not part of any occupant or preset.
+pub fn dither_lsb(lab: [f64; 3], x: usize, y: usize, amount: f64) -> [f64; 3] {
+    // Two decorrelated hashes -> triangular PDF as the difference of two uniforms.
+    let h = |a: usize, b: usize, s: u64| {
+        let mut v = (a as u64).wrapping_mul(0x9E3779B97F4A7C15)
+            ^ (b as u64).wrapping_mul(0xC2B2AE3D27D4EB4F)
+            ^ s;
+        v ^= v >> 29;
+        v = v.wrapping_mul(0xBF58476D1CE4E5B9);
+        v ^= v >> 32;
+        (v >> 11) as f64 / (1u64 << 53) as f64
+    };
+    let tri = h(x, y, 0x1234_5678) - h(x, y, 0x9ABC_DEF0);
+    // OKLab L is [0,1]; one 8-bit step of sRGB is ~1/255 there to within the transfer curve, and
+    // `amount` is in those units. Only L is dithered: the measured banding is pure-lightness --
+    // the RGB deltas across a contour are equal in all three channels.
+    [lab[0] + tri * amount / 255.0, lab[1], lab[2]]
+}

@@ -1,0 +1,16 @@
+OSCILLATION ZOOM at panel fraction (0.1, 0.45), 256^2, ONE SHARED WINDOW.
+
+    half       eta    steps p50      t range  turns/row   px/half
+   0.060   1.00e-2      1.435e4       1.0000       95.7       2.7
+   0.030   1.00e-2      1.435e4       0.7384       95.4       2.7
+   0.015   1.00e-2      1.435e4       0.0560       57.0       4.5
+   0.060   2.50e-3      4.408e4       1.0000      107.0       2.4
+   0.030   2.50e-3      4.407e4       0.7384      118.4       2.2
+
+`px/half` is pixels per half-oscillation. z1 -> z2 -> z4 is 2x magnification each
+step, so PHYSICS DOUBLES it each row and PIXEL-LOCKED leaves it flat. The `_eta4`
+rows repeat z1 and z2 at a quarter step: step-count level sets would move there.
+
+**Read `steps p50` first.** If it differs by more than ~2x between z1 and z2 the
+two panels are not the same structure magnified and nothing below it is comparable.
+EXIT=0

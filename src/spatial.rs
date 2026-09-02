@@ -239,3 +239,174 @@ pub fn grad_rms(vals: &[f64], n: usize) -> f64 {
         (acc / pairs as f64).sqrt()
     }
 }
+
+// -------------------------------------------------------------------------------------------
+// Straightness of a connected structure.
+// -------------------------------------------------------------------------------------------
+
+/// One connected component's **straightness**: `sqrt(lambda_2 / lambda_1)` of its coordinate
+/// covariance. `0.0` is a perfect line, `1.0` is isotropic.
+///
+/// This is total least squares in closed form. `lambda_2` is the mean squared **perpendicular**
+/// distance to the best-fit line and `lambda_1` the mean squared distance along it, so the ratio
+/// is the RMS residual divided by the extent — the same quantity as *"RMS 4.28 px over 621
+/// rows"*, made scale-free and computable without a hand-drawn mask.
+///
+/// # Why this discriminates, and why density could not
+///
+/// A decision boundary and a fractal boundary both raise the density of sharp neighbour steps;
+/// only the first is *straight*. The wedge edge in `config_stability` was measured at RMS 4.28 px
+/// over 621 rows against a chaotic ribbon's 42.05 px over 186 in the same image — a tenfold
+/// separation — but by hand, on one edge, under one integrator. This is that measurement as a
+/// function.
+///
+/// # What it is not
+///
+/// **Curvature is indistinguishable from scatter here.** A circular arc and a cloud of the same
+/// covariance score alike; the eigenvalue ratio knows nothing about ordering along the curve.
+/// That is a real limit and it is the reason [`straightness`] is reported beside the component
+/// size rather than alone: a large component that is straight is a boundary, a large component
+/// that is not may be an arc *or* a blob, and this number cannot say which.
+///
+/// Returns `NaN` for fewer than three pixels — two points are collinear by construction, so a
+/// number there would be an artefact of the count rather than a measurement of shape.
+pub fn straightness(pts: &[(usize, usize)]) -> f64 {
+    if pts.len() < 3 {
+        return f64::NAN;
+    }
+    let n = pts.len() as f64;
+    let (mut mx, mut my) = (0.0f64, 0.0f64);
+    for &(x, y) in pts {
+        mx += x as f64;
+        my += y as f64;
+    }
+    mx /= n;
+    my /= n;
+    let (mut sxx, mut syy, mut sxy) = (0.0f64, 0.0f64, 0.0f64);
+    for &(x, y) in pts {
+        let (dx, dy) = (x as f64 - mx, y as f64 - my);
+        sxx += dx * dx;
+        syy += dy * dy;
+        sxy += dx * dy;
+    }
+    sxx /= n;
+    syy /= n;
+    sxy /= n;
+    // Eigenvalues of the symmetric 2x2 [[sxx, sxy], [sxy, syy]].
+    let tr = sxx + syy;
+    let det = sxx * syy - sxy * sxy;
+    let disc = (tr * tr / 4.0 - det).max(0.0).sqrt();
+    let (l1, l2) = (tr / 2.0 + disc, tr / 2.0 - disc);
+    if l1 <= 0.0 {
+        return f64::NAN;
+    }
+    (l2.max(0.0) / l1).sqrt()
+}
+
+/// Every 4-connected component of `mask`, as pixel coordinate lists, largest first.
+///
+/// [`layout`] returns component *counts*; this returns the components themselves, which is what
+/// a shape statistic needs. Same 4-connectivity convention: diagonal contact is not connection.
+pub fn components(mask: &[bool], n: usize) -> Vec<Vec<(usize, usize)>> {
+    assert_eq!(mask.len(), n * n, "mask must be n*n");
+    let mut seen = vec![false; n * n];
+    let mut out: Vec<Vec<(usize, usize)>> = Vec::new();
+    for s in 0..n * n {
+        if !mask[s] || seen[s] {
+            continue;
+        }
+        let (mut stack, mut comp) = (vec![s], Vec::new());
+        seen[s] = true;
+        while let Some(i) = stack.pop() {
+            let (x, y) = (i % n, i / n);
+            comp.push((x, y));
+            for (dx, dy) in [(1i32, 0i32), (0, 1), (-1, 0), (0, -1)] {
+                let (u, v) = (x as i32 + dx, y as i32 + dy);
+                if u < 0 || v < 0 || u >= n as i32 || v >= n as i32 {
+                    continue;
+                }
+                let j = v as usize * n + u as usize;
+                if mask[j] && !seen[j] {
+                    seen[j] = true;
+                    stack.push(j);
+                }
+            }
+        }
+        out.push(comp);
+    }
+    out.sort_by_key(|c| std::cmp::Reverse(c.len()));
+    out
+}
+
+/// Boundary pixels of `mask`: in the set, with a 4-neighbour outside it or off the grid.
+pub fn boundary(mask: &[bool], n: usize) -> Vec<(usize, usize)> {
+    assert_eq!(mask.len(), n * n, "mask must be n*n");
+    let mut out = Vec::new();
+    for y in 0..n {
+        for x in 0..n {
+            if !mask[y * n + x] {
+                continue;
+            }
+            let edge = [(1i32, 0i32), (0, 1), (-1, 0), (0, -1)].iter().any(|&(dx, dy)| {
+                let (u, v) = (x as i32 + dx, y as i32 + dy);
+                u < 0 || v < 0 || u >= n as i32 || v >= n as i32 || !mask[v as usize * n + u as usize]
+            });
+            if edge {
+                out.push((x, y));
+            }
+        }
+    }
+    out
+}
+
+/// **Median LOCAL straightness of a region's boundary**, at scale `radius`.
+///
+/// The global [`straightness`] of a closed boundary is ~1 whatever its shape — a square outline
+/// and a blob outline are both isotropic — so a region's edge has to be fitted *locally*. For
+/// every boundary pixel, the boundary pixels within `radius` are fitted by total least squares
+/// and the median residual ratio is returned. A straight edge is straight in every window; a
+/// fractal edge wiggles inside each one.
+///
+/// This is the hand measurement generalised: *"pale edge RMS 4.28 px over 621 rows against the
+/// red band's 42.05 px over 186"* was one long fit on one edge, chosen by eye. This is the same
+/// quantity over every boundary pixel of every component, with no mask drawn by hand.
+///
+/// # The limit, stated rather than discovered later
+///
+/// **Local straightness at `radius` cannot tell a straight line from a curve whose radius of
+/// curvature is much larger than `radius`.** A big circle reads straight at small `radius` and
+/// that is not a defect — it is what "local" means. Pick `radius` from the structure being
+/// tested and quote it with the number.
+///
+/// `NaN` when fewer than `min_pts` boundary pixels have a full enough neighbourhood, because a
+/// median over a handful of windows describes the sample and not the shape.
+pub fn boundary_straightness(mask: &[bool], n: usize, radius: usize, min_pts: usize) -> f64 {
+    let b = boundary(mask, n);
+    if b.len() < min_pts {
+        return f64::NAN;
+    }
+    let r2 = (radius * radius) as i64;
+    let mut vals: Vec<f64> = Vec::with_capacity(b.len());
+    for &(x, y) in &b {
+        let local: Vec<(usize, usize)> = b
+            .iter()
+            .copied()
+            .filter(|&(u, v)| {
+                let (dx, dy) = (u as i64 - x as i64, v as i64 - y as i64);
+                dx * dx + dy * dy <= r2
+            })
+            .collect();
+        // A window needs enough points to have a shape; `radius` pixels is a bare line's worth.
+        if local.len() >= radius.max(3) {
+            let s = straightness(&local);
+            if s.is_finite() {
+                vals.push(s);
+            }
+        }
+    }
+    if vals.len() < min_pts {
+        return f64::NAN;
+    }
+    vals.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    vals[vals.len() / 2]
+}

@@ -1,0 +1,71 @@
+SPATIAL ARTEFACT CENSUS at 256^2. Diagnostic pass: termination OFF, r_coll = 0,
+refine_flagged OFF -- the repair pass removes the population this is about.
+
+  Field is `log10(energy_drift_max)` and a step is in DECADES, so the census is
+  invariant to a uniform rescaling of the field. That is asserted per row: the
+  census is re-run on the field times 1e6 and must return the SAME count.
+
+  `preset_prho` is the slice control (equal masses, no wedges) and `plain_rk4` the
+  integrator control (no chart at all). A metric that fails to separate
+  config_stability from preset_prho UNDER AZ is not measuring the artefact.
+
+== config_stability  (t_max = 50)
+       arm  nonfin/bud    thr     sharp  largest  lgst/shrp  str_lgst  str_med  ncomp  drift p50  sf
+        az         1/0    0.5   0.27306    25466     0.8250    0.5686   0.4893     28   3.002e-6  ok
+                          1.0   0.15889     7011     0.3334    0.7625   0.4646     32        NaN  ok
+                          1.5   0.10106     3218     0.2120    0.3596   0.5097     39        NaN  ok
+                          2.0   0.06430     1845     0.1723    0.3764   0.4487     91        NaN  ok
+    heggie         0/0    0.5   0.48751    55191     0.9935    0.9905   0.9905      2   8.714e-9  ok
+                          1.0   0.23911    11992     0.3334    0.4287   0.5309     49        NaN  ok
+                          1.5   0.10388     1315     0.0728    0.3701   0.4982    137        NaN  ok
+                          2.0   0.04129      125     0.0161    0.5182   0.5160     44        NaN  ok
+  logh_rk4         3/3    0.5   0.27604    30182     0.7698    0.7711   0.5512     32   5.602e-8  ok
+                          1.0   0.07802      850     0.0629    0.2083   0.4861    103        NaN  ok
+                          1.5   0.02127       53     0.0132    0.4440   0.4440     10        NaN  ok
+                          2.0   0.00611       18     0.0156    0.3805      NaN      0        NaN  ok
+ plain_rk4       17/17    0.5   0.30153    25546     0.8678    0.5269   0.4558      3   2.025e-6  ok
+                          1.0   0.20164    14990     0.6183    0.5908   0.4772      9        NaN  ok
+                          1.5   0.13848     8979     0.4626    0.9204   0.4694     21        NaN  ok
+                          2.0   0.09498     2269     0.1549    0.4011   0.5162    101        NaN  ok
+
+== preset_prho  (t_max = 13)
+       arm  nonfin/bud    thr     sharp  largest  lgst/shrp  str_lgst  str_med  ncomp  drift p50  sf
+        az         0/0    0.5   0.01566     1498     0.5284    0.1293   0.1293      9  2.744e-12  ok
+                          1.0   0.00441      430     0.4914    0.0434   0.5889      3        NaN  ok
+                          1.5   0.00268      390     0.6489    0.0396   0.4565      3        NaN  ok
+                          2.0   0.00165      258     0.6736    0.0333   0.2625      3        NaN  ok
+    heggie         0/0    0.5   0.00746      523     0.4076    0.7717   0.7717      1  6.436e-15  ok
+                          1.0   0.00180      284     0.9342    0.9174   0.9174      2        NaN  ok
+                          1.5   0.00082       32     0.1963    0.3030   0.4730      2        NaN  ok
+                          2.0   0.00028       19     0.3065    0.2467      NaN      0        NaN  ok
+  logh_rk4         0/0    0.5   0.01484     1067     0.4039    0.5044   0.1247      5  2.723e-14  ok
+                          1.0   0.00231      165     0.3947    0.5615   0.5615      3        NaN  ok
+                          1.5   0.00083       45     0.2795    0.4276   0.4276      1        NaN  ok
+                          2.0   0.00040       36     0.4737    0.3478   0.3478      1        NaN  ok
+ plain_rk4         0/0    0.5   0.03341     4165     0.9237    0.4568   0.4568      1  2.195e-12  ok
+                          1.0   0.01336     2113     0.9911    0.4598   0.4598      1        NaN  ok
+                          1.5   0.00807      885     0.6441    0.5733   0.0842      5        NaN  ok
+                          2.0   0.00545      317     0.3132    0.6097   0.1546      7        NaN  ok
+
+HOW TO READ THIS
+
+**`scalefree` first.** If any row reads BROKEN the census is measuring magnitude
+and every number above it is void.
+
+**Then the AZ row on `config_stability` against `preset_prho`.** If they do not
+separate, the metric has no subject and the integrator columns say nothing.
+
+**`lgst/shrp` is not enough either, and `plain_rk4` is why.** It has NO reference
+body and therefore no wedge mechanism, and it still scores a large connected
+component -- a wrecked field is connected too. Density and connectedness cannot
+tell a decision boundary from damage.
+
+**`str_lgst` and `str_med` are the discriminator.** 0.0 is a perfect line, 1.0 is
+isotropic; `spatial::straightness` is total least squares in closed form, and
+`tests/straightness.rs` shows it scores a line 0.000000 against a wandering curve
+0.367927 at MATCHED extent and count, and is rotation-invariant. A decision
+boundary is STRAIGHT; a fractal boundary and a damage blob are not.
+
+**`ncomp` guards the median.** It counts components of >= 20 px; a short component
+is straight by construction, so a median over dust would read as a boundary.
+EXIT=0

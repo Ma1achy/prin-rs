@@ -1,0 +1,76 @@
+WEDGE CENSUS on config_stability at 512^2, t_max = 50, science pass.
+Mask is `circled_ics.rs`'s own: OKLab l > 0.86 && chroma < 0.045, then >=25% pale
+in a 5x5 window -- 9x9 at 1024^2, scaled to hold the same AREA of the slice.
+Colour window taken from the `az` arm and SHARED. The field mask is an ABSOLUTE
+`spread_shape >= 0.39`, the value the record names, never a quantile.
+Boundary straightness is LOCAL at radius 16: 0.0 is a straight edge, ~0.7 a
+jagged one (tests/straightness.rs measures 0.00000 and 0.71743 at matched area).
+
+                                   -- RENDERED PANEL -- |    -- spread_shape FIELD -- |
+        arm  nonfin     pale    dense     lgst  bnd str |    dense     lgst  bnd str |   jacc   shp p99
+  az_prefix    1153   0.0230   0.0026       28      NaN |   0.2058    10810   0.7549 |  0.071    0.4934
+         az       0   0.0127   0.0001        5      NaN |   0.1524     4559   0.5878 |  0.053    0.4915
+     heggie       0   0.0127   0.0001        5      NaN |   0.1524     4556   0.5913 |  0.053    0.4914
+   logh_rk4       0   0.0127   0.0001        5      NaN |   0.1524     4554   0.5913 |  0.053    0.4914
+  plain_rk4       0   0.0127   0.0001        5      NaN |   0.1524     4554   0.5918 |  0.053    0.4914
+
+HOW TO READ THIS
+
+**`az_prefix` FIRST.** It is AZ with the step-control fixes off -- the kernel the
+wedges were first seen under. If it does not carry a large dense component with a
+STRAIGHT boundary, this metric cannot see the artefact and every row below it is
+void. A null from a metric that never had a subject is this project's most
+frequently catalogued failure.
+
+**Then `az` against `heggie`.** `az` is the post-fix kernel, so what it still
+carries is the RESIDUAL the step-control work did not remove -- which is what the
+re-registration mechanism predicts Heggie should not have.
+
+**The two mask columns are each other's control.** The rendered one is the mask
+`circled_ics.rs` defined and is comparable with what was circled; the field one is
+`spread_shape` above the shared AZ window's top, which is what saturation means,
+with no 8-bit round trip and no chroma term. `jacc` is their agreement. If they
+disagree, the render is adding or hiding something and no row should be quoted.
+
+**`plain_rk4` is the no-reference-body control.** It has no chart to re-register
+into, so it cannot have the artefact -- but its field is wrecked, which is what
+says a low `bnd str` means straight and not merely empty. Read `dense` beside it.
+EXIT=0
+
+READ AFTER THE FACT -- what this run establishes and what it does not
+=====================================================================
+
+THE SUBJECT CONTROL PASSES. `az_prefix` -- AZ with the step-control fixes off, the kernel the
+wedges were first seen under -- carries a dense-pale set of 0.0026 of the frame against the
+record's 0.0018 at 1024^2 (`results/circled/README.md`: 1935 px of 1048576). Same order. The mask
+is reproducing the object that was circled.
+
+AND THE STEP-CONTROL FIXES ARE WHAT REMOVED IT. `az_prefix -> az` takes the dense set
+0.0026 -> 0.0001, a 26x reduction, and non-finite 1153 -> 0. That is the `dtau` fix, the landing
+clamp and the predictive step limit, all of which predate Heggie.
+
+HEGGIE ADDS NOTHING THIS CENSUS CAN SEE. `az`, `heggie`, `logh_rk4` and `plain_rk4` agree to
+three or four digits on every column -- pale 0.0127, dense 0.0001, largest 5, field-dense 0.1524,
+boundary straightness 0.588-0.592. **`plain_rk4` has no regularisation at all**, so four
+unrelated integrators landing on the same numbers says the remaining signal is not the
+integrator's. At `t_max = 50` on a chaotic slice, `spread_shape` saturating on ~15% of the frame
+is the physics.
+
+WHAT DID NOT RUN, AND IT IS THE THING THAT WAS ASKED FOR
+--------------------------------------------------------
+
+**`bnd str` on the rendered panel is `NaN` on every row.** The dense set is there -- 682 px on
+`az_prefix` -- but **fragmented 24x**: its largest connected component is 28 px, below the
+40-boundary-point minimum a local fit needs. So the straightness measurement never executed on
+the mask that defines the object. The record's fit ran over **621 rows of a 1024^2 panel**; at
+512^2 the same structure is shattered into sub-40-px pieces.
+
+**And the two masks disagree.** Jaccard 0.053-0.071. This harness's own instruction is that when
+they disagree the render is adding or hiding something and no row should be quoted. The field
+column at 15-21% is dominated by genuine chaotic divergence at `t = 50`, not by the artefact --
+which is why its `bnd str` sits mid-scale at 0.59, neither the 0.00 of a straight edge nor the
+0.72 of a jagged one.
+
+So: **the numbers above support "the step-control fixes removed the wedges and Heggie adds
+nothing further", and they do NOT support any statement about edge shape.** The straightness
+question needs 1024^2, which is 4x this run.

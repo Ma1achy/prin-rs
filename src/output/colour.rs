@@ -513,6 +513,85 @@ pub fn rgb(p: &PixelOut, s: Scalar, set: &SiteSet, lo: f64, hi: f64) -> [u8; 3] 
     oklab::oklab_to_srgb([lightness(t), a, b])
 }
 
+/// [`rgb`] **resolved over the ensemble** -- supersampling, not anti-aliasing.
+///
+/// The right name is **supersampling**: every sub-sample is a full simulation, coloured
+/// independently, and the pixel is their mean. Anti-aliasing is what that *buys*, not what it
+/// *is*. `src/output/ssaa.rs` already does exactly this for the categorical outcome palette --
+/// its module doc calls it *resolve*, "an average that drives display", against
+/// `ensemble_spread`'s *disagreement*, which drives scheduling. **This is the shape-sphere arm of
+/// the same operation**, and it is the arm that had never been written.
+///
+/// **The nominal sample is included.** `copy_shapes` is built from all `outs`, so
+/// `copy_shapes[0]` *is* `shape_vec` -- the nominal is one sub-sample among `E+1`, not a
+/// privileged one, which is what makes this a mean over the footprint rather than a correction
+/// applied to a centre point.
+///
+/// # The samples already exist and the production map discards them
+///
+/// Every footprint carries `E+1` copies jittered across the **whole cell**, edge to edge --
+/// `jitter_frac = 0.5` with the fixed Halton (2,3) prefix. `spread_shape` reduces over all of
+/// them and sets the **lightness**; the **hue** reads `p.shape_vec`, which is `shapes[0]`, the
+/// nominal copy alone. So one channel is ensemble-averaged and the other is a single point sample
+/// at the cell centre, on a field whose structure runs below pixel scale. That is the textbook
+/// setup for aliasing, with 8 free samples per pixel already computed and thrown away.
+///
+/// # It must average in COLOUR space, not on the sphere
+///
+/// `hue_ab` is a **von Mises-Fisher weighted blend** of landmark colours, which is nonlinear in
+/// `n`. So `hue_ab(mean(shapes)) != mean(hue_ab(shapes))` and only the second is the box filter.
+/// Averaging the shape vectors first would also be actively wrong where the copies diverge: their
+/// mean collapses toward the origin, chroma drops, and the pixel renders **pale** -- manufacturing
+/// the very appearance the wedge investigation was about. This averages `(a, b)` in OKLab, after
+/// the map, which is what supersampling means.
+///
+/// (`CLAUDE.md` records the shipped hue map as *linear* and identically `C_MAX*(n1,n2)`. That
+/// describes the earlier `chroma*(cos h, sin h)` form, not this one. Under a linear map the two
+/// orders agree; under this one they do not, and the note is stale rather than wrong.)
+///
+/// # What it costs and what it does not fix
+///
+/// `E+1` extra `hue_ab` evaluations **at render time**. No extra integration -- the copies are
+/// already marched. It is live-playhead compatible: it reduces over samples that exist at the
+/// current playhead time, with no lookahead and no re-integration.
+///
+/// **It is a sampling fix, not a physics fix.** If the banding is a *cadence* artefact -- `t_end`
+/// quantised to sync boundaries -- every copy in a footprint snaps to the same boundary and
+/// averaging them changes nothing. That is the discriminating prediction and it is why this ships
+/// as a toggle beside `rgb` rather than replacing it.
+///
+/// **The sample count is not chosen for rendering.** `E+1` is set by the refinement criterion, so
+/// the anti-aliasing rate is whatever that decided. Eight is a reasonable rate; one is not, and
+/// with `n_extra = 0` this falls back to [`rgb`] exactly.
+///
+/// Requires [`crate::ensemble::pixel::EnsembleCfg::keep_copy_shapes`]. With it unset
+/// `copy_shapes` is empty and this **returns [`rgb`] unchanged** rather than a silently different
+/// picture.
+pub fn rgb_resolved(p: &PixelOut, s: Scalar, set: &SiteSet, lo: f64, hi: f64) -> [u8; 3] {
+    use crate::output::compose;
+    if p.copy_shapes.len() < 2 {
+        return rgb(p, s, set, lo, hi);
+    }
+    if p.n_nonfinite > 0 {
+        return DEBUG_NAN;
+    }
+    match State::from_bits(p.state) {
+        Some(State::SimFailed) | Some(State::DecodeFailed) | None => return DEBUG_NAN,
+        _ => {}
+    }
+    let l = match range_norm(s, s.value(p), lo, hi) {
+        Some(t) => lightness(t),
+        None => return DEBUG_NAN,
+    };
+    // **One supersampler.** `compose::resolve` knows nothing about this map; it is handed a
+    // per-sub-sample colour and averages. That independence is the whole point -- a `*_resolved`
+    // twin per mode is two copies of one operation waiting to drift.
+    let lab = compose::resolve(p.copy_shapes.len(), |i| {
+        hue_ab(set, p.copy_shapes[i]).map(|(a, b)| [l, a, b])
+    });
+    compose::finish(lab, DEBUG_NAN)
+}
+
 /// Robust `[p1, p99]` of a scalar over a set of footprints.
 ///
 /// Percentiles rather than min/max: one undetermined footprint at `1e12` would compress every

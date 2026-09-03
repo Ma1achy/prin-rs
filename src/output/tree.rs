@@ -153,6 +153,7 @@ pub fn write<W: Write>(
          chart_params={}\n\
          quads_computed={} footprints={} iterations={} budget_exhausted={} wall_seconds={:.3}\n\
          trajectories_per_quad={} sibling_edge_overlap_frac={:.6}\n\
+         config={}\n\
          fields={}\n",
         region, tree.body, tree.n, ens.n_extra + 1, cfg.budget, cfg.bootstrap_levels,
         cfg.tau_display, cfg.hot_rule.name(), cfg.structure.name(), cfg.mode.name(),
@@ -166,6 +167,13 @@ pub fn write<W: Write>(
         st.quads_computed, st.footprints, st.iterations, st.budget_exhausted, st.wall_seconds,
         tree.n * tree.n * (ens.n_extra + 1),
         1.0 / tree.n as f64,
+        // **Derived, not enumerated.** Every line above this one is a hand-maintained list of
+        // fields, and a hand-maintained list goes stale exactly when a default moves -- which is
+        // how a corpus of dumps came to record `dtau_mode` and `clamp_final` while saying nothing
+        // about `integrator`, `refine_flagged` or `step_limit`. `provenance` diffs against
+        // `production()` and is exhaustive with no `..` arm, so a field added to `EnsembleCfg`
+        // breaks the build rather than silently vanishing from the header.
+        ens.provenance(),
         FIELDS.join(","),
     );
     w.write_all(&(header.len() as u32).to_le_bytes())?;

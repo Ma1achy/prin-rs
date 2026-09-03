@@ -348,6 +348,33 @@ fn main() {
         wire::draw(&mut wimg, res, res, &boxes, deepest.max(1));
         let _ = adaptive::save(&format!("{stem}.png"), res, &img);
         let _ = adaptive::save(&format!("{stem}_wire.png"), res, &wimg);
+        // **The PNGs were the blind spot.** The `.prnq` carries a settings header; the panels
+        // carried nothing, so a picture could not say which integrator drew it. One sidecar per
+        // chart rather than per frame: the frames of a chart share a config by construction, and
+        // 208 near-identical files would be noise rather than provenance.
+        let _ = prin_rs::output::provenance_sidecar(
+            &format!("{stem}.png"),
+            &ens,
+            &format!(
+                "chart={} leaves={} depth={} stop={}\n",
+                chart.name(),
+                leaves.len(),
+                depth,
+                {
+                    let mut v: Vec<String> = std::collections::BTreeMap::from_iter(
+                        leaves.iter().fold(std::collections::BTreeMap::new(), |mut m, &i| {
+                            *m.entry(t.nodes[i].decision.name()).or_insert(0usize) += 1;
+                            m
+                        }),
+                    )
+                    .into_iter()
+                    .map(|(k, n)| format!("{k}:{n}"))
+                    .collect();
+                    v.sort();
+                    v.join(" ")
+                }
+            ),
+        );
 
         // **The chart itself, at one sample per pixel on a uniform grid.**
         //
@@ -538,10 +565,14 @@ fn main() {
          `crit` row's tree shape is a statement about the chart.\n\
          \n\
          And the substantive finding this table carries: the reference's chart families, centred\n\
-         where they are centred here, are TAME. `alpha med` sits at 0.99-1.01 on every latent,\n\
-         Burrau and simplex row against 0.14 for `body_plane` and 0.19 for the shape sphere.\n\
+         where they are centred here, are TAME in `alpha` -- but the numbers this paragraph\n\
+         used to quote were measured on the PRE-FIX kernel and no longer describe the table\n\
+         above it. `body_plane` read 0.14 and the shape sphere 0.19; they now read 1.02 and\n\
+         1.26, and no row runs to the budget at all. Read the printed columns, not this text.\n\
          alpha near 1 means splitting halves the spread -- refinement pays, so the scheduler\n\
-         refines everywhere and runs to the budget. That is correct behaviour on a tame region,\n\
+         refines everywhere. On the fixed kernel it does NOT run to the budget: the spread fell\n\
+         with the integration failure that inflated it, so at a fixed `tau` the quads now read\n\
+         resolved and stop as `Keep`. That is correct behaviour on a tame region,\n\
          not a scheduler fault.\n\
          \n\
          But it means these charts are not exercising the criterion where it is hard. Tameness is\n\

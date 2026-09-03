@@ -123,12 +123,31 @@ fn main() {
     // are superseded by every integrator fix from 27 August on; they are recoverable at
     // `9d48510` and are not preserved under a third name here. `results/README.md` says so.
     let ranked = k_frac < scheduler::K_FRAC_UNRANKED;
-    let dir = if ranked { "results/charts" } else { "results/charts_unranked" };
-    let adir = if ranked { "results/animated" } else { "results/animated_unranked" };
+    // **An output root is an argument, not a constant.** `criterion_metric` was fixed for exactly
+    // this and `chart_gallery` was not: with the root hardcoded, a reduced-`res` validation pass
+    // -- the only way to check whether a flag is inert before spending hours on the real run --
+    // overwrites the committed 1024^2 corpus with a small raster, and *softness in an image is a
+    // raster size* reads it back as a rendering fault rather than a stale file. Third site.
+    let root: String = std::env::args().nth(7).unwrap_or_else(|| "results".into());
+    let dir = if ranked { format!("{root}/charts") } else { format!("{root}/charts_unranked") };
+    let adir = if ranked { format!("{root}/animated") } else { format!("{root}/animated_unranked") };
+    let dir = dir.as_str();
+    let adir = adir.as_str();
     let _ = std::fs::create_dir_all(dir);
     let _ = std::fs::create_dir_all(adir);
 
-    let ens = EnsembleCfg { refine_flagged: false, ..Default::default() };
+    // **`refine_flagged` is argument 8, and its default is production's.** The hardcoded `false`
+    // that stood here is the line the record names as spread-by-copy out of the experiment
+    // harnesses it was correct in, into render harnesses it was never argued for -- while
+    // `results/README.md` asserted renders had it on. It is a real choice with two defensible
+    // readings (the repair pass has no live-playhead analogue, so a scheduler corpus arguably
+    // wants it off; the standing invariant says renders have it on), so it is a *named argument*
+    // that the provenance sidecar records, not a constant nothing prints.
+    let refine: bool = std::env::args()
+        .nth(8)
+        .map(|v| v == "1" || v == "true")
+        .unwrap_or(EnsembleCfg::production().refine_flagged);
+    let ens = EnsembleCfg { refine_flagged: refine, ..EnsembleCfg::production() };
     // **The column, not the instance.** Nine harnesses feeding the refinement work printed no
     // provenance at all -- the `refine_flagged` failure exactly: *the failure was never the
     // choice, it is that nothing recorded the choice.*

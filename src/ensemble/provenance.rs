@@ -82,6 +82,8 @@ pub enum Override {
     KeepCopyOutcomes(bool),
     KeepCopyShapes(bool),
     KeepBoundaryShapes(bool),
+    KeepLiveSeries(bool),
+    LiveStride(usize),
     KeepDriftHist(bool),
     KeepRefPath(bool),
     Ftle(Option<FtleOpts>),
@@ -125,6 +127,8 @@ impl Override {
             Override::KeepCopyOutcomes(v) => c.keep_copy_outcomes = v,
             Override::KeepCopyShapes(v) => c.keep_copy_shapes = v,
             Override::KeepBoundaryShapes(v) => c.keep_boundary_shapes = v,
+            Override::KeepLiveSeries(v) => c.keep_live_series = v,
+            Override::LiveStride(v) => c.live_stride = v,
             Override::KeepDriftHist(v) => c.keep_drift_hist = v,
             Override::KeepRefPath(v) => c.keep_ref_path = v,
             Override::Ftle(v) => c.ftle = v,
@@ -161,7 +165,8 @@ impl EnsembleCfg {
             land_iterate, land_max_iters,
             max_steps, ref_policy, lc_stable, integrator, r_coll_frac, stop_on_event, refine_flagged,
             refine_threshold, refine_eta_factor, refine_max_passes, decode_path,
-            keep_copy_outcomes, keep_copy_shapes, keep_boundary_shapes, keep_drift_hist,
+            keep_copy_outcomes, keep_copy_shapes, keep_boundary_shapes, keep_live_series,
+            live_stride, keep_drift_hist,
             keep_ref_path, ftle,
             ftle_dt,
         } = self;
@@ -210,6 +215,8 @@ impl EnsembleCfg {
         cmp!("keep_copy_outcomes", keep_copy_outcomes, p.keep_copy_outcomes);
         cmp!("keep_copy_shapes", keep_copy_shapes, p.keep_copy_shapes);
         cmp!("keep_boundary_shapes", keep_boundary_shapes, p.keep_boundary_shapes);
+        cmp!("keep_live_series", keep_live_series, p.keep_live_series);
+        cmp!("live_stride", live_stride, p.live_stride);
         cmp!("keep_drift_hist", keep_drift_hist, p.keep_drift_hist);
         cmp!("keep_ref_path", keep_ref_path, p.keep_ref_path);
         cmp!("ftle", ftle, p.ftle);

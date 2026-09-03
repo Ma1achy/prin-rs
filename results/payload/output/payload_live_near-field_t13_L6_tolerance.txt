@@ -1,0 +1,7 @@
+payload_metric live: /private/tmp/claude-501/-Users-malachy-src-principia-rs-test/260ec0e2-d203-4f2d-85ff-f64a85497918/scratchpad/payload/payload/near-field_t13_L6.fcache -- PRQF v2, region near-field, levels 6 N=8 res 512, t_max 13; policy tolerance stationary true eps 1e-2 k_frac 0.25; class arm event_class
+  config: production + 1 override(s): refine_flagged=false (production true)
+  descent: 153 quads (115 leaves, depth 6) in 37.3s, 3.938e8 substeps, stop [keep:81 screen_floor:34]
+  mem_all = 153 quads x 512 trajectories; mem_leaf = 115 quads
+  leaves by level: 2:14 3:3 4:11 5:19 6:68
+  payload/event_class/indicator/eps=1e-2: error 0.00000; dp needs B=137 (ratio 1.12x); uniform needs B=5449 (ratio 0.03x); sea_fraction 0.0005
+  payload/event_class/resolvable/eps=1e-2: error 0.00000; dp needs B=137 (ratio 1.12x); uniform needs B=5449 (ratio 0.03x); sea_fraction 0.0005

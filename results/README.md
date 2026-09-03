@@ -1,3 +1,8 @@
+> **2026-09-03, the refinement rebuild.** The measurement that supersedes every `error(B)` curve
+> below is `results/payload/` (its README first): the physics-space metric, the tolerance policy
+> against the exact ceiling, and the live descent. `results/charts/` is the 3 September
+> regeneration; its `_uniform*` panels are still 25 August (see that README).
+
 # Committed results
 
 Raw output and images for every experiment. [`../RESULTS.md`](../RESULTS.md) is the findings

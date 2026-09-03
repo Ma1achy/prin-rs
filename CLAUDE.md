@@ -2503,3 +2503,75 @@ a gap in the same PR's own guard -- `footprint_undetermined` caught all 11, but 
 reaches the same state with every copy usable. The predicate now tests `spread_shape` directly. The
 `f64::max` swallowing is a `pixel.rs` defect and is **not repaired**, because propagating the `NaN`
 changes `ensemble_spread` itself and moves every tree and every render.
+
+**THE REFINEMENT CRITERION WAS INVERTED, AND THE METRIC IT WAS SCORED UNDER COULD NOT SEE IT.**
+`decide` split a quad only where `alpha >= alpha_hi` — where halving the cell had *already*
+halved the spread, i.e. smooth, converging regions — and floored or kept exactly the quads whose
+spread does not fall: discontinuities and fractal mixing at every scale coarser than their
+filaments. `preset_shape_h1` under it refined the smooth regular island and floored the fractal
+core at level 2, Spearman(depth, terminated) −0.68. Every `error(B)` curve that graded it scored
+OKLab distance under the shipping colouring, whose lightness is auto-ranged to each region's own
+p1–p99, so a smooth region's `1e-8` residual counted as error at every depth and breadth-first
+came out near-optimal **by construction of the metric**. Scored on the payload — the nominal
+`shape_vec` and event class against a fixed `eps = 0.01` in `spread_shape`'s own units — the
+same footprints give `far` resolved at the root, `near-field` zero unresolved at 137 quads
+against uniform's 5449, `deep interior` at 329 against 5377. `Policy::Tolerance` (split iff any
+footprint is unresolved; no exponent) reaches zero on both within 1.12× of the exact optimum;
+`Policy::Alpha` stops at the bootstrap on both. Kept as the named legacy, pinned bitwise.
+
+**`deep interior` IS NOT "STRUCTURE EVERYWHERE".** `sea_fraction(0.01) = 0.0025`: a quarter of a
+percent of its pixels are unresolvable at the deepest level. The standing reading was the OKLab
+metric's, which reads 0.379 at the root there because it stretches the spread field's texture to
+full contrast. `preset_shape_h1` is the sea — 34% at `eps = 0.01`, 15% at 0.05 — and there the
+tolerance tree costs 1.21× the optimum and 0.67× uniform; the lever is `eps`, not the policy.
+
+**A RESOLVED OR STATIONARY QUAD IS DECIDED AHEAD OF THE CAPS.** The camera floor and the depth
+cap are stops for a quad that *wanted* to split. Reporting a resolved quad at the cap as
+`MaxLevel` attributes the stop to the cap when the criterion had decided, and the stop-reason
+breakdown exists to say which fired. Measured on the analytic step: 128 `max_level` leaves
+became `keep:84 max_level:64`, the two straddling columns and nothing else.
+
+**THE STATIONARITY ARMS AT `N = 8`: A MEAN, A CLASS-CONDITIONAL COHERENCE, AND A NAMED BLIND SPOT.**
+The quadrant mixture arm is a mean over four quadrants — the max of four 16-footprint multinomial
+deviations reaches 0.33 by sampling alone on three classes, and a pure synthetic sea split on its
+own noise. The class coherence is class-conditional, the max over classes present: a global
+agreement-above-chance statistic moves a few percent for one coherent column of eight, while that
+column's own class clusters at 0.6 against a base rate of an eighth. A filament in a quad's
+**edge column** has the same mixture as its parent (an eighth of both), so the two-scale arm is
+blind to it and only class-conditional coherence catches it, and only when the classes differ.
+And on the real sea chart the stop fires on **34 of 2064** floor leaves, and where it fires it
+is wrong: with it off the tolerance tree reaches 0.02% unresolved at 3585 quads, 1.03× the exact
+optimum, where with it on 3397 quads leave 2.7% — 0.94% of them pixels a finer grid resolves.
+The mixing region is a coherent sponge at the footprint scale, not white noise, and coherence
+reads it as structure, which it is. **`stationary` defaults to off, by that measurement**, and
+the arms stay computed and dumped for the sweep. A stop calibrated on white noise is a stop for
+white noise.
+
+**THE LIVE TREE GAINS ONE LEVEL PER BOUNDARY, AND CATCH-UP IS 84–91% OF THE WORK.** Children
+requested at a boundary can first be decided at the next one, because they have to catch up to
+the playhead; at the horizon the tree continues in post-horizon rounds or stops with leaves
+pending (measured: eight, before the rounds existed). `near-field` splits nothing until
+`t = 9.75`, reaches 37 quads at the horizon and the same 153-quad tree as the static descent
+seventeen rounds later, with 84% of its substeps as catch-up; `deep interior` grows from the
+first boundary, ends 15% larger than the static tree at the same zero error, catch-up 91%. The
+`k_frac` quarter-per-round throttle is what makes the post-horizon convergence slow, and it has
+no purpose once the playhead has stopped: a knob to add.
+
+**A QUAD OUTRANKED BY THE FRONTIER IS `Deferred`, NEVER `Keep`, AND THE TWO DEFAULTS FOR `tau`
+WERE ONE KNOB.** Under `Policy::Alpha` "Keep" meant "between thresholds"; under a tolerance it
+means "resolved", and a dropped unresolved quad wearing that label was the conflation the
+stop-reason column exists to prevent. `SchedCfg::default().tau_display` was `1e-2` while
+`chart_gallery`, `criterion_metric` and `refinement_animation` overrode it to `1e-4` through their
+argument defaults, so every committed tree was cut at the argument's value; the struct's default
+is now the one default.
+
+**THE ADAPTIVE RENDER WAS A VERTICAL MIRROR OF THE UNIFORM PANEL BESIDE IT, AND THE TRUNCATION
+LEVER WAS THE FILL'S KEY.** `adaptive::render`, the wire and `tree::overlay` flipped `y`; every
+uniform panel and `metric::Cache::render` wrote `Slice` order. Slice order (row 0 = minimum `y`)
+is the one convention now, through `Camera::to_px`, pinned by a bitwise test against a `Slice`
+buffer with the mirrored image asserted NOT to match. Tiles are clipped to the quad box with
+every edge computed once (`adaptive::coverage` reads 0 gaps, 0 overlaps); a frame's leaf set is
+an argument (`render_leaves`), so a truncated frame keeps the coarse-ancestor fill that emptying a
+node's samples used to disable. And the 26 `results/charts/*_uniform*.png` are still 25 August:
+the uniform block was skipped when ranked, on the argument that a scheduler change cannot move it
+— true, and the physics moved.

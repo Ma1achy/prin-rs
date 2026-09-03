@@ -180,9 +180,99 @@ pub struct QuadReduction {
     pub frac_diverged: f64,
     /// Median first-divergence time over the footprints that crossed. `NaN` if none did.
     pub first_divergence_median: f64,
+
+    // ---------------------------------------------------------------------------------
+    // The tolerance arm (Phase 2 of the refinement rebuild).
+    //
+    // A footprint is UNRESOLVED when its copies, which span the whole cell, disagree beyond the
+    // tolerance: `ensemble_spread > tau` -- which fires on any class disagreement, since one
+    // dissenting copy of eight reads 0.143 -- or when the footprint cannot be read at all
+    // (`scheduler::footprint_undetermined`). Counts, never quantiles: a quad with one hot
+    // footprint of 64 has a median below `tau` and reads resolved under `Agg::Median`, which is
+    // "median under-refines thin structure" at full strength.
+    // ---------------------------------------------------------------------------------
+    /// Footprints unresolved at the tolerance, both causes.
+    pub n_unresolved: u32,
+    /// Of those, the ones unresolved because they could not be read (non-finite copy or spread).
+    /// Carried beside the total so a triple-collision singularity and a filament are never
+    /// pooled.
+    pub n_unresolved_undetermined: u32,
+    /// Of those, the ones unresolved by the **event arm alone** (`spread_shape <= tau` and
+    /// `spread_event > 0`). The tightest-pair switching surface lives here; read it per chart
+    /// before believing a leaf count.
+    pub n_unresolved_event_only: u32,
+    /// `max` of `ensemble_spread` over the quad, no discard (`NaN` when nothing finite).
+    pub spread_max: f64,
+    /// `spread_max - tau`: how far the worst footprint sits past the tolerance.
+    pub max_excess: f64,
+
+    // ---------------------------------------------------------------------------------
+    // The stationarity arms (Phase 2b). What separates a homogeneous sea -- unresolved at every
+    // scale, and re-sampled rather than resolved by going deeper -- from a filament, which is
+    // unresolved because the cell is still wider than the structure. Amplitude cannot tell
+    // them apart; coherence can.
+    // ---------------------------------------------------------------------------------
+    /// Lag-1 neighbour correlation of the nominal `shape_vec` across the `N x N` grid, the mean
+    /// over the components that vary. A sea is white at the footprint scale (`~0`, sd `~0.09`
+    /// at `N = 8`); a boundary organises the field (`> 0`). `NaN` when nothing varies.
+    pub coh_shape: f64,
+    /// **Class-conditional** neighbour coherence of the nominal event class, the max over the
+    /// classes present at least twice: the fraction of a class's footprints' neighbours that are
+    /// the same class, above the class's base rate, normalised to 1. `~0` on a sea for every
+    /// class; a thin filament's class clusters near 0.6. `NaN` when the quad has one class or
+    /// nothing varies. The max rather than a global agreement statistic, because one coherent
+    /// column of eight moves the global figure by a few percent and the max by half.
+    pub coh_class: f64,
+    /// The nominal event-class histogram over the quad, one slot per class of the 27-slot
+    /// alphabet (3 tightest-pair identities, then `TERMINAL_TAG + terminal`).
+    pub class_hist: [u16; 27],
+    /// Mean total-variation distance between a quadrant's class mixture and the quad's, over
+    /// the four quadrants. A sea's quadrants agree up to sampling noise (about 0.14 at `N = 8`
+    /// on three classes; the *max* of the four reaches 0.33 by noise alone, which is why this
+    /// is the mean); a quad with a boundary through it does not.
+    pub mix_tv_quadrants: f64,
+    /// Total-variation distance between this quad's class mixture and its **parent's**, at the
+    /// same playhead. Set by the descent once the parent is known; `NaN` at the root.
+    pub mix_tv_parent: f64,
 }
 
 impl QuadReduction {
+    /// The class mixture as fractions, over the 27 slots.
+    pub fn class_mix(&self) -> [f64; 27] {
+        let n: u32 = self.class_hist.iter().map(|&c| c as u32).sum();
+        let mut m = [0.0f64; 27];
+        if n > 0 {
+            for (k, &c) in self.class_hist.iter().enumerate() {
+                m[k] = c as f64 / n as f64;
+            }
+        }
+        m
+    }
+
+    /// Total-variation distance between two class mixtures, in `[0, 1]`.
+    pub fn mix_tv(a: &[f64; 27], b: &[f64; 27]) -> f64 {
+        0.5 * a.iter().zip(b.iter()).map(|(x, y)| (x - y).abs()).sum::<f64>()
+    }
+
+    /// The larger of the two coherence arms; `NaN` only when both are.
+    pub fn coherence(&self) -> f64 {
+        match (self.coh_shape.is_finite(), self.coh_class.is_finite()) {
+            (true, true) => self.coh_shape.max(self.coh_class),
+            (true, false) => self.coh_shape,
+            (false, true) => self.coh_class,
+            (false, false) => f64::NAN,
+        }
+    }
+
+    /// Fraction of footprints unresolved at the tolerance; `NaN` on an empty quad.
+    pub fn frac_unresolved(&self) -> f64 {
+        if self.n_footprints == 0 {
+            f64::NAN
+        } else {
+            self.n_unresolved as f64 / self.n_footprints as f64
+        }
+    }
+
     /// The aggregate a decision reads, by policy.
     pub fn spread(&self, agg: Agg) -> f64 {
         match agg {
@@ -238,6 +328,8 @@ impl QuadReduction {
             Criterion::GradRms => self.grad_rms_within,
             Criterion::PerimeterWithin => self.layout_within.perimeter_ratio,
             Criterion::PerimeterBetween => self.layout_between.perimeter_ratio,
+            Criterion::FracUnresolved => self.frac_unresolved(),
+            Criterion::MaxExcess => self.max_excess,
         }
     }
 
@@ -499,6 +591,12 @@ pub enum Criterion {
     /// is the best criterion measured on this project, so the arm is known to matter for a
     /// mask-derived signal. Testing the within arm alone would leave that unasked.
     PerimeterBetween,
+    /// **The tolerance policy's priority**: the fraction of footprints unresolved at `tau`. A
+    /// count in the tail, so a filament crossing a quad reads on it where every quantile
+    /// conflates it with a blurred quad.
+    FracUnresolved,
+    /// `spread_max - tau`: the worst footprint's excess over the tolerance. The magnitude twin.
+    MaxExcess,
 }
 
 impl Criterion {
@@ -517,6 +615,8 @@ impl Criterion {
             Criterion::GradRms => "grad_rms",
             Criterion::PerimeterWithin => "perim_within",
             Criterion::PerimeterBetween => "perim_between",
+            Criterion::FracUnresolved => "frac_unresolved",
+            Criterion::MaxExcess => "max_excess",
         }
     }
     pub fn parse(s: &str) -> Option<Criterion> {
@@ -534,11 +634,13 @@ impl Criterion {
             "grad_rms" => Criterion::GradRms,
             "perim_within" => Criterion::PerimeterWithin,
             "perim_between" => Criterion::PerimeterBetween,
+            "frac_unresolved" => Criterion::FracUnresolved,
+            "max_excess" => Criterion::MaxExcess,
             _ => return None,
         })
     }
     /// Every variant, for sweeps that must not silently omit one.
-    pub const ALL: [Criterion; 13] = [
+    pub const ALL: [Criterion; 15] = [
         Criterion::Within,
         Criterion::Between,
         Criterion::MaxOfBoth,
@@ -552,6 +654,8 @@ impl Criterion {
         Criterion::GradRms,
         Criterion::PerimeterWithin,
         Criterion::PerimeterBetween,
+        Criterion::FracUnresolved,
+        Criterion::MaxExcess,
     ];
 }
 
@@ -637,6 +741,17 @@ pub enum Decision {
     ///
     /// Appended rather than inserted, so codes 0-10 in every committed `.prnq` still decode.
     Undetermined,
+    /// **Unresolved, and a homogeneous sea at this sampling**: the footprint field is white at
+    /// the footprint scale, its class mixture matches its parent's and its quadrants agree, and
+    /// the shape spread did not fall from the parent. Nothing finer would resolve it, only
+    /// re-sample it. A **keep for now**, re-tested at every playhead; never a terminal stop.
+    /// `Policy::Tolerance` only. Code 12.
+    Stationary,
+    /// **Wanted to split and was outranked** by `k_frac` or the budget this round. Re-decided
+    /// next round rather than dropped: under `Policy::Tolerance` `Keep` means *resolved*, and a
+    /// dropped unresolved quad wearing that label was the conflation the stop-reason column
+    /// exists to prevent. `Policy::Alpha` still marks these `Keep`, bitwise as before. Code 13.
+    Deferred,
 }
 
 impl Decision {
@@ -654,6 +769,8 @@ impl Decision {
             Decision::Collapsed => "collapsed",
             Decision::BalanceForced => "balance",
             Decision::Undetermined => "undetermined",
+            Decision::Stationary => "stationary",
+            Decision::Deferred => "deferred",
         }
     }
     pub fn code(self) -> u8 {
@@ -670,6 +787,8 @@ impl Decision {
             Decision::Collapsed => 9,
             Decision::BalanceForced => 10,
             Decision::Undetermined => 11,
+            Decision::Stationary => 12,
+            Decision::Deferred => 13,
         }
     }
 }

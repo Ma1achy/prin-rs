@@ -14,16 +14,22 @@
 //! between `indicator` and `resolvable` is the sea cost**, and `sea_fraction(eps)` is printed
 //! before any curve: the fraction of the frame that no depth resolves at this `eps`.
 //!
-//! Two modes:
+//! Four modes:
 //!
 //! - `build <target> [levels] [n] [eps] [t_max] [root]` — integrate one complete tree for a
-//!   Burrau region (`grid::REGIONS`) or a gallery chart (`grid::gallery_cases`), write the v2
-//!   footprint file and the quad cache, and print every table for every form plus the shipping
-//!   OKLab metric as the comparison arm. Signal rankings and the **static live tree** (a real
-//!   `scheduler::descend` on the same box, mapped onto the cache) are scored here.
+//!   Burrau region (`grid::REGIONS`), `config_stability`, or a gallery chart
+//!   (`grid::gallery_cases`), write the v2 footprint file and the quad cache, and print every
+//!   table for every form plus the shipping OKLab metric as the comparison arm. Signal rankings
+//!   and a static descent under the shipped policy (mapped onto the cache) are scored here.
 //! - `replay <file.fcache> [eps] [root]` — zero trajectories: the floor (`uniform`), the
 //!   reference (`greedy_lookahead_1`), the random band and the ceiling (`dp_optimal`) from a
 //!   committed footprint file. A v1 file is replayed under the **outcome** arm only and says so.
+//! - `live <file.fcache> [policy] [eps] [k_frac] [root] [stationary]` — one static descent under
+//!   the named policy, integrated fresh, mapped onto the cache and scored against the ceiling:
+//!   the memory ratio at matched quality, `Policy::Tolerance` against `Policy::Alpha`.
+//! - `march <file.fcache> [eps] [k_frac] [root] [stationary] [live_stride]` — the **live**
+//!   descent (`scheduler::descend_live`): the tree grown boundary by boundary from one march per
+//!   quad, with its growth curve and catch-up cost, scored the same way.
 //!
 //! The memory number is the `B_needed` table: the budget each strategy needs to bring the
 //! unresolved fraction to a target, and `B_needed(row) / B_needed(dp)` — the memory ratio at
@@ -62,6 +68,10 @@ struct Target {
 fn target(name: &str) -> Option<Target> {
     if let Some(&(n, cx, cy, body)) = grid::REGIONS.iter().find(|r| r.0 == name) {
         return Some(Target { name: n.into(), chart: Chart::BodyPlane, cx, cy, half: 0.05, body });
+    }
+    if name == "config_stability" {
+        let (chart, cx, cy, half) = Chart::config_stability();
+        return Some(Target { name: name.into(), chart, cx, cy, half, body: 0 });
     }
     grid::gallery_cases()
         .into_iter()
@@ -277,11 +287,206 @@ fn main() {
     match mode.as_str() {
         "build" => build(),
         "replay" => replay(),
+        "live" => live(),
+        "march" => march(),
         _ => {
             eprintln!("usage: payload_metric build <target> [levels=6] [n=8] [eps=0.01] [t_max=13] [root=results]");
             eprintln!("       payload_metric replay <file.fcache> [eps=0.01] [root=results]");
+            eprintln!("       payload_metric live <file.fcache> [policy=tolerance|alpha] [eps=0.01] [k_frac=0.25] [root=results] [stationary=1]");
+            eprintln!("       payload_metric march <file.fcache> [eps=0.01] [k_frac=0.25] [root=results] [stationary=1] [live_stride=4]");
             std::process::exit(2);
         }
+    }
+}
+
+/// **The live descent, scored against a committed cache.** The tree as a playhead would have
+/// built it: grown boundary by boundary from one march per quad, decisions that can only add.
+/// Prints the growth curve, the catch-up cost of late splits, and the final tree's error against
+/// the same ceiling the static descents are scored against — so `mem_all(live) / mem_all(static)`
+/// is the price of monotonicity.
+fn march() {
+    let file: String = std::env::args().nth(2).expect("a .fcache path");
+    let eps: f64 = arg(3, 0.01);
+    let k_frac: f64 = arg(4, prin_rs::scheduler::K_FRAC_RANKED);
+    let root: String = std::env::args().nth(5).unwrap_or_else(|| "results".into());
+    let stationary: bool = std::env::args().nth(6).map(|v| v != "0" && v != "false").unwrap_or(SchedCfg::default().stationary);
+    let live_stride: usize = arg(7, 4);
+    let fp = {
+        let f = std::fs::File::open(&file).expect("open fcache");
+        prin_rs::output::fcache::read(&mut std::io::BufReader::new(f)).expect("read fcache")
+    };
+    let t = target(&fp.region).unwrap_or_else(|| panic!("the file's region `{}` is not a known target", fp.region));
+    let stem = std::path::Path::new(&file).file_stem().unwrap().to_string_lossy().to_string();
+    let log = Log::tee(&format!("{root}/output/payload_march_{stem}{}.txt", if stationary { "" } else { "_nostat" }));
+    let log = &log;
+    let class = if fp.has_event_class() { ClassArm::EventClass } else { ClassArm::Outcome };
+    logln!(log, "payload_metric march: {file} -- region {}, levels {} N={} res {}, t_max {}; tolerance policy, stationary {stationary}, eps {eps:e} k_frac {k_frac}, live_stride {live_stride}; class arm {}",
+           fp.region, fp.levels, fp.n, fp.res, fp.t_max, class.name());
+
+    let base = EnsembleCfg::default();
+    let n_sync = ((base.n_sync as f64) * fp.t_max / base.t_max).round().max(2.0) as usize;
+    let ens = EnsembleCfg {
+        refine_flagged: false,
+        t_max: fp.t_max,
+        n_sync,
+        keep_live_series: true,
+        live_stride,
+        ..Default::default()
+    };
+    logln!(log, "  config: {}", ens.provenance());
+    let metrics = [
+        Metric::Payload { eps, class, form: PayloadForm::Indicator },
+        Metric::Payload { eps, class, form: PayloadForm::Resolvable },
+    ];
+    let caches: Vec<Cache> = metrics.iter().map(|&m| Cache::from_footprints(&fp, m).expect("cache")).collect();
+
+    let cfg = SchedCfg {
+        n: fp.n,
+        tau_display: eps,
+        policy: prin_rs::scheduler::Policy::Tolerance,
+        stationary,
+        k_frac,
+        budget: fp.quads.len() * 2,
+        camera: Some(Camera::framing(t.cx, t.cy, t.half, fp.res)),
+        max_level: Some(fp.levels),
+        chart: t.chart,
+        keep_pixels: false,
+        ..Default::default()
+    };
+    let t0 = std::time::Instant::now();
+    let (tree, st) = scheduler::descend_live(t.cx, t.cy, t.half, t.body, &cfg, &ens, Precision::F64);
+    let leaves: Vec<usize> = tree.leaves().collect();
+    let depth = leaves.iter().map(|&i| tree.nodes[i].level).max().unwrap_or(0);
+    let steps: u64 = tree.nodes.iter().map(|q| q.red.total_substeps as u64).sum();
+    logln!(log, "  live descent: {} quads ({} leaves, depth {depth}) in {:.1}s, {steps:.3e} substeps, catch-up {:.3e} substeps ({:.1}% of the total), stop [{}]",
+           st.quads_computed, leaves.len(), t0.elapsed().as_secs_f64(), st.catchup_substeps as f64,
+           100.0 * st.catchup_substeps as f64 / steps.max(1) as f64, tree.stop_breakdown());
+    logln!(log, "  {:>3} {:>7} {:>9} {:>7} {:>6} {:>6} {:>10} {:>8}", "j", "t", "computed", "leaves", "split", "keep", "stationary", "deferred");
+    for p in &st.live {
+        logln!(log, "  {:>3} {:>7.3} {:>9} {:>7} {:>6} {:>6} {:>10} {:>8}", p.j, p.t, p.computed, p.leaves, p.split, p.keep, p.stationary, p.deferred);
+    }
+    let by_level = {
+        let mut m = std::collections::BTreeMap::new();
+        for &i in &leaves { *m.entry(tree.nodes[i].level).or_insert(0usize) += 1; }
+        m.into_iter().map(|(l, n)| format!("{l}:{n}")).collect::<Vec<_>>().join(" ")
+    };
+    logln!(log, "  leaves by level: {by_level}");
+    let mut keys = Vec::with_capacity(leaves.len());
+    let mut lost = 0usize;
+    for &i in &leaves {
+        let q = &tree.nodes[i];
+        match caches[0].key_of(q.cx, q.cy, q.level) {
+            Some(k) => keys.push(k),
+            None => lost += 1,
+        }
+    }
+    assert_eq!(lost, 0, "{lost} leaves do not map onto the cache");
+    for c in &caches {
+        let e = c.error_of(&keys);
+        let dp = c.dp_optimal((c.quads.len() - 1) / 4);
+        let need = dp.budget_needed(e);
+        let uni = metric::replay(c, Rank::Uniform, c.quads.len());
+        let uni_need = Cache::budget_needed(&uni, e).map(|p| p.budget);
+        logln!(log, "  {}: final error {e:.5}; dp needs B={} (ratio {}); uniform needs B={} (ratio {}); sea_fraction {:.4}",
+               c.metric.name(),
+               need.map(|x| x.to_string()).unwrap_or("--".into()),
+               need.map(|x| format!("{:.2}x", st.quads_computed as f64 / x as f64)).unwrap_or("--".into()),
+               uni_need.map(|x| x.to_string()).unwrap_or("--".into()),
+               uni_need.map(|x| format!("{:.2}x", st.quads_computed as f64 / x as f64)).unwrap_or("--".into()),
+               c.sea_fraction(eps));
+    }
+}
+
+/// **A real descent, scored against a committed cache.** The cache supplies the reference and
+/// the ceiling from its footprint file alone (no reductions needed for `error_of` or the DP);
+/// the descent integrates its own quads — at most a few percent of the cache's cost — under the
+/// named policy, and is mapped onto the cache's keys. Phase 3.1: `Policy::Tolerance` against
+/// `Policy::Alpha` on the same box, the same eps, the same ceiling.
+fn live() {
+    let file: String = std::env::args().nth(2).expect("a .fcache path");
+    let policy = std::env::args().nth(3).unwrap_or_else(|| "tolerance".into());
+    let policy = prin_rs::scheduler::Policy::parse(&policy).expect("policy: tolerance | alpha | sibling");
+    let eps: f64 = arg(4, 0.01);
+    let k_frac: f64 = arg(5, prin_rs::scheduler::K_FRAC_RANKED);
+    let root: String = std::env::args().nth(6).unwrap_or_else(|| "results".into());
+    // The stationarity stop; the struct's default is the one default (off, by measurement).
+    // `1` is the arm the sea-chart control was measured against.
+    let stationary: bool = std::env::args().nth(7).map(|v| v != "0" && v != "false").unwrap_or(SchedCfg::default().stationary);
+    let fp = {
+        let f = std::fs::File::open(&file).expect("open fcache");
+        prin_rs::output::fcache::read(&mut std::io::BufReader::new(f)).expect("read fcache")
+    };
+    let t = target(&fp.region).unwrap_or_else(|| panic!("the file's region `{}` is not a known target", fp.region));
+    let stem = std::path::Path::new(&file).file_stem().unwrap().to_string_lossy().to_string();
+    let tag = format!("{}{}", policy.name(), if policy == prin_rs::scheduler::Policy::Tolerance && !stationary { "_nostat" } else { "" });
+    let log = Log::tee(&format!("{root}/output/payload_live_{stem}_{tag}.txt"));
+    let log = &log;
+    let class = if fp.has_event_class() { ClassArm::EventClass } else { ClassArm::Outcome };
+    logln!(log, "payload_metric live: {file} -- PRQF v{}, region {}, levels {} N={} res {}, t_max {}; policy {} stationary {stationary} eps {eps:e} k_frac {k_frac}; class arm {}",
+           fp.version, fp.region, fp.levels, fp.n, fp.res, fp.t_max, policy.name(), class.name());
+
+    let base = EnsembleCfg::default();
+    let n_sync = ((base.n_sync as f64) * fp.t_max / base.t_max).round().max(2.0) as usize;
+    let ens = EnsembleCfg { refine_flagged: false, t_max: fp.t_max, n_sync, ..Default::default() };
+    logln!(log, "  config: {}", ens.provenance());
+
+    let metrics = [
+        Metric::Payload { eps, class, form: PayloadForm::Indicator },
+        Metric::Payload { eps, class, form: PayloadForm::Resolvable },
+    ];
+    let caches: Vec<Cache> = metrics.iter().map(|&m| Cache::from_footprints(&fp, m).expect("cache")).collect();
+
+    let cfg = SchedCfg {
+        n: fp.n,
+        tau_display: eps,
+        policy,
+        stationary,
+        k_frac,
+        budget: fp.quads.len() * 2,
+        camera: Some(Camera::framing(t.cx, t.cy, t.half, fp.res)),
+        max_level: Some(fp.levels),
+        chart: t.chart,
+        keep_pixels: false,
+        ..Default::default()
+    };
+    let t0 = std::time::Instant::now();
+    let (tree, st) = scheduler::descend(t.cx, t.cy, t.half, t.body, &cfg, &ens, Precision::F64);
+    let leaves: Vec<usize> = tree.leaves().collect();
+    let mut keys = Vec::with_capacity(leaves.len());
+    let mut lost = 0usize;
+    for &i in &leaves {
+        let q = &tree.nodes[i];
+        match caches[0].key_of(q.cx, q.cy, q.level) {
+            Some(k) => keys.push(k),
+            None => lost += 1,
+        }
+    }
+    assert_eq!(lost, 0, "{lost} leaves do not map onto the cache");
+    let steps: u64 = tree.nodes.iter().map(|q| q.red.total_substeps as u64).sum();
+    let depth = leaves.iter().map(|&i| tree.nodes[i].level).max().unwrap_or(0);
+    logln!(log, "  descent: {} quads ({} leaves, depth {depth}) in {:.1}s, {steps:.3e} substeps, stop [{}]",
+           st.quads_computed, leaves.len(), t0.elapsed().as_secs_f64(), tree.stop_breakdown());
+    logln!(log, "  mem_all = {} quads x {} trajectories; mem_leaf = {} quads",
+           st.quads_computed, fp.n * fp.n * (ens.n_extra + 1), leaves.len());
+    let by_level = {
+        let mut m = std::collections::BTreeMap::new();
+        for &i in &leaves { *m.entry(tree.nodes[i].level).or_insert(0usize) += 1; }
+        m.into_iter().map(|(l, n)| format!("{l}:{n}")).collect::<Vec<_>>().join(" ")
+    };
+    logln!(log, "  leaves by level: {by_level}");
+    for c in &caches {
+        let e = c.error_of(&keys);
+        let dp = c.dp_optimal((c.quads.len() - 1) / 4);
+        let need = dp.budget_needed(e);
+        let uni = metric::replay(c, Rank::Uniform, c.quads.len());
+        let uni_need = Cache::budget_needed(&uni, e).map(|p| p.budget);
+        logln!(log, "  {}: error {e:.5}; dp needs B={} (ratio {}); uniform needs B={} (ratio {}); sea_fraction {:.4}",
+               c.metric.name(),
+               need.map(|x| x.to_string()).unwrap_or("--".into()),
+               need.map(|x| format!("{:.2}x", st.quads_computed as f64 / x as f64)).unwrap_or("--".into()),
+               uni_need.map(|x| x.to_string()).unwrap_or("--".into()),
+               uni_need.map(|x| format!("{:.2}x", st.quads_computed as f64 / x as f64)).unwrap_or("--".into()),
+               c.sea_fraction(eps));
     }
 }
 

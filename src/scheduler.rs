@@ -24,12 +24,28 @@ use crate::spatial::{self, HotRule, Layout};
 use crate::render::Precision;
 use crate::rng::SplitMix64;
 
-/// Which signal the floor decision reads.
+/// How a quad that passed every guard is decided.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Policy {
-    /// Threshold on `alpha`'s **value**. Separation between region types is 0.9862 against a
-    /// chaotic scatter of 1.1–1.3 — marginal.
+    /// **The tolerance policy, the default from Phase 2 of the refinement rebuild.** A quad is
+    /// `Keep` when every footprint is resolved at `tau_display` — its copies, which span the
+    /// whole cell, agree on the shape sphere to within the tolerance and on the event class
+    /// exactly — and `Split` otherwise. No exponent, no aggregate: a count in the tail, so a
+    /// filament crossing one footprint column of a quad refines it where a median reads it
+    /// resolved. A quad outranked by `k_frac` is `Deferred` and re-decided next round, never
+    /// dropped as `Keep`.
+    ///
+    /// The legacy policies split only where `alpha >= alpha_hi`, i.e. where halving the cell had
+    /// *already* halved the spread — smooth, converging regions — and floored or kept exactly the
+    /// quads whose spread does not fall: discontinuities and fractal mixing at every scale coarser
+    /// than their filaments. Measured on `preset_shape_h1`: the refinement went into the smooth
+    /// regular island and floored the fractal core at level 2, Spearman(depth, terminated) −0.68.
+    /// That is the inverse of "refine the filaments", and it was the design.
     #[default]
+    Tolerance,
+    /// Threshold on `alpha`'s **value**. Separation between region types is 0.9862 against a
+    /// chaotic scatter of 1.1–1.3 — marginal. **Legacy**: every `.prnq` committed before Phase 2
+    /// was cut with it, and `tests/live_decision.rs` pins that it still reproduces them.
     Alpha,
     /// Threshold on `alpha_sibling_spread`, the range of the four children's exponents.
     /// Separation in `alpha`'s **reliability** is 0.001 against 1.2 — three orders. Where the four
@@ -40,12 +56,14 @@ pub enum Policy {
 impl Policy {
     pub fn name(self) -> &'static str {
         match self {
+            Policy::Tolerance => "tolerance",
             Policy::Alpha => "alpha",
             Policy::Sibling => "sibling",
         }
     }
     pub fn parse(s: &str) -> Option<Policy> {
         Some(match s {
+            "tolerance" => Policy::Tolerance,
             "alpha" => Policy::Alpha,
             "sibling" => Policy::Sibling,
             _ => return None,
@@ -235,6 +253,29 @@ pub struct SchedCfg {
     /// `Decision::Split`. Complexity stays the sole trigger.
     pub camera: Option<Camera>,
     pub tau_display: f64,
+    /// **The stationarity stop** (Phase 2b), `Policy::Tolerance` only. An unresolved quad that is
+    /// white at the footprint scale, whose class mixture matches its parent's and whose quadrants
+    /// agree, and whose shape spread did not fall from the parent, is a homogeneous sea: going
+    /// deeper re-samples it and resolves nothing. Such a quad is `Decision::Stationary` -- a keep
+    /// for now, re-tested at every playhead. Off, it refines to the floor.
+    ///
+    /// **Off by default, by measurement.** It passes its analytic tests (a white sea stops at the
+    /// bootstrap, a filament through it refines), and on the real fields at `eps = 0.01` it fires
+    /// 0, 1 and 34 times on `near-field`, `deep interior` and `preset_shape_h1` -- and on the sea
+    /// chart the 34 saved 5.5% of the quads while leaving 0.94% of *resolvable* pixels
+    /// unresolved (resolvable-form error 0.0094 against 0.0002 with the stop off, 1.60x the
+    /// optimum against 1.11x). The real mixing region is a coherent sponge at the footprint
+    /// scale, not white noise, and coherence reads it as structure, which it is. The arms are
+    /// computed and dumped on every quad regardless, for the `c_stat`/`delta_mix`/`eps` sweep.
+    pub stationary: bool,
+    /// Coherence below which a quad reads as white: lag-1 neighbour correlation of the nominal
+    /// shape and class fields, `max` of the two arms. The white-noise floor at `N = 8` has sd
+    /// about 0.09 over 112 neighbour pairs, so 0.3 is about three sigma.
+    pub c_stat: f64,
+    /// Total-variation distance below which two class mixtures read as the same mixture -- the
+    /// quad against its parent, and each quadrant against the quad. Sixteen footprints per
+    /// quadrant at `N = 8` put the sampling noise near 0.15 for a three-class mixture.
+    pub delta_mix: f64,
     /// How a footprint is called hot for the **shape** statistics.
     ///
     /// Separate from `tau_display`, which still drives the split gate and the absolute mask.
@@ -304,6 +345,9 @@ impl Default for SchedCfg {
             max_level: None,
             camera: None,
             tau_display: 1e-2,
+            stationary: false,
+            c_stat: 0.3,
+            delta_mix: 0.25,
             hot_rule: HotRule::Quantile(0.5),
             alpha_hi: 0.5,
             alpha_lo: 0.2,
@@ -345,28 +389,54 @@ pub struct SchedStats {
     /// is a large share of `quads_computed`, the budget went on geometry rather than physics,
     /// and that is a fact about the run rather than a detail of it.
     pub balance_forced: usize,
+    /// The growth curve of a **live** descent, one point per recorded boundary. Empty for a
+    /// static descent.
+    pub live: Vec<LivePoint>,
+    /// The leaf set at each recorded boundary of a live descent, so a test can assert the tree
+    /// only grows. Empty for a static descent.
+    pub live_leaves: Vec<Vec<usize>>,
+    /// **What a late split costs.** Substeps the children of every split requested at boundary
+    /// `j > 0` would have spent bringing themselves from `t = 0` to `t_j` — estimated as their
+    /// total substeps scaled by `t_j / t_max`, because the march does not record per-boundary
+    /// step counts. Zero for a static descent, whose every quad is requested at the start.
+    pub catchup_substeps: u64,
 }
 
-/// Compute one quad: `N²` footprints, each an `E+1` ensemble, reduced to one `QuadReduction`.
-///
-/// **Never pooled from children.** This is the quad's own ensemble at its own cell width.
-fn compute_quad<T: crate::Real>(
+/// One boundary of a live descent.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct LivePoint {
+    pub j: usize,
+    pub t: f64,
+    pub computed: usize,
+    pub leaves: usize,
+    pub split: usize,
+    pub keep: usize,
+    pub stationary: usize,
+    pub deferred: usize,
+}
+
+/// A footprint sampler: what fills one footprint of a slice. The integrator in production;
+/// an analytic field under test (`crate::testing`), so a policy can be checked against a tree
+/// whose right shape is known in advance.
+pub type Sampler<'a> = &'a (dyn Fn(&crate::grid::Slice, usize) -> PixelOut + Sync);
+
+/// [`compute_quad`] with the sampler injected. **The one place footprints are produced for the
+/// tree**; `descend` and `descend_with` both come through here.
+fn compute_quad_with(
     tree: &QuadTree,
     i: usize,
-    ens: &EnsembleCfg,
     n: usize,
     tau: f64,
     hot_rule: HotRule,
+    t_max: f64,
+    sampler: Sampler<'_>,
 ) -> (QuadReduction, Vec<PixelOut>) {
     let slice = tree.nodes[i].slice(n, tree.body, tree.chart);
-    let px: Vec<PixelOut> = (0..slice.npix())
-        .into_par_iter()
-        .map(|k| evaluate::<T>(&slice, k, ens))
-        .collect();
+    let px: Vec<PixelOut> = (0..slice.npix()).into_par_iter().map(|k| sampler(&slice, k)).collect();
     // Distinctness before divergence: N^2 decodes, no integration, and it is the only test
     // that separates a collapsed decode from a genuinely uniform region.
     let ics: Vec<crate::physics::Cart<f64>> = (0..slice.npix()).map(|k| slice.nominal::<f64>(k)).collect();
-    let mut red = reduce(&px, n, tau, hot_rule, ens.t_max);
+    let mut red = reduce(&px, n, tau, hot_rule, t_max);
     red.n_distinct_ic = crate::decode::distinct(&ics) as u32;
     (red, px)
 }
@@ -470,6 +540,17 @@ pub fn reduce(px: &[PixelOut], n: usize, tau: f64, hot_rule: HotRule, t_max: f64
     // the filter, rather than recomputed downstream from a second pass that could drift out of
     // agreement with it.
     let n_undetermined = px.iter().filter(|p| footprint_undetermined(p)).count() as u32;
+    // The tolerance arm. `ensemble_spread > tau` fires on any class disagreement as well as on
+    // a shape spread past the tolerance (one dissenting copy of eight reads 0.143), and an
+    // unreadable footprint is unresolved by definition. Counts, never quantiles.
+    let unresolved = |p: &PixelOut| footprint_undetermined(p) || p.ensemble_spread > tau;
+    let n_unresolved = px.iter().filter(|p| unresolved(p)).count() as u32;
+    let n_unresolved_event_only = px
+        .iter()
+        .filter(|p| !footprint_undetermined(p) && !(p.spread_shape > tau) && p.spread_event > 0.0)
+        .count() as u32;
+    let spread_max = max_no_discard(px.iter().map(|p| p.ensemble_spread));
+    let (coh_shape, coh_class, class_hist, mix_tv_quadrants) = stationarity_arms(px, n);
     let nfin = sp.len().max(1) as f64;
     let mean = sp.iter().sum::<f64>() / nfin;
     let Between {
@@ -542,7 +623,189 @@ pub fn reduce(px: &[PixelOut], n: usize, tau: f64, hot_rule: HotRule, t_max: f64
             &mut px.iter().map(|p| p.first_divergence_t).filter(finite).collect(),
             0.5,
         ),
+
+        n_unresolved,
+        n_unresolved_undetermined: n_undetermined,
+        n_unresolved_event_only,
+        spread_max,
+        max_excess: spread_max - tau,
+
+        coh_shape,
+        coh_class,
+        class_hist,
+        mix_tv_quadrants,
+        mix_tv_parent: f64::NAN,
     }
+}
+
+/// Pearson correlation of `(a, b)` pairs; `NaN` when either side does not vary.
+fn pearson(pairs: &[(f64, f64)]) -> f64 {
+    let n = pairs.len() as f64;
+    if pairs.len() < 3 {
+        return f64::NAN;
+    }
+    let (ma, mb) = (
+        pairs.iter().map(|p| p.0).sum::<f64>() / n,
+        pairs.iter().map(|p| p.1).sum::<f64>() / n,
+    );
+    let (mut sab, mut saa, mut sbb) = (0.0, 0.0, 0.0);
+    for (a, b) in pairs {
+        sab += (a - ma) * (b - mb);
+        saa += (a - ma) * (a - ma);
+        sbb += (b - mb) * (b - mb);
+    }
+    if saa <= 0.0 || sbb <= 0.0 {
+        f64::NAN
+    } else {
+        sab / (saa * sbb).sqrt()
+    }
+}
+
+/// The two coherence arms, the class histogram and the quadrant mixture distance of one quad.
+///
+/// Coherence is read on the **nominal** fields, copy 0, so it is a statement about the field at
+/// the footprint scale and not about the jitter. The class arm is agreement between neighbours
+/// above what a random permutation of the same histogram would give: `(agree - expect) /
+/// (1 - expect)`, `NaN` on a single class, where `expect = sum p_i^2`.
+fn stationarity_arms(px: &[PixelOut], n: usize) -> (f64, f64, [u16; 27], f64) {
+    let idx = |jx: usize, jy: usize| jy * n + jx;
+    // Shape: lag-1 Pearson per component over horizontal and vertical neighbour pairs, meaned
+    // over the components that vary.
+    let mut comp = Vec::new();
+    for c in 0..3 {
+        let mut pairs = Vec::with_capacity(2 * n * n);
+        for jy in 0..n {
+            for jx in 0..n {
+                let a = px[idx(jx, jy)].shape_vec[c];
+                if jx + 1 < n {
+                    let b = px[idx(jx + 1, jy)].shape_vec[c];
+                    if a.is_finite() && b.is_finite() {
+                        pairs.push((a, b));
+                    }
+                }
+                if jy + 1 < n {
+                    let b = px[idx(jx, jy + 1)].shape_vec[c];
+                    if a.is_finite() && b.is_finite() {
+                        pairs.push((a, b));
+                    }
+                }
+            }
+        }
+        let r = pearson(&pairs);
+        if r.is_finite() {
+            comp.push(r);
+        }
+    }
+    let coh_shape = if comp.is_empty() { f64::NAN } else { comp.iter().sum::<f64>() / comp.len() as f64 };
+
+    // Class: histogram, then neighbour agreement above chance.
+    let mut hist = [0u16; 27];
+    for p in px {
+        let k = crate::output::png::event_class_ordinal(p.event_class).unwrap_or(26);
+        hist[k.min(26)] = hist[k.min(26)].saturating_add(1);
+    }
+    let total: f64 = hist.iter().map(|&c| c as f64).sum::<f64>().max(1.0);
+    // **Class-conditional**, and the max over classes: for each class present at least twice,
+    // the fraction of its footprints' neighbours that are the same class, above the class's own
+    // base rate, normalised to 1. A global agreement-above-chance statistic is nearly blind to
+    // a thin filament -- one coherent column of eight moves agreement over a hundred pairs by a
+    // few percent -- while the filament's own class clusters at 0.6 against a base rate of an
+    // eighth. A sea reads near zero on every class; the max over classes is what a filament
+    // violates and a sea does not.
+    let mut coh_class = f64::NAN;
+    for c in 0..27usize {
+        if hist[c] < 2 {
+            continue;
+        }
+        let p_c = hist[c] as f64 / total;
+        if p_c >= 1.0 - 1e-12 {
+            continue;
+        }
+        let (mut adj, mut same) = (0usize, 0usize);
+        for jy in 0..n {
+            for jx in 0..n {
+                let a = crate::output::png::event_class_ordinal(px[idx(jx, jy)].event_class).unwrap_or(26).min(26);
+                if a != c {
+                    continue;
+                }
+                let mut nb = Vec::with_capacity(4);
+                if jx > 0 { nb.push(idx(jx - 1, jy)); }
+                if jx + 1 < n { nb.push(idx(jx + 1, jy)); }
+                if jy > 0 { nb.push(idx(jx, jy - 1)); }
+                if jy + 1 < n { nb.push(idx(jx, jy + 1)); }
+                for k in nb {
+                    adj += 1;
+                    let b = crate::output::png::event_class_ordinal(px[k].event_class).unwrap_or(26).min(26);
+                    same += (b == c) as usize;
+                }
+            }
+        }
+        if adj == 0 {
+            continue;
+        }
+        let v = (same as f64 / adj as f64 - p_c) / (1.0 - p_c);
+        coh_class = if coh_class.is_nan() { v } else { coh_class.max(v) };
+    }
+
+    // Quadrants: the MEAN TV distance between a quadrant's mixture and the whole quad's. Not
+    // the max: at `N = 8` a quadrant holds sixteen footprints, and the largest of four
+    // multinomial deviations on a three-class sea reaches 0.33 by sampling alone -- measured on
+    // the synthetic sea, where a pure sea split on its own noise. The mean sits near 0.14
+    // there, and a filament that touches one quadrant still lifts it.
+    let whole = {
+        let mut m = [0.0f64; 27];
+        for (k, &c) in hist.iter().enumerate() {
+            m[k] = c as f64 / total;
+        }
+        m
+    };
+    let half = n / 2;
+    let (mut acc, mut nq) = (0.0f64, 0usize);
+    if half >= 1 {
+        for qy in 0..2 {
+            for qx in 0..2 {
+                let mut h = [0.0f64; 27];
+                let mut cnt = 0.0;
+                for jy in qy * half..((qy + 1) * half).min(n) {
+                    for jx in qx * half..((qx + 1) * half).min(n) {
+                        let k = crate::output::png::event_class_ordinal(px[idx(jx, jy)].event_class).unwrap_or(26);
+                        h[k.min(26)] += 1.0;
+                        cnt += 1.0;
+                    }
+                }
+                if cnt > 0.0 {
+                    for v in h.iter_mut() {
+                        *v /= cnt;
+                    }
+                    acc += QuadReduction::mix_tv(&h, &whole);
+                    nq += 1;
+                }
+            }
+        }
+    }
+    let mean_tv = if nq == 0 { f64::NAN } else { acc / nq as f64 };
+    (coh_shape, coh_class, hist, mean_tv)
+}
+
+/// **The stationarity test**, `Policy::Tolerance` only, on an unresolved quad above the bootstrap.
+///
+/// Three arms, all required: white at the footprint scale, the same class mixture at two scales
+/// and across its quadrants, and a shape spread that did not fall from the parent. A filament
+/// fails the first two (organised, and its quadrants differ); a regular island's ribbon fails the
+/// third (`alpha ~ 1`); a fat mixing cross at level 2 fails the first (its arms are coherent at
+/// that scale). Only a region white at the footprint scale with the same mixture at two scales
+/// passes -- and it says "nothing resolvable at this sampling", not "nothing". A `NaN` arm never
+/// passes: an unmeasured arm is not evidence of a sea.
+pub fn stationary(q: &crate::quad::Quad, cfg: &SchedCfg) -> bool {
+    let r = &q.red;
+    let coh = r.coherence();
+    let white = coh.is_finite() && coh < cfg.c_stat;
+    let same_mix = r.mix_tv_parent.is_finite()
+        && r.mix_tv_parent < cfg.delta_mix
+        && r.mix_tv_quadrants.is_finite()
+        && r.mix_tv_quadrants < cfg.delta_mix;
+    let flat = matches!(q.alpha, Some(a) if a.is_finite() && a < cfg.alpha_lo);
+    white && same_mix && flat
 }
 
 /// The between-footprint arm, the matched-count controls, and the layout fields.
@@ -740,7 +1003,7 @@ fn balance_pass(tree: &mut QuadTree, iteration: u32, room: usize) -> Vec<usize> 
     made
 }
 
-/// Run the descent. Returns the tree and what it did.
+/// Run the descent with the integrator. Returns the tree and what it did.
 pub fn descend(
     cx: f64,
     cy: f64,
@@ -750,10 +1013,38 @@ pub fn descend(
     ens: &EnsembleCfg,
     precision: Precision,
 ) -> (QuadTree, SchedStats) {
+    match precision {
+        Precision::F32 => {
+            let sampler = |sl: &crate::grid::Slice, k: usize| evaluate::<f32>(sl, k, ens);
+            descend_with(cx, cy, half, body, cfg, ens.t_max, &sampler)
+        }
+        Precision::F64 => {
+            let sampler = |sl: &crate::grid::Slice, k: usize| evaluate::<f64>(sl, k, ens);
+            descend_with(cx, cy, half, body, cfg, ens.t_max, &sampler)
+        }
+    }
+}
+
+/// Run the descent with an injected footprint sampler — the integrator, or an analytic field
+/// from `crate::testing` whose right tree is known in advance.
+pub fn descend_with(
+    cx: f64,
+    cy: f64,
+    half: f64,
+    body: usize,
+    cfg: &SchedCfg,
+    t_max: f64,
+    sampler: Sampler<'_>,
+) -> (QuadTree, SchedStats) {
     let t0 = std::time::Instant::now();
     let mut tree = QuadTree::with_chart(cx, cy, half, cfg.n, body, cfg.chart);
     let mut st = SchedStats::default();
     let mut pending = vec![0usize];
+    // **Quads that wanted to split and were outranked**, carried across rounds and re-decided
+    // each time. `Policy::Tolerance` only: under it `Keep` means *resolved*, and a dropped
+    // unresolved quad wearing that label was the conflation the stop-reason column exists to
+    // prevent. The legacy policies drop them as `Keep`, bitwise as before.
+    let mut deferred: Vec<usize> = Vec::new();
     let mut iteration = 0u32;
 
     while !pending.is_empty() {
@@ -772,14 +1063,7 @@ pub fn descend(
 
         let reds: Vec<(QuadReduction, Vec<PixelOut>)> = pending
             .iter()
-            .map(|&i| match precision {
-                Precision::F32 => {
-                    compute_quad::<f32>(&tree, i, ens, cfg.n, cfg.tau_display, cfg.hot_rule)
-                }
-                Precision::F64 => {
-                    compute_quad::<f64>(&tree, i, ens, cfg.n, cfg.tau_display, cfg.hot_rule)
-                }
-            })
+            .map(|&i| compute_quad_with(&tree, i, cfg.n, cfg.tau_display, cfg.hot_rule, t_max, sampler))
             .collect();
         for (&i, (r, px)) in pending.iter().zip(reds) {
             tree.nodes[i].red = r;
@@ -801,6 +1085,10 @@ pub fn descend(
                 tree.nodes[i].alpha = ratio_log2(pr.spread(cfg.agg), cr.spread(cfg.agg));
                 tree.nodes[i].alpha_mean = ratio_log2(pr.spread_mean, cr.spread_mean);
                 tree.nodes[i].alpha_p90 = ratio_log2(pr.spread_p90, cr.spread_p90);
+                // The two-scale mixture arm: this quad's class mixture against its parent's, at
+                // the same playhead -- the reason the parent is kept marching.
+                tree.nodes[i].red.mix_tv_parent =
+                    QuadReduction::mix_tv(&cr.class_mix(), &pr.class_mix());
             }
         }
 
@@ -827,8 +1115,13 @@ pub fn descend(
         }
 
         // ---- decide -------------------------------------------------------------------
+        //
+        // The frontier is this round's computed quads plus everything deferred by the ranking
+        // in earlier rounds. `decide` is pure on the reduction, so re-deciding costs nothing and
+        // nothing is recomputed.
         let mut want: Vec<usize> = Vec::new();
-        for &i in &pending {
+        let frontier: Vec<usize> = pending.iter().cloned().chain(deferred.drain(..)).collect();
+        for &i in &frontier {
             let d = decide(&tree, i, cfg);
             tree.nodes[i].decision = d;
             if d == Decision::Split {
@@ -880,7 +1173,12 @@ pub fn descend(
             // `min`, not `clamp(1, ..)`: with an empty `rest` there is nothing to take, and
             // forcing one would reintroduce a split the ranking declined.
             for &i in rest.iter().skip(k) {
-                tree.nodes[i].decision = Decision::Keep;
+                if cfg.policy == Policy::Tolerance {
+                    tree.nodes[i].decision = Decision::Deferred;
+                    deferred.push(i);
+                } else {
+                    tree.nodes[i].decision = Decision::Keep;
+                }
             }
             want = boot.into_iter().chain(rest.into_iter().take(k)).collect();
         }
@@ -931,6 +1229,26 @@ pub fn decide(tree: &QuadTree, i: usize, cfg: &SchedCfg) -> Decision {
     if q.below_precision_floor(tree.n) {
         return Decision::PrecisionFloor;
     }
+    // **Under the tolerance policy a quad that does not want to split is decided before any cap
+    // or veto.** The camera floor and the depth cap are stops for a quad that *wanted* to split;
+    // a quad whose every footprint is resolved did not, and neither did a stationary sea, and
+    // reporting either as `MaxLevel` or `ScreenFloor` attributes the stop to the cap when the
+    // criterion had already decided. The stop-reason breakdown exists to say which one fired.
+    // The bootstrap, a collapsed decode and an undetermined quad are decided by their own rules
+    // below, as before. Legacy policies keep their order bitwise.
+    if cfg.policy == Policy::Tolerance
+        && cfg.mode != Mode::Uniform
+        && q.level >= cfg.bootstrap_levels
+        && !q.red.between_collapsed()
+        && !q.red.within_undetermined()
+    {
+        if q.red.n_unresolved == 0 {
+            return Decision::Keep;
+        }
+        if cfg.stationary && stationary(q, cfg) {
+            return Decision::Stationary;
+        }
+    }
     // **The veto.** Evaluated live from (quad, camera) and never stored on the quad: zoom in
     // and the same patch regrows above pixel size and refines with real new samples. It sits
     // ahead of the bootstrap too — an unconditional split past the screen floor would be the
@@ -979,6 +1297,16 @@ pub fn decide(tree: &QuadTree, i: usize, cfg: &SchedCfg) -> Decision {
         return Decision::Split;
     }
 
+    // **The tolerance policy.** Resolved means every footprint resolved; anything else splits.
+    // No aggregate runs ahead of it: a quad with one hot footprint of 64 has a median below
+    // `tau` and would read `Keep` under the gate below, which is *median under-refines thin
+    // structure* at full strength.
+    if cfg.policy == Policy::Tolerance {
+        // Resolved and stationary were returned above, ahead of the caps; what is left wants
+        // to split.
+        return Decision::Split;
+    }
+
     let spread = q.red.signal_with(cfg.criterion, cfg.agg, cfg.structure);
     if !(spread > cfg.tau_display) {
         return Decision::Keep;
@@ -995,6 +1323,8 @@ pub fn decide(tree: &QuadTree, i: usize, cfg: &SchedCfg) -> Decision {
             }
         }
         Policy::Alpha => alpha_branch(q.alpha, cfg),
+        // Returned above, before any aggregate or exponent is read.
+        Policy::Tolerance => unreachable!("the tolerance policy decides before the legacy branch"),
     }
 }
 
@@ -1053,4 +1383,266 @@ fn order_queue(want: &mut [usize], tree: &QuadTree, cfg: &SchedCfg) {
             }
         }),
     }
+}
+
+
+// -------------------------------------------------------------------------------------------
+// Phase 2c: the live descent.
+// -------------------------------------------------------------------------------------------
+
+/// **The footprint as it was known at recorded boundary `j`** — the live view.
+///
+/// Everything the tolerance policy reads is taken from the live series at `j`: the copies'
+/// shape and event spreads, the nominal shape and class. A footprint that had terminated by
+/// `t_j` keeps its terminal state; one that had not is `Bounded` at `t_j`, censored, because at
+/// `t_j` that is all that was known. Every accumulator that reads past `t_j` is masked to `NaN`
+/// rather than left at its terminal value: the running maxima, the first-divergence time, the
+/// terminal energy statistics. `n_nonfinite` is left at its terminal value, which is
+/// **conservative** — a copy that failed later than `t_j` reads as unusable earlier than it was,
+/// so the view splits sooner than a perfectly live one would, never later. `total_substeps` is
+/// scaled to `t_j / t_max` as an estimate.
+///
+/// A decision made on this view cannot read the future, which is the live-playhead contract as
+/// a function rather than a thing to remember.
+pub fn project_at(p: &PixelOut, j: usize) -> PixelOut {
+    use crate::outcome::State;
+    assert!(j < p.live_t.len(), "no live series entry {j}: keep_live_series was off, or j is past the end");
+    let t_j = p.live_t[j];
+    let mut q = p.clone();
+    q.spread_shape = p.live_spread_shape[j];
+    q.spread_event = p.live_spread_event[j];
+    q.ensemble_spread = q.spread_shape.max(q.spread_event);
+    q.shape_vec = p.live_shape[j];
+    q.event_class = p.live_class[j];
+    let terminated = !p.censored && p.t_end <= t_j * (1.0 + 1e-12);
+    if !terminated {
+        q.state = State::Bounded as u8;
+        q.detail = 0;
+        q.outcome = (State::Bounded as u8) << 2;
+        q.t_end = t_j;
+        q.censored = true;
+    }
+    q.running_max_divergence = f64::NAN;
+    q.divergence_trend = f64::NAN;
+    q.first_divergence_t = f64::NAN;
+    q.spread_event_max = f64::NAN;
+    q.spread_event_latched = f64::NAN;
+    q.t_spread_event = f64::NAN;
+    q.error_ratio = f64::NAN;
+    q.error_ratio_mad = f64::NAN;
+    q.energy_drift_max = f64::NAN;
+    q.energy_drift_nominal = f64::NAN;
+    let frac = if p.t_end > 0.0 { (t_j / p.live_t.last().cloned().unwrap_or(t_j)).clamp(0.0, 1.0) } else { 1.0 };
+    q.total_substeps = (p.total_substeps as f64 * frac).round() as u64;
+    q.total_force_evals = (p.total_force_evals as f64 * frac).round() as u64;
+    q
+}
+
+/// Run the **live** descent with the integrator: one march per footprint, the tree grown
+/// boundary by boundary from the live series. `ens.keep_live_series` must be on.
+pub fn descend_live(
+    cx: f64,
+    cy: f64,
+    half: f64,
+    body: usize,
+    cfg: &SchedCfg,
+    ens: &EnsembleCfg,
+    precision: Precision,
+) -> (QuadTree, SchedStats) {
+    assert!(ens.keep_live_series, "descend_live needs EnsembleCfg::keep_live_series");
+    match precision {
+        Precision::F32 => {
+            let sampler = |sl: &crate::grid::Slice, k: usize| evaluate::<f32>(sl, k, ens);
+            descend_live_with(cx, cy, half, body, cfg, ens.t_max, &sampler)
+        }
+        Precision::F64 => {
+            let sampler = |sl: &crate::grid::Slice, k: usize| evaluate::<f64>(sl, k, ens);
+            descend_live_with(cx, cy, half, body, cfg, ens.t_max, &sampler)
+        }
+    }
+}
+
+/// **The live descent**: the tree as a playhead would have built it.
+///
+/// Every quad is marched to `t_max` once and keeps its live series. The tree is then grown
+/// boundary by boundary: at each recorded boundary `j`, every live leaf is re-decided on its
+/// footprints **projected to `j`** ([`project_at`]), with its parent's projection beside it for
+/// `alpha` and the two-scale mixture arm; a `Split` computes the four children — which join the
+/// frontier at the *same* boundary, since they too are marched to `t_max` — and is
+/// **irreversible**; `Keep`, `Stationary` and `Deferred` are re-tested at the next boundary;
+/// the caps, the precision floor, a collapsed decode and an undetermined quad are terminal for
+/// the quad. So the tree can only grow, `Quad::iteration` records the boundary at which a quad
+/// was requested, and `SchedStats::catchup_substeps` prices what a late split costs. At the last
+/// boundary every projection equals the terminal footprint, so the finished tree's reductions
+/// are the same numbers the static descent would carry.
+///
+/// **The bootstrap is at `j = 0`**: nothing is known before the first boundary, and the
+/// unconditional splits below `bootstrap_levels` are by fiat, exactly as in the static descent.
+pub fn descend_live_with(
+    cx: f64,
+    cy: f64,
+    half: f64,
+    body: usize,
+    cfg: &SchedCfg,
+    t_max: f64,
+    sampler: Sampler<'_>,
+) -> (QuadTree, SchedStats) {
+    assert!(cfg.policy == Policy::Tolerance, "the live descent is defined for Policy::Tolerance");
+    let t0 = std::time::Instant::now();
+    let mut tree = QuadTree::with_chart(cx, cy, half, cfg.n, body, cfg.chart);
+    let mut st = SchedStats::default();
+    let mut px_of: Vec<Vec<PixelOut>> = Vec::new();
+
+    // Compute a quad at boundary `j`: march, store, record the request time.
+    let compute = |tree: &mut QuadTree, st: &mut SchedStats, px_of: &mut Vec<Vec<PixelOut>>, i: usize, j: usize| {
+        let (r, px) = compute_quad_with(tree, i, cfg.n, cfg.tau_display, cfg.hot_rule, t_max, sampler);
+        assert!(!px.is_empty() && !px[0].live_t.is_empty(), "the sampler produced no live series");
+        tree.nodes[i].red = r;
+        tree.nodes[i].iteration = j as u32;
+        st.footprints += r.n_footprints as usize;
+        st.quads_computed += 1;
+        if px_of.len() <= i {
+            px_of.resize(i + 1, Vec::new());
+        }
+        px_of[i] = px;
+    };
+
+    compute(&mut tree, &mut st, &mut px_of, 0, 0);
+    let n_b = px_of[0][0].live_t.len();
+
+    // The bootstrap, by fiat, at j = 0.
+    let mut frontier: Vec<usize> = vec![0];
+    for _ in 0..cfg.bootstrap_levels {
+        let mut next = Vec::new();
+        for &i in &frontier {
+            if st.quads_computed + 4 > cfg.budget {
+                tree.nodes[i].decision = Decision::BudgetExhausted;
+                st.budget_exhausted = true;
+                continue;
+            }
+            tree.nodes[i].decision = Decision::Split;
+            let kids = tree.split(i, 0);
+            for &k in &kids {
+                compute(&mut tree, &mut st, &mut px_of, k, 0);
+            }
+            next.extend_from_slice(&kids);
+        }
+        frontier = next;
+    }
+
+    // Terminal decisions leave the frontier; everything else is re-tested every boundary.
+    let terminal = |d: Decision| {
+        matches!(
+            d,
+            Decision::PrecisionFloor
+                | Decision::MaxLevel
+                | Decision::ScreenFloor
+                | Decision::MaxRelDepth
+                | Decision::Collapsed
+                | Decision::Undetermined
+                | Decision::BudgetExhausted
+        )
+    };
+
+    // Boundaries `0..n_b`, then **post-horizon rounds** at the last boundary until nothing
+    // wants to split: the playhead stops at the horizon, the tree does not. Children requested
+    // at boundary `j` can first be decided at `j + 1` (they have to catch up to the playhead),
+    // so the tree gains at most one level per boundary during the march; at the horizon it
+    // continues in the static regime, and a child requested there costs a full march.
+    let mut j = 0usize;
+    let mut post = 0usize;
+    loop {
+        let t_j = px_of[0][0].live_t[j];
+        // Project every live leaf and its parent to `j`, so the decision reads the boundary.
+        for &i in &frontier {
+            let proj: Vec<PixelOut> = px_of[i].iter().map(|p| project_at(p, j)).collect();
+            let mut r = reduce(&proj, cfg.n, cfg.tau_display, cfg.hot_rule, t_max);
+            r.n_distinct_ic = tree.nodes[i].red.n_distinct_ic;
+            tree.nodes[i].red = r;
+        }
+        for &i in &frontier {
+            if let Some(pi) = tree.nodes[i].parent {
+                let pproj: Vec<PixelOut> = px_of[pi].iter().map(|p| project_at(p, j)).collect();
+                let mut pr = reduce(&pproj, cfg.n, cfg.tau_display, cfg.hot_rule, t_max);
+                pr.n_distinct_ic = tree.nodes[pi].red.n_distinct_ic;
+                let cr = tree.nodes[i].red;
+                tree.nodes[i].alpha = ratio_log2(pr.spread(cfg.agg), cr.spread(cfg.agg));
+                tree.nodes[i].alpha_mean = ratio_log2(pr.spread_mean, cr.spread_mean);
+                tree.nodes[i].alpha_p90 = ratio_log2(pr.spread_p90, cr.spread_p90);
+                tree.nodes[i].red.mix_tv_parent = QuadReduction::mix_tv(&cr.class_mix(), &pr.class_mix());
+            }
+        }
+
+        let mut want: Vec<usize> = Vec::new();
+        let mut point = LivePoint { j, t: t_j, ..Default::default() };
+        for &i in &frontier {
+            let d = decide(&tree, i, cfg);
+            tree.nodes[i].decision = d;
+            match d {
+                Decision::Split => want.push(i),
+                Decision::Keep => point.keep += 1,
+                Decision::Stationary => point.stationary += 1,
+                _ => {}
+            }
+        }
+        order_queue(&mut want, &tree, cfg);
+        if cfg.mode != Mode::Uniform && cfg.k_frac < 1.0 && !want.is_empty() {
+            let k = ((want.len() as f64 * cfg.k_frac).ceil() as usize).min(want.len());
+            for &i in want.iter().skip(k) {
+                tree.nodes[i].decision = Decision::Deferred;
+                point.deferred += 1;
+            }
+            want.truncate(k);
+        }
+        let room = cfg.budget.saturating_sub(st.quads_computed) / 4;
+        if want.len() > room {
+            for &i in want.iter().skip(room) {
+                tree.nodes[i].decision = Decision::BudgetExhausted;
+            }
+            want.truncate(room);
+            st.budget_exhausted = true;
+        }
+        point.split = want.len();
+
+        let mut next: Vec<usize> = Vec::new();
+        for &i in &frontier {
+            if !terminal(tree.nodes[i].decision) && tree.nodes[i].decision != Decision::Split {
+                next.push(i);
+            }
+        }
+        for &i in &want {
+            let kids = tree.split(i, j as u32);
+            for &k in &kids {
+                compute(&mut tree, &mut st, &mut px_of, k, j);
+                if j > 0 || post > 0 {
+                    let steps: u64 = px_of[k].iter().map(|p| p.total_substeps as u64).sum();
+                    st.catchup_substeps += (steps as f64 * (t_j / t_max).clamp(0.0, 1.0)).round() as u64;
+                }
+            }
+            next.extend_from_slice(&kids);
+        }
+        frontier = next;
+
+        point.j = j + post;
+        point.computed = st.quads_computed;
+        point.leaves = tree.leaves().count();
+        st.live.push(point);
+        st.live_leaves.push(tree.leaves().collect());
+        st.leaves_per_iteration.push(point.leaves);
+        st.iterations = (j + post + 1) as u32;
+        if j + 1 < n_b {
+            j += 1;
+        } else {
+            post += 1;
+            if want.is_empty() || frontier.is_empty() || post > 64 {
+                break;
+            }
+        }
+    }
+
+    if cfg.keep_pixels {
+        st.pixels = px_of;
+    }
+    st.wall_seconds = t0.elapsed().as_secs_f64();
+    (tree, st)
 }

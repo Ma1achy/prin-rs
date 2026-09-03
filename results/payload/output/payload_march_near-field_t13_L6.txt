@@ -1,0 +1,32 @@
+payload_metric march: /private/tmp/claude-501/-Users-malachy-src-principia-rs-test/260ec0e2-d203-4f2d-85ff-f64a85497918/scratchpad/payload/payload/near-field_t13_L6.fcache -- region near-field, levels 6 N=8 res 512, t_max 13; tolerance policy, stationary true, eps 1e-2 k_frac 0.25, live_stride 4; class arm event_class
+  config: production + 2 override(s): refine_flagged=false (production true), keep_live_series=true (production false)
+  live descent: 153 quads (115 leaves, depth 6) in 26.0s, 3.928e8 substeps, catch-up 3.313e8 substeps (84.3% of the total), stop [keep:81 screen_floor:34]
+    j       t  computed  leaves  split   keep stationary deferred
+    0   1.625        21      16      0     16          0        0
+    1   3.250        21      16      0     16          0        0
+    2   4.875        21      16      0     16          0        0
+    3   6.500        21      16      0     16          0        0
+    4   8.125        21      16      0     16          0        0
+    5   9.750        25      19      1     14          0        1
+    6  11.375        29      22      1     16          0        2
+    7  13.000        37      28      2     17          0        3
+    8  13.000        41      31      1     24          0        3
+    9  13.000        49      37      2     26          0        3
+   10  13.000        61      46      3     28          0        6
+   11  13.000        73      55      3     34          0        9
+   12  13.000        85      64      3     40          0        7
+   13  13.000        93      70      2     47          0        5
+   14  13.000       101      76      2     50          0        3
+   15  13.000       109      82      2     54          0        5
+   16  13.000       117      88      2     56          0        6
+   17  13.000       125      94      2     61          0        4
+   18  13.000       133     100      2     65          0        4
+   19  13.000       137     103      1     68          0        3
+   20  13.000       141     106      1     71          0        3
+   21  13.000       145     109      1     73          0        2
+   22  13.000       149     112      1     75          0        1
+   23  13.000       153     115      1     78          0        0
+   24  13.000       153     115      0     81          0        0
+  leaves by level: 2:14 3:3 4:11 5:19 6:68
+  payload/event_class/indicator/eps=1e-2: final error 0.00000; dp needs B=137 (ratio 1.12x); uniform needs B=5449 (ratio 0.03x); sea_fraction 0.0005
+  payload/event_class/resolvable/eps=1e-2: final error 0.00000; dp needs B=137 (ratio 1.12x); uniform needs B=5449 (ratio 0.03x); sea_fraction 0.0005

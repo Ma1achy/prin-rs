@@ -22,6 +22,7 @@ pub mod rng;
 pub mod scheduler;
 pub mod spatial;
 pub mod stats;
+pub mod testing;
 
 pub use real::Real;
 pub use vec2::Vec2;

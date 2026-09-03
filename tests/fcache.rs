@@ -135,6 +135,7 @@ fn a_nan_survives_the_round_trip_as_a_nan() {
         ..Default::default()
     };
     let fp = fcache::Footprints {
+        version: fcache::VERSION,
         region: "t".into(),
         chart: "body_plane".into(),
         cx: 0.0,

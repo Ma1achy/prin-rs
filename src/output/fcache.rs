@@ -12,13 +12,24 @@
 //! This stores what a colouring reads, per footprint. With it, `error(B)` under any colouring —
 //! present or future — is a replay of a file rather than a march. The integration is paid once.
 //!
+//! # v2: the event class, for the physics-space metric
+//!
+//! `Metric::Payload` scores a tree on the nominal copy's `shape_vec` and its **class**, and the
+//! class arm the live criterion reads is the event class — the currently tightest pair, joined
+//! with the terminal outcome once a copy has terminated — never the terminal outcome alone,
+//! which is saturated at `t = 13`. v1 stored only the packed outcome, so the three committed
+//! `results/criterion/*_t13.fcache` can be replayed under `ClassArm::Outcome` at zero cost and
+//! **cannot** be replayed under `ClassArm::EventClass`: a v1 row reads
+//! [`EVENT_CLASS_ABSENT`] there, and `Cache::remeasure` refuses by name rather than scoring a
+//! sentinel as a class. Append-only, as with every other format here: a v2 reader reads v1.
+//!
 //! # What is stored, and what is deliberately not
 //!
-//! Only the fields a colour map or the reserved-null path reads. Not the ensemble, not the
-//! per-copy outcomes, not the boundary shape vectors: those feed the *criterion*, and the
-//! criterion's scalars are already in `PRQC`. Splitting it this way keeps each file the size of
-//! the question it answers — at 5461 quads x 64 footprints x 14 `f64` this is about 39 MB per
-//! region, the same budget `PRQC` was sized against.
+//! Only the fields a colour map, the payload metric or the reserved-null path read. Not the
+//! ensemble, not the per-copy outcomes, not the boundary shape vectors: those feed the
+//! *criterion*, and the criterion's scalars are already in `PRQC`. Splitting it this way keeps
+//! each file the size of the question it answers — at 5461 quads x 64 footprints x 15 `f64`
+//! this is about 42 MB per region.
 //!
 //! # The one thing to be careful of
 //!
@@ -35,7 +46,11 @@ use crate::ensemble::pixel::PixelOut;
 use crate::metric::Key;
 
 pub const MAGIC: &[u8; 4] = b"PRQF";
-pub const VERSION: u32 = 1;
+pub const VERSION: u32 = 2;
+
+/// The `event_class` a v1 file reads back: no class was stored. Never a valid class — the
+/// alphabet is 3 pair identities plus `TERMINAL_TAG + terminal`, all below 64.
+pub const EVENT_CLASS_ABSENT: u8 = 255;
 
 pub const FIELDS: &[&str] = &[
     "shape_x", "shape_y", "shape_z",
@@ -43,10 +58,15 @@ pub const FIELDS: &[&str] = &[
     "ensemble_spread", "spread_shape", "spread_event",
     "ftle", "diffusion",
     "t_end", "error_ratio", "d_min_true", "energy_drift_max",
+    // --- v2 ---
+    "event_class",
 ];
 
+/// Field count of a v1 file, which this reader still accepts.
+const FIELDS_V1: usize = 14;
+
 /// The colour-relevant projection of one footprint.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Row {
     pub shape: [f64; 3],
     /// `state << 2 | detail`, the same packing `ssaa::packed_rgb` reads.
@@ -61,6 +81,28 @@ pub struct Row {
     pub error_ratio: f64,
     pub d_min_true: f64,
     pub energy_drift_max: f64,
+    /// v2. [`EVENT_CLASS_ABSENT`] when read from a v1 file.
+    pub event_class: u8,
+}
+
+impl Default for Row {
+    fn default() -> Self {
+        Row {
+            shape: [0.0; 3],
+            packed: 0,
+            n_nonfinite: 0,
+            ensemble_spread: 0.0,
+            spread_shape: 0.0,
+            spread_event: 0.0,
+            ftle: 0.0,
+            diffusion: 0.0,
+            t_end: 0.0,
+            error_ratio: 0.0,
+            d_min_true: 0.0,
+            energy_drift_max: 0.0,
+            event_class: EVENT_CLASS_ABSENT,
+        }
+    }
 }
 
 impl Row {
@@ -78,6 +120,7 @@ impl Row {
             error_ratio: p.error_ratio,
             d_min_true: p.d_min_true,
             energy_drift_max: p.energy_drift_max,
+            event_class: p.event_class,
         }
     }
 
@@ -104,11 +147,12 @@ impl Row {
             error_ratio: self.error_ratio,
             d_min_true: self.d_min_true,
             energy_drift_max: self.energy_drift_max,
+            event_class: self.event_class,
             ..Default::default()
         }
     }
 
-    fn to_f64s(self) -> [f64; 14] {
+    fn to_f64s(self) -> [f64; 15] {
         [
             self.shape[0],
             self.shape[1],
@@ -124,6 +168,7 @@ impl Row {
             self.error_ratio,
             self.d_min_true,
             self.energy_drift_max,
+            self.event_class as f64,
         ]
     }
 
@@ -141,6 +186,8 @@ impl Row {
             error_ratio: v[11],
             d_min_true: v[12],
             energy_drift_max: v[13],
+            // A v1 row has no 15th column: the class is ABSENT, never zero (zero is pair 0).
+            event_class: v.get(14).map(|x| *x as u8).unwrap_or(EVENT_CLASS_ABSENT),
         }
     }
 }
@@ -158,10 +205,18 @@ pub struct Footprints {
     pub n: usize,
     pub res: usize,
     pub t_max: f64,
+    /// The format version this was read from, or [`VERSION`] when built in memory. A v1 file
+    /// has no event class, and a reader that needs one must be told so by name.
+    pub version: u32,
     pub quads: HashMap<Key, Vec<Row>>,
 }
 
 impl Footprints {
+    /// Whether every row carries a stored event class — false for a v1 file.
+    pub fn has_event_class(&self) -> bool {
+        self.version >= 2
+    }
+
     /// The geometry this file describes matches the cache it is about to recolour.
     ///
     /// Checked rather than assumed: a footprint file from a different region or resolution would
@@ -210,6 +265,8 @@ handed to the scheduler or to anything that reads the ensemble.\n\
          note=PRQC stores per-quad reductions and a BAKED err_sum, which is a function of the \
 colouring. This file is what makes error(B) under a new colouring a replay rather than a \
 re-integration.\n\
+         note=v2 appends event_class, the class arm Metric::Payload reads; a v1 file reads it \
+back as 255 (absent) and cannot be replayed under ClassArm::EventClass.\n\
          fields={}\n",
         f.region,
         f.body,
@@ -261,8 +318,8 @@ pub fn read<R: Read>(r: &mut R) -> io::Result<Footprints> {
     let mut u32b = [0u8; 4];
     r.read_exact(&mut u32b)?;
     let v = u32::from_le_bytes(u32b);
-    if v != VERSION {
-        return Err(bad(&format!("PRQF version {v}, expected {VERSION}")));
+    if v != 1 && v != VERSION {
+        return Err(bad(&format!("PRQF version {v}, this build reads 1 and {VERSION}")));
     }
     r.read_exact(&mut u32b)?;
     let hlen = u32::from_le_bytes(u32b) as usize;
@@ -287,14 +344,24 @@ pub fn read<R: Read>(r: &mut R) -> io::Result<Footprints> {
     let num = |name: &str| -> f64 {
         field(name).and_then(|s| s.parse().ok()).unwrap_or(f64::NAN)
     };
+    // `region` can carry a space (`deep interior`) and sits on the shared first line, so a
+    // whitespace split read it as `deep` and `agrees_with` refused the file's own cache. Read
+    // everything between `region=` and ` body=` instead; the same parse serves v1 and v2.
+    let region = header
+        .lines()
+        .next()
+        .and_then(|l| l.strip_prefix("region="))
+        .map(|rest| rest.split(" body=").next().unwrap_or(rest).to_string())
+        .unwrap_or_default();
 
     let mut u64b = [0u8; 8];
     r.read_exact(&mut u64b)?;
     let nq = u64::from_le_bytes(u64b) as usize;
     r.read_exact(&mut u32b)?;
     let nf = u32::from_le_bytes(u32b) as usize;
-    if nf != FIELDS.len() {
-        return Err(bad(&format!("PRQF has {nf} fields, this build expects {}", FIELDS.len())));
+    let expect = if v == 1 { FIELDS_V1 } else { FIELDS.len() };
+    if nf != expect {
+        return Err(bad(&format!("PRQF v{v} has {nf} fields, this build expects {expect}")));
     }
 
     let mut quads: HashMap<Key, Vec<Row>> = HashMap::with_capacity(nq);
@@ -320,7 +387,7 @@ pub fn read<R: Read>(r: &mut R) -> io::Result<Footprints> {
     }
 
     Ok(Footprints {
-        region: field("region").unwrap_or_default(),
+        region,
         chart: line_field("chart").unwrap_or_default(),
         cx: num("cx"),
         cy: num("cy"),
@@ -330,6 +397,7 @@ pub fn read<R: Read>(r: &mut R) -> io::Result<Footprints> {
         n: num("n") as usize,
         res: num("res") as usize,
         t_max: num("t_max"),
+        version: v,
         quads,
     })
 }

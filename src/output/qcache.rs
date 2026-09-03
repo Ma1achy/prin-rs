@@ -112,7 +112,7 @@ pub fn write<W: Write>(w: &mut W, c: &Cache, ens: &crate::ensemble::pixel::Ensem
     let header = format!(
         "region={} chart={} body={} cx={:?} cy={:?} half={:?} levels={} n={} res={}\n\
          chart_params={}\n\
-         colouring={} ramp_lo={:?} ramp_hi={:?} tau={:?}\n\
+         colouring={} metric={} ramp_lo={:?} ramp_hi={:?} tau={:?}\n\
          t_max={} n_sync={} eta={} n_copies={} jitter_frac={} r_coll_frac={} escape_rule={:?} closure_k={} stop_on_escape={} dtau_mode={:?} clamp_final={} \
          jitter_scheme={:?} precision=f64\n\
          quads={} trajectories={}\n\
@@ -124,7 +124,7 @@ fully-refined tree at one sample per pixel, and at the screen floor sub-pixel st
 sampled arbitrarily.\n\
          fields={}\n",
         c.region, c.chart.name(), c.body, c.cx, c.cy, c.half, c.levels, c.n, c.res, c.chart.params(),
-        c.colouring.name(), c.ramp.0, c.ramp.1, tau,
+        c.colouring.name(), c.metric.name(), c.ramp.0, c.ramp.1, tau,
         ens.t_max, ens.n_sync, ens.eta, ens.n_extra + 1, ens.jitter_frac, ens.r_coll_frac, ens.escape_rule, ens.closure_k, ens.stop_on_escape, ens.dtau_mode, ens.clamp_final_step,
         ens.jitter_scheme,
         c.quads.len(), c.trajectories,

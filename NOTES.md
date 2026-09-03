@@ -2855,3 +2855,49 @@ same boolean reading **1.198**. With 8 hot pixels rather than 26 there is less t
 zero -- it is `1/(8/16384)` and says nothing about overshoot. The harness prints the fire count
 beside every lift so this is visible rather than quotable, which is the same discipline that stopped
 `gbs_unconverged > 0`'s "covers 1.0000 of the hot set" being read as coverage.
+
+# Session 2026-09-03: the refinement rebuild — the metric decided the criterion's verdict
+
+Full record in `results/payload/README.md`, the plan in the session's plan file, the findings in
+`CLAUDE.md`'s closing block. What belongs here is the standing lessons.
+
+### The metric decides the criterion's verdict, and an auto-ranged metric has no tolerance
+
+Every `error(B)` curve before this scored a tree under a colouring whose lightness was
+auto-ranged to the region's own p1–p99. That stretches `1e-8` to full contrast and makes
+breadth-first near-optimal by construction: there is no depth at which a smooth region reads
+*done*. Under a fixed-scale physics metric the same footprints put the optimum at 137 quads
+against uniform's 5449 on near-field. Fifty-four signals at 96% collinearity all "lost to
+uniform" because nothing could win. **Ask what the metric would say about a resolved field
+before reading any criterion's score against it.**
+
+### A stop calibrated on white noise is a stop for white noise
+
+The stationarity stop passes every analytic test and fires on 34 of 2064 floor leaves on the real
+sea chart, wrongly, because the real mixing region is a coherent sponge — arcs, bands, perforation
+— not white noise. The instrument that found this was the control arm (`stationary: false`) beside
+the treatment, scored under a form of the metric that ignores the sea proper. **Default by
+measurement, keep the machinery, and never ship a default on the strength of the synthetic
+tests alone.**
+
+### The live tree gains one level per boundary, and the price of a late split is a full march
+
+Children requested at a boundary can first be decided at the next; the tree lags the field by a
+level per boundary, and at the horizon it stops with leaves pending unless the descent continues
+in post-horizon rounds. Near-field requests 116 of its 153 quads at the horizon: 84% of its work
+is catch-up. **`catchup_substeps` is the column that shows it**, and it did not exist until the
+live descent did.
+
+### The guard order is a claim about what stopped the quad
+
+A resolved quad that the depth cap happened to catch reads `MaxLevel`, and the stop-reason
+breakdown then blames the cap for the criterion's decision. On the analytic step, 128 cap leaves
+were 64 that wanted to split and 64 that did not. Decide the criterion first for a policy whose
+decisions are a count, and let the caps stop only what wanted to go on.
+
+### A test's negative arm has to be a route that exists
+
+`tests/colour.rs` asserted that the shadow-tree route collapses to one frame. After the render
+took its leaf set as an argument, a shadow tree was no longer a route at all — its orphaned deep
+nodes still list as leaves — and the "control" was asserting a fiction. The honest controls were
+the finished render equalling the deepest cap, and a capped frame carrying no texel from below it.

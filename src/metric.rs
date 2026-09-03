@@ -367,9 +367,10 @@ impl Cache {
             let tile = span / self.n;
             let (px0, py0) = (ix as usize * span, iy as usize * span);
             let q = self.get(k);
+            let _ = tile;
             for dy in 0..span {
                 for dx in 0..span {
-                    let c = q.rgb[(dy / tile) * self.n + (dx / tile)];
+                    let c = q.rgb[nearest_sample(dy, span, self.n) * self.n + nearest_sample(dx, span, self.n)];
                     let o = ((py0 + dy) * self.res + px0 + dx) * 3;
                     img[o] = c[0];
                     img[o + 1] = c[1];
@@ -409,6 +410,20 @@ impl Cache {
         let pts = replay_with_leaves(self, rank, budget);
         pts.1
     }
+}
+
+/// The sample a screen pixel is nearest to, along one axis of a quad `span` pixels wide with
+/// `n` samples at its corners and spaced evenly between (`Slice::axis` is endpoint-inclusive).
+///
+/// **The metric and the render must tile alike, and until this they did not.** `err_sum` used
+/// `dx / tile`, which hands sample `j` the pixels to its **right**, up to a full cell away, while
+/// the render paints the cell centred on each sample. So a footprint reading `spread <= tau` was
+/// scored against pixels a full cell from its sample, and the near-field tree cut at `tau =
+/// 0.001` still read 2% unresolved at `eps = 0.003`. At the deepest level `span == n` and this
+/// is the identity, so `error(full)` is still exactly zero.
+fn nearest_sample(d: usize, span: usize, n: usize) -> usize {
+    let j = ((d as f64 + 0.5) * (n as f64 - 1.0) / span as f64).round() as usize;
+    j.min(n - 1)
 }
 
 /// Quad geometry from a key.
@@ -682,10 +697,11 @@ fn repaint(c: &mut Cache, px_of: &HashMap<Key, Vec<PixelOut>>) {
             let tile = span / n; // pixels per sample
             let (px0, py0) = (ix as usize * span, iy as usize * span);
             let q = &c.quads[&k];
+            let _ = tile;
             let mut acc = 0.0;
             for dy in 0..span {
                 for dx in 0..span {
-                    let s = (dy / tile) * n + (dx / tile);
+                    let s = nearest_sample(dy, span, n) * n + nearest_sample(dx, span, n);
                     let p = (py0 + dy) * res + px0 + dx;
                     acc += match metric {
                         Metric::Colour(_) => {

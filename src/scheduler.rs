@@ -276,6 +276,11 @@ pub struct SchedCfg {
     /// quad against its parent, and each quadrant against the quad. Sixteen footprints per
     /// quadrant at `N = 8` put the sampling noise near 0.15 for a three-class mixture.
     pub delta_mix: f64,
+    /// The ranked-frontier fraction used by the **post-horizon rounds** of a live descent. The
+    /// `k_frac` throttle exists to spend a budget well while the playhead moves; once it has
+    /// stopped there is nothing to defer for, and at `k_frac = 0.25` near-field took seventeen
+    /// rounds at the horizon where four would do. `1.0` takes the whole want-list per round.
+    pub k_frac_post: f64,
     /// How a footprint is called hot for the **shape** statistics.
     ///
     /// Separate from `tau_display`, which still drives the split gate and the absolute mask.
@@ -346,13 +351,17 @@ impl Default for SchedCfg {
             camera: None,
             tau_display: 1e-2,
             stationary: false,
+            k_frac_post: 1.0,
             c_stat: 0.3,
             delta_mix: 0.25,
             hot_rule: HotRule::Quantile(0.5),
             alpha_hi: 0.5,
             alpha_lo: 0.2,
             sib_tau: 0.5,
-            policy: Policy::Alpha,
+            // The enum's `#[default]`, so the struct and the enum cannot disagree on it again:
+            // they did, and every harness built on `..Default::default()` ran the legacy policy
+            // while the enum said `Tolerance`.
+            policy: Policy::default(),
             order: Order::Spread,
             agg: Agg::Median,
             criterion: Criterion::Within,
@@ -1120,7 +1129,14 @@ pub fn descend_with(
         // in earlier rounds. `decide` is pure on the reduction, so re-deciding costs nothing and
         // nothing is recomputed.
         let mut want: Vec<usize> = Vec::new();
-        let frontier: Vec<usize> = pending.iter().cloned().chain(deferred.drain(..)).collect();
+        // A deferred quad can have been split by the balance pass since it was deferred; it is
+        // no longer a leaf and is not re-decided -- `split` on it would be a second split.
+        let frontier: Vec<usize> = pending
+            .iter()
+            .cloned()
+            .chain(deferred.drain(..))
+            .filter(|&i| tree.nodes[i].is_leaf())
+            .collect();
         for &i in &frontier {
             let d = decide(&tree, i, cfg);
             tree.nodes[i].decision = d;
@@ -1586,8 +1602,11 @@ pub fn descend_live_with(
             }
         }
         order_queue(&mut want, &tree, cfg);
-        if cfg.mode != Mode::Uniform && cfg.k_frac < 1.0 && !want.is_empty() {
-            let k = ((want.len() as f64 * cfg.k_frac).ceil() as usize).min(want.len());
+        // While the playhead moves the frontier is throttled by `k_frac`; at the horizon by
+        // `k_frac_post`, which is 1.0 by default because there is nothing left to defer for.
+        let kf = if post == 0 { cfg.k_frac } else { cfg.k_frac_post };
+        if cfg.mode != Mode::Uniform && kf < 1.0 && !want.is_empty() {
+            let k = ((want.len() as f64 * kf).ceil() as usize).min(want.len());
             for &i in want.iter().skip(k) {
                 tree.nodes[i].decision = Decision::Deferred;
                 point.deferred += 1;

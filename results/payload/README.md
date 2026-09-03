@@ -92,6 +92,53 @@ requested at the horizon. On the sea chart the live march reaches 949 quads at t
 static stop-on descent's 2.7%, because a stationary quad is re-tested at every boundary and some
 later split — the running union again.
 
+## The `eps` sweep, and a calibration the metric's own tiling was hiding
+
+The tolerance tree on `near-field` is **bitwise the same** at `eps` 0.003, 0.01 and 0.03 (153
+quads): its footprints sit far below or far above all three. But at `eps = 0.003` that tree
+leaves **5.0%** of pixels unresolved, and a descent cut three times tighter (`tau = 0.001`, 165
+quads) still leaves **2.0%**, where the exact optimum reaches 2% at 37 quads. `deep interior` at
+`eps = 0.03` is unchanged at 357 quads and zero. The within-footprint spread is a *mean* deviation
+from the copies' centroid, halved, so a footprint reading `spread <= tau` can hold a pixel whose
+chord to the texel exceeds `tau`; the geometry of copies spread over the cell says by a factor of
+about two, and the probe says more. The difference is the metric's rasteriser: `err_sum` assigned
+pixel `dx` to sample `dx / tile`, so a sample scored the pixels to its **right**, up to a full
+cell away, while `Slice::axis` puts the samples at the corners and the render paints cells
+centred on them. The metric and the render tiled differently, and the metric's was the older
+one. Fixed to nearest-sample tiling; every `err_sum` moves slightly, `error(full)` stays exactly
+zero. **Re-run under the corrected tiling, near-field at `eps = 0.003`: `tau = eps` leaves
+0.095% unresolved (was 5.0%), `tau = eps/3` leaves 0.00000 (was 2.0%), 165 quads at 1.14× the
+optimum.** At `eps = 0.01` the tolerance tree is unchanged at zero error and the ceiling moved
+from 137 to 125 quads. So the descent's `tau` and the metric's `eps` agree to within a factor
+of about three, and the metric's tiling was most of what looked like a larger one. The tables
+above were taken under the old tiling; the trees are unchanged and the ceilings move by a few
+percent.
+
+## The wider chart set: the GLSL presets and `config_stability`
+
+The first four targets were thin -- two tame Burrau regions, one control and one sea. The
+standard GLSL presets and the chart the integrator work was measured on are built the same way
+(levels 6, `N = 8`, `E+1 = 8`, 512², `t = 13`, `eps = 0.01`; logs in `output/`). The `alpha`
+column is the legacy policy's tree from the build log; the tolerance descents against these
+caches are in the sections below as they land.
+
+| target | root error | sea fraction at `eps` 2e-3 / 1e-2 / 5e-2 | dp reaches 1% at | uniform reaches 1% at | alpha (legacy) |
+|---|---|---|---|---|---|
+| `preset_shape` | 0.282 | 0.226 / 0.193 / 0.133 | 1737 | 4145 | 21 quads, error 0.271, `floor:8 keep:8` |
+| `preset_prho` | 0.293 | 0.089 / 0.042 / 0.014 | 793 | 3345 | 21, 0.206, `floor:2 keep:14` |
+| `preset_plambda` | 0.189 | 0.070 / 0.033 / 0.014 | 557 | 3941 | 21, 0.114, `keep:16` |
+| `config_stability` | 0.923 | 0.658 / 0.238 / 0.068 | 4873 | 5325 | 73, 0.763, `floor:5 keep:42 screen_floor:8` |
+
+Three things the wider set adds. The momentum presets, which are one triangle at different
+initial velocities, are resolved by the optimum at a sixth to a seventh of uniform's memory, so
+the mechanism has room on them; `preset_shape` at the corrected window carries a 19% sea and
+still shows 2.4x. `config_stability` is the other kind of chart: 92% of its pixels differ from
+their level-6 reference at the root, a quarter of the frame is sea at `eps = 0.01` and two
+thirds at `eps = 0.002`, and the exact optimum needs 4873 of 5461 quads to reach 1% -- there is
+almost nothing a ranking can save, because the structure is everywhere. That is the chart the
+area floor is for, and where "do not degenerate into uniform" has to be paid for in error. The
+legacy policy stops at the bootstrap on every one of them.
+
 ## What the numbers say
 
 1. **The room was an order of magnitude, not 3–12%.** On `near-field` and `deep interior` the

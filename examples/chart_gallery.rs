@@ -143,6 +143,13 @@ fn main() {
     // window. When asked for, the grid is evaluated FIRST and its window colours both panels.
     let uniform: bool =
         std::env::args().nth(9).map(|v| v == "1" || v == "true").unwrap_or(false);
+    // **Argument 10: which charts, comma-separated; `all` or absent runs the gallery.** So a
+    // regeneration can be staged a chart at a time -- under the tolerance policy a chart can
+    // cost minutes to hours -- rather than committed to as twenty-six at once.
+    let only: Option<Vec<String>> = std::env::args()
+        .nth(10)
+        .filter(|s| s != "all")
+        .map(|s| s.split(',').map(|x| x.trim().to_string()).collect());
     // A tree under `results/` on any kernel but production's is the superseded corpus again.
     scheduler::assert_production_kernel(&ens, dir);
     let log = prin_rs::output::Log::tee(&format!("{root}/output/chart_gallery.txt"));
@@ -182,6 +189,11 @@ fn main() {
 
     for (name, chart, cx, cy, half) in &cases {
         let (cx, cy, half) = (*cx, *cy, *half);
+        if let Some(list) = &only {
+            if !list.iter().any(|n| n == name) {
+                continue;
+            }
+        }
         if let Err(e) = chart.validate(0.0, cx, cy, half) {
             logln!(log, "{name:>18}  REFUSED: {e}");
             continue;

@@ -412,17 +412,26 @@ fn live() {
     // The stationarity stop; the struct's default is the one default (off, by measurement).
     // `1` is the arm the sea-chart control was measured against.
     let stationary: bool = std::env::args().nth(7).map(|v| v != "0" && v != "false").unwrap_or(SchedCfg::default().stationary);
+    // **The descent's tolerance, separately from the metric's.** `spread_shape` is a MEAN
+    // deviation from the copies' centroid, halved, so a footprint reading `spread <= tau` can
+    // still hold a pixel whose chord to the texel exceeds `tau` by a factor near three: measured
+    // on near-field, the tree built at `tau = 0.003` leaves 5% of pixels unresolved at
+    // `eps = 0.003` and none at `eps = 0.01`. The factor between the two is a calibration to
+    // measure, not a constant to assume; this argument is how.
+    let tau: f64 = arg(8, eps);
     let fp = {
         let f = std::fs::File::open(&file).expect("open fcache");
         prin_rs::output::fcache::read(&mut std::io::BufReader::new(f)).expect("read fcache")
     };
     let t = target(&fp.region).unwrap_or_else(|| panic!("the file's region `{}` is not a known target", fp.region));
     let stem = std::path::Path::new(&file).file_stem().unwrap().to_string_lossy().to_string();
-    let tag = format!("{}{}", policy.name(), if policy == prin_rs::scheduler::Policy::Tolerance && !stationary { "_nostat" } else { "" });
+    let tag = format!("{}{}{}", policy.name(),
+        if policy == prin_rs::scheduler::Policy::Tolerance && !stationary { "_nostat" } else { "" },
+        if tau != eps { format!("_tau{tau:e}") } else { String::new() });
     let log = Log::tee(&format!("{root}/output/payload_live_{stem}_{tag}.txt"));
     let log = &log;
     let class = if fp.has_event_class() { ClassArm::EventClass } else { ClassArm::Outcome };
-    logln!(log, "payload_metric live: {file} -- PRQF v{}, region {}, levels {} N={} res {}, t_max {}; policy {} stationary {stationary} eps {eps:e} k_frac {k_frac}; class arm {}",
+    logln!(log, "payload_metric live: {file} -- PRQF v{}, region {}, levels {} N={} res {}, t_max {}; policy {} stationary {stationary} eps {eps:e} tau {tau:e} k_frac {k_frac}; class arm {}",
            fp.version, fp.region, fp.levels, fp.n, fp.res, fp.t_max, policy.name(), class.name());
 
     let base = EnsembleCfg::default();
@@ -438,7 +447,7 @@ fn live() {
 
     let cfg = SchedCfg {
         n: fp.n,
-        tau_display: eps,
+        tau_display: tau,
         policy,
         stationary,
         k_frac,

@@ -1,0 +1,3 @@
+image=results/charts/shape_sphere.png
+config=production
+chart=shape leaves=43 depth=6 stop=floor:13 keep:26 max_rel_depth:4

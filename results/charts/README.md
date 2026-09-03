@@ -1,0 +1,130 @@
+# `results/charts` — the chart gallery, regenerated on the fixed kernel
+
+Regenerated **2026-09-03** at `chart_gallery 40000 1e-4 0.2 1024`, HEAD `b4bfe91`.
+26 charts at 1024², still + wire twin + outcome control + level ladder + `.prnq` + `.cfg.txt`.
+
+**This supersedes the 25–26 August corpus**, which predates every integrator fix from 27 August
+on (`5cc8dec` dtau, `f7d2a31` landing clamp, `2eb9e8f` predictive limit, `a526360` no-discard +
+secant landing, `84830a1` Heggie default). The old dumps are PRNQ **v3 / 58 fields**; these are
+**v4 / 59 fields** and carry a `config=` line, so the two are distinguishable by inspection and
+not only by date — which matters, because *a file's mtime is not its content's age* (NOTES.md §3a)
+and a merge checkout had already restamped eighteen of the old dumps.
+
+## What `config=production` resolves to
+
+The dumps print `config=production`, meaning zero overrides against `EnsembleCfg::production()`.
+Recorded here verbatim so a reader need not do git archaeology, and because the integrator default
+moved to Heggie on 27 August and the header does not spell it out:
+
+```
+pub fn production() -> Self {
+    Self {
+        n_extra: 7, // E + 1 = 8, per BRIEF §3
+        jitter_frac: 0.5,
+        jitter_scheme: Scheme::Halton,
+        seed: 0,
+        t_max: 13.0,
+        n_sync: 32,
+        escape_every: 0,
+        escape_confirm: true,
+        dtau_mode: DtauMode::default(),
+        clamp_final_step: true,
+        // **B, and the measurement decided it.** At `f = 0.02` on three regions it takes
+        // `error_ratio` p99 from `7.1e9` to `1.109`, the fraction above the flag threshold
+        // from 0.1110 to **0.0000**, and the overshoot count from **634 to 0** -- for
+        // **+1.9% of the steps**. `Reject` costs +77% and plateaus above 1.0 on
+        // `preset_shape`; `AbGrowth` is bitwise inert here; `Global` at 4x the work still
+        // leaves 153 overshoots. See `results/step_control/README.md`.
+        //
+        // **The committed corpus was taken under `StepLimit::None` and does not reproduce
+        // bitwise under this default.** That is the cost of the change and it is stated
+        // rather than discovered: `EnsembleCfg::provenance` now names the setting in every
+        // header, and `reference_opts` pins `None` so the NumPy cross-check is unaffected.
+        step_limit: crate::integrate::az::StepLimit::Predictive,
+        step_limit_f: 0.02,
+        // `Min` until the measurement says otherwise. See `results/step_control/edges`.
+        ref_hysteresis: 0.0,
+        step_blend: crate::integrate::az::StepBlend::Min,
+        blend_p: 4.0,
+        escape_rule: crate::outcome::EscapeRule::Closure(crate::outcome::CLOSURE_TAU),
+        closure_k: 1,
+        stop_on_escape: false,
+        eta: 0.01,
+        land_iterate: true,
+        land_max_iters: 4,
+        max_steps: 30_000,
+        ref_policy: RefPolicy::PerCopy,
+        lc_stable: true,
+        integrator: Integrator::default(),
+        r_coll_frac: 1e-3,
+        stop_on_event: true,
+        refine_flagged: true,
+        refine_threshold: 10.0,
+        refine_eta_factor: 0.25,
+        refine_max_passes: 3,
+        keep_copy_outcomes: false,
+        keep_copy_shapes: false,
+        keep_boundary_shapes: false,
+        keep_drift_hist: false,
+        keep_ref_path: false,
+        ftle: None,
+        ftle_dt: 1e-4,
+        decode_path: Path::DirectF64,
+    }
+        }
+```
+
+**Known gap, not repaired here.** `provenance()` prints only the *diff* against production, so a
+field at its production value is not named. It is unambiguous for this corpus, given the commit
+above; the proper fix is for `provenance()` to name the resolved integrator and step limit even
+when they match, and it belongs with the next touch of that function rather than with a third
+90-minute regeneration.
+
+## The stop-reason breakdown — read it before any leaf count
+
+```
+CORPUS TOTAL, 26 charts, 1223 leaves
+    Keep          818   66.9%     the criterion: spread below tau, refinement does not pay
+    MaxRelDepth   244   20.0%     the camera cap, max_rel_depth = 6
+    Floor         161   13.2%     the criterion: alpha < alpha_lo, refining did not reduce spread
+    ScreenFloor     0              BudgetExhausted 0    Collapsed 0    Undetermined 0
+```
+
+## Three findings this regeneration carries
+
+**The stop reason moved from the cap to the criterion, and the trees collapsed.** The standing
+record has `MaxRelDepth` stopping 95%+ of leaves on 23 of 26 charts; it now stops 20%, and the
+criterion decides 80%. Leaf counts fell from hundreds–thousands to 16–64, and the dumps with them
+— `latent_mass` is 42 KB against the old 2.5 MB. The mechanism is not a scheduler change: the
+spread fell along with the integration failure that inflated it (`corpus_scope` measured
+near-field `1.525e-3 → 2.677e-4`), so at a fixed `tau = 1e-4` the quads now read resolved and stop
+as `Keep`. **This is the threshold-above-the-bulk degeneracy arriving at the whole chart family**,
+and it is a measured argument for rank over threshold rather than an argued one — *a ranking cannot
+land above or below a distribution.*
+
+**`Floor` still fires on a clean substrate, so the predicate keeps its place.** It was 17 → 0,
+16 → 1, 9 → 1 on the Burrau regions, which raised the question of whether it had only ever been
+detecting the integration bug. On the charts it fires **161 times across 20 of 26** —
+`shape_sphere` 13, `latent_mixed_h3` 12, `burrau_nu_k` 11, `preset_prho` 10. It was the bug on
+Burrau *and* it is a real property here.
+
+**`preset_shape` is unmoved.** 16 leaves, depth 2, `Floor` 8 + `Keep` 8 — bit-identical to the
+standing description of the one chart whose tree is entirely its own decisions. The chart the
+criterion actually controls is the one the kernel fix does not touch, which is the control this
+table needed.
+
+## Controls that ran
+
+- `plane_00deg` vs `body_plane`: `max |dIC| = 0e0`, asserted in the harness, not printed. Same
+  chart written two ways; if it ever differs the bases are wrong and every row compares different
+  physics.
+- The two passes of this regeneration — the second adding only a header line, the sidecars and
+  corrected prose — agree on **all 26 rows**. A change that must be inert, measured inert.
+
+## What is stale in the harness's own printed prose
+
+Corrected in `3269301`/`HEAD`, but worth naming: the closing paragraph quoted `alpha med` of 0.14
+for `body_plane` and 0.19 for the shape sphere (they read **1.02** and **1.26**) and said the
+descent runs to the budget (**nothing does** — `BudgetExhausted` is 0 corpus-wide). Those numbers
+were measured on the pre-fix kernel and sat directly under the table they contradicted. *An
+argument hardcoded past*, in printed prose.

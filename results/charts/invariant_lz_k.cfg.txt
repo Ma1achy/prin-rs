@@ -1,0 +1,3 @@
+image=results/charts/invariant_lz_k.png
+config=production
+chart=invariant_lz_k leaves=64 depth=6 stop=floor:1 keep:47 max_rel_depth:16

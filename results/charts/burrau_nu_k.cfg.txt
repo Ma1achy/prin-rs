@@ -1,0 +1,3 @@
+image=results/charts/burrau_nu_k.png
+config=production
+chart=burrau leaves=31 depth=6 stop=floor:11 keep:16 max_rel_depth:4

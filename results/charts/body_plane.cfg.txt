@@ -1,0 +1,3 @@
+image=results/charts/body_plane.png
+config=production
+chart=body_plane leaves=64 depth=6 stop=keep:48 max_rel_depth:16

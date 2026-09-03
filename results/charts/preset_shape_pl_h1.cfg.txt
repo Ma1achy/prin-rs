@@ -1,0 +1,3 @@
+image=results/charts/preset_shape_pl_h1.png
+config=production
+chart=latent leaves=31 depth=6 stop=floor:8 keep:19 max_rel_depth:4

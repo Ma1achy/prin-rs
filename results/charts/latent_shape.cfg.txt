@@ -1,0 +1,3 @@
+image=results/charts/latent_shape.png
+config=production
+chart=latent leaves=64 depth=6 stop=keep:48 max_rel_depth:16

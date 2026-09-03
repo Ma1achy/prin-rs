@@ -1,0 +1,3 @@
+image=results/charts/preset_plambda_h1.png
+config=production
+chart=latent leaves=28 depth=6 stop=floor:8 keep:16 max_rel_depth:4

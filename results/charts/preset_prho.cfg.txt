@@ -1,0 +1,3 @@
+image=results/charts/preset_prho.png
+config=production
+chart=latent leaves=28 depth=5 stop=floor:10 keep:18

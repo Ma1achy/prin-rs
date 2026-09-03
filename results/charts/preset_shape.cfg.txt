@@ -1,0 +1,3 @@
+image=results/charts/preset_shape.png
+config=production
+chart=latent leaves=16 depth=2 stop=floor:8 keep:8

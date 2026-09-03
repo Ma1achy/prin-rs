@@ -1,0 +1,3 @@
+image=results/charts/mass_simplex.png
+config=production
+chart=mass_simplex leaves=64 depth=6 stop=keep:48 max_rel_depth:16

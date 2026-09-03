@@ -458,6 +458,31 @@ test, which **found the complete-level comb** — a real result, arrived at for 
 the finding, and record that the reason it was sought was wrong, or the next reader infers the
 obstacle was real.
 
+### A file's mtime is not its content's age, and a checkout resets it
+
+Sibling of *"the measurement was correct and the column chosen could not see it"*, at the
+filesystem: here the column was readable and the **instrument was weaker than the claim made from
+it**.
+
+*"The scheduler corpus predates every integrator fix"* is load-bearing -- it is why `charts/`,
+`criterion/`, `vertical/` and the ranked twins were declared superseded. It was established with
+`find ... -newermt 2026-08-27`, which returned nothing. That reads mtime. Eighteen of the 26
+`results/charts/*.prnq` now carry an mtime of **2026-09-02 17:02** against a `git log` date of
+**2026-08-25**, with a clean working tree: a merge checkout rewrote the files and stamped them
+`now`, content unchanged.
+
+The conclusion survives, verified by the better instrument -- `git log -1 -- <path>` is content
+age; mtime is last-write age, and for a tracked file those differ every time git touches it. But
+the same `find` run a day later would have returned all eighteen and read as *"the corpus was
+regenerated after the fixes"*, which is the opposite of the truth.
+
+**Corollary, and it is the operative one.** A regeneration that writes in place over a committed
+corpus and is interrupted leaves a directory that looks complete and is not -- the mixed-version
+failure this project already records, arriving live rather than by inheritance. `chart_gallery`
+has no sentinel and no manifest, where `integrator_gallery` resumes from a per-case one. The check
+that discriminates is *every dump newer than the launch mark*, and it wants to be a manifest the
+harness writes naming each dump and the commit that made it, not a thing someone remembers to run.
+
 ### A guard that works for the wrong reason is one refactor from not working
 
 Found in the same hour as the entry above, and it is its mirror. `scheduler::footprint_undetermined`

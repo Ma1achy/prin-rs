@@ -163,6 +163,56 @@ pub fn assert_not_uniform_in_disguise(cfg: &SchedCfg, path: &str, allow: bool) {
     );
 }
 
+/// **Refuse to write a tree under `results/` from any integration kernel but the production one.**
+///
+/// The structural answer to "is the refinement mechanism running on the fixed integrator". The
+/// scheduler integrates through whatever `EnsembleCfg` it is handed, and twelve harnesses took
+/// the integrator from the default while two pinned `Az` deliberately; a setting correct where
+/// it was born and copied into a tree-writing harness would produce a corpus of the wrong
+/// physics wearing the right filenames, which is what `refine_flagged: false` did for six days.
+/// This checks the four kernel knobs that moved between the superseded corpus and the current
+/// one — `integrator`, `step_limit`, `dtau_mode`, `clamp_final_step` — and nothing else:
+/// `refine_flagged` is a legitimate named argument, `t_max` and `eta` are experiment axes.
+///
+/// Same shape as [`assert_not_uniform_in_disguise`]: a configuration that silently reproduces
+/// the old behaviour needs a guard, not a convention. Call it from every harness that writes a
+/// `.prnq` or a tree render under `results/`.
+pub fn assert_production_kernel(ens: &EnsembleCfg, path: &str) {
+    if !path.replace('\\', "/").split('/').any(|c| c == "results") {
+        return;
+    }
+    let p = EnsembleCfg::production();
+    let mut bad: Vec<String> = Vec::new();
+    if ens.integrator != p.integrator {
+        bad.push(format!("integrator={:?} (production {:?})", ens.integrator, p.integrator));
+    }
+    if format!("{:?}", ens.step_limit) != format!("{:?}", p.step_limit)
+        || ens.step_limit_f != p.step_limit_f
+    {
+        bad.push(format!(
+            "step_limit={:?} f={} (production {:?} f={})",
+            ens.step_limit, ens.step_limit_f, p.step_limit, p.step_limit_f
+        ));
+    }
+    if format!("{:?}", ens.dtau_mode) != format!("{:?}", p.dtau_mode) {
+        bad.push(format!("dtau_mode={:?} (production {:?})", ens.dtau_mode, p.dtau_mode));
+    }
+    if ens.clamp_final_step != p.clamp_final_step {
+        bad.push(format!(
+            "clamp_final_step={} (production {})",
+            ens.clamp_final_step, p.clamp_final_step
+        ));
+    }
+    if !bad.is_empty() {
+        panic!(
+            "refusing to write `{path}`: the integration kernel is not production's -- {}. A \
+             tree built on another kernel is the superseded corpus over again; write it to a \
+             scratch root, or fix the config.",
+            bad.join("; ")
+        );
+    }
+}
+
 #[derive(Clone, Copy, Debug)]
 pub struct SchedCfg {
     /// `N`, samples per quad axis. The quality/compute driver: `N²(E+1)` trajectories per quad.

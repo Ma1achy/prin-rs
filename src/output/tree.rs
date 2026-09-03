@@ -221,10 +221,11 @@ pub fn overlay(
 
     let mut img = vec![0u8; res * res * 3];
     for (k, p) in base.iter().enumerate().take(res * res) {
-        // The dump is row-major with y increasing upward; PNG rows go downward, so flip.
+        // Row 0 is the minimum y: the image is the array, the convention every image in this
+        // crate shares (see `adaptive`'s module doc). This used to flip and the uniform panels
+        // did not.
         let (jx, jy) = (k % res, k / res);
-        let row = res - 1 - jy;
-        let o = (row * res + jx) * 3;
+        let o = (jy * res + jx) * 3;
         img[o..o + 3].copy_from_slice(&base_rgb(p));
     }
 
@@ -235,7 +236,7 @@ pub fn overlay(
     let to_px = |x: f64, y: f64| -> (i64, i64) {
         let fx = (x - x0) / span * res as f64;
         let fy = (y - y0) / span * res as f64;
-        (fx.round() as i64, (res as f64 - fy).round() as i64)
+        (fx.round() as i64, fy.round() as i64)
     };
     let mut put = |x: i64, y: i64, c: [u8; 3]| {
         if x >= 0 && y >= 0 && (x as usize) < res && (y as usize) < res {

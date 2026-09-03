@@ -65,6 +65,20 @@ impl Camera {
         2.0 * self.half_world / self.viewport as f64
     }
 
+    /// **The one world-to-pixel projection**, for a raster of `res` pixels centred on the camera.
+    ///
+    /// Row 0 is the **minimum** `y`: pixel `y` grows with world `y`, exactly as `Slice` index
+    /// order does, so an adaptive render, a wireframe and a `Slice` buffer written through
+    /// `save_rect` agree row for row. The adaptive render and the wire used to carry three
+    /// private copies of this closure that flipped `y`, and every uniform panel did not; the
+    /// panels sat beside each other as mirror images. `res` is the raster and may differ from
+    /// `viewport`, which sets the scale — the screen floor is a property of the viewport, the
+    /// image size is a property of the file.
+    pub fn to_px(&self, res: usize, x: f64, y: f64) -> (f64, f64) {
+        let px = self.pixel_size();
+        ((x - self.cx) / px + res as f64 / 2.0, (y - self.cy) / px + res as f64 / 2.0)
+    }
+
     pub fn zoom(&self, root_half: f64) -> f64 {
         root_half / self.half_world
     }
@@ -76,6 +90,13 @@ impl Camera {
     }
 
     /// One tile is one sample. `tile_size(quad, zoom) = quad_width * zoom / N`, in pixels.
+    ///
+    /// **Nominal, and 14.3% smaller than what is painted at `N = 8`.** `Slice::axis` is
+    /// endpoint-inclusive, so the samples sit `2h/(N-1)` apart and the adaptive render paints
+    /// cells of that width; this reads `2h/N`. Kept, because moving the floor to the painted
+    /// width would push the everyday stop one level deeper at the standard viewport (level 6 to
+    /// 7 at `N = 8` on 512²) — a regime change to every committed tree, not a rendering fix —
+    /// and because a floor that fires slightly early is the conservative direction for a veto.
     pub fn tile_size_px(&self, q: &Quad, n: usize) -> f64 {
         (2.0 * q.half / n as f64) / self.pixel_size()
     }

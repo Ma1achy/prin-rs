@@ -818,6 +818,20 @@ impl QuadTree {
         (0..self.nodes.len()).filter(|&i| self.nodes[i].is_leaf())
     }
 
+    /// The stop-reason breakdown over the leaves, as `keep:48 max_rel_depth:16`, sorted by name.
+    ///
+    /// **Never quote a leaf count without this.** It was rebuilt by hand in `chart_gallery` and
+    /// omitted by every other harness; one method means no harness can leave it out, and the
+    /// string is the one that goes in the sidecar, the log and the table.
+    pub fn stop_breakdown(&self) -> String {
+        let mut m: std::collections::BTreeMap<&'static str, usize> =
+            std::collections::BTreeMap::new();
+        for i in self.leaves() {
+            *m.entry(self.nodes[i].decision.name()).or_insert(0) += 1;
+        }
+        m.into_iter().map(|(k, n)| format!("{k}:{n}")).collect::<Vec<_>>().join(" ")
+    }
+
     /// The same-or-coarser neighbour across one edge, or `None` at the root box's border.
     ///
     /// Descends from the root toward a point just outside the edge, stopping at the deepest

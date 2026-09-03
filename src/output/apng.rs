@@ -73,3 +73,13 @@ pub fn divide(frame: &mut [u8], w: usize, h: usize, rgb: [u8; 3]) {
         frame[o + 2] = rgb[2];
     }
 }
+
+/// How many adjacent frame pairs are byte-identical.
+///
+/// **Print it before writing any animation.** Every animation this project produced before
+/// the truncation fix was one image repeated N times, and the check that would have caught it
+/// is this one line. A deliberate hold on the final frame is the only legitimate source of
+/// duplicates; anything past the hold is a still wearing an animation's name.
+pub fn adjacent_duplicates(frames: &[Vec<u8>]) -> usize {
+    frames.windows(2).filter(|w| w[0] == w[1]).count()
+}

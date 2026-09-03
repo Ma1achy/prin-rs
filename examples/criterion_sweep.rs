@@ -197,6 +197,7 @@ fn run(
         tree.nodes.iter().filter(|q| q.decision == Decision::Split).count();
 
     if write {
+        prin_rs::scheduler::assert_production_kernel(ens, "results/sweep");
         let _ = std::fs::create_dir_all("results/sweep");
         if let Ok(f) = std::fs::File::create(format!("{}.prnq", stem(t, tau, k, st, cr, alpha_hi))) {
             let mut w = BufWriter::new(f);

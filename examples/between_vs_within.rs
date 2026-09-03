@@ -137,6 +137,7 @@ fn main() {
         // The full v2 quad dump, so every column in this table can be recomputed offline and
         // every column NOT in it is still available.
         let stem = format!("results/criterion/between_{}.prnq", region.replace(' ', "_"));
+        prin_rs::scheduler::assert_production_kernel(&ens, &stem);
         if let Ok(f) = std::fs::File::create(&stem) {
             let mut w = std::io::BufWriter::new(f);
             let _ = prin_rs::output::tree::write(&mut w, &t, &cfg, &ens, &st, region, "f64");

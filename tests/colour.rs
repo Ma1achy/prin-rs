@@ -680,26 +680,20 @@ fn a_truncated_render_differs_from_the_full_one() {
         [t, 255 - t, t / 2]
     };
 
-    // Frames at increasing depth caps, each rendered the way an animation builds them.
-    let frame = |cap: u32| -> Vec<u8> {
-        let leaves: Vec<usize> = (0..t.nodes.len())
+    // Frames at increasing depth caps, each rendered the way an animation builds them: the
+    // capped leaf set is the argument, and nothing is masked.
+    let leaves_capped = |cap: u32| -> Vec<usize> {
+        (0..t.nodes.len())
             .filter(|&i| {
                 let q = &t.nodes[i];
                 q.level <= cap && (q.children.is_none() || q.level == cap)
             })
-            .collect();
-        let keep: std::collections::HashSet<usize> = leaves.iter().cloned().collect();
-        // The mask is the load-bearing half. Without it every cap renders identically.
-        let masked: Vec<Vec<PixelOut>> = (0..st.pixels.len())
-            .map(|i| if keep.contains(&i) { st.pixels[i].clone() } else { Vec::new() })
-            .collect();
-        let mut shadow = t.clone();
-        for i in 0..shadow.nodes.len() {
-            if keep.contains(&i) {
-                shadow.nodes[i].children = None;
-            }
-        }
-        adaptive::render(&shadow, &masked, &cam, res, adaptive::TexelMode::Adaptive, rgb).0
+            .collect()
+    };
+    let frame = |cap: u32| -> Vec<u8> {
+        let leaves = leaves_capped(cap);
+        adaptive::render_leaves(&t, &st.pixels, &cam, res, adaptive::TexelMode::Adaptive, rgb, &leaves)
+            .0
     };
 
     let depth = t.leaves().map(|i| t.nodes[i].level).max().unwrap_or(0);
@@ -721,25 +715,15 @@ fn a_truncated_render_differs_from_the_full_one() {
     assert!(same.len() <= 1, "{} of {} adjacent pairs identical -- this is a still, not motion",
             same.len(), frames.len() - 1);
 
-    // The control: WITHOUT the mask, they collapse. This is what was shipping, and it is what
-    // makes the assertion above a measurement rather than a hope.
-    let unmasked = |cap: u32| -> Vec<u8> {
-        let keep: std::collections::HashSet<usize> = (0..t.nodes.len())
-            .filter(|&i| {
-                let q = &t.nodes[i];
-                q.level <= cap && (q.children.is_none() || q.level == cap)
-            })
-            .collect();
-        let mut shadow = t.clone();
-        for i in 0..shadow.nodes.len() {
-            if keep.contains(&i) {
-                shadow.nodes[i].children = None;
-            }
-        }
-        adaptive::render(&shadow, &st.pixels, &cam, res, adaptive::TexelMode::Adaptive, rgb).0
-    };
-    let u: Vec<Vec<u8>> = (0..=depth).map(unmasked).collect();
-    let udup = u.windows(2).filter(|w| w[0] == w[1]).count();
-    println!("without the mask: {udup} of {} adjacent pairs identical", u.len() - 1);
-    assert_eq!(udup, u.len() - 1, "the control should collapse to one repeated frame");
+    // The control, and it has changed sides. The old render keyed painting on "has samples",
+    // so the only lever was to empty the samples of every node outside the cap -- and that
+    // lever disabled the coarse fill. A "shadow tree" with `children = None` at the cap was
+    // never a route either: the deeper nodes stay in the arena with no children and
+    // `tree.leaves()` lists them, so the render paints them on top. What can be asserted is
+    // that the deepest cap IS the finished render, bitwise -- the named-set route and the
+    // finished route agree where they must -- and that no capped frame carries a texel from
+    // below its cap, which is the fault the frames used to have.
+    let full = adaptive::render(&t, &st.pixels, &cam, res, adaptive::TexelMode::Adaptive, rgb).0;
+    assert_eq!(full, frames[depth as usize], "the deepest cap is not the finished render");
+    println!("the deepest cap ({depth}) reproduces the finished render bitwise");
 }

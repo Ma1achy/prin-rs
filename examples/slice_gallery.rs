@@ -165,6 +165,7 @@ fn main() {
         let stem = format!("results/criterion/slice_{name}");
         let _ = adaptive::save(&format!("{stem}.png"), res, &img);
         let _ = adaptive::save(&format!("{stem}_wire.png"), res, &wimg);
+        prin_rs::scheduler::assert_production_kernel(&ens, &stem);
         if let Ok(f) = std::fs::File::create(format!("{stem}.prnq")) {
             let mut w = std::io::BufWriter::new(f);
             let _ = prin_rs::output::tree::write(&mut w, &t, &cfg, &ens, &st, name, "f64");

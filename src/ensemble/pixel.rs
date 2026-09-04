@@ -524,6 +524,17 @@ pub struct PixelOut {
     pub live_spread_event: Vec<f64>,
     pub live_shape: Vec<[f64; 3]>,
     pub live_class: Vec<u8>,
+    /// **Copies known unusable by boundary `j`**, the live analogue of [`Self::n_nonfinite`].
+    ///
+    /// `n_nonfinite` is a verdict on the whole march to `t_max`, so cloning it into a live view
+    /// paints a footprint undetermined in a frame at `t = 0.8` because a copy diverges at
+    /// `t = 12` -- the future, painted into the past. A copy counts here from the first boundary
+    /// at which it stopped recording or recorded a non-finite shape, and from the horizon at the
+    /// latest if it is flagged unusable and neither happened. **Monotone by construction**: a
+    /// live view only ever learns. Measured on `preset_shape_h1` at 64^2, `n_nonfinite` painted
+    /// 19 footprints magenta at every one of 16 boundaries where this reads 0 until the copies
+    /// actually go.
+    pub live_nonfinite: Vec<u8>,
 
     // -----------------------------------------------------------------------------------
     // §5 — the temporal accumulators, shape arm.
@@ -881,15 +892,34 @@ pub fn evaluate_at<T: Real>(slice: &Slice, idx: usize, cfg: &EnsembleCfg, eta_v:
     });
 
     // ---- the live series, at stride ----
-    let (live_t, live_spread_shape, live_spread_event, live_shape, live_class) =
+    let (live_t, live_spread_shape, live_spread_event, live_shape, live_class, live_nonfinite) =
         if cfg.keep_live_series {
             let bs: Vec<&[[T; 3]]> = outs.iter().map(|o| o.boundary_shapes.as_slice()).collect();
+            // **When each copy became unusable**, so the live view does not inherit a verdict on
+            // the whole march. A copy that blows up stops recording boundaries, and the ragged
+            // rule below then carries its last *finite* shape forward -- right for a copy that
+            // terminated (it holds its terminal shape) and wrong for one that diverged, which is
+            // why divergence is invisible in the series itself and has to be counted here. The
+            // driver's `finite` is a verdict at `t_max`, so a copy flagged unusable that recorded
+            // every boundary finitely is known unusable at the horizon and not before.
+            let first_unusable: Vec<usize> = outs
+                .iter()
+                .map(|o| {
+                    if o.finite {
+                        return usize::MAX;
+                    }
+                    let b = o.boundary_shapes.as_slice();
+                    let bad = b.iter().position(|v| !v.iter().all(|x| x.to_f64().is_some_and(f64::is_finite)));
+                    bad.unwrap_or_else(|| b.len().min(cfg.n_sync.saturating_sub(1)))
+                })
+                .collect();
             let stride = cfg.live_stride.max(1);
             let mut lt = Vec::new();
             let mut lss = Vec::new();
             let mut lse = Vec::new();
             let mut lsh = Vec::new();
             let mut lcl = Vec::new();
+            let mut lnf = Vec::new();
             for k in 0..cfg.n_sync {
                 if (k + 1) % stride != 0 && k + 1 != cfg.n_sync {
                     continue;
@@ -915,10 +945,11 @@ pub fn evaluate_at<T: Real>(slice: &Slice, idx: usize, cfg: &EnsembleCfg, eta_v:
                 lse.push(per_boundary[k]);
                 lsh.push(nom);
                 lcl.push(ev_at(k)[0]);
+                lnf.push(first_unusable.iter().filter(|&&f| k >= f).count() as u8);
             }
-            (lt, lss, lse, lsh, lcl)
+            (lt, lss, lse, lsh, lcl, lnf)
         } else {
-            (Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new())
+            (Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new())
         };
 
     let sp_event = per_boundary[cfg.n_sync - 1];
@@ -1205,6 +1236,7 @@ pub fn evaluate_at<T: Real>(slice: &Slice, idx: usize, cfg: &EnsembleCfg, eta_v:
         live_spread_event,
         live_shape,
         live_class,
+        live_nonfinite,
         running_max_divergence: t_run_max,
         divergence_trend: t_trend,
         first_divergence_t: t_first_div,

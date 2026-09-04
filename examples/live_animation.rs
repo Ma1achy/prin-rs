@@ -12,6 +12,13 @@
 //! grows and merges back: a leaf that appears in one frame is in every later frame, has been
 //! split, or has been merged into its parent, which is then the leaf again.
 //!
+//! **The debug flag is off.** `colour::DEBUG_NAN` marks a footprint with no value so it cannot be
+//! read as a dark one; that is a diagnostic device and it renders as a magenta speckle. These
+//! panels use `colour::Veto::Quiet` instead -- the nominal copy's own hue at the floor of the
+//! lightness ramp -- so an undetermined footprint is **indistinguishable from a resolved dark
+//! one** here. The count it hides is printed per chart and in every sidecar; the diagnostic
+//! renders keep the flag.
+//!
 //! **Diagnostic, at a small viewport.** The stills are 1024²; this runs at 256 by default so a
 //! chart is a minute, and the sidecar says so. Do not read a leaf count off a frame.
 //!
@@ -105,7 +112,15 @@ fn main() {
         let all_px: Vec<PixelOut> = leaves.iter().flat_map(|&i| st.pixels.get(i).cloned().unwrap_or_default()).collect();
         let (lo, hi) = colour::range(&all_px, Scalar::ShapeSpread);
         let sites = colour::landmarks(&grid::decode_state(&t.chart, t.body, t.cx, t.cy).m);
-        let rgb = |p: &PixelOut| colour::rgb(p, Scalar::ShapeSpread, &sites, lo, hi);
+        // **The debug flag is not a presentation colour.** `colour::DEBUG_NAN` exists so an
+        // undetermined footprint cannot be mistaken for a dark one, and every diagnostic render
+        // wants it; in an animation it is a magenta speckle the eye reads before the field. These
+        // panels take `Veto::Quiet` -- the nominal copy's own hue at the floor of the ramp -- and
+        // the count it hides is printed here and in every sidecar. Measured: the vetoed footprints
+        // are copies that exhausted `max_steps`, and their nominal `shape_vec` is finite, so the
+        // hue is real.
+        let rgb = |p: &PixelOut| colour::rgb_veto(p, Scalar::ShapeSpread, &sites, lo, hi, colour::Veto::Quiet);
+        let vetoed = all_px.iter().filter(|p| colour::vetoed(p, Scalar::ShapeSpread, &sites, lo, hi)).count();
 
         let n_b = st.pixels.get(0).and_then(|p| p.first()).map(|p| p.live_t.len()).unwrap_or(0);
         let mut frames = Vec::with_capacity(st.live_leaves.len());
@@ -139,19 +154,20 @@ fn main() {
                 &ens,
                 &format!(
                     "chart={} animation=time_axis frames={} deliberate_hold=6 adjacent_duplicates={dup} \
+                     veto=quiet vetoed_footprints={vetoed} of={} \
                      boundaries={n_b} live_stride={live_stride} scalar=ShapeSpread window=({lo:.4e},{hi:.4e}) \
                      res={res} viewport={res} budget={budget} tau_display={eps:e} k_frac={k_frac} \
                      policy={} quads={} leaves={} depth={depth} catchup_substeps={} total_substeps={steps} \
                      stop={} growth={}\n",
-                    t.chart.name(), frames.len(), cfg.policy.name(), st.quads_computed, leaves.len(),
+                    t.chart.name(), frames.len(), all_px.len(), cfg.policy.name(), st.quads_computed, leaves.len(),
                     st.catchup_substeps, tree.stop_breakdown(), curve.join(" ")
                 ),
             );
         }
-        println!("{:>18} {:>7} {:>7} {:>6} {:>7} {:>7.1}% {:>7.1}  {}   dup {dup}",
+        println!("{:>18} {:>7} {:>7} {:>6} {:>7} {:>7.1}% {:>7.1}  {}   dup {dup} vetoed {vetoed}/{}",
                  t.name, st.quads_computed, leaves.len(), depth, frames.len(),
                  100.0 * st.catchup_substeps as f64 / steps.max(1) as f64,
-                 t0.elapsed().as_secs_f64(), tree.stop_breakdown());
+                 t0.elapsed().as_secs_f64(), tree.stop_breakdown(), all_px.len());
     }
     println!("\n{dir}/<chart>_live.png and _live_wire.png: one frame per boundary while the playhead moves,");
     println!("then one per post-horizon round. Leaves split and merge; the footprints are as they stood.");

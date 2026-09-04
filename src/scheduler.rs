@@ -1766,6 +1766,12 @@ pub fn project_at(p: &PixelOut, j: usize) -> PixelOut {
     q.ensemble_spread = q.spread_shape.max(q.spread_event);
     q.shape_vec = p.live_shape[j];
     q.event_class = p.live_class[j];
+    // `n_nonfinite` is a verdict on the whole march; the live view takes the count known **at**
+    // this boundary. Without this a copy that diverges at `t = 12` paints its footprint
+    // undetermined in the frame at `t = 0.8`, and both the render and `footprint_undetermined`
+    // read it. Empty for a series written before the field existed: fall back to the run's count
+    // rather than silently reporting zero, which would read as "nothing is wrong here".
+    q.n_nonfinite = p.live_nonfinite.get(j).copied().unwrap_or(p.n_nonfinite);
     let terminated = !p.censored && p.t_end <= t_j * (1.0 + 1e-12);
     if !terminated {
         q.state = State::Bounded as u8;

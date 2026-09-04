@@ -551,6 +551,43 @@ fn a_filament_through_a_sea_needs_the_whiteness_arm_and_a_shore_does_not() {
     }
 }
 
+/// **T17 — a live view does not inherit a verdict on the whole march.** `PixelOut::n_nonfinite`
+/// counts the copies the driver flagged over the march to `t_max`, so cloning it into the view at
+/// boundary `j` paints a footprint undetermined at `t = 0.8` because a copy diverges at `t = 12`.
+/// Both `colour::rgb` (magenta) and `scheduler::footprint_undetermined` read it, so the leak
+/// reaches the render *and* the decision. Measured on `preset_shape_h1` at 64² by
+/// `examples/live_magenta`: 19 footprints magenta at every one of 16 boundaries before this,
+/// against `0 -> 19` after, arriving as the copies actually go.
+///
+/// The control is the fallback arm: a series written before the field existed must report the
+/// run's count, not zero -- zero would read as *nothing is wrong here*, which is the failure this
+/// test exists to prevent, in the other direction.
+#[test]
+fn the_live_view_does_not_inherit_the_runs_nonfinite_count() {
+    use prin_rs::ensemble::pixel::PixelOut;
+    let mut p = PixelOut::default();
+    p.live_t = vec![1.0, 2.0, 3.0];
+    p.live_spread_shape = vec![0.1, 0.1, 0.1];
+    p.live_spread_event = vec![0.0, 0.0, 0.0];
+    p.live_shape = vec![[1.0, 0.0, 0.0]; 3];
+    p.live_class = vec![0, 0, 0];
+    p.live_nonfinite = vec![0, 0, 2];
+    p.n_nonfinite = 2;
+    p.t_end = 3.0;
+    let seen: Vec<u8> = (0..3).map(|j| scheduler::project_at(&p, j).n_nonfinite).collect();
+    println!("n_nonfinite by boundary: {seen:?}, run-wide {}", p.n_nonfinite);
+    assert_eq!(seen, vec![0, 0, 2], "the live view is not reading the per-boundary count");
+    assert_ne!(seen[0], p.n_nonfinite, "the first boundary carries the run's verdict");
+    assert!(seen.windows(2).all(|w| w[0] <= w[1]), "a live view only ever learns");
+    // `footprint_undetermined` is the consumer that decides, so assert it moved too.
+    assert!(!scheduler::footprint_undetermined(&scheduler::project_at(&p, 0)));
+    assert!(scheduler::footprint_undetermined(&scheduler::project_at(&p, 2)));
+    // The control: no series, so the run's count is the only thing there is.
+    let mut q = p.clone();
+    q.live_nonfinite = Vec::new();
+    assert_eq!(scheduler::project_at(&q, 0).n_nonfinite, 2, "the fallback must not report zero");
+}
+
 /// **T16 — the live tree merges back once the band has collapsed.** The pulse's band widens
 /// and then collapses to a step; with merging on, the parents of the band's leaves become
 /// resolved at a late boundary and their children are released, so the resident count peaks and

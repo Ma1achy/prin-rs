@@ -492,25 +492,67 @@ pub fn lightness(t: f64) -> f64 {
 /// `shape_vec` (triple collision), a non-finite scalar, any non-finite copy in the ensemble
 /// (`n_nonfinite > 0`), and the two failure states. Each of those was previously rendered as a
 /// valid colour, three of them as the *quietest* colour on the ramp.
-pub fn rgb(p: &PixelOut, s: Scalar, set: &SiteSet, lo: f64, hi: f64) -> [u8; 3] {
+/// **How a footprint with no value is painted.**
+///
+/// [`DEBUG_NAN`] is a *debug flag*: it exists so an undetermined pixel cannot be mistaken for a
+/// dark one, and every diagnostic render wants it. In a presentation render it is noise -- a
+/// screaming magenta speckle over a fraction of a percent of footprints, which the eye reads
+/// before anything else in the frame.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum Veto {
+    /// [`DEBUG_NAN`]. The default, and what `_drift`, the censuses and every diagnostic use.
+    #[default]
+    Debug,
+    /// In palette: the hue the nominal copy still has, at the floor of the lightness ramp, and a
+    /// neutral floor where even the hue is gone.
+    ///
+    /// **This makes an undetermined footprint indistinguishable from a resolved dark one**, which
+    /// is exactly what [`DEBUG_NAN`] exists to prevent -- so the information moves rather than
+    /// vanishing: a harness using this style prints the vetoed count and names the style in its
+    /// sidecar, and the diagnostic render of the same field keeps the flag. Measured on
+    /// `preset_shape_h1` at 64², the nominal `shape_vec` is finite on **100%** of vetoed
+    /// footprints, so the hue is real in every case this hits; the lightness is what is unknown.
+    Quiet,
+}
+
+/// Whether [`rgb`] has no value for this footprint -- the vetoed set, for a harness to count.
+pub fn vetoed(p: &PixelOut, s: Scalar, set: &SiteSet, lo: f64, hi: f64) -> bool {
+    rgb_veto(p, s, set, lo, hi, Veto::Debug) == DEBUG_NAN
+}
+
+/// [`rgb`] with the veto style named. `rgb` is this at [`Veto::Debug`].
+pub fn rgb_veto(p: &PixelOut, s: Scalar, set: &SiteSet, lo: f64, hi: f64, v: Veto) -> [u8; 3] {
+    let quiet = |ab: Option<(f64, f64)>| -> [u8; 3] {
+        match v {
+            Veto::Debug => DEBUG_NAN,
+            Veto::Quiet => {
+                let (a, b) = ab.unwrap_or((0.0, 0.0));
+                oklab::oklab_to_srgb([lightness(0.0), a, b])
+            }
+        }
+    };
     if p.n_nonfinite > 0 {
-        return DEBUG_NAN;
+        return quiet(hue_ab(set, p.shape_vec));
     }
     match State::from_bits(p.state) {
-        Some(State::SimFailed) | Some(State::DecodeFailed) | None => return DEBUG_NAN,
+        Some(State::SimFailed) | Some(State::DecodeFailed) | None => return quiet(hue_ab(set, p.shape_vec)),
         _ => {}
     }
     let (a, b) = match hue_ab(set, p.shape_vec) {
         Some(x) => x,
-        None => return DEBUG_NAN,
+        None => return quiet(None),
     };
     let t = match range_norm(s, s.value(p), lo, hi) {
         Some(t) => t,
-        None => return DEBUG_NAN,
+        None => return quiet(Some((a, b))),
     };
+    oklab::oklab_to_srgb([lightness(t), a, b])
+}
+
+pub fn rgb(p: &PixelOut, s: Scalar, set: &SiteSet, lo: f64, hi: f64) -> [u8; 3] {
     // Replace-L: the sites' own lightness is discarded and the scalar's substituted, so the two
     // channels stay independent. Modulate-L would let a site's palette bleed into the scalar.
-    oklab::oklab_to_srgb([lightness(t), a, b])
+    rgb_veto(p, s, set, lo, hi, Veto::Debug)
 }
 
 /// [`rgb`] **resolved over the ensemble** -- supersampling, not anti-aliasing.

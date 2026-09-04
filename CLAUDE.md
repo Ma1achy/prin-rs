@@ -2713,3 +2713,43 @@ the region resolves -- and any leaf that did not split this round is settled. Th
 three real charts at `t = 13` the route gives back little -- 16 to 28 more children merged, error
 within half a point -- because their screen-floored regions have not resolved by the horizon; a
 correctness property measured where it fires, nearly inert where it does not, both stated.
+
+**A LIVE VIEW INHERITED A VERDICT ON THE WHOLE MARCH, AND IT PAINTED THE FUTURE INTO THE PAST.**
+`PixelOut::n_nonfinite` counts the copies the driver flagged over the march to `t_max`;
+`project_at` cloned it, so a footprint whose copy diverges at `t = 12` rendered undetermined in the
+frame at `t = 0.8`. Measured on `preset_shape_h1` at 64^2: **19 footprints magenta at every one of
+16 boundaries**, with **zero** non-finite at any boundary in the live series. The count *fell*
+across the animation, which is why it read as scattered noise -- a fact about the texel size as the
+tree refines, the standing raster lesson at a fifth site. **The series could not have shown it
+either**: a copy that blows up stops recording boundaries and the ragged rule carries its last
+*finite* shape forward -- right for a copy that terminated, wrong for one that diverged, so
+divergence is invisible in the series and has to be counted where `outs` is still in scope.
+`PixelOut::live_nonfinite` records the first boundary at which each copy became unusable, monotone
+by construction; `preset_shape_h1` now reads **0 -> 19** and `config_stability` 0 -> 8 with nothing
+before `t = 11.4`. **`footprint_undetermined` reads the same field**, so the leak reached the
+decision and not only the render, and the fallback when the series is absent is the run's count and
+not zero -- zero would read as *nothing is wrong here*.
+
+**AND THE MAGENTA WAS NOT A TRIPLE COLLISION: IT IS `max_steps`.** The census against the healthy
+population: **`budget_exhausted` 100% of flagged footprints against 0% of healthy**, substeps 6-8x
+the median, `n_cap_hits` and `ab_floored` zero on both. `heggie/driver.rs`'s budget branch sets
+`finite = false`, which is what `n_nonfinite` counts. A genuine triple collision has a different
+signature -- a **non-finite `shape_vec`**, which the `preset_shape` census recorded and which is
+**0%** here. The population *is* enriched in near-triples (4 of 19 carry nominal `detail = 3`),
+because a near-triple is what the predictive step limit spends unbounded steps on: triples are the
+reason the budget runs out, not a second route to the flag. **What changed since the regularisation
+work is the reporting, not the physics** -- the no-discard fix made a truncated run report as
+undetermined instead of contributing a finite, healthy-looking value (`deep interior` under Heggie,
+0 -> 199 against a budget count of 199). And **`refine_flagged` would not have caught them**:
+`error_ratio` reads 0.99998 and 1.0001 on the flagged set, its *converged* value, because every copy
+stopped at the same early point and so agrees perfectly -- the standing "a starved footprint reads
+exactly 1.0000" finding, at a third site.
+
+**A DEBUG FLAG IS NOT A PRESENTATION COLOUR, AND THE INFORMATION MOVES RATHER THAN VANISHING.**
+`colour::Veto::Quiet` paints a vetoed footprint in the nominal copy's own hue at the floor of the
+lightness ramp; `colour::rgb` is `Veto::Debug` and unchanged, so every diagnostic keeps `DEBUG_NAN`.
+It is a **colouring and not a computation** -- the probe tree is identical quad for quad, 833 and
+439. The cost is precisely what the flag exists to prevent: an undetermined footprint becomes
+indistinguishable from a resolved dark one. So the harness prints `vetoed N/M` per slice and the
+sidecar carries `veto=quiet vetoed_footprints=N of=M`, and zero magenta pixels survive in the 62
+files of `results/live`.

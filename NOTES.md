@@ -2952,3 +2952,27 @@ batch scripts in `results/payload/output/`. The short form:
   parents holding 96 capped children. Caps are re-tested every boundary now and read `Keep` once
   the region resolves; any leaf that did not split this round is settled. 69 == 69, 128 merged. At
   0.2 the no-gain merges had hidden it.
+
+## 2026-09-04, Phase 4: the live library, and a leak the animation exposed
+
+Thirty-one slices under `results/live/`, one `descend_live` each on the committed mechanism, with
+the README carrying the table and the reproduction line. Two findings came out of looking at them.
+
+- **The magenta was the future painted into the past.** `n_nonfinite` is a verdict on the whole
+  march and `project_at` cloned it, so a copy diverging at `t = 12` marked its footprint
+  undetermined at `t = 0.8` -- 19 footprints in every one of 16 frames on `preset_shape_h1`, with
+  zero actually non-finite at any boundary. The live series could not have shown it: a copy that
+  blows up stops recording and the ragged rule carries its last finite shape forward.
+  `live_nonfinite` records when each copy went, monotone; `footprint_undetermined` reads it too, so
+  the leak was in the decision as well as the render. `examples/live_magenta.rs` attributes it and
+  T17 fires on the old line, `[2,2,2]` against `[0,0,2]`.
+- **And what the magenta *is*: `max_steps`, not a triple collision.** 100% of flagged footprints
+  carry `budget_exhausted` against 0% of healthy ones, at 6-8x the substeps; the nominal `shape_vec`
+  is finite on all of them, where a genuine triple gives a non-finite one. Near-triples are enriched
+  in the population because they are what the predictive step limit spends unbounded steps on. What
+  changed since the regularisation work is the no-discard fix's reporting, and `refine_flagged`
+  would not have caught them -- `error_ratio` reads its converged 1.0000 on a starved footprint.
+- **`colour::Veto`**: `Debug` is `DEBUG_NAN` and the default; `Quiet` is the nominal hue at the ramp
+  floor, for presentation renders. It makes an undetermined footprint indistinguishable from a
+  resolved dark one, which is the flag's whole purpose, so the count moves into the per-slice line
+  and the sidecar instead.

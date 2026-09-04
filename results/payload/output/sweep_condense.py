@@ -25,7 +25,7 @@ def load(name):
         if m: cur.update(mem_all=int(m.group(1)), res_peak=int(m.group(2)), res_final=int(m.group(3)), merged=int(m.group(4))); continue
         m = PAY.search(line)
         if m: cur[m.group(1)] = dict(err=float(m.group(3)), dp_r=float(m.group(5)), uni_r=float(m.group(7)), sea=float(m.group(8)))
-for f in ['phase3_alo.txt', 'phase3_noagree.txt', 'phase3_alo0.txt', 'phase3_march2.txt', 'phase3_ladder.txt', 'phase3_nodim.txt', 'phase3_fine.txt', 'phase3_fine2.txt', 'phase3_march3.txt']: load(f)
+for f in ['phase3_alo.txt', 'phase3_noagree.txt', 'phase3_alo0.txt', 'phase3_march2.txt', 'phase3_ladder.txt', 'phase3_nodim.txt', 'phase3_fine.txt', 'phase3_fine2.txt', 'phase3_march3.txt', 'phase3_march4.txt']: load(f)
 T = ['near-field', 'deep_interior', 'preset_prho', 'preset_shape', 'config_stability', 'preset_shape_h1']
 def g(kind, t, log, var):
     r = R.get((kind, t, log, var)); return r if r and 'indicator' in r else None
@@ -109,3 +109,13 @@ for t in ['preset_shape_h1', 'config_stability', 'preset_shape']:
     m5 = g('march', t, 'phase3_fine2.txt', 'alpha_lo=0.005'); m3 = g('march', t, 'phase3_march3.txt', 'alpha_lo=0.005 capfix')
     if not (s5 and m5 and m3): print(f"| {t} | (pending) |"); continue
     print(f"| {t} | {s5['quads']} | {e(s5)} | {m5['mem_all']} | {m5['res_final']} | {m5['merged']} | {e(m5)} | {m3['mem_all']} | {m3['res_final']} | {m3['merged']} | {e(m3)} | {e(m3,'resolvable')} | {m3['indicator']['uni_r']:.2f}x | {m3['catchup_pct']:.0f}% |")
+
+print("\n### The live march at 0.005 before and after the live-view fix\n")
+print("| target | static: quads | vs ref | before: computed | resident | merged | vs ref | after: computed | resident | merged | vs ref | resolvable left | vs uniform | catch-up |")
+print("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|")
+for t in ['preset_shape_h1', 'config_stability', 'preset_shape']:
+    s5 = g('live', t, 'phase3_fine.txt', 'stationary=0 alpha_lo=0.005') or g('live', t, 'phase3_fine2.txt', 'stationary=0 alpha_lo=0.005')
+    b = g('march', t, 'phase3_march3.txt', 'alpha_lo=0.005 capfix')
+    a = g('march', t, 'phase3_march4.txt', 'alpha_lo=0.005 livenf')
+    if not (s5 and b and a): print(f"| {t} | (pending) |"); continue
+    print(f"| {t} | {s5['quads']} | {e(s5)} | {b['mem_all']} | {b['res_final']} | {b['merged']} | {e(b)} | {a['mem_all']} | {a['res_final']} | {a['merged']} | {e(a)} | {e(a,'resolvable')} | {a['indicator']['uni_r']:.2f}x | {a['catchup_pct']:.0f}% |")

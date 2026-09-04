@@ -265,6 +265,14 @@ pixels a finer grid resolves, so it is the structure the tree gave up.
 | config_stability | 4729 | 0.0582 | 4813 | 4629 | 184 | 0.0638 | 4813 | 4601 | 212 | 0.0689 | 0.0293 | 1.04x | 95% |
 | preset_shape | 1837 | 0.0322 | 1725 | 1517 | 208 | 0.0698 | 1725 | 1513 | 212 | 0.0702 | 0.0159 | 0.48x | 91% |
 
+#### The live march at 0.005 before and after the live-view fix
+
+| target | static: quads | vs ref | before: computed | resident | merged | vs ref | after: computed | resident | merged | vs ref | resolvable left | vs uniform | catch-up |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| preset_shape_h1 | 2169 | 0.1654 | 2225 | 1909 | 316 | 0.1961 | 2225 | 1909 | 316 | 0.1961 | 0.0483 | 0.67x | 92% |
+| config_stability | 4729 | 0.0582 | 4813 | 4601 | 212 | 0.0689 | 4813 | 4601 | 212 | 0.0689 | 0.0293 | 1.04x | 95% |
+| preset_shape | 1837 | 0.0322 | 1725 | 1513 | 212 | 0.0702 | 1725 | 1513 | 212 | 0.0702 | 0.0159 | 0.48x | 91% |
+
 ### What it says
 
 1. **The area floor saves quads on every chart and floors resolvable structure on every chart.**
@@ -339,7 +347,26 @@ pixels a finer grid resolves, so it is the structure the tree gave up.
    by the horizon. The fix is a correctness property of the merge, measured on the field that
    exercises it; on these charts at this horizon it is nearly inert, and that is recorded rather
    than inferred from the pulse.
-8. **A build that prints nothing built nothing.** `cargo` dropped off the shell's PATH mid-session;
+8. **The live view inherited a verdict on the whole march, and the march rows survive it
+   unchanged.** `PixelOut::n_nonfinite` counts the copies the driver flagged over the march to
+   `t_max` and `project_at` cloned it, so a footprint whose copy diverges at `t = 12` read
+   undetermined at `t = 0.8`. `footprint_undetermined` reads that field, so the leak was in the
+   decision and not only in the render, and the three marches were re-run against it. **Every
+   column is identical to five digits** -- computed, resident, merged, error, on all three charts
+   (last table above). The static rows were never at risk: `descend` reads the run's own values at
+   `t_max` and there is no projection.
+
+   **The null carries its own guard, because this project's standing failure is reading a null off
+   a dead arm.** The leak window -- footprint-boundaries where the run-wide verdict fired and the
+   live count had not -- is **174 / 112 / 118**, so the flag was live. Of those, the ones not
+   already unresolved by spread or event, the only ones that could move a decision, are **37
+   (21.3%) / 96 (85.7%) / 0**. But the decision is per **quad**, and under a tolerance a quad
+   splits if *any* footprint is unresolved, so a falsely-unresolved footprint only tips a quad
+   whose every other footprint is resolved: **3 of 1024 / 2 of 928 / 0 of 640** quad-boundaries
+   (0.29% / 0.22% / 0%) differ between the two rules at 64². The effect is real, decision-capable
+   and two to three parts in a thousand, and at the marches' own settings it lands on nothing.
+   `examples/live_magenta` prints all three levels.
+9. **A build that prints nothing built nothing.** `cargo` dropped off the shell's PATH mid-session;
    two builds silently did not run, a bitwise pin check compared two stale binaries and read
    "identical", and a batch ran the old code under a new name. Caught because the third build's
    filtered output was empty where it should have carried a `Finished` line. Every build in a

@@ -2745,6 +2745,20 @@ undetermined instead of contributing a finite, healthy-looking value (`deep inte
 stopped at the same early point and so agrees perfectly -- the standing "a starved footprint reads
 exactly 1.0000" finding, at a third site.
 
+**AND THE TREES SURVIVED THE LEAK UNCHANGED -- WITH THE THREE-LEVEL GUARD THAT SAYS THE ARM WAS
+LIVE.** The three marches re-run under the fix are **identical to five digits in every column** --
+computed, resident, merged, error. A null, and this project's standing failure is reading one off a
+dead arm, so it is measured at three levels. The **leak window**, footprint-boundaries where the
+run-wide verdict fired and the live count had not: **174 / 112 / 118** on `preset_shape_h1`,
+`config_stability`, `preset_shape` -- the flag was live. Of those, the ones **not already
+unresolved** by spread or event, the only ones that could move a decision: **37 (21.3%) / 96
+(85.7%) / 0**. But the decision is per **quad**, and under a tolerance a quad splits if *any*
+footprint is unresolved, so a falsely-unresolved footprint tips only a quad whose every other
+footprint is resolved: **3 of 1024 / 2 of 928 / 0 of 640** quad-boundaries. Real, decision-capable,
+two to three parts in a thousand, and it lands on nothing at the marches' settings. **A footprint
+count is not a quad count**, and the arm that answers "could this have moved anything" is the one at
+the grain the decision is made on.
+
 **A DEBUG FLAG IS NOT A PRESENTATION COLOUR, AND THE INFORMATION MOVES RATHER THAN VANISHING.**
 `colour::Veto::Quiet` paints a vetoed footprint in the nominal copy's own hue at the floor of the
 lightness ramp; `colour::rgb` is `Veto::Debug` and unchanged, so every diagnostic keeps `DEBUG_NAN`.

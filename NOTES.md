@@ -2976,3 +2976,8 @@ the README carrying the table and the reproduction line. Two findings came out o
   floor, for presentation renders. It makes an undetermined footprint indistinguishable from a
   resolved dark one, which is the flag's whole purpose, so the count moves into the per-slice line
   and the sidecar instead.
+- **The march re-run under the fix is a null, guarded at three levels.** Every column identical to
+  five digits. Leak window 174/112/118 footprint-boundaries (the flag was live); not-already-
+  unresolved 37/96/0; quad-boundaries whose `any unresolved` verdict differs, 3 of 1024 / 2 of 928 /
+  0 of 640. A footprint count is not a quad count, and under a tolerance one falsely-unresolved
+  footprint only tips a quad whose every other footprint is resolved.

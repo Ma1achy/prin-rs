@@ -144,6 +144,63 @@ fn main() {
         ] {
             println!("  {name:>22} {:>11.1}% {:>11.1}%", 100.0 * frac(&bad, f), 100.0 * frac(&good, f));
         }
+        // **Why the fix may move no tree.** A footprint is unresolved if its spread exceeds the
+        // tolerance, its event arm disagrees, **or** a copy is unusable. The leak added the third
+        // reason too early; it can only change a decision on a footprint that was *not* already
+        // unresolved for one of the first two. This counts the leak window -- the boundaries at
+        // which the run-wide verdict fired and the live count had not -- and how much of it is
+        // decision-relevant.
+        let tau = SchedCfg::default().tau_display;
+        let (mut window, mut decisive) = (0usize, 0usize);
+        for p in &px {
+            if p.n_nonfinite == 0 {
+                continue;
+            }
+            for j in 0..n_b {
+                let live_nf = p.live_nonfinite.get(j).copied().unwrap_or(p.n_nonfinite);
+                if live_nf > 0 {
+                    continue; // no leak here: the live count already fired
+                }
+                window += 1;
+                let otherwise = p.live_spread_shape[j] > tau || p.live_spread_event[j] > 0.0;
+                if !otherwise {
+                    decisive += 1;
+                }
+            }
+        }
+        println!("  leak window {window} footprint-boundaries; of those {decisive} were not already \
+                  unresolved by spread or event ({:.2}%) -- only those could move a decision",
+                 100.0 * decisive as f64 / window.max(1) as f64);
+
+        // **The decision is per QUAD, not per footprint.** Under `Policy::Tolerance` a quad splits
+        // if *any* footprint is unresolved, so a falsely-unresolved one only tips the decision
+        // when every other footprint in its quad is resolved. This counts quad-boundaries whose
+        // `any unresolved` verdict differs between the two rules -- the number that decides
+        // whether a tree can move at all.
+        let mut quad_bnd = 0usize;
+        let mut quad_diff = 0usize;
+        for i in tree.leaves() {
+            let Some(group) = st.pixels.get(i) else { continue };
+            if group.is_empty() {
+                continue;
+            }
+            for j in 0..n_b {
+                quad_bnd += 1;
+                let any = |old: bool| {
+                    group.iter().any(|p: &PixelOut| {
+                        let nf = if old { p.n_nonfinite } else { p.live_nonfinite.get(j).copied().unwrap_or(p.n_nonfinite) };
+                        nf > 0 || p.live_spread_shape[j] > tau || p.live_spread_event[j] > 0.0
+                    })
+                };
+                if any(true) != any(false) {
+                    quad_diff += 1;
+                }
+            }
+        }
+        println!("  quad-boundaries {quad_bnd}; `any unresolved` differs between the rules on {quad_diff} \
+                  ({:.2}%) -- a tree can only move where this is nonzero",
+                 100.0 * quad_diff as f64 / quad_bnd.max(1) as f64);
+
         // Terminal class of the flagged set: a triple collision is the instrument reporting.
         let mut cls = std::collections::BTreeMap::new();
         for p in &bad {

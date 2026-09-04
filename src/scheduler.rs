@@ -1202,6 +1202,11 @@ pub struct DescentState {
     /// Wanted to split and was outranked; re-decided next round. `Policy::Tolerance` only.
     pub deferred: Vec<usize>,
     pub iteration: u32,
+    /// Payloads with residency. **`Retain::Never` is today's `keep_pixels = false`** and records
+    /// nothing, so the batch descent's memory does not move; `into_dense` reproduces the sparse
+    /// `resize(i + 1, Vec::new())` shape exactly, which is what keeps `SchedStats::pixels` the
+    /// same object every consumer already indexes.
+    pub px: crate::store::PixelStore,
 }
 
 impl DescentState {
@@ -1212,6 +1217,11 @@ impl DescentState {
             pending: vec![0usize],
             deferred: Vec::new(),
             iteration: 0,
+            px: crate::store::PixelStore::new(if cfg.keep_pixels {
+                crate::store::Retain::All
+            } else {
+                crate::store::Retain::Never
+            }),
         }
     }
 }
@@ -1257,7 +1267,7 @@ pub fn round(
     stop: Stop,
     spend: &mut Spend,
 ) -> RoundOut {
-    let DescentState { tree, stats: st, pending, deferred, iteration } = ds;
+    let DescentState { tree, stats: st, pending, deferred, iteration, px: store } = ds;
     let mut out = RoundOut::default();
     let mut held_over: Vec<usize> = Vec::new();
     spend.rounds += 1;
@@ -1305,12 +1315,9 @@ pub fn round(
             tree.nodes[i].red = r;
             tree.nodes[i].iteration = *iteration;
             st.footprints += r.n_footprints as usize;
-            if cfg.keep_pixels {
-                if st.pixels.len() <= i {
-                    st.pixels.resize(i + 1, Vec::new());
-                }
-                st.pixels[i] = px;
-            }
+            // Through the store, so residency is recorded and a session can release it. Under
+            // `Retain::Never` this is a no-op that allocates nothing.
+            store.put(i, px, *iteration as u64);
         }
         st.quads_computed += pending.len();
         out.computed += pending.len();
@@ -1491,6 +1498,7 @@ pub fn descend_with(
 
     ds.stats.iterations = ds.iteration;
     ds.stats.wall_seconds = t0.elapsed().as_secs_f64();
+    ds.stats.pixels = ds.px.into_dense();
     (ds.tree, ds.stats)
 }
 

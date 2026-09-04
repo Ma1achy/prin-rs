@@ -179,3 +179,53 @@ fn the_session_guard_fires_only_on_the_inert_cell() {
         assert_session_engages(&c, "results/session/x.prnf", false);
     }
 }
+
+/// **Eviction changes no decision — with the arm that says it fired.**
+///
+/// Under a frozen playhead the argument is structural rather than empirical: `decide` does not
+/// take pixels and nothing it calls does, so once `reduce` has run there is no path from a payload
+/// to a decision at all. This asserts the consequence *and* prints the evicted count, because a
+/// null read off an arm that never engaged is this project's recorded failure mode — a cap that
+/// evicted nothing would pass the equality trivially.
+#[test]
+fn eviction_changes_no_decision_and_the_arm_fires() {
+    let f = field();
+    let cam = Camera::framing(0.0, 0.0, 1.0, 512);
+
+    let run = |cap: Option<usize>| {
+        let mut c = cfg(32, 8);
+        c.sched.keep_pixels = true;
+        c.payload_cap = cap;
+        let mut s = Session::new(0.0, 0.0, 1.0, 0, cam, c, 13.0);
+        let mut evicted = 0usize;
+        for _ in 0..40 {
+            let (hit, _) = s.step(&f);
+            evicted += s.evict_after_frame(&|_| false).len();
+            if hit == QuotaHit::Drained {
+                break;
+            }
+        }
+        let decisions: Vec<u8> = s.tree().nodes.iter().map(|q| q.decision.code()).collect();
+        let boxes: Vec<(u32, u64, u64)> = s
+            .tree()
+            .nodes
+            .iter()
+            .map(|q| (q.level, q.cx.to_bits(), q.cy.to_bits()))
+            .collect();
+        (decisions, boxes, evicted, s.store().resident(), s.stats().quads_computed)
+    };
+
+    let (d_keep, b_keep, e_keep, r_keep, q_keep) = run(None);
+    let (d_eyes, b_eyes, e_eyes, r_eyes, q_eyes) = run(Some(0));
+
+    // The arm: eviction actually happened, and the two caps really differ.
+    assert!(e_eyes > 0, "cap 0 evicted nothing, so the equality below is vacuous");
+    assert_eq!(e_keep, 0, "the uncapped arm evicted something");
+    assert!(r_keep > r_eyes, "residency did not differ: {r_keep} against {r_eyes}");
+    println!("evicted {e_eyes} payloads, resident {r_eyes} against {r_keep}");
+
+    // The claim.
+    assert_eq!(d_keep, d_eyes, "eviction changed a decision");
+    assert_eq!(b_keep, b_eyes, "eviction changed the tree's shape");
+    assert_eq!(q_keep, q_eyes, "eviction changed how many quads were computed");
+}

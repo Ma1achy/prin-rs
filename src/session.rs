@@ -180,7 +180,6 @@ pub fn assert_session_engages(cfg: &SessionCfg, path: &str, allow: bool) {
 pub struct Session {
     cfg: SessionCfg,
     ds: DescentState,
-    px: PixelStore,
     cam: Camera,
     t_max: f64,
     frame: u64,
@@ -196,9 +195,10 @@ impl Session {
             None if cfg.sched.keep_pixels => Retain::All,
             None => Retain::Never,
         };
-        let ds = DescentState::new(cx, cy, half, body, &cfg.sched);
+        let mut ds = DescentState::new(cx, cy, half, body, &cfg.sched);
+        ds.px = PixelStore::new(retain);
         let stored_zoom = cam.half_world;
-        Session { cfg, ds, px: PixelStore::new(retain), cam, t_max, frame: 0, stored_zoom }
+        Session { cfg, ds, cam, t_max, frame: 0, stored_zoom }
     }
 
     pub fn tree(&self) -> &crate::quad::QuadTree {
@@ -210,7 +210,7 @@ impl Session {
     }
 
     pub fn store(&self) -> &PixelStore {
-        &self.px
+        &self.ds.px
     }
 
     pub fn frame(&self) -> u64 {
@@ -252,6 +252,28 @@ impl Session {
 
     pub fn camera(&self) -> Camera {
         self.cam
+    }
+
+    /// What a frame did to the store.
+    ///
+    /// `recomputed` is kept apart from `computed` on purpose: one is progress and the other is the
+    /// price of the cap, and a session reporting their sum reports a budget being spent well while
+    /// it thrashes.
+    pub fn evict_after_frame(&mut self, keep: &dyn Fn(usize) -> bool) -> Vec<usize> {
+        let Some(cap) = self.cfg.payload_cap else { return Vec::new() };
+        let (cam, margin) = (self.cam, self.cfg.evict_margin);
+        let boxes: Vec<(f64, f64, f64)> =
+            self.ds.tree.nodes.iter().map(|q| (q.cx, q.cy, q.half)).collect();
+        let steps: Vec<u64> =
+            self.ds.tree.nodes.iter().map(|q| q.red.total_substeps as u64).collect();
+        let frame = self.frame;
+        self.ds.px.evict_to(
+            cap,
+            frame,
+            keep,
+            &|i| boxes.get(i).map_or(0.0, |&(x, y, h)| cam.relevance(x, y, h, margin)),
+            &|i| steps.get(i).copied().unwrap_or(0),
+        )
     }
 
     /// **One frame.** Run rounds until the quota binds, then evict to the cap.

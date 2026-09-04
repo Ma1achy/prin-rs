@@ -229,3 +229,232 @@ fn eviction_changes_no_decision_and_the_arm_fires() {
     assert_eq!(b_keep, b_eyes, "eviction changed the tree's shape");
     assert_eq!(q_keep, q_eyes, "eviction changed how many quads were computed");
 }
+
+// -------------------------------------------------------------------------------------------
+// The frontier, wired into the frame loop.
+// -------------------------------------------------------------------------------------------
+
+/// **`priority` IS `stored_term × derived_term`, exactly** — so the frontier and `order_queue`
+/// cannot be ranking on two different functions.
+///
+/// The plan named this as a weak joint with no check: *"the frontier selects on `stored × derived`;
+/// `order_queue` then sorts the selected set on `scheduler::priority`"*, and where those differ a
+/// frame refines the top-`k` of one ordering in the order of another — an invisible staleness that
+/// `agrees_with_rebuild` sits one level below and cannot see. Making `priority` the product by
+/// construction removes the class; this asserts it bitwise so a future edit to either half cannot
+/// reintroduce it.
+#[test]
+fn the_two_halves_of_priority_multiply_back_to_it() {
+    use prin_rs::scheduler::{derived_term, priority, stored_term};
+
+    let f = field();
+    // **Zoomed to a corner, not framing the root.** `Camera::framing` sets `half_world` to the
+    // root half-width, which makes every quad fully visible and `relevance` identically 1.0 --
+    // so the product identity would hold trivially and the bound would be untested. That fixture
+    // defect has now appeared four times on this project; the `nonunit` control below is what
+    // catches it rather than a reading of the constructor.
+    let base = Camera::framing(0.0, 0.0, 1.0, 512);
+    let cam = Camera { cx: 0.5, cy: 0.5, half_world: 0.25, ..base };
+    let mut c = cfg(400, 8);
+    c.sched.camera = Some(cam);
+    c.sched.camera_bias = Some(0.5);
+    let mut s = Session::new(0.0, 0.0, 1.0, 0, cam, c, 13.0);
+    for _ in 0..6 {
+        s.step(&f);
+    }
+
+    let (mut checked, mut nonunit) = (0, 0);
+    for i in 0..s.tree().nodes.len() {
+        let (st, de) = (
+            stored_term(s.tree(), i, s.sched_cfg()),
+            derived_term(s.tree(), i, s.sched_cfg()),
+        );
+        let p = priority(s.tree(), i, s.sched_cfg());
+        assert_eq!(st * de, p, "node {i}: {st} * {de} != {p}");
+        // **The derived term's bound is the soundness argument for `top_k_bounded`.**
+        assert!((0.0..=1.0).contains(&de) || de.is_nan(), "node {i}: derived {de} is outside [0,1]");
+        checked += 1;
+        nonunit += usize::from(de < 1.0);
+    }
+    assert!(checked > 20, "only {checked} nodes");
+    // The control: if every derived term were 1.0 the product identity would be vacuous.
+    assert!(nonunit > 0, "no quad had a derived term below 1, so the camera arm is inert here");
+}
+
+/// **A pending quad inherits its PARENT's stored term, and its own would be zero.**
+///
+/// A freshly-split child carries `QuadReduction::default()`. Ranking on that ranks every child of
+/// every parent at exactly zero — *no* ordering, not a weak one, which this project has twice been
+/// caught reading a flat curve off. The arm that makes this fire is the comparison against the
+/// parent, not the mere fact that the value is non-zero.
+#[test]
+fn an_uncomputed_quad_ranks_on_its_parent() {
+    use prin_rs::scheduler::stored_term;
+
+    let f = field();
+    let cam = Camera::framing(0.0, 0.0, 1.0, 512);
+    let mut s = Session::new(0.0, 0.0, 1.0, 0, cam, cfg(4, 1), 13.0);
+    // Enough frames to have split something and left children pending under the tight quota.
+    for _ in 0..4 {
+        s.step(&f);
+    }
+    let pending: Vec<usize> = s.pending().to_vec();
+    assert!(!pending.is_empty(), "nothing is pending, so this test has no subject");
+
+    let mut checked = 0;
+    for &i in &pending {
+        assert_eq!(s.tree().nodes[i].red.n_footprints, 0, "quad {i} is not actually uncomputed");
+        let Some(p) = s.tree().nodes[i].parent else { continue };
+        assert_eq!(
+            stored_term(s.tree(), i, s.sched_cfg()),
+            stored_term(s.tree(), p, s.sched_cfg()),
+            "pending quad {i} did not inherit parent {p}"
+        );
+        // And the parent is computed, so the inherited value is real rather than zero twice over.
+        assert!(s.tree().nodes[p].red.n_footprints > 0, "parent {p} is uncomputed too");
+        checked += 1;
+    }
+    assert!(checked > 0, "no pending quad had a parent");
+}
+
+/// **The frontier walks a fraction of its entries, and reports which fraction.**
+///
+/// Whether the bucketing earns its place is empirical: if the signal piles into two or three bands
+/// the walk degenerates to a full scan and the frontier is a `HashMap` with extra steps. The
+/// measurement is committed in `results/frontier/`; this pins that the wiring actually reports it
+/// rather than leaving the column at zero.
+#[test]
+fn the_frame_frontier_reports_its_scan() {
+    let f = field();
+    let cam = Camera::framing(0.0, 0.0, 1.0, 512);
+    // A quota well below the frontier, or nothing is truncated and the ranking is inert by
+    // construction -- the `k_frac = 1.0` cell, at a new site.
+    let mut s = Session::new(0.0, 0.0, 1.0, 0, cam, cfg(8, 1), 13.0);
+    let mut ever_ranked = false;
+    for _ in 0..12 {
+        s.step(&f);
+        let (scan, len, agrees) = s.frontier_telemetry();
+        assert!(scan <= len, "scanned {scan} of {len}");
+        if scan > 0 {
+            ever_ranked = true;
+            assert!(len > 0);
+        }
+        assert!(agrees.is_nan() || agrees == 1.0, "the frontier disagreed with its rebuild");
+    }
+    assert!(ever_ranked, "the quota never bound, so the frontier never ranked anything");
+}
+
+/// **The audit runs on schedule and is `NaN` otherwise — never `1.0` by default.**
+#[test]
+fn the_frontier_audit_is_nan_when_it_did_not_run() {
+    let f = field();
+    let cam = Camera::framing(0.0, 0.0, 1.0, 512);
+    let mut c = cfg(8, 1);
+    c.audit_every = 3;
+    let mut s = Session::new(0.0, 0.0, 1.0, 0, cam, c, 13.0);
+    let (mut ran, mut skipped) = (0, 0);
+    for _ in 0..9 {
+        s.step(&f);
+        if s.frontier_telemetry().2.is_nan() { skipped += 1 } else { ran += 1 }
+    }
+    assert_eq!((ran, skipped), (3, 6), "the audit did not run on exactly every third frame");
+
+    // And `audit_every = 0` means never, said in the type rather than by an accident of modulo.
+    let mut c0 = cfg(8, 1);
+    c0.audit_every = 0;
+    let mut s0 = Session::new(0.0, 0.0, 1.0, 0, cam, c0, 13.0);
+    for _ in 0..4 {
+        s0.step(&f);
+        assert!(s0.frontier_telemetry().2.is_nan(), "audit_every = 0 ran an audit");
+    }
+}
+
+// -------------------------------------------------------------------------------------------
+// Re-rooting, driven by the camera.
+// -------------------------------------------------------------------------------------------
+
+/// **A zoom-out past the root box grows the root; a zoom-in never does.**
+///
+/// The asymmetry is the test. A regrow triggered by a zoom-in would mean the containment test is
+/// reading something other than containment, and the count would still look plausible.
+#[test]
+fn a_zoom_out_grows_the_root_and_a_zoom_in_does_not() {
+    let f = field();
+    let cam = Camera::framing(0.0, 0.0, 1.0, 512);
+    let mut c = cfg(64, 4);
+    c.regrow = Regrow::Upto(3);
+    let mut s = Session::new(0.0, 0.0, 1.0, 0, cam, c, 13.0);
+    s.step(&f);
+    let root_before = s.tree().root_node().half;
+
+    // Zoom IN: the camera is well inside the root box.
+    let d_in = s.set_camera(Camera { half_world: 0.25, ..cam });
+    assert_eq!(d_in.regrown, 0, "a zoom-in grew the root");
+    assert_eq!(s.tree().root_node().half, root_before);
+
+    // Zoom OUT past the root: 2.5 against a root half of 1.0 needs two doublings.
+    let d_out = s.set_camera(Camera { half_world: 2.5, ..cam });
+    assert_eq!(d_out.regrown, 2, "expected exactly two doublings, got {}", d_out.regrown);
+    assert_eq!(s.tree().root_node().half, root_before * 4.0);
+    assert_eq!(s.grown(), 2);
+
+    // And the bound holds: a further zoom-out can add only the one level left of `Upto(3)`.
+    let d_far = s.set_camera(Camera { half_world: 40.0, ..cam });
+    assert_eq!(d_far.regrown, 1, "the bound did not clamp the growth");
+    assert_eq!(s.grown(), 3);
+    let d_more = s.set_camera(Camera { half_world: 80.0, ..cam });
+    assert_eq!(d_more.regrown, 0, "growth continued past Upto(3)");
+}
+
+/// **`Regrow::Off` is the named control, and it must be genuinely off.**
+#[test]
+fn regrow_off_never_grows() {
+    let f = field();
+    let cam = Camera::framing(0.0, 0.0, 1.0, 512);
+    let mut s = Session::new(0.0, 0.0, 1.0, 0, cam, cfg(64, 4), 13.0);
+    s.step(&f);
+    let before = s.tree().root_node().half;
+    let d = s.set_camera(Camera { half_world: 32.0, ..cam });
+    assert_eq!(d.regrown, 0);
+    assert_eq!(s.tree().root_node().half, before, "the root grew with Regrow::Off");
+    // The control: the same camera under `Upto` must actually grow, or "off" proves nothing.
+    let mut c = cfg(64, 4);
+    c.regrow = Regrow::Upto(6);
+    let mut s2 = Session::new(0.0, 0.0, 1.0, 0, cam, c, 13.0);
+    s2.step(&f);
+    assert!(s2.set_camera(Camera { half_world: 32.0, ..cam }).regrown > 0,
+            "the control did not grow either, so `Off` is untested");
+}
+
+/// **Growing the root preserves every existing quad's box, decision and payload.**
+///
+/// `grow_root` pushes the new root at the end, so no index moves — which is what lets the store
+/// and the frontier stay untouched. This asserts the property through the *session*, because the
+/// unit test in `tests/regrow.rs` cannot see the store.
+#[test]
+fn a_regrow_disturbs_neither_the_store_nor_any_decision() {
+    let f = field();
+    let cam = Camera::framing(0.0, 0.0, 1.0, 512);
+    let mut c = cfg(64, 4);
+    c.regrow = Regrow::Upto(2);
+    c.payload_cap = Some(4096);
+    c.sched.keep_pixels = true;
+    let mut s = Session::new(0.0, 0.0, 1.0, 0, cam, c, 13.0);
+    for _ in 0..4 {
+        s.step(&f);
+    }
+    let n = s.tree().nodes.len();
+    let boxes: Vec<(f64, f64, f64)> =
+        s.tree().nodes.iter().map(|q| (q.cx, q.cy, q.half)).collect();
+    let decisions: Vec<_> = s.tree().nodes.iter().map(|q| q.decision).collect();
+    let resident = s.store().resident();
+
+    let d = s.set_camera(Camera { half_world: 3.0, ..cam });
+    assert!(d.regrown > 0, "nothing grew, so this test has no subject");
+    for i in 0..n {
+        assert_eq!((s.tree().nodes[i].cx, s.tree().nodes[i].cy, s.tree().nodes[i].half), boxes[i],
+                   "node {i}'s box moved under a regrow");
+        assert_eq!(s.tree().nodes[i].decision, decisions[i], "node {i}'s decision moved");
+    }
+    assert_eq!(s.store().resident(), resident, "a regrow evicted or added a payload");
+}

@@ -25,6 +25,7 @@ pub mod store;
 pub mod spatial;
 pub mod stats;
 pub mod testing;
+pub mod uv;
 
 pub use real::Real;
 pub use vec2::Vec2;

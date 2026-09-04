@@ -3,33 +3,33 @@ session_frames: near-field at 96^2, 8 frames, t=13 n_sync=32
   the camera pans AND the playhead marches; both deltas are logged separately,
   because a churn spike with one cause recorded cannot be attributed to either.
 
-      mode  frame frame_ms   quads  leaves     dvar    churn  shared  reproj    cam_d      stop
-  balanced      0  1978.52      24      22   0.2314      NaN       0       0  0.00e0    rounds
-  balanced      1  1315.99      17      34   0.8789   0.1111      18      24 1.56e-3    rounds
-  balanced      2   247.81       4      34   0.8789   0.3235      34      41 1.56e-3   drained
-  balanced      3     0.00       0      34   0.8789   0.0000      34      45 1.56e-3   drained
-  balanced      4     0.00       0      34   0.8789   0.0000      34      45 1.56e-3   drained
-  balanced      5     0.00       0      34   0.8789   0.0000      34      45 1.56e-3   drained
-  balanced      6     0.00       0      34   0.8789   0.0000      34      45 1.56e-3   drained
-  balanced      7     0.01       0      34   0.8789   0.0000      34      45 1.56e-3   drained
+      mode frame frame_ms  quads leaves     dvar    churn shared reproj    cam_d      stop   scan/len
+  balanced     0  2369.78     24     22   0.2314      NaN      0      0   0.00e0    rounds  1.000 4/4
+  balanced     1  2020.71     24     49   1.1354      NaN      0     24  1.56e-3     quads 0.000 0/16
+  balanced     2  1802.11     24     61   1.2040   0.5106     47     48  1.56e-3     quads  0.000 0/8
+  balanced     3   658.56      8     61   1.2040   0.3279     61     72  1.56e-3   drained  0.000 0/8
+  balanced     4     0.00      0     61   1.2040   0.0000     61     80  1.56e-3   drained          -
+  balanced     5     0.00      0     61   1.2040   0.0000     61     80  1.56e-3   drained          -
+  balanced     6     0.00      0     61   1.2040   0.0000     61     80  1.56e-3   drained          -
+  balanced     7     0.00      0     61   1.2040   0.0000     61     80  1.56e-3   drained          -
 
-  balanced : p50 0.01 p95 1978.52 p99 1978.52 max 1978.52 ms over 8 frames
-  frac over the 41.7 ms floor, DURING MOTION: 0.2857
-  final depth variance 0.8789
+  balanced : p50 658.56 p95 2369.78 p99 2369.78 max 2369.78 ms over 8 frames
+  frac over the 41.7 ms floor, DURING MOTION: 0.4286
+  final depth variance 1.2040
 
-      mode  frame frame_ms   quads  leaves     dvar    churn  shared  reproj    cam_d      stop
-   uniform      0  1954.93      24      73   0.1374      NaN       0       0  0.00e0    rounds
-   uniform      1  1945.20      24     145   0.1901   0.0000      49      24 1.56e-3     quads
-   uniform      2  1956.40      24     217   0.0563   0.0000     121      48 1.56e-3     quads
-   uniform      3  1968.46      24     256   0.0000   0.0539     204      72 1.56e-3     quads
-   uniform      4  1921.28      24     256   0.0000   0.0938     256      96 1.56e-3     quads
-   uniform      5  2441.61      24     256   0.0000   0.0938     256     120 1.56e-3     quads
-   uniform      6  2121.04      24     256   0.0000   0.0938     256     144 1.56e-3     quads
-   uniform      7  1943.13      24     256   0.0000   0.0938     256     168 1.56e-3     quads
+      mode frame frame_ms  quads leaves     dvar    churn shared reproj    cam_d      stop   scan/len
+   uniform     0  2157.31     24     73   0.1374      NaN      0      0   0.00e0    rounds 1.000 64/64
+   uniform     1  1963.07     24    148   0.4647      NaN      0     24  1.56e-3     quads 0.961 73/76
+   uniform     2  1947.70     24    184   0.3563   0.0882    136     48  1.56e-3     quads 0.331 49/148
+   uniform     3  1967.34     24    247   0.2063   0.0184    163     72  1.56e-3     quads 0.424 73/172
+   uniform     4  1947.26     24    259   0.1832   0.0823    243     96  1.56e-3     quads 0.211 49/232
+   uniform     5  1939.15     24    259   0.1832   0.0927    259    120  1.56e-3     quads 0.165 37/224
+   uniform     6  1996.77     24    259   0.1832   0.0927    259    144  1.56e-3     quads 0.965 193/200
+   uniform     7  1999.57     24    259   0.1832   0.0927    259    168  1.56e-3     quads 0.960 169/176
 
-  uniform : p50 1956.40 p95 2441.61 p99 2441.61 max 2441.61 ms over 8 frames
+  uniform : p50 1967.34 p95 2157.31 p99 2157.31 max 2157.31 ms over 8 frames
   frac over the 41.7 ms floor, DURING MOTION: 1.0000
-  final depth variance 0.0000
+  final depth variance 0.1832
 
 results/session/<region>_<mode>.prnf, with the balanced arm and the uniform control.
 Depth variance alone cannot tell balanced from FROZEN -- read churn beside it.

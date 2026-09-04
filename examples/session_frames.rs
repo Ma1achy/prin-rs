@@ -129,9 +129,9 @@ fn main() {
 
         let mut log: Vec<FrameRecord> = Vec::with_capacity(frames);
         let mut prev = by_box(s.tree());
-        println!("{:>10} {:>6} {:>8} {:>7} {:>7} {:>8} {:>8} {:>7} {:>7} {:>8} {:>9}",
+        println!("{:>10} {:>5} {:>8} {:>6} {:>6} {:>8} {:>8} {:>6} {:>6} {:>8} {:>9} {:>10}",
                  "mode", "frame", "frame_ms", "quads", "leaves", "dvar", "churn", "shared",
-                 "reproj", "cam_d", "stop");
+                 "reproj", "cam_d", "stop", "scan/len");
 
         for f in 0..frames {
             // The camera pans across a quarter of the viewport over the run, so `camera_delta` is
@@ -150,6 +150,7 @@ fn main() {
             let integrate_ms = t0.elapsed().as_secs_f64() * 1e3;
             let t1 = std::time::Instant::now();
             let evicted = s.evict_after_frame(&|_| false).len();
+            let (fscan, flen, fagrees) = s.frontier_telemetry();
             let evict_ms = t1.elapsed().as_secs_f64() * 1e3;
 
             let now = by_box(s.tree());
@@ -175,16 +176,28 @@ fn main() {
                 leaf_count: s.tree().leaves().count(),
                 rounds: spend.rounds,
                 quota_hit: hit as u8,
-                frontier_agrees: f64::NAN,
+                // **The audit's real answer, `NaN` where it did not run.** It was hardcoded
+                // `NaN` before the frontier was wired -- honest then, and a silent pass now.
+                frontier_agrees: fagrees,
+                frontier_scan: fscan,
+                frontier_len: flen,
+                regrown: delta.regrown,
                 ..Default::default()
             };
             // `reproj` is the LIVENESS arm for the playhead: a churn of 0.0000 means a steady
             // state only if the quads were actually re-read at the new boundary. Zero here would
             // mean the playhead is not wired, and the two are indistinguishable in the churn
             // column alone.
-            println!("{:>10} {f:>6} {:>8.2} {:>7} {:>7} {:>8.4} {:>8.4} {:>7} {reprojected:>7} {:>7.2e} {:>9}",
+            let sl = if flen > 0 {
+                format!("{:.3} {fscan}/{flen}", fscan as f64 / flen as f64)
+            } else {
+                // Zero is a real value: a frame whose quota did not bind ranks nothing, and
+                // `scan/len` is then UNDEFINED rather than perfect.
+                "-".to_string()
+            };
+            println!("{:>10} {f:>5} {:>8.2} {:>6} {:>6} {:>8.4} {:>8.4} {:>6} {reprojected:>6} {:>8.2e} {:>9} {:>10}",
                      mode.name(), rec.frame_ms, rec.quads_computed, rec.leaf_count,
-                     depth_variance(s.tree()), churn, shared.len(), delta.d_centre, hit.name());
+                     depth_variance(s.tree()), churn, shared.len(), delta.d_centre, hit.name(), sl);
             log.push(rec);
             prev = now;
         }
@@ -203,7 +216,8 @@ fn main() {
         if let Ok(mut w) = std::fs::File::create(format!("{stem}.prnf")) {
             let header = format!(
                 "region={name} mode={} res={res} frames={frames} quota_quads=24 quota_rounds=4\n\
-                 t_max={t_max} n_sync={n_sync} payload_cap=4096 regrow=Upto(2) camera_bias=0.5\n\
+                 t_max={t_max} n_sync={n_sync} payload_cap=4096 regrow=Upto(2) camera_bias=0.5 \
+rank_frame=true audit_every=16\n\
                  note=upload_ms and present_ms are NaN: there is no GPU and no window in this \
 build, and 0.0 would read as instant where the truth is absent.\n\
                  note=frame_ms is MEASURED, never budgeted. The quota is a count; a sleeping \

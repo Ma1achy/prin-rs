@@ -1887,12 +1887,50 @@ fn alpha_branch(alpha: Option<f64>, cfg: &SchedCfg) -> Decision {
 /// and recorded rather than quietly corrected: it means a prior `order` result compared the
 /// *budget-truncation point* under one signal while the header named another.
 pub fn priority(tree: &QuadTree, i: usize, cfg: &SchedCfg) -> f64 {
+    stored_term(tree, i, cfg) * derived_term(tree, i, cfg)
+}
+
+/// **The position-free half of [`priority`]** — the physics, and the frontier's `stored`.
+///
+/// It reads the quad's reduction and its width, and **nothing about where the camera points**.
+/// That is what makes a pan cost nothing: the stored term cannot have moved, so no entry can have
+/// changed band. A *zoom* does invalidate it, because `Order::SpreadArea` carries `half^2` and
+/// structure is pixel-relative — which is why `CameraDelta::restored` reports the whole leaf
+/// count on a zoom and zero on a pan.
+///
+/// **A quad that has not been computed inherits its PARENT's.** A freshly-split child carries
+/// `QuadReduction::default()`, so ranking it on its own signal ranks every child of every parent
+/// at exactly zero — not a weak ordering but *no* ordering, and this project has twice been caught
+/// reading a flat `error(B)` curve off a signal with too few distinct values. The parent's signal
+/// is the only physics known about a child before it is integrated, and saying so is what keeps a
+/// frame's ranking from being the split order wearing a priority's name.
+pub fn stored_term(tree: &QuadTree, i: usize, cfg: &SchedCfg) -> f64 {
     let q = &tree.nodes[i];
-    let v = q.red.signal_with(cfg.criterion, cfg.agg, cfg.structure);
-    let v = match cfg.order {
+    // `n_footprints == 0` is the never-computed state: `compute_quad_with` always sets it to
+    // `n*n`. Checked against a real pending quad in `tests/session.rs` rather than assumed.
+    let src = if q.red.n_footprints == 0 { q.parent.unwrap_or(i) } else { i };
+    let v = tree.nodes[src].red.signal_with(cfg.criterion, cfg.agg, cfg.structure);
+    match cfg.order {
+        // The quad's OWN width, never the parent's — this factor is about the cell being ranked.
         Order::SpreadArea => v * q.half.powi(2),
         _ => v,
-    };
+    }
+}
+
+/// **The camera half of [`priority`], computed at query time and never stored.**
+///
+/// **In `[0, 1]` by construction**, and that bound is not cosmetic: it is the whole soundness
+/// argument for [`crate::frontier::Frontier::top_k_bounded`]'s early-out. A derived factor that
+/// could exceed 1 would be able to *promote* an entry past a higher band, and the banded walk
+/// would stop with a contender unseen — unsound in the silent direction, which is the same failure
+/// the analytic band bound already had. `Camera::relevance` is a clipped-box area fraction and
+/// `Camera::foveation` is `1 - dwell*(1 - floor)*(1 - w)` with `w` and `floor` both in `[0, 1]`,
+/// so both are bounded; `tests/session.rs` asserts it over a swept camera rather than by reading.
+///
+/// With no camera bias configured this is exactly `1.0`, so `priority` degenerates to the stored
+/// term and the frontier's ordering is the criterion's own.
+pub fn derived_term(tree: &QuadTree, i: usize, cfg: &SchedCfg) -> f64 {
+    let q = &tree.nodes[i];
     // **A product of two terms, never either alone** (§4.3). Structure changes only when a quad
     // is recomputed or the zoom changes; relevance changes on every frame the camera moves --
     // which is the split the persistent frontier is built around, and the reason this is
@@ -1907,9 +1945,9 @@ pub fn priority(tree: &QuadTree, i: usize, cfg: &SchedCfg) -> f64 {
                 .cursor
                 .as_ref()
                 .map_or(1.0, |c| cam.foveation(q.cx, q.cy, c, cfg.fovea_cap));
-            v * rel * fov
+            rel * fov
         }
-        _ => v,
+        _ => 1.0,
     }
 }
 

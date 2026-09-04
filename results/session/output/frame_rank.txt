@@ -1,0 +1,32 @@
+frame_rank: does ranking the frame frontier move the tree?
+  frames=24 quota=8 quads/frame, rounds=2, budget non-binding
+
+== step
+       arm  leaves   quads     dvar   scan    len  scan/len    bound  only-off only-arm    moved
+       off     145     189   1.6323    NaN    NaN       NaN       24         -        -        -
+      rank     145     189   1.6323    5.8    8.8    0.6604       24         0        0        0
+  rank+cam     145     189   1.6323    5.8    8.8    0.6604       24         0        0        0
+  stops      off: deferred:1 keep:96 max_level:44 pending:4
+  stops     rank: deferred:1 keep:96 max_level:44 pending:4
+  stops rank+cam: deferred:1 keep:96 max_level:44 pending:4
+  truncated:     rank does NOT move the tree
+  truncated: rank+cam does NOT move the tree
+  drained:   all three arms reach the SAME 196 leaves (34-34 frames)
+
+== filament_through_sea
+       arm  leaves   quads     dvar   scan    len  scan/len    bound  only-off only-arm    moved
+       off     145     189   1.6323    NaN    NaN       NaN       24         -        -        -
+      rank     145     189   1.6323    5.8    8.8    0.6604       24         0        0        0
+  rank+cam     145     189   1.6323    8.0   10.8    0.7385       24        47       47        0
+  stops      off: deferred:1 floor:96 max_level:44 pending:4
+  stops     rank: deferred:1 floor:96 max_level:44 pending:4
+  stops rank+cam: deferred:1 floor:96 max_level:44 pending:4
+  truncated:     rank does NOT move the tree
+  truncated: rank+cam MOVES the tree
+  drained:   all three arms reach the SAME 196 leaves (34-34 frames)
+
+Read `scan/len` beside `vs off`: a ranking that walks its whole frontier has bought
+nothing over a sort whatever it did to the tree, and one that moves no decision has
+bought nothing at all. Both failures are on this project's record.
+
+results/session/output/frame_rank.txt

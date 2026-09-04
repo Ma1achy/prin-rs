@@ -33,7 +33,11 @@
 use std::io::{self, Write};
 
 pub const MAGIC: &[u8; 4] = b"PRNF";
-pub const VERSION: u32 = 1;
+pub const VERSION: u32 = 2;
+// v1 -> v2: `frontier_scan`, `frontier_len` and `regrown` join the record. Bumped rather than
+// appended silently, because a reader that trusts a field *count* and not a version is the
+// mixed-version corpus defect one level down -- `vertical/` was PRNQ v1 beside v2 dumps and a
+// corpus-wide statistic silently ran on the subset.
 
 /// 60 fps. The **goal**.
 pub const BUDGET_60: f64 = 16.7;
@@ -121,6 +125,16 @@ pub struct FrameRecord {
     /// `NaN` on frames where the frontier audit did not run. **Never `1.0` by default**: a check
     /// that did not run must not report a pass.
     pub frontier_agrees: f64,
+    /// Entries the banded walk actually scored this frame, against `frontier_len`. Their ratio is
+    /// the only thing that says whether the bucketing earned its place: if the signal piles into
+    /// two or three bands the walk degenerates to a full scan and the frontier is a `HashMap`
+    /// with extra steps.
+    pub frontier_scan: usize,
+    /// Entries the frontier held. **Zero is a real value** — a frame whose quota did not bind
+    /// ranks nothing, and `scan/len` is then undefined rather than perfect.
+    pub frontier_len: usize,
+    /// Levels the root grew this frame. Non-zero only on a zoom-out past the root box.
+    pub regrown: u32,
 }
 
 impl FrameRecord {
@@ -147,6 +161,7 @@ pub const FIELDS: &[&str] = &[
     "tree_depth_max", "leaf_count",
     "ancestor_fill_fraction", "evicted_fill_fraction", "background_fraction",
     "balance_forced_fraction", "rounds", "quota_hit", "frontier_agrees",
+    "frontier_scan", "frontier_len", "regrown",
 ];
 
 /// Compile-time tie between the field names and the record, so adding one to either alone breaks
@@ -187,6 +202,9 @@ pub fn record(r: &FrameRecord) -> [f64; N_FIELDS] {
         r.rounds as f64,
         r.quota_hit as f64,
         r.frontier_agrees,
+        r.frontier_scan as f64,
+        r.frontier_len as f64,
+        f64::from(r.regrown),
     ]
 }
 

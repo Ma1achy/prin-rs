@@ -528,6 +528,26 @@ impl Slice {
         a + (i as f64) * ((b - a) / (n - 1) as f64)
     }
 
+    /// **Quad-local position of pixel `idx`: `du, dv ∈ [-1, 1]`, formed DIRECTLY.**
+    ///
+    /// §12's defect is not that this codebase lacks local coordinates — [`crate::decode::sample`]
+    /// has taken them since it was written — it is that `ensemble::jitter` **recovered** `du` as
+    /// `(u - cx) / half` from a `u` [`Self::decode_pos`] had just formed globally. Precision is
+    /// spent building the offset and then the offset is subtracted back off: free at f64 on an
+    /// O(1) chart coordinate, and total at f32 or at depth 40, where `cx + du*half` has already
+    /// absorbed `du*half` into `cx` before anything reads it.
+    ///
+    /// **Not bitwise `(decode_pos(idx).0 - cx) / half`**, and it does not claim to be — the two
+    /// orders of operation round differently, which is exactly why one of them still carries
+    /// information the other has thrown away. `examples/sample_space.rs` measures the gap and its
+    /// growth with zoom depth rather than asserting either.
+    pub fn local_pos(&self, idx: usize) -> (f64, f64) {
+        (
+            crate::uv::axis_local(self.nx, idx % self.nx),
+            crate::uv::axis_local(self.ny, idx / self.nx),
+        )
+    }
+
     /// Chart position of pixel `idx`, with `idx = jy*nx + jx`.
     pub fn decode_pos(&self, idx: usize) -> (f64, f64) {
         let jx = idx % self.nx;

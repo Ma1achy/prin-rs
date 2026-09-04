@@ -42,6 +42,7 @@
 //! convention.
 
 use crate::camera::Camera;
+use crate::frontier::Frontier;
 use crate::scheduler::{self, DescentState, SchedCfg, Spend, Stop};
 use crate::store::{PixelStore, Retain};
 
@@ -108,6 +109,10 @@ pub struct CameraDelta {
     /// stored term is position-free — and every entry on a zoom, because structure is
     /// pixel-relative. That asymmetry is the measurement §4.5 asks for.
     pub restored: usize,
+    /// Levels the root grew to contain the camera. Zero unless `Regrow::Upto(k)` is set **and**
+    /// the camera actually left the root box — a zoom-in can never trigger it, which is what
+    /// makes a non-zero value here evidence rather than bookkeeping.
+    pub regrown: u32,
 }
 
 impl CameraDelta {
@@ -140,6 +145,16 @@ pub struct SessionCfg {
     /// Frames between `Frontier::agrees_with_rebuild`. `0` means never, and is named as such
     /// rather than left to mean "every frame" by accident.
     pub audit_every: u32,
+    /// Rank `pending` by frame priority before the quota truncates it.
+    ///
+    /// **`false` is the named control and it is the pre-wiring behaviour**: the quota keeps
+    /// whichever quads happen to be first in the `Vec`, which is split order. Kept reachable
+    /// because the question the wiring has to answer is whether ranking moves a tree at all --
+    /// and the answer is not obvious. Children of one parent all inherit that parent's stored
+    /// term, so a round whose `pending` comes from a single split is a **total tie**, ties break
+    /// by id ascending, and id order *is* split order. The ranking can only bite where `pending`
+    /// spans parents that disagree. Measured in `results/session/`, never assumed.
+    pub rank_frame: bool,
 }
 
 impl Default for SessionCfg {
@@ -151,6 +166,7 @@ impl Default for SessionCfg {
             evict_margin: 0.5,
             regrow: Regrow::Off,
             audit_every: 16,
+            rank_frame: true,
         }
     }
 }
@@ -188,6 +204,19 @@ pub struct Session {
     /// The zoom the stored priority terms were computed at. A change here invalidates every
     /// ranking and no physics.
     stored_zoom: f64,
+    /// The persistent frontier over `ds.pending`, maintained incrementally across frames.
+    fr: Frontier,
+    /// Entries the last frame's banded walk actually scored, and how many it held. `scan/len` is
+    /// the statistic that decides whether the bucketing earns its place, and a frontier that
+    /// could not report it could not settle that — this project has shipped two mechanisms that
+    /// computed, sorted and changed nothing.
+    last_scan: usize,
+    last_len: usize,
+    /// `1.0` / `0.0` from the last audit, or **`NaN` on a frame where it did not run**. A check
+    /// that did not run must not report a pass.
+    last_agrees: f64,
+    /// Levels the root has grown, against `Regrow::Upto(k)`.
+    grown: u32,
 }
 
 impl Session {
@@ -200,7 +229,20 @@ impl Session {
         let mut ds = DescentState::new(cx, cy, half, body, &cfg.sched);
         ds.px = PixelStore::new(retain);
         let stored_zoom = cam.half_world;
-        Session { cfg, ds, cam, t_max, frame: 0, playhead: 0, stored_zoom }
+        Session {
+            cfg,
+            ds,
+            cam,
+            t_max,
+            frame: 0,
+            playhead: 0,
+            stored_zoom,
+            fr: Frontier::new(),
+            last_scan: 0,
+            last_len: 0,
+            last_agrees: f64::NAN,
+            grown: 0,
+        }
     }
 
     pub fn tree(&self) -> &crate::quad::QuadTree {
@@ -213,6 +255,20 @@ impl Session {
 
     pub fn store(&self) -> &PixelStore {
         &self.ds.px
+    }
+
+    /// The scheduler config the session is running, **including the camera it keeps in sync**.
+    /// `set_camera` writes `sched.camera`, so `priority` and the frontier read the same camera the
+    /// veto does — two cameras drifting apart would be an invisible staleness of exactly the kind
+    /// the frontier audit exists to catch, one level up.
+    pub fn sched_cfg(&self) -> &SchedCfg {
+        &self.cfg.sched
+    }
+
+    /// Quads queued for the next round. Uncomputed by construction — their reductions are default
+    /// until a round reaches them.
+    pub fn pending(&self) -> &[usize] {
+        &self.ds.pending
     }
 
     pub fn frame(&self) -> u64 {
@@ -235,21 +291,81 @@ impl Session {
             0.0
         };
         self.cam = cam;
+        self.cfg.sched.camera = Some(cam);
         let zoomed = cam.half_world != self.stored_zoom;
         let restored = if zoomed {
             self.stored_zoom = cam.half_world;
-            // Every leaf's ranking is stale; no payload is. Counted rather than acted on here,
-            // because the frontier is wired in the frame loop and not on the tree.
+            // Every leaf's ranking is stale; no payload is. The frontier is re-scored here rather
+            // than counted and forgotten: `reprioritise` re-buckets only entries that crossed a
+            // band, which is the whole reason a bucketed frontier beats a re-sort.
+            let ids: Vec<usize> = self.fr.entries().into_iter().map(|(i, _)| i).collect();
+            for i in ids {
+                let v = scheduler::stored_term(&self.ds.tree, i, &self.cfg.sched);
+                self.fr.reprioritise(i, v);
+            }
             self.ds.tree.leaves().count()
         } else {
             0
         };
+        let regrown = self.regrow_for_camera();
         CameraDelta {
             d_centre,
             d_centre_px: if cam.pixel_size() > 0.0 { d_centre / cam.pixel_size() } else { 0.0 },
             d_zoom_octaves,
             restored,
+            regrown,
         }
+    }
+
+    /// **Grow the root upward until it contains the camera, or the bound is reached.**
+    ///
+    /// A zoom-out past the root box needs area the tree does not hold. Discarding and re-rooting
+    /// would throw away exactly the quads the zoom-out is about to display — turning the one
+    /// gesture the caching contract calls *nearly free* into the most expensive in the system. So
+    /// the root grows: `grow_root` pushes the new root at the **end**, so no index moves and
+    /// neither the store nor the frontier is disturbed.
+    ///
+    /// The three new siblings are queued, not computed — `set_camera` stays free of integration,
+    /// and `step` spends the frame's quota on them like any other pending quad. They may well be
+    /// vetoed instead, which is correct: a quad below the screen floor is not worth a trajectory
+    /// however new it is.
+    ///
+    /// **Past the bound the camera is clamped in the record, not in the camera.** `regrown` stops
+    /// rising while `Camera::half_world` keeps growing, so a harness can see the clamp; silently
+    /// pinning the camera would make a zoom-out stop working with nothing saying why.
+    fn regrow_for_camera(&mut self) -> u32 {
+        let Regrow::Upto(max) = self.cfg.regrow else { return 0 };
+        let mut made = 0u32;
+        while self.grown < max {
+            let r = self.ds.tree.root_node();
+            let (rx, ry, rh) = (r.cx, r.cy, r.half);
+            // Contained? The camera's own box, not its centre: a camera whose centre is inside
+            // but whose viewport spills over still has nothing to show at the edge.
+            let (c, h) = (self.cam, self.cam.half_world);
+            if (c.cx - h) >= (rx - rh) && (c.cx + h) <= (rx + rh)
+                && (c.cy - h) >= (ry - rh) && (c.cy + h) <= (ry + rh)
+            {
+                break;
+            }
+            // Grow TOWARD the camera: the old root becomes the child on the far side.
+            // `child_boxes` is (lower-left, lower-right, upper-left, upper-right), and
+            // `grow_root(q)` puts the old root at `q`, so the new root's centre moves opposite.
+            let quadrant = usize::from(c.cx < rx) + 2 * usize::from(c.cy < ry);
+            // Index: 0 = old root lower-left  => grows up-right   (camera right and up)
+            //        1 = old root lower-right => grows up-left    (camera left  and up)
+            //        2 = old root upper-left  => grows down-right (camera right and down)
+            //        3 = old root upper-right => grows down-left  (camera left  and down)
+            let kids = self.ds.tree.grow_root(quadrant, self.ds.iteration);
+            self.ds.pending.extend_from_slice(&kids);
+            self.grown += 1;
+            made += 1;
+        }
+        made
+    }
+
+    /// Levels the root has grown over the session's life.
+    pub fn grown(&self) -> u32 {
+        self.grown
     }
 
     pub fn camera(&self) -> Camera {
@@ -331,6 +447,78 @@ impl Session {
         self.playhead
     }
 
+    /// **Bring the frontier level with `pending`, then move the top `k` to the front.**
+    ///
+    /// This is the site the frontier measurement pointed at. `order_queue` ranks the quads that
+    /// *want to split*; the **frame quota** truncates `pending`, the quads about to be *computed*,
+    /// and it truncated them by position — which is split order, i.e. raster order within a
+    /// parent. So a frame spent its budget on whichever children happened to be first in a `Vec`.
+    ///
+    /// Ranking here is what the persistent frontier is for, and `k` is the frame quota: the
+    /// small-`k` regime where the banded walk beats a sort by 83–94%, against 0–67% at
+    /// `k_frac = 0.25`. `descend_with` was measured to be the wrong site for exactly that reason
+    /// and is left alone.
+    ///
+    /// **Inert when the quota does not bind**, and it returns early to say so rather than
+    /// reordering a list nothing will truncate — a ranking applied where nothing is dropped is
+    /// `k_frac = 1.0` again.
+    fn rank_pending(&mut self, room: usize) -> usize {
+        if !self.cfg.rank_frame {
+            self.last_scan = 0;
+            self.last_len = 0;
+            self.last_agrees = f64::NAN;
+            return 0;
+        }
+        // Sync incrementally: the frontier persists across frames precisely because held-over
+        // pending does. Removing computed ids and inserting new ones is O(n) with no sort.
+        let held: std::collections::HashSet<usize> =
+            self.fr.entries().into_iter().map(|(i, _)| i).collect();
+        let now: std::collections::HashSet<usize> = self.ds.pending.iter().cloned().collect();
+        for i in held.difference(&now) {
+            self.fr.remove(*i);
+        }
+        for &i in &self.ds.pending {
+            if !held.contains(&i) {
+                let v = scheduler::stored_term(&self.ds.tree, i, &self.cfg.sched);
+                self.fr.insert(i, v);
+            }
+        }
+        self.last_len = self.fr.len();
+
+        // **The audit, on the population the frame actually ranks.** A staleness check run on a
+        // different set from the one selected would be answering a different question.
+        if self.cfg.audit_every > 0 && self.frame % u64::from(self.cfg.audit_every) == 0 {
+            let (tree, cfg) = (&self.ds.tree, &self.cfg.sched);
+            let d = |i: usize| scheduler::derived_term(tree, i, cfg);
+            self.last_agrees = f64::from(u8::from(self.fr.agrees_with_rebuild(room.max(1), d)));
+        } else {
+            self.last_agrees = f64::NAN;
+        }
+
+        if self.ds.pending.len() <= room {
+            self.last_scan = 0;
+            return 0;
+        }
+        let (top, scanned) = {
+            let (tree, cfg) = (&self.ds.tree, &self.cfg.sched);
+            self.fr.top_k_bounded(room, |i| scheduler::derived_term(tree, i, cfg))
+        };
+        let set: std::collections::HashSet<usize> = top.iter().cloned().collect();
+        // The remainder keeps its relative order, so a frame that holds work over hands the next
+        // one a stable tail rather than a reshuffled one.
+        let rest: Vec<usize> =
+            self.ds.pending.iter().cloned().filter(|i| !set.contains(i)).collect();
+        self.ds.pending = top.into_iter().chain(rest).collect();
+        self.last_scan = scanned;
+        scanned
+    }
+
+    /// Entries the last frame's banded walk scored, the frontier's length, and whether the audit
+    /// agreed (`NaN` if it did not run).
+    pub fn frontier_telemetry(&self) -> (usize, usize, f64) {
+        (self.last_scan, self.last_len, self.last_agrees)
+    }
+
     /// **One frame.** Run rounds until the quota binds, then evict to the cap.
     ///
     /// Returns what stopped it and what it spent. The tree is *not* rebuilt: this continues the
@@ -340,7 +528,7 @@ impl Session {
         self.frame += 1;
         let mut spend = Spend::default();
         let stop = Stop::Frame { quads: self.cfg.quota.quads, substeps: self.cfg.quota.substeps };
-        let mut hit = QuotaHit::Drained;
+        let hit;
 
         loop {
             if self.ds.pending.is_empty() && self.ds.deferred.is_empty() {
@@ -363,6 +551,8 @@ impl Session {
                 hit = QuotaHit::TotalBudget;
                 break;
             }
+            // **Before the round, because the round's quota truncation is what it feeds.**
+            self.rank_pending(self.cfg.quota.quads.saturating_sub(spend.quads));
             let before = spend.quads;
             scheduler::round(&mut self.ds, &self.cfg.sched, self.t_max, sampler, stop, &mut spend);
             // A round that computed nothing and left nothing pending has drained; without this a
@@ -375,3 +565,4 @@ impl Session {
         (hit, spend)
     }
 }
+

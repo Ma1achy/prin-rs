@@ -8,8 +8,9 @@
 //! the wire over the coarse-ancestor fill. The playhead is the frame axis. Post-horizon rounds
 //! are frames at `t = t_max`, held on the last boundary's footprints.
 //!
-//! It is the closest CPU picture of the target design, and the demonstration that the tree only
-//! grows: a leaf that appears in one frame is in every later frame or has been split.
+//! It is the closest CPU picture of the target design. With merging on (the default) the tree
+//! grows and merges back: a leaf that appears in one frame is in every later frame, has been
+//! split, or has been merged into its parent, which is then the leaf again.
 //!
 //! **Diagnostic, at a small viewport.** The stills are 1024²; this runs at 256 by default so a
 //! chart is a minute, and the sidecar says so. Do not read a leaf count off a frame.
@@ -153,5 +154,5 @@ fn main() {
                  t0.elapsed().as_secs_f64(), tree.stop_breakdown());
     }
     println!("\n{dir}/<chart>_live.png and _live_wire.png: one frame per boundary while the playhead moves,");
-    println!("then one per post-horizon round. The tree only grows; the footprints are as they stood.");
+    println!("then one per post-horizon round. Leaves split and merge; the footprints are as they stood.");
 }

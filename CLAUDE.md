@@ -2832,3 +2832,94 @@ entirely**, summing to less than the leaf count with nothing saying so. `Decisio
 `from_code` are the table now; `a_new_decision_variant_reaches_the_table` fires because a new
 variant takes the next code and `from_code(ALL.len())` must be `None`. **The fix for that class is
 never the instance; it is the table.**
+
+**ALL THREE PHASE-A KNOBS ACT THROUGH `order_queue`, AND `order_queue` ONLY MATTERS WHERE SOMETHING
+TRUNCATES IT.** One conclusion reached three times. `camera_bias` moves **0 decisions** at a
+non-binding budget on both charts at every margin — with `rel span` 0.49-1.00 proving the arm live
+— and 17 of 93 and 29 of 185 when the budget binds. The frontier's bucketing saves **nothing** at
+`k_frac = 0.25` and **83-94%** at frame-budget `k`. The balance-forced share moves 21-93% with the
+throttle on **identical trees**. So these are frame-budget mechanisms, and the frame loop is the
+**precondition** for measuring them rather than the phase after — the plan's ordering had it
+backwards.
+
+**AND THE MARGIN IS A WEAK KNOB, WHICH ONLY THE SHARED COUNT REVEALS.** 17 -> 16 -> 12 across
+margins 0.0, 0.5, 2.0 — but the shared set falls 93 -> 81 at margin 2.0, so the tree diverged
+*more* while the common quads agree slightly better. `moved` alone reports that backwards.
+
+**A FIXTURE CONSTANT NEEDS DERIVING, NOT CHOOSING — AND A DERIVED ONE NEEDS ITS OWN GUARD.** The
+camera probe's binding budget was first the constant 400, picked against a remembered 125-quad
+tree; the zoomed camera makes that tree 389, so it did not bind and the "binding" arm reproduced
+the non-binding one exactly — the same regime measured twice. Derived per chart (40% of the
+unconstrained tree) it then failed on `preset_shape_h1`, whose unconstrained arm read **19997
+against the 20000 cap**: `free` was a floor, not a measurement, and the derived budget inherited
+it. Under a real frame quota the whole class disappears, because the quota binds by construction.
+
+**THE PRIORITY-BUCKET FRONTIER DID NOT DO ITS OWN JOB, AND WHETHER THE FIX BITES IS REGIONAL.**
+`top_k` flattened every bucket and sorted, so the per-frame `O(n log n)` the structure exists to
+remove was still paid. `top_k_bounded` is the exact early-out — the derived factor is in `[0,1]`
+and can only demote, so `band_of(kth) > b` stops the walk. Band occupancy is **4-10 bands of 24**
+with modal shares **93.8% (`far`), 83.8% (`near-field`), 42.6%, 23.7%**. `scan/n` on the visible
+frontier: **0.061-0.168 at `k/n = 0.01`** against **0.329-1.000 at 0.25**.
+
+**AND ITS STALENESS CHECK DISAGREED WITH ITSELF ON TIED DATA.** `agrees_with_rebuild` compares
+`top_k`, which flattens buckets top-down, against `rebuild`, which reads an id-sorted list — so
+under a merely *stable* sort two entries of equal priority in different bands come out in opposite
+orders. Measured: `0.2 * 6/7` and `0.4 * 3/7` are bitwise equal and land in bands 18 and 19. The
+check with teeth would have reported a **false** disagreement on any tied field. The ordering is
+total now — descending, `NaN` last, ties by id — shared by all three paths.
+
+**AND THE ANALYTIC BAND BOUND WAS UNSOUND IN THE SILENT DIRECTION.** Inverting `band_of`
+analytically gives `band_upper(0) = 4.0616e-12`, which `band_of` places back in **band 0**: a bound
+too small stops the walk with a contender unseen. The stopping test goes through `band_of` itself,
+with no inverse.
+
+**A GOLDEN MATRIX CAN BE BLIND FOUR WAYS, AND ONLY A PER-AXIS ARM FINDS THEM.** `step(0.0)` on a
+root spanning `[-1,1]` puts the discontinuity exactly on the quad midline at **every** level, so no
+quad straddles it and the field is featureless. `N = 4`, chosen for speed, is below where the
+analytic fields and the agreement arm were calibrated: every structured field floored at the
+bootstrap, no tree carried depth contrast, `balance` moved **0 of 160 cells**, and
+`filament_through_sea` hashed **bitwise equal to `sea`** — the filament invisible to the instrument
+meant to find it. And a bare `distinct > cells/4` arm fired at 18 of 160 on **correct** code, because
+many cells legitimately coincide. The arm that works asks **per axis** whether each knob moves a
+cell: *"balance moves 0 of 160"* is a statement, *"18 distinct"* is not.
+
+**A FRAME QUOTA THAT TRUNCATES MUST HOLD THE OVERFLOW, NOT DROP IT.** The first `Stop::Frame`
+truncated `pending` and counted the overflow, which discarded those children: the session drained
+early at **58 leaves against the one-shot's 100**. Held quads are carried to the next round and keep
+`Decision::Pending` throughout — which is the whole reason a held quad is not `BudgetExhausted`.
+Run to exhaustion the frame loop now reaches the one-shot tree exactly, and that is the strongest
+available check that the extraction and the quota compose.
+
+**§14's SWITCHOVER KEY IS WRONG FOR THIS BUILD, AND THE CORRECTION IS THE LADDER.** The spec keys
+the response on *full vs linearised*: full collapses -> switch, linearised collapses -> stop. Right
+for an f32 consumer and **wrong for `DirectF64`**, which is full AND at the ceiling — f64 is the top
+of the ladder here, `LinSplitF32` tracks it rung for rung, and the linearisation buys ~24 levels
+over f32 and **none over f64**. Under the spec's key a collapse at `DirectF64` would be handed to a
+path that cannot help. `Path::has_more_precise_path()` is the key: `DirectF32` and `LinNaiveF32`
+switch, the rest stop.
+
+**AND `AT_F32_FLOOR` IS `Collapsed`, NOT A NEW VARIANT.** The first cut added `Decision::AtF32Floor`
+and returned it at the ceiling, moving code 9 to code 16 on every regenerated dump while the commit
+message said nothing moves — caught immediately by `tests/no_discard.rs`. It was also a **synonym**:
+`Collapsed` already is the terminal decode floor, and nothing in this build measures distinctness
+through a linearised path, so the new code could never fire. `decode_can_switch` is `false` at every
+production site and that is the **truthful** value, not a placeholder: `n_distinct_ic` is measured on
+`Slice::nominal::<f64>`, so a collapse detected here has nothing above it.
+
+**`|det J_D|` IS NOT DEFINED FOR THIS JACOBIAN.** `J_D` maps a 2-plane into a **12-dimensional**
+state, so it is `12 x 2` and has no determinant. The area scale factor of a 2-form is the square
+root of the Gram determinant, `sqrt(|ju|^2 |jv|^2 - (ju.jv)^2)`, which reduces to `|det J|` exactly
+when the target is 2-D — the case the spec's phrase is written for. It exists because **refinement
+density is not probability density**: leaf density must never feed a quantitative claim.
+
+**A STAGE A BUILD DOES NOT HAVE IS `NaN`, NEVER `0.0`.** There is no GPU and no window here, so
+`upload_ms` and `present_ms` are unmeasured — and a zero reads as *instant* where the truth is
+*absent*. Same conflation as an empty mask reading "no structure found", or `Residency::Absent`
+pooled with `Evicted`. Likewise `frontier_agrees` is `NaN` on frames where the audit did not run,
+and `frac_over_floor_moving` is `NaN` when no frame moved: a check that did not run must not report
+a pass, and a harness reporting `0.0` there would claim one it never earned.
+
+**AND THE HEADLINE IS MEASURED DURING MOTION.** `frac_frames_over_41.7ms` with `camera_delta > 0`
+as the free discriminator: a static frame may take longer without anyone minding, a dropped frame
+mid-pan is immediately visible. Percentiles, never means — 99 frames at 10 ms and one at 1000 puts
+the **mean inside budget** while the max is what says a frame was dropped.

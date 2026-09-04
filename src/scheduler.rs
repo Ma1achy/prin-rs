@@ -1757,7 +1757,7 @@ pub fn decide(tree: &QuadTree, i: usize, cfg: &SchedCfg) -> Decision {
     // ahead of the bootstrap too — an unconditional split past the screen floor would be the
     // same error one level up.
     if let Some(cam) = cfg.camera {
-        if let Some(d) = cam.veto(q, tree.n, tree.nodes[0].half) {
+        if let Some(d) = cam.veto(q, tree.n, tree.root_node().half) {
             return d;
         }
     }

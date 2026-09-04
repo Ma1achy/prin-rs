@@ -1,0 +1,3 @@
+image=results/session/near-field_balanced.prnf
+config=production + 2 override(s): refine_flagged=false (production true), keep_live_series=true (production false)
+frames=8 res=96 mode=balanced pan_total=0.0125

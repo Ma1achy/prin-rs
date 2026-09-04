@@ -183,6 +183,8 @@ pub struct Session {
     cam: Camera,
     t_max: f64,
     frame: u64,
+    /// The recorded boundary the tree is currently decided at.
+    playhead: usize,
     /// The zoom the stored priority terms were computed at. A change here invalidates every
     /// ranking and no physics.
     stored_zoom: f64,
@@ -198,7 +200,7 @@ impl Session {
         let mut ds = DescentState::new(cx, cy, half, body, &cfg.sched);
         ds.px = PixelStore::new(retain);
         let stored_zoom = cam.half_world;
-        Session { cfg, ds, cam, t_max, frame: 0, stored_zoom }
+        Session { cfg, ds, cam, t_max, frame: 0, playhead: 0, stored_zoom }
     }
 
     pub fn tree(&self) -> &crate::quad::QuadTree {
@@ -274,6 +276,59 @@ impl Session {
             &|i| boxes.get(i).map_or(0.0, |&(x, y, h)| cam.relevance(x, y, h, margin)),
             &|i| steps.get(i).copied().unwrap_or(0),
         )
+    }
+
+    /// **Advance the playhead, re-deciding every quad from the boundary it has now reached.**
+    ///
+    /// Under the scheduler contract's lockstep loop the playhead moves one fixed `dt` per frame
+    /// whether or not the frame spends its quota, and every already-computed quad must be re-read
+    /// at the new time — not left holding the reduction it had at an earlier boundary. Without
+    /// this a session is a **camera-only** march: the field never changes, the tree converges once
+    /// and then sits, and the depth-variance curve is flat because **nothing moves**. That is
+    /// *frozen*, not *balanced*, and §3.2 is explicit that the two are indistinguishable in a
+    /// variance plot alone — the churn column is what tells them apart, and it read 0.0000 for nine
+    /// consecutive frames before this existed.
+    ///
+    /// Requires `keep_live_series`. Returns the number of quads re-reduced, so a caller can see
+    /// the arm is live rather than assume it.
+    pub fn set_playhead(&mut self, j: usize) -> usize {
+        let (n, tau, hot, t_max) =
+            (self.cfg.sched.n, self.cfg.sched.tau_display, self.cfg.sched.hot_rule, self.t_max);
+        let mut moved = 0usize;
+        for i in 0..self.ds.tree.nodes.len() {
+            let px = self.ds.px.get(i);
+            // A quad whose payload is absent or evicted keeps the reduction it has: the caching
+            // contract's resume point, and re-reducing from nothing would be worse than stale.
+            if px.is_empty() || j >= px[0].live_t.len() {
+                continue;
+            }
+            let projected: Vec<crate::ensemble::pixel::PixelOut> =
+                px.iter().map(|p| scheduler::project_at(p, j)).collect();
+            self.ds.tree.nodes[i].red = scheduler::reduce(&projected, n, tau, hot, t_max);
+            moved += 1;
+        }
+        if moved > 0 {
+            // The frontier must be re-decided at the new time, so leaves that were settled are
+            // eligible again. `decide` is pure on the reduction, so this costs nothing.
+            // **Excluding anything already pending.** `round`'s frontier is `pending` chained
+            // with `deferred`, so a quad in both is decided twice, enters `want` twice and is
+            // split twice -- "quad 26 already split". Before this, `deferred` only ever held quads
+            // the ranking had dropped, which are by construction not pending; re-deciding *every*
+            // leaf breaks that invariant unless the overlap is removed here.
+            let pending: std::collections::HashSet<usize> =
+                self.ds.pending.iter().cloned().collect();
+            let leaves: Vec<usize> =
+                self.ds.tree.leaves().filter(|i| !pending.contains(i)).collect();
+            self.ds.deferred.extend(leaves);
+            self.ds.deferred.sort_unstable();
+            self.ds.deferred.dedup();
+        }
+        self.playhead = j;
+        moved
+    }
+
+    pub fn playhead(&self) -> usize {
+        self.playhead
     }
 
     /// **One frame.** Run rounds until the quota binds, then evict to the cap.

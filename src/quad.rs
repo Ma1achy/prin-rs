@@ -983,6 +983,31 @@ impl Quad {
     }
 
     /// The four child boxes, in `(jy, jx)` order: lower-left, lower-right, upper-left, upper-right.
+    /// A fresh, uncomputed quad. `Quad` deliberately does not derive `Default` — a quad with no
+    /// box is not a meaningful value — so this is the one place the field list is repeated.
+    pub fn fresh(level: u32, cx: f64, cy: f64, half: f64, parent: Option<usize>, sib_index: u8, iteration: u32) -> Quad {
+        Quad {
+            level,
+            cx,
+            cy,
+            half,
+            parent,
+            children: None,
+            sib_index,
+            iteration,
+            red: QuadReduction::default(),
+            alpha: None,
+            alpha_mean: None,
+            alpha_p90: None,
+            alpha_sibling_spread: None,
+            decision: Decision::Pending,
+            alpha_area: None,
+            alpha_spread_set: None,
+            no_gain_weight: None,
+            merged: false,
+        }
+    }
+
     pub fn child_boxes(&self) -> [(f64, f64, f64); 4] {
         let q = self.half / 2.0;
         [
@@ -1002,6 +1027,14 @@ impl Quad {
 #[derive(Clone, Debug, Default)]
 pub struct QuadTree {
     pub nodes: Vec<Quad>,
+    /// **The root's index.** `0` for every tree `with_chart` builds, so every existing tree, every
+    /// committed dump and `neighbour`'s descent are unchanged — it exists so [`Self::grow_root`]
+    /// has somewhere to say the answer.
+    ///
+    /// Making it a field is what removes the index churn the obvious re-rooting design needs: a
+    /// new root is **pushed at the end** and `root` repointed, so no existing index moves and no
+    /// remap has to be threaded through the frontier, the store and the pending lists.
+    pub root: usize,
     /// Samples per quad axis, `N`.
     pub n: usize,
     pub body: usize,
@@ -1036,7 +1069,7 @@ impl QuadTree {
                 no_gain_weight: None,
                 merged: false,
         };
-        QuadTree { nodes: vec![root], n, body, chart }
+        QuadTree { nodes: vec![root], root: 0, n, body, chart }
     }
 
     /// Create four children of `i`. Returns their indices. Does **not** compute them.
@@ -1069,6 +1102,95 @@ impl QuadTree {
         let kids = [base, base + 1, base + 2, base + 3];
         self.nodes[i].children = Some(kids);
         kids
+    }
+
+    /// The root quad.
+    pub fn root_node(&self) -> &Quad {
+        &self.nodes[self.root]
+    }
+
+    /// **Grow a new root one level above, with the current root as child `quadrant`.**
+    ///
+    /// A zoom-out that leaves the root box needs area the tree does not contain. The alternative —
+    /// re-root and discard — throws away exactly the quads the zoom-out is about to display, which
+    /// turns the one gesture the caching contract calls *nearly free* into the most expensive in
+    /// the system: a session that discarded would report "persists across pan and zoom" while
+    /// being the configuration that recomputes most.
+    ///
+    /// **No index moves.** The new root and its three new siblings are **pushed at the end** and
+    /// `self.root` is repointed, so the frontier, the payload store and the pending lists need no
+    /// remap. That is what `root` being a field buys.
+    ///
+    /// **The old subtree's boxes are not touched at all.** Re-deriving them from the new root
+    /// would shift the whole tree by an ulp — `old_cx + old_half - old_half` is not `old_cx` in
+    /// f64 — which is the half-cell class of defect `Cache::key_of` already carries a paragraph
+    /// about. Only the three new siblings are built from `child_boxes()`, and the constructor
+    /// **asserts** that `child_boxes()[quadrant]` reproduces the old root's box exactly, refusing
+    /// rather than shifting.
+    ///
+    /// **Every level rises by one**, which is a real semantic change and not bookkeeping: a leaf
+    /// that was inside `bootstrap_levels` may no longer be. Recorded rather than absorbed.
+    /// `Camera::veto` is invariant under it — both `q.level` and `floor(camera_depth)` rise
+    /// together, since the root box doubles — and that is asserted rather than assumed.
+    ///
+    /// Returns the three new sibling indices; the new root is [`Self::root`].
+    pub fn grow_root(&mut self, quadrant: usize, iteration: u32) -> Vec<usize> {
+        assert!(quadrant < 4, "quadrant {quadrant} is not one of four");
+        let old = self.root;
+        let (ocx, ocy, oh) = (self.nodes[old].cx, self.nodes[old].cy, self.nodes[old].half);
+
+        // The new root: twice the half-width, centred so the old root lands in `quadrant`.
+        let q = oh; // the new root's half is 2*oh, so its children's half is oh
+        let (dx, dy) = match quadrant {
+            0 => (q, q),
+            1 => (-q, q),
+            2 => (q, -q),
+            _ => (-q, -q),
+        };
+        let mut root = Quad::fresh(0, ocx + dx, ocy + dy, oh * 2.0, None, 0, iteration);
+
+        // Refuse rather than shift: the old root's box must be reproduced EXACTLY.
+        let boxes = root.child_boxes();
+        let (bx, by, bh) = boxes[quadrant];
+        assert!(
+            bx == ocx && by == ocy && bh == oh,
+            "grow_root would shift the old root: child_boxes[{quadrant}] = ({bx}, {by}, {bh}) \
+             against ({ocx}, {ocy}, {oh})"
+        );
+
+        let new_root = self.nodes.len();
+        let mut kids = [0usize; 4];
+        kids[quadrant] = old;
+        let mut idx = new_root + 1;
+        let mut made = Vec::with_capacity(3);
+        for j in 0..4 {
+            if j == quadrant {
+                continue;
+            }
+            kids[j] = idx;
+            made.push(idx);
+            idx += 1;
+        }
+        root.children = Some(kids);
+        root.iteration = iteration;
+        self.nodes.push(root);
+
+        for (j, &(cx, cy, half)) in boxes.iter().enumerate() {
+            if j == quadrant {
+                continue;
+            }
+            self.nodes.push(Quad::fresh(1, cx, cy, half, Some(new_root), j as u8, iteration));
+        }
+
+        // Every existing node is now one level deeper. Done before repointing so the new nodes,
+        // already at their final levels, are untouched.
+        for i in 0..new_root {
+            self.nodes[i].level += 1;
+        }
+        self.nodes[old].parent = Some(new_root);
+        self.nodes[old].sib_index = quadrant as u8;
+        self.root = new_root;
+        made
     }
 
     pub fn leaves(&self) -> impl Iterator<Item = usize> + '_ {
@@ -1118,12 +1240,12 @@ impl QuadTree {
             Dir::PosY => (q.cx, q.cy + q.half + e),
         };
 
-        let root = &self.nodes[0];
+        let root = &self.nodes[self.root];
         if (px - root.cx).abs() > root.half || (py - root.cy).abs() > root.half {
             return None;
         }
 
-        let mut cur = 0usize;
+        let mut cur = self.root;
         while self.nodes[cur].level < q.level {
             let Some(kids) = self.nodes[cur].children else { break };
             let node = &self.nodes[cur];

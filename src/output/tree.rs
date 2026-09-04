@@ -236,7 +236,7 @@ pub fn overlay(
     res: usize,
     base_rgb: impl Fn(&PixelOut) -> [u8; 3],
 ) -> io::Result<()> {
-    let root = &tree.nodes[0];
+    let root = tree.root_node();
     let (x0, y0) = (root.cx - root.half, root.cy - root.half);
     let span = 2.0 * root.half;
 

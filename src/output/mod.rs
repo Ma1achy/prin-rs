@@ -9,6 +9,7 @@ pub mod apng;
 pub mod ckpt;
 pub mod colour;
 pub mod fcache;
+pub mod frame;
 pub mod gifout;
 pub mod oklab;
 pub mod compose;

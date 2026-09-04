@@ -261,6 +261,69 @@ pub fn render_leaves(
     (img, info)
 }
 
+/// What share of the frame each source painted.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct FillFractions {
+    /// Painted by the leaf that owns the pixel — the target-depth answer.
+    pub own: f64,
+    /// Painted by a coarse **ancestor**, because the leaf had nothing computed.
+    pub ancestor: f64,
+    /// Painted by an ancestor because the leaf's payload was **evicted**. Split out from
+    /// `ancestor` for the same reason `Residency::Evicted` is not `Absent`: one is the tree
+    /// lagging the camera, the other is the price of the memory cap.
+    pub background: f64,
+}
+
+/// **How much of the frame is the tree lagging the camera by** — geometry and residency only, no
+/// colour.
+///
+/// §4.5 takes the coarse-ancestor fill as the honest option, *the only one that never lies*, and
+/// big texels during motion as a deliberate choice. But the fill has to be **visible in the
+/// telemetry**: if the ancestor share stays high after motion stops, the scheduler is not
+/// converging, and nothing in this build could see that. The fill itself has existed since Phase 0;
+/// what was missing is the fraction.
+///
+/// `resident(i)` says whether node `i` has samples. Passing a closure rather than the pixel arrays
+/// keeps this callable from a session, where residency lives in the store rather than in a
+/// `Vec<Vec<PixelOut>>`.
+pub fn fill_fractions(
+    tree: &QuadTree,
+    cam: &Camera,
+    res: usize,
+    leaves: &[usize],
+    resident: &dyn Fn(usize) -> bool,
+) -> FillFractions {
+    let n = tree.n;
+    let deepest = leaves.iter().map(|&i| tree.nodes[i].level).max().unwrap_or(0);
+    let leaf_set: HashSet<usize> = leaves.iter().cloned().collect();
+    // 0 = background, 1 = ancestor, 2 = the owning leaf. Painted coarsest first, exactly as
+    // `render_leaves` paints, so the last writer wins in the same order.
+    let mut src = vec![0u8; res * res];
+    for i in paint_order(tree, leaves) {
+        if !resident(i) {
+            continue;
+        }
+        let q = &tree.nodes[i];
+        let tag = if leaf_set.contains(&i) { 2u8 } else { 1u8 };
+        for k in 0..n * n {
+            let (jx, jy) = (k % n, k / n);
+            let Some((x0, x1, y0, y1)) =
+                tile_px(q, n, cam, res, TexelMode::Adaptive, deepest, jx, jy)
+            else {
+                continue;
+            };
+            for y in y0..y1 {
+                for x in x0..x1 {
+                    src[y * res + x] = tag;
+                }
+            }
+        }
+    }
+    let total = (res * res).max(1) as f64;
+    let count = |t: u8| src.iter().filter(|&&s| s == t).count() as f64 / total;
+    FillFractions { own: count(2), ancestor: count(1), background: count(0) }
+}
+
 /// How many leaf tiles cover each pixel — the tiling instrument, geometry only.
 ///
 /// For the leaves of a complete tree over a camera framing the root, every pixel reads exactly

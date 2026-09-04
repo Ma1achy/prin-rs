@@ -136,6 +136,47 @@ pub struct Lin {
     pub jv: Cart<f64>,
 }
 
+impl Lin {
+    /// **The local sampling-measure weight — `|det J_D|`'s honest general form.**
+    ///
+    /// The deep-zoom contract calls this `|det J_D|` and says it is free, because the CPU already
+    /// computes `J_D` per deep quad: one Jacobian, two uses. Both halves are right, and the name
+    /// needs correcting. `J_D` here maps a 2-plane `(u, v)` into a **12-dimensional** state — three
+    /// bodies times position and velocity times two components — so it is `12 x 2` and has no
+    /// determinant at all. What the measure wants is the **area scale factor** of that 2-form,
+    /// which is the square root of the Gram determinant:
+    ///
+    /// ```text
+    ///     sqrt( |ju|^2 |jv|^2 - (ju . jv)^2 )
+    /// ```
+    ///
+    /// It reduces to `|det J|` exactly when the target is 2-D, which is the case the spec's phrase
+    /// is written for. Taking a literal determinant of a non-square matrix is not a subtlety to
+    /// note in passing — it is undefined.
+    ///
+    /// **Why it exists at all: refinement density is NOT probability density.** The quadtree
+    /// concentrates compute at boundaries because they are *interesting*, not because those ICs are
+    /// more probable, so leaf density must never be read as a measure. Quantitative claims —
+    /// basin fractions, island prevalence — use this weight, or a uniform re-sampling. That is the
+    /// scheduler contract's Part 2, and this is the quantity it requires to travel with the map.
+    ///
+    /// Zero where the map is degenerate: the two columns are parallel and the plane collapses to a
+    /// curve, which carries no area. Reported, not floored — a zero weight is a real statement
+    /// about the chart.
+    pub fn measure_weight(&self) -> f64 {
+        let dot = |a: &Cart<f64>, b: &Cart<f64>| {
+            let mut s = 0.0;
+            for k in 0..3 {
+                s += a.r[k].x * b.r[k].x + a.r[k].y * b.r[k].y;
+                s += a.v[k].x * b.v[k].x + a.v[k].y * b.v[k].y;
+            }
+            s
+        };
+        let (uu, vv, uv) = (dot(&self.ju, &self.ju), dot(&self.jv, &self.jv), dot(&self.ju, &self.jv));
+        (uu * vv - uv * uv).max(0.0).sqrt()
+    }
+}
+
 /// **Jacobian cost: four f64 decodes per quad**, two per axis, plus one for the centre.
 ///
 /// Against 512 trajectories per quad at `N = 8, E+1 = 8` this is negligible; the caching

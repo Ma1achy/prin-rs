@@ -1502,8 +1502,15 @@ pub fn spread_exponent(tree: &QuadTree, parent: usize, cfg: &SchedCfg) -> Option
 }
 
 /// **A split showed no gain** when neither its unresolved area nor its spread fell by
-/// `2^alpha_lo`: noise at this scale. A split whose parent had nothing unresolved is not judged.
+/// `2^alpha_lo`: noise at this scale. A split whose parent had nothing unresolved is not judged,
+/// and at `alpha_lo = 0` -- the opt-in that allows full depth -- nothing is: a structured area
+/// can grow with resolution where neighbours agree only once the cells are small enough, and
+/// a negative exponent read as no gain would floor exactly the emergence the opt-in exists to
+/// follow. Measured: 131 floors on the sea chart at `alpha_lo = 0` before this guard.
 pub fn no_gain(q: &crate::quad::Quad, cfg: &SchedCfg) -> bool {
+    if cfg.alpha_lo <= 0.0 {
+        return false;
+    }
     match q.alpha_area {
         Some(a) => a < cfg.alpha_lo && q.alpha_spread_set.map_or(true, |s| s < cfg.alpha_lo),
         None => false,

@@ -1,0 +1,26 @@
+camera_probe: 512^2, policy Tolerance, k_frac 0.25, t=13 n_sync=32
+  config: production + 1 override(s): refine_flagged=false (production true)
+  camera zoomed to a quarter width toward a corner, so `relevance` varies;
+  `rel span` is the liveness arm -- 0.000 means the bias is an identity.
+
+             chart   budget    margin   quads  leaves   moved       of exhausted rel span
+        near-field  unconstrained tree is 389 quads; the binding arm uses 155
+        near-field    20000       0.0     389     292       0      389    false   0.600
+                      20000       0.5     389     292       0      389    false   1.000
+                      20000       2.0     389     292       0      389    false   1.000
+        near-field      155       0.0     153     115      17       93     true   0.600
+                        155       0.5     153     115      16       93     true   1.000
+                        155       2.0     153     115      12       81     true   1.000
+
+     deep interior  unconstrained tree is 1017 quads; the binding arm uses 406
+     deep interior    20000       0.0    1017     763       0     1017    false   0.490
+                      20000       0.5    1017     763       0     1017    false   1.000
+                      20000       2.0    1017     763       0     1017    false   1.000
+     deep interior      406       0.0     405     304      29      185     true   0.490
+                        406       0.5     405     304      25      189     true   1.000
+                        406       2.0     405     304      25      189     true   1.000
+
+EXIT 143
+
+preset_shape_h1 was dropped: its unconstrained arm read 19997 quads against the 20000 cap,
+so `free` was a floor rather than a measurement and the derived binding budget inherited it.

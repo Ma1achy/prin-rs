@@ -1195,6 +1195,27 @@ pub fn descend(
     }
 }
 
+/// Set a quad's three `alpha` values and its parent-mixture distance, against a **given** parent
+/// reduction.
+///
+/// The one genuinely repeated block between the batch descent and the live one. The two loops are
+/// otherwise **not** duplicates — the batch loop advances a *frontier* and reads stored reductions,
+/// the live loop advances a *playhead* and re-reduces from `project_at` at each boundary — but this
+/// four-line pattern appears in both, and the `mix_tv` argument order is exactly the kind of thing
+/// that is easy to write backwards in one of two copies and never notice.
+///
+/// The parent reduction is passed rather than read from the tree because the live descent's parent
+/// is a **projection at the current boundary**, not the stored one: the exponent must compare
+/// parent and children at the same playhead.
+pub fn set_alpha_against(tree: &mut QuadTree, i: usize, pr: &QuadReduction, cfg: &SchedCfg) {
+    let cr = tree.nodes[i].red;
+    tree.nodes[i].alpha = ratio_log2(pr.spread(cfg.agg), cr.spread(cfg.agg));
+    tree.nodes[i].alpha_mean = ratio_log2(pr.spread_mean, cr.spread_mean);
+    tree.nodes[i].alpha_p90 = ratio_log2(pr.spread_p90, cr.spread_p90);
+    // Child first, parent second — the distance of this quad's mixture FROM its parent's.
+    tree.nodes[i].red.mix_tv_parent = QuadReduction::mix_tv(&cr.class_mix(), &pr.class_mix());
+}
+
 /// Run [`decide`] on a hand-built reduction, for tests that are about the decision and not about
 /// the field that produced it.
 ///
@@ -1349,14 +1370,10 @@ pub fn round(
         // ---- alpha, against the quad's OWN parent -------------------------------------
         for &i in pending.iter() {
             if let Some(p) = tree.nodes[i].parent {
-                let (pr, cr) = (tree.nodes[p].red, tree.nodes[i].red);
-                tree.nodes[i].alpha = ratio_log2(pr.spread(cfg.agg), cr.spread(cfg.agg));
-                tree.nodes[i].alpha_mean = ratio_log2(pr.spread_mean, cr.spread_mean);
-                tree.nodes[i].alpha_p90 = ratio_log2(pr.spread_p90, cr.spread_p90);
-                // The two-scale mixture arm: this quad's class mixture against its parent's, at
-                // the same playhead -- the reason the parent is kept marching.
-                tree.nodes[i].red.mix_tv_parent =
-                    QuadReduction::mix_tv(&cr.class_mix(), &pr.class_mix());
+                // The two-scale mixture arm rides along: this quad's class mixture against its
+                // parent's, at the same playhead -- the reason the parent is kept marching.
+                let pr = tree.nodes[p].red;
+                set_alpha_against(tree, i, &pr, cfg);
             }
         }
 
@@ -2107,11 +2124,7 @@ pub fn descend_live_with(
                 let pproj: Vec<PixelOut> = px_of[pi].iter().map(|p| project_at(p, j)).collect();
                 let mut pr = reduce(&pproj, cfg.n, cfg.tau_display, cfg.hot_rule, t_max);
                 pr.n_distinct_ic = tree.nodes[pi].red.n_distinct_ic;
-                let cr = tree.nodes[i].red;
-                tree.nodes[i].alpha = ratio_log2(pr.spread(cfg.agg), cr.spread(cfg.agg));
-                tree.nodes[i].alpha_mean = ratio_log2(pr.spread_mean, cr.spread_mean);
-                tree.nodes[i].alpha_p90 = ratio_log2(pr.spread_p90, cr.spread_p90);
-                tree.nodes[i].red.mix_tv_parent = QuadReduction::mix_tv(&cr.class_mix(), &pr.class_mix());
+                set_alpha_against(&mut tree, i, &pr, cfg);
             }
         }
 

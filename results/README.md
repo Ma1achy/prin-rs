@@ -66,6 +66,24 @@ saturation fractions. Those are all field-conditional and the field moved.
 The dumps are **kept, not deleted** — they are the *before*, the same standing `charts_ranked/`
 gave the unranked runs, and a re-measurement wants something to diff against.
 
+## The camera, wired in — `balance/`, `frontier/`, `camera/`, `session/`
+
+Four directories from the slippy-map work, 4–5 September. They are **not** covered by the banner
+above: every one was measured on the current kernel under `Policy::Tolerance`, and each carries
+its reproduction command in its own README.
+
+| directory | what it settles |
+|---|---|
+| [`balance/`](balance/) | what the 2:1 constraint costs. **`balance_forced/split` is not a quantity** — 0.113 or 0.007 on the *identical* tree depending only on `k_frac`, and spearman(0.25, 1.0) = +0.771, so it cannot even rank six charts. Quote `quad x` (1.03–1.76), which is throttle-invariant. All six charts violate 2:1 under Tolerance at gap 2–3, overturning the `Policy::Alpha`-era "gap 1 everywhere" |
+| [`frontier/`](frontier/) | whether the priority bucketing earns its place. `top_k` flattened every bucket and sorted, so the `O(n log n)` it exists to remove was still paid. `top_k_bounded` saves **83–94% at `k/n = 0.01`** against 0–67% at `k_frac = 0.25` — a frame budget is the small-`k` regime and `descend_with` is not |
+| [`camera/`](camera/) | `camera_bias` moves **0 decisions** at a non-binding budget, with `rel span` 0.49–1.00 proving the arm live, and 17 of 93 / 29 of 185 when the budget binds. The margin is a weak knob and only the **shared** count reveals it |
+| [`session/`](session/) | §9's acceptance test — playhead and camera marching together, one `PRNF` record per frame. Balanced **0.8789** depth variance against uniform's **0.0000**, which is the control that says the test discriminates |
+
+**One conclusion, arrived at three times.** All three Phase A knobs act through `order_queue`, and
+`order_queue` only matters where something truncates it. They are **frame-budget mechanisms**, so
+the frame loop is the *precondition* for measuring them rather than the phase after it — the plan's
+own ordering had it backwards.
+
 ## `scope/` — what the integrator fixes did to the criterion's input, and the three prerequisites
 
 Four files, and they are the reason the scheduler corpus above is superseded rather than merely

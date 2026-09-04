@@ -2923,3 +2923,43 @@ a pass, and a harness reporting `0.0` there would claim one it never earned.
 as the free discriminator: a static frame may take longer without anyone minding, a dropped frame
 mid-pan is immediately visible. Percentiles, never means — 99 frames at 10 ms and one at 1000 puts
 the **mean inside budget** while the max is what says a frame was dropped.
+
+**A FROZEN PLAYHEAD AND A BALANCED TREE ARE THE SAME CHURN COLUMN, AND `reproj` IS WHAT SEPARATES
+THEM.** The first frame harness logged `playhead_dt` while the sampler ran to `t_max` on every
+frame, so the field never changed, the tree converged once and sat, and churn read **0.0000 for
+nine consecutive frames** — which is exactly what a perfectly stable balanced tree reads. §3.2 says
+to put churn beside depth variance for this reason and it is not sufficient: both statistics are
+flat under frozenness *and* under stability. `Session::set_playhead` re-reduces every resident quad
+from `project_at(p, j)` and **returns the count**, so `reproj` is the liveness arm: **45 quads
+re-read on every frame from 3 onward with churn still 0.0000** is a steady state, and a zero there
+would have been a dead playhead. Same shape as `rel span` in the camera probe and `moved` in the
+integrator seam — *the arm that says the thing under test was exercised* is the part that keeps
+working.
+
+**AND `set_playhead` BROKE AN INVARIANT THE TYPE SYSTEM DOES NOT CARRY: `deferred` MUST NEVER
+OVERLAP `pending`.** Re-reducing at a new boundary makes every leaf a candidate again, so the first
+cut pushed all of them into `deferred` — including the ones already queued — and the next round
+split quad 26 twice. The fix is three lines and the lesson is the shape: two `Vec<usize>` frontiers
+with a disjointness invariant maintained by convention, in a struct that is now mutated from a
+second entry point. `DescentState`'s extraction is what made a second entry point possible.
+
+**RE-ROOTING COPIES THE OLD BOXES VERBATIM AND THE CONSTRUCTOR ASSERTS THE REPRODUCTION.**
+Re-deriving a child box from the new root shifts the whole tree by an ulp — `old_cx + old_half -
+old_half` is not `old_cx` at f64 — which is the half-cell class of defect `Cache::key_of` already
+carries a paragraph about. `grow_root` pushes the new root at the **end** so no index moves, never
+touches the old subtree's geometry, and asserts `child_boxes()[quadrant]` reproduces the old root's
+box bitwise before committing. `Camera::veto` is invariant under it because `q.level` and
+`floor(camera_depth)` rise together; `bootstrap_levels` shifts, which is a real semantic change and
+is recorded rather than absorbed. **The veto-invariance test caught itself**: at a 512 viewport
+nothing is vetoed at all, so the invariance held over an empty set — pinned at 32, with the
+`any(is_some)` control that says so.
+
+**AND "`descend_live_with` CARRIES A DUPLICATE ROUND" WAS MY OWN OVERSTATEMENT.** Of its 296 lines,
+38 do things `round` has no notion of — projection, merging, residency, catch-up accounting,
+post-horizon rounds — and both loops already call the same pure helpers. The live block **projects
+and re-reduces at boundary `j`** where the batch block reads stored reductions: different code, not
+duplicated code. `round` advances a **frontier**; `descend_live_with` advances a **playhead**.
+Unifying them would grow `round` live-only branches for the batch path's benefit, which is the
+opposite of the extraction it had just had. The genuinely repeated block was **four lines**, now
+`scheduler::set_alpha_against`, taking the parent reduction as an *argument* so each loop passes
+the one it means. A refactor proposed from a line count is a guess; read what the lines do.

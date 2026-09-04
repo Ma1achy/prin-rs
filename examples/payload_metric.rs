@@ -24,10 +24,10 @@
 //! - `replay <file.fcache> [eps] [root]` — zero trajectories: the floor (`uniform`), the
 //!   reference (`greedy_lookahead_1`), the random band and the ceiling (`dp_optimal`) from a
 //!   committed footprint file. A v1 file is replayed under the **outcome** arm only and says so.
-//! - `live <file.fcache> [policy] [eps] [k_frac] [root] [stationary] [tau] [alpha_lo] [agreement]` — one static descent under
+//! - `live <file.fcache> [policy] [eps] [k_frac] [root] [stationary] [tau] [alpha_lo] [agreement] [dim_floor]` — one static descent under
 //!   the named policy, integrated fresh, mapped onto the cache and scored against the ceiling:
 //!   the memory ratio at matched quality, `Policy::Tolerance` against `Policy::Alpha`.
-//! - `march <file.fcache> [eps] [k_frac] [root] [stationary] [live_stride] [alpha_lo] [merge] [agreement]` — the **live**
+//! - `march <file.fcache> [eps] [k_frac] [root] [stationary] [live_stride] [alpha_lo] [merge] [agreement] [dim_floor]` — the **live**
 //!   descent (`scheduler::descend_live`): the tree grown boundary by boundary from one march per
 //!   quad, with its growth curve and catch-up cost, scored the same way.
 //!
@@ -292,8 +292,8 @@ fn main() {
         _ => {
             eprintln!("usage: payload_metric build <target> [levels=6] [n=8] [eps=0.01] [t_max=13] [root=results]");
             eprintln!("       payload_metric replay <file.fcache> [eps=0.01] [root=results]");
-            eprintln!("       payload_metric live <file.fcache> [policy=tolerance|alpha] [eps=0.01] [k_frac=0.25] [root=results] [stationary=0] [tau=eps] [alpha_lo=0.2] [agreement=1]");
-            eprintln!("       payload_metric march <file.fcache> [eps=0.01] [k_frac=0.25] [root=results] [stationary=0] [live_stride=4] [alpha_lo=0.2] [merge=1] [agreement=1]");
+            eprintln!("       payload_metric live <file.fcache> [policy=tolerance|alpha] [eps=0.01] [k_frac=0.25] [root=results] [stationary=0] [tau=eps] [alpha_lo=0.2] [agreement=1] [dim_floor=1]");
+            eprintln!("       payload_metric march <file.fcache> [eps=0.01] [k_frac=0.25] [root=results] [stationary=0] [live_stride=4] [alpha_lo=0.2] [merge=1] [agreement=1] [dim_floor=1]");
             std::process::exit(2);
         }
     }
@@ -319,21 +319,25 @@ fn march() {
     // The agreement arm: off is the floor-only control, where a sea and a filament through it
     // read alike.
     let agreement: bool = std::env::args().nth(10).map(|v| v != "0" && v != "false").unwrap_or(SchedCfg::default().agreement);
+    // The dimension floor: off leaves only the noise stop, so a sea floors and a fat fractal
+    // does not. Measured against on, it says which of the two is doing the flooring.
+    let dim_floor: bool = std::env::args().nth(11).map(|v| v != "0" && v != "false").unwrap_or(SchedCfg::default().dim_floor);
     let fp = {
         let f = std::fs::File::open(&file).expect("open fcache");
         prin_rs::output::fcache::read(&mut std::io::BufReader::new(f)).expect("read fcache")
     };
     let t = target(&fp.region).unwrap_or_else(|| panic!("the file's region `{}` is not a known target", fp.region));
     let stem = std::path::Path::new(&file).file_stem().unwrap().to_string_lossy().to_string();
-    let tag = format!("{}{}{}{}",
+    let tag = format!("{}{}{}{}{}",
         if stationary { "" } else { "_nostat" },
         if alpha_lo != SchedCfg::default().alpha_lo { format!("_alo{alpha_lo}") } else { String::new() },
         if merge { "" } else { "_nomerge" },
-        if agreement { "" } else { "_noagree" });
+        if agreement { "" } else { "_noagree" },
+        if dim_floor { "" } else { "_nodim" });
     let log = Log::tee(&format!("{root}/output/payload_march_{stem}{tag}.txt"));
     let log = &log;
     let class = if fp.has_event_class() { ClassArm::EventClass } else { ClassArm::Outcome };
-    logln!(log, "payload_metric march: {file} -- region {}, levels {} N={} res {}, t_max {}; tolerance policy, stationary {stationary}, eps {eps:e} k_frac {k_frac}, live_stride {live_stride}, alpha_lo {alpha_lo} merge {merge} agreement {agreement}; class arm {}",
+    logln!(log, "payload_metric march: {file} -- region {}, levels {} N={} res {}, t_max {}; tolerance policy, stationary {stationary}, eps {eps:e} k_frac {k_frac}, live_stride {live_stride}, alpha_lo {alpha_lo} merge {merge} agreement {agreement} dim_floor {dim_floor}; class arm {}",
            fp.region, fp.levels, fp.n, fp.res, fp.t_max, class.name());
 
     let base = EnsembleCfg::default();
@@ -361,6 +365,7 @@ fn march() {
         alpha_lo,
         merge,
         agreement,
+        dim_floor,
         k_frac,
         budget: fp.quads.len() * 2,
         camera: Some(Camera::framing(t.cx, t.cy, t.half, fp.res)),
@@ -440,6 +445,9 @@ fn live() {
     // The floor on the area exponent; `0` is the opt-in that allows full depth on a sea.
     let alpha_lo: f64 = arg(9, SchedCfg::default().alpha_lo);
     let agreement: bool = std::env::args().nth(10).map(|v| v != "0" && v != "false").unwrap_or(SchedCfg::default().agreement);
+    // The dimension floor: off leaves only the noise stop, so a sea floors and a fat fractal
+    // does not. Measured against on, it says which of the two is doing the flooring.
+    let dim_floor: bool = std::env::args().nth(11).map(|v| v != "0" && v != "false").unwrap_or(SchedCfg::default().dim_floor);
     let fp = {
         let f = std::fs::File::open(&file).expect("open fcache");
         prin_rs::output::fcache::read(&mut std::io::BufReader::new(f)).expect("read fcache")
@@ -450,11 +458,12 @@ fn live() {
         if policy == prin_rs::scheduler::Policy::Tolerance && !stationary { "_nostat" } else { "" },
         if tau != eps { format!("_tau{tau:e}") } else { String::new() },
         if alpha_lo != SchedCfg::default().alpha_lo { format!("_alo{alpha_lo}") } else { String::new() })
-        + if agreement { "" } else { "_noagree" };
+        + if agreement { "" } else { "_noagree" }
+        + if dim_floor { "" } else { "_nodim" };
     let log = Log::tee(&format!("{root}/output/payload_live_{stem}_{tag}.txt"));
     let log = &log;
     let class = if fp.has_event_class() { ClassArm::EventClass } else { ClassArm::Outcome };
-    logln!(log, "payload_metric live: {file} -- PRQF v{}, region {}, levels {} N={} res {}, t_max {}; policy {} stationary {stationary} eps {eps:e} tau {tau:e} alpha_lo {alpha_lo} agreement {agreement} k_frac {k_frac}; class arm {}",
+    logln!(log, "payload_metric live: {file} -- PRQF v{}, region {}, levels {} N={} res {}, t_max {}; policy {} stationary {stationary} eps {eps:e} tau {tau:e} alpha_lo {alpha_lo} agreement {agreement} dim_floor {dim_floor} k_frac {k_frac}; class arm {}",
            fp.version, fp.region, fp.levels, fp.n, fp.res, fp.t_max, policy.name(), class.name());
 
     let base = EnsembleCfg::default();
@@ -475,6 +484,7 @@ fn live() {
         stationary,
         alpha_lo,
         agreement,
+        dim_floor,
         k_frac,
         budget: fp.quads.len() * 2,
         camera: Some(Camera::framing(t.cx, t.cy, t.half, fp.res)),

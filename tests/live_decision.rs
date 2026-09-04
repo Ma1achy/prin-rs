@@ -568,11 +568,16 @@ fn the_live_tree_merges_back_after_the_band_collapses() {
                  p.j, p.t, p.computed, p.leaves, p.resident, p.split, p.keep, p.merged);
     }
     assert!(st.merged > 0, "nothing merged");
-    // The resident count falls after its peak: the memory a live design gives back.
-    let peak_at = st.live.iter().enumerate().max_by_key(|(_, p)| p.resident).map(|(i, _)| i).unwrap();
+    // The resident count falls after its FIRST peak: the memory a live design gives back. The
+    // first peak, because the tree may legitimately regrow to the same size later -- at the
+    // horizon the collapsed band is a step column those quads re-split to follow, and under the
+    // `alpha_lo = 0.005` default the final tree is exactly as large as the band was at its widest
+    // (149 quads, after a trough of 117). Reading the last maximum found nothing after it.
+    let peak = st.live.iter().map(|p| p.resident).max().unwrap();
+    let peak_at = st.live.iter().position(|p| p.resident == peak).unwrap();
     let trough = st.live[peak_at..].iter().map(|p| p.resident).min().unwrap();
-    println!("  resident peak {} at j={}, trough after it {trough}", st.resident_peak, st.live[peak_at].j);
-    assert!(trough < st.resident_peak, "the resident count never fell after its peak");
+    println!("  resident first peak {peak} at j={}, trough after it {trough}", st.live[peak_at].j);
+    assert!(trough < peak, "the resident count never fell after its first peak");
     assert_eq!(st.resident_final, t.resident());
     // No merged quad is a leaf, and every leaf tiles the root: the leaf areas sum to the root's.
     let area: f64 = t.leaves().map(|i| 4.0 * t.nodes[i].half * t.nodes[i].half).sum();
@@ -585,6 +590,14 @@ fn the_live_tree_merges_back_after_the_band_collapses() {
     let mut b: Vec<_> = ts.leaves().map(|i| key(&ts, i)).collect();
     a.sort_unstable();
     b.sort_unstable();
+    let hist = |t: &QuadTree| { let mut h = std::collections::BTreeMap::new(); for i in t.leaves() { *h.entry(t.nodes[i].level).or_insert(0) += 1; } h };
+    println!("  live leaves by level {:?}, static {:?}; live-only {}, static-only {}",
+             hist(&t), hist(&ts), a.iter().filter(|k| !b.contains(k)).count(), b.iter().filter(|k| !a.contains(k)).count());
+    println!("  static stop [{}]; live stop [{}]", ts.stop_breakdown(), t.stop_breakdown());
+    // Under `alpha_lo = 0.005` this is the assertion that caught the cap gap: with capped leaves
+    // terminal, 24 resolved parents held 96 capped children and the live tree ended at 149 quads
+    // against the static 69. A capped leaf is re-decided every boundary and reads `Keep` once its
+    // region resolves, and the merge pass takes a capped child as settled.
     assert_eq!(a, b, "the merged live tree is not the static tree at the horizon");
     // Before the first merge the tree only grew.
     let first_merge = st.live.iter().position(|p| p.merged > 0).expect("a merge happened");

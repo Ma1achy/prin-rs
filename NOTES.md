@@ -2912,3 +2912,43 @@ as the second way a split pays; per-footprint neighbour agreement (two of eight 
 live parent fixed. The knobs: `alpha_lo` (0 allows full depth), `agreement` (on), `merge`
 (on), `stationary` (off). The real-chart sweep (`alpha_lo x stationary` on six caches) is the
 next section once it lands.
+
+## 2026-09-04, Phase 3: the sweep, and what the floor turned out to be
+
+Six charts, static and live, all in `results/payload/README.md` under *Phase 3* with the logs and
+batch scripts in `results/payload/output/`. The short form:
+
+- The area floor at `alpha_lo = 0.2` saves 18-44% of the quads on every chart and floors resolvable
+  structure on every chart; the cost is negligible on four, 4% on the sea chart, and **11% on
+  `config_stability`**, where the floored tree loses to uniform. The ladder 0.05-0.3 is flat on all
+  three charts it was run on, so the threshold is not the lever. `config_stability`'s mixing region
+  is a fat fractal (box dimension about 1.94 over the measurable levels) and a dimension test cannot
+  tell it from a sea. The saturation account was correct arithmetic and refuted as the cause.
+- Real seas are coherent. The agreement arm's noise stop floors 2-37 quads on real charts against
+  262-334 for the dimension floor: footprints whose copies diverge still agree with their
+  neighbours. The arm earns its place through the exponent's weights (`preset_shape` 0.51x to
+  0.44x uniform), not the stop.
+- Dimension floor off is uniform depth on every sea (`preset_shape_h1` 3353 of 3585), which the
+  brief forbids, so the floor stays on and `SchedCfg::dim_floor` is the named opt-out beside
+  `alpha_lo = 0`. The 11% is the recorded price. A fine ladder (0.02, 0.005, 0.001) asks whether a
+  rung near exact saturation separates the coherent sea from the coherent sponge; result in the
+  README when it lands.
+- Stationarity is worse on every chart where it fires (six charts now). Off.
+- The live march trails the static tree exactly through the no-gain merges: with the dimension
+  floor off it reproduces the static tree quad for quad, zero merges. The structured-weight expiry
+  is inert on two of three charts. The repair is a time-to-live on the memory or an expiry keyed on
+  the exponent's inputs; unbuilt.
+- `cargo` fell off the shell's PATH mid-session and two builds silently did nothing; a bitwise pin
+  check compared two stale binaries. Print `Finished` unfiltered; check the binary for a string the
+  change adds.
+- The fine ladder (0.001, 0.005, 0.02) refutes exact saturation as the discriminator too:
+  `config_stability` floors 206 boxes at 0.001 with 2.6% of the frame's resolvable pixels inside
+  them. A sponge that thins only below the coarse sampling is saturated from above. What the rung
+  changes is the trade, and **the default moves to `alpha_lo = 0.005`**: the sea chart keeps 39% of
+  its saving (44% at 0.2), `config_stability` goes from 1.15x uniform to 1.00x, no chart is above
+  uniform, and the marches merge less and trail less. 0.2 stays as the dimension-threshold rung.
+- A capped leaf was terminal in the live frontier, so a resolved parent could never merge it:
+  under 0.005 the pulse's live tree ended at 149 quads against the static 69, with 24 resolved
+  parents holding 96 capped children. Caps are re-tested every boundary now and read `Keep` once
+  the region resolves; any leaf that did not split this round is settled. 69 == 69, 128 merged. At
+  0.2 the no-gain merges had hidden it.

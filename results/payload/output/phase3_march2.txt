@@ -1,0 +1,16 @@
+=== march preset_shape_h1 expiry-on-structure  03:26:50
+  live descent: 2105 quads (1216 leaves, depth 6) in 164.3s, 5.357e9 substeps, catch-up 4.961e9 substeps (92.6% of the total), stop [floor:120 keep:165 screen_floor:931]
+  memory: 2105 quads ever computed (mem_all), resident peak 1629 and final 1621 (mem_resident), 484 children merged
+  payload/event_class/indicator/eps=1e-2: final error 0.23509; dp needs B=1133 (ratio 1.86x); uniform needs B=2189 (ratio 0.96x); sea_fraction 0.3415
+  payload/event_class/resolvable/eps=1e-2: final error 0.05969; dp needs B=653 (ratio 3.22x); uniform needs B=1713 (ratio 1.23x); sea_fraction 0.3415
+=== march near-field expiry-on-structure  03:29:35
+  live descent: 125 quads (91 leaves, depth 6) in 9.6s, 3.265e8 substeps, catch-up 2.640e8 substeps (80.9% of the total), stop [floor:2 keep:66 screen_floor:23]
+  memory: 125 quads ever computed (mem_all), resident peak 121 and final 121 (mem_resident), 4 children merged
+  payload/event_class/indicator/eps=1e-2: final error 0.00054; dp needs B=53 (ratio 2.36x); uniform needs B=1297 (ratio 0.10x); sea_fraction 0.0005
+  payload/event_class/resolvable/eps=1e-2: final error 0.00046; dp needs B=41 (ratio 3.05x); uniform needs B=1173 (ratio 0.11x); sea_fraction 0.0005
+=== march config_stability expiry-on-structure  03:29:45
+  live descent: 3865 quads (2737 leaves, depth 6) in 285.6s, 9.428e9 substeps, catch-up 8.978e9 substeps (95.2% of the total), stop [floor:99 keep:831 screen_floor:1807]
+  memory: 3865 quads ever computed (mem_all), resident peak 3657 and final 3649 (mem_resident), 216 children merged
+  payload/event_class/indicator/eps=1e-2: final error 0.19088; dp needs B=2549 (ratio 1.52x); uniform needs B=3465 (ratio 1.12x); sea_fraction 0.2379
+  payload/event_class/resolvable/eps=1e-2: final error 0.10548; dp needs B=2429 (ratio 1.59x); uniform needs B=3429 (ratio 1.13x); sea_fraction 0.2379
+phase3_march2 done 03:34:31

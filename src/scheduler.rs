@@ -290,6 +290,15 @@ pub struct SchedCfg {
     /// is structure (`QuadReduction::structured_weight`) rather than all of it, so a sea is
     /// uninteresting and a filament through it is not. Off, every unresolved footprint counts.
     pub agreement: bool,
+    /// **The dimension floor.** Whether the no-gain test (`no_gain`: `alpha_area` and
+    /// `alpha_spread_set` both under `alpha_lo`) floors a quad and merges its parent. Off, only
+    /// the noise stop floors -- an unresolved quad with no structured footprint at all -- so a
+    /// sea is stopped by its lack of neighbour agreement and a fat fractal, whose footprints
+    /// agree with their neighbours at every scale, is refined like any other structure.
+    /// Measured on `config_stability`, whose mixing region has box dimension about 1.94 over
+    /// the measurable levels: the dimension floor at any `alpha_lo` in 0.05-0.3 stops 200-260
+    /// boxes there and the tree lands above uniform. `alpha_lo = 0` disables both floors.
+    pub dim_floor: bool,
     /// How a footprint is called hot for the **shape** statistics.
     ///
     /// Separate from `tau_display`, which still drives the split gate and the absolute mask.
@@ -300,12 +309,20 @@ pub struct SchedCfg {
     /// Split above this exponent, floor below `alpha_lo`. Between them: keep.
     pub alpha_hi: f64,
     /// Under `Policy::Tolerance`: **the floor on the area exponent**. A split whose children hold
-    /// no less unresolved area than the parent did, to within `2^-alpha_lo`, did not pay, and its
-    /// children are `Floor` (re-tested every boundary). `alpha_area = 2 - d` for an unresolved set
-    /// of box dimension `d`, so `0.2` refines where the set is thinner than `d = 1.8` and floors
-    /// where it is fatter: noise. `0.0` allows full depth everywhere -- the configuration the
-    /// user must opt into, because the alternative is uniform depth on every sea. Under the
-    /// legacy policies it thresholds the spread exponent, as before.
+    /// no less structured unresolved area than the coarse end did, to within `2^-alpha_lo`, did
+    /// not pay, and its children are `Floor` (re-tested every boundary). `alpha_area = 2 - d` for
+    /// an unresolved set of box dimension `d`, so `0.2` refines where the set is thinner than
+    /// `d = 1.8` and floors where it is fatter. **The default is `0.005`, a noise margin**: a split
+    /// is floored only where it resolved nothing. Measured on six charts, the dimension rung 0.2
+    /// floors a fat fractal (`config_stability`, `d ~ 1.94`, 16% of whose area resolves at level
+    /// 6) exactly as it floors a sea, costs 12% of that chart's resolvable pixels and lands the
+    /// tree above uniform; 0.005 keeps the sea chart's saving (39% against 44%), halves the
+    /// other costs and puts every chart at or under uniform. No rung separates a sea from a
+    /// sponge that thins only below the sampled levels -- that is a bet on depth not bought, by
+    /// construction. `0.0` allows full depth everywhere, the configuration the user must opt
+    /// into, because the alternative is uniform depth on every sea; `dim_floor = false` keeps
+    /// the noise stop alone. Under the legacy policies it thresholds the spread exponent, as
+    /// before, and their pins carry `0.2` explicitly.
     pub alpha_lo: f64,
     /// Floor above this sibling range, under [`Policy::Sibling`].
     pub sib_tau: f64,
@@ -370,11 +387,12 @@ impl Default for SchedCfg {
             k_frac_post: 1.0,
             merge: true,
             agreement: true,
+            dim_floor: true,
             c_stat: 0.3,
             delta_mix: 0.25,
             hot_rule: HotRule::Quantile(0.5),
             alpha_hi: 0.5,
-            alpha_lo: 0.2,
+            alpha_lo: 0.005,
             sib_tau: 0.5,
             // The enum's `#[default]`, so the struct and the enum cannot disagree on it again:
             // they did, and every harness built on `..Default::default()` ran the legacy policy
@@ -1508,7 +1526,7 @@ pub fn spread_exponent(tree: &QuadTree, parent: usize, cfg: &SchedCfg) -> Option
 /// a negative exponent read as no gain would floor exactly the emergence the opt-in exists to
 /// follow. Measured: 131 floors on the sea chart at `alpha_lo = 0` before this guard.
 pub fn no_gain(q: &crate::quad::Quad, cfg: &SchedCfg) -> bool {
-    if cfg.alpha_lo <= 0.0 {
+    if cfg.alpha_lo <= 0.0 || !cfg.dim_floor {
         return false;
     }
     match q.alpha_area {
@@ -1864,17 +1882,18 @@ pub fn descend_live_with(
         frontier = next;
     }
 
-    // Terminal decisions leave the frontier; everything else is re-tested every boundary.
+    // Terminal decisions leave the frontier; everything else is re-tested every boundary. **A
+    // cap is not terminal.** A leaf stopped by `MaxLevel`, `ScreenFloor` or `MaxRelDepth` wanted
+    // to split and could not; its region can still resolve at a later boundary, and since a
+    // resolved quad is decided ahead of the caps, re-testing it then reads `Keep` -- which is
+    // what lets its parent merge it. Measured on the pulse under `alpha_lo = 0.005`: with caps
+    // terminal, 24 parents read zero unresolved footprints at the horizon and still held 96
+    // capped children, so the live tree ended at 149 quads where the static tree at the same
+    // playhead had 69; the no-gain merges at 0.2 had hidden it by merging those parents earlier.
     let terminal = |d: Decision| {
         matches!(
             d,
-            Decision::PrecisionFloor
-                | Decision::MaxLevel
-                | Decision::ScreenFloor
-                | Decision::MaxRelDepth
-                | Decision::Collapsed
-                | Decision::Undetermined
-                | Decision::BudgetExhausted
+            Decision::PrecisionFloor | Decision::Collapsed | Decision::Undetermined | Decision::BudgetExhausted
         )
     };
 
@@ -1992,10 +2011,18 @@ pub fn descend_live_with(
             let mut rejoin: Vec<usize> = Vec::new();
             for p in parents {
                 let Some(kids) = tree.nodes[p].children else { continue };
+                // Settled: a leaf that did not split this round, whatever stopped it. A child at a
+                // cap is as settled as one that kept -- the parent's own resolution or no-gain is
+                // what the merge reads, and the static rule would never have split that parent.
                 let all_settled = kids.iter().all(|&k| {
                     let d = tree.nodes[k].decision;
                     tree.nodes[k].is_leaf() && !tree.nodes[k].merged
-                        && matches!(d, Decision::Keep | Decision::Floor | Decision::Stationary | Decision::Deferred)
+                        && matches!(
+                            d,
+                            Decision::Keep | Decision::Floor | Decision::Stationary | Decision::Deferred
+                                | Decision::MaxLevel | Decision::ScreenFloor | Decision::MaxRelDepth
+                                | Decision::PrecisionFloor | Decision::Collapsed | Decision::Undetermined
+                        )
                 });
                 if !cfg.merge || !all_settled || tree.nodes[p].level < cfg.bootstrap_levels {
                     continue;

@@ -1,0 +1,37 @@
+=== live config_stability stationary=0 alpha_lo=0.05  03:35:18
+  descent: 4445 quads (3334 leaves, depth 6) in 393.3s, 1.148e10 substeps, stop [floor:220 keep:1020 screen_floor:2094]
+  payload/event_class/indicator/eps=1e-2: error 0.09881; dp needs B=3389 (ratio 1.31x); uniform needs B=4325 (ratio 1.03x); sea_fraction 0.2379
+  payload/event_class/resolvable/eps=1e-2: error 0.04130; dp needs B=3529 (ratio 1.26x); uniform needs B=4681 (ratio 0.95x); sea_fraction 0.2379
+=== live config_stability stationary=0 alpha_lo=0.1  03:41:52
+  descent: 4165 quads (3124 leaves, depth 6) in 333.2s, 1.085e10 substeps, stop [floor:208 keep:950 screen_floor:1966]
+  payload/event_class/indicator/eps=1e-2: error 0.13739; dp needs B=3005 (ratio 1.39x); uniform needs B=3981 (ratio 1.05x); sea_fraction 0.2379
+  payload/event_class/resolvable/eps=1e-2: error 0.06626; dp needs B=3037 (ratio 1.37x); uniform needs B=4221 (ratio 0.99x); sea_fraction 0.2379
+=== live config_stability stationary=0 alpha_lo=0.3  03:47:25
+  descent: 3149 quads (2362 leaves, depth 6) in 240.7s, 7.790e9 substeps, stop [floor:256 keep:781 screen_floor:1325]
+  payload/event_class/indicator/eps=1e-2: error 0.26516; dp needs B=1989 (ratio 1.58x); uniform needs B=2577 (ratio 1.22x); sea_fraction 0.2379
+  payload/event_class/resolvable/eps=1e-2: error 0.14071; dp needs B=1981 (ratio 1.59x); uniform needs B=2789 (ratio 1.13x); sea_fraction 0.2379
+=== live preset_shape_h1 stationary=0 alpha_lo=0.05  03:51:27
+  descent: 2089 quads (1567 leaves, depth 6) in 166.7s, 5.421e9 substeps, stop [floor:240 keep:237 screen_floor:1090]
+  payload/event_class/indicator/eps=1e-2: error 0.17786; dp needs B=1509 (ratio 1.38x); uniform needs B=3561 (ratio 0.59x); sea_fraction 0.3415
+  payload/event_class/resolvable/eps=1e-2: error 0.03944; dp needs B=1021 (ratio 2.05x); uniform needs B=3469 (ratio 0.60x); sea_fraction 0.3415
+=== live preset_shape_h1 stationary=0 alpha_lo=0.1  03:54:14
+  descent: 2041 quads (1531 leaves, depth 6) in 180.0s, 5.256e9 substeps, stop [floor:283 keep:236 screen_floor:1012]
+  payload/event_class/indicator/eps=1e-2: error 0.18493; dp needs B=1461 (ratio 1.40x); uniform needs B=3489 (ratio 0.58x); sea_fraction 0.3415
+  payload/event_class/resolvable/eps=1e-2: error 0.04182; dp needs B=969 (ratio 2.11x); uniform needs B=3361 (ratio 0.61x); sea_fraction 0.3415
+=== live preset_shape_h1 stationary=0 alpha_lo=0.3  03:57:15
+  descent: 1697 quads (1273 leaves, depth 6) in 164.5s, 4.246e9 substeps, stop [floor:322 keep:176 screen_floor:775]
+  payload/event_class/indicator/eps=1e-2: error 0.22125; dp needs B=1225 (ratio 1.39x); uniform needs B=2589 (ratio 0.66x); sea_fraction 0.3415
+  payload/event_class/resolvable/eps=1e-2: error 0.05624; dp needs B=705 (ratio 2.41x); uniform needs B=1981 (ratio 0.86x); sea_fraction 0.3415
+=== live preset_shape stationary=0 alpha_lo=0.05  04:00:00
+  descent: 1801 quads (1351 leaves, depth 6) in 127.3s, 4.121e9 substeps, stop [floor:189 keep:219 screen_floor:943]
+  payload/event_class/indicator/eps=1e-2: error 0.03504; dp needs B=1357 (ratio 1.33x); uniform needs B=3889 (ratio 0.46x); sea_fraction 0.1934
+  payload/event_class/resolvable/eps=1e-2: error 0.00752; dp needs B=973 (ratio 1.85x); uniform needs B=3629 (ratio 0.50x); sea_fraction 0.1934
+=== live preset_shape stationary=0 alpha_lo=0.1  04:02:08
+  descent: 1785 quads (1339 leaves, depth 6) in 131.3s, 4.088e9 substeps, stop [floor:214 keep:216 screen_floor:909]
+  payload/event_class/indicator/eps=1e-2: error 0.03577; dp needs B=1349 (ratio 1.32x); uniform needs B=3881 (ratio 0.46x); sea_fraction 0.1934
+  payload/event_class/resolvable/eps=1e-2: error 0.00782; dp needs B=957 (ratio 1.87x); uniform needs B=3593 (ratio 0.50x); sea_fraction 0.1934
+=== live preset_shape stationary=0 alpha_lo=0.3  04:04:20
+  descent: 1569 quads (1177 leaves, depth 6) in 114.5s, 3.597e9 substeps, stop [floor:327 keep:174 screen_floor:676]
+  payload/event_class/indicator/eps=1e-2: error 0.05576; dp needs B=1149 (ratio 1.37x); uniform needs B=3689 (ratio 0.43x); sea_fraction 0.1934
+  payload/event_class/resolvable/eps=1e-2: error 0.01231; dp needs B=757 (ratio 2.07x); uniform needs B=2457 (ratio 0.64x); sea_fraction 0.1934
+phase3_ladder done 04:06:15

@@ -2631,3 +2631,85 @@ the final tree bitwise the static tree at the horizon, 181 quads computed for 69
 its children's `alpha` and did not store it, so the first exponents compared a parent at an
 earlier boundary with children at this one and merged a widening band as no gain. Parents and
 grandparents are projected and stored every boundary they are read.
+
+**THE AREA FLOOR IS RIGHT ON A SEA AND WRONG ON A FAT FRACTAL, AND NO THRESHOLD SEPARATES THEM.**
+Six charts, static, against the clean full-depth tree: the floor at `alpha_lo = 0.2` saves 18-44%
+of the quads and floors resolvable structure on every one, from 0.02% of the frame to **11% on
+`config_stability`**, where the floored tree is bigger than a uniform tree at its own error (1.15x).
+The ladder `0.05-0.3` is flat: the seas give the same trade at every rung and `config_stability`
+floors 208-256 boxes at every rung. Those boxes have an exponent under 0.05 -- structured fill
+falling under 7% per level, box dimension **~1.94** -- and 16% of their area resolves at level 6.
+`alpha_area = 2 - d` calls that noise; the brief calls it the structure the mechanism is for. The
+saturation account (the four-by-four coarse end saturates, so the exponent reads the children's
+fill and 0.2 floors any box over three quarters unresolved) is correct arithmetic and **was refuted
+as the cause**: the same boxes floor at 0.05. **And the floor off is the forbidden degeneration**
+-- `preset_shape_h1` 3353 of 3585 quads, `config_stability` 5045 of 5089 -- so it stays on, the 11%
+is the recorded price, and `SchedCfg::dim_floor` / `alpha_lo = 0` are the opt-ins.
+
+**REAL SEAS ARE COHERENT; THE NOISE STOP FLOORS 2-37 QUADS WHERE THE DIMENSION FLOOR FLOORS
+262-334.** The agreement arm was calibrated on `testing::sea`, white at the footprint scale, and it
+decided every synthetic test. On the six real charts footprints whose copies diverge still agree
+with their neighbours on class and nominal shape, so the noise stop is nearly inert -- the
+stationarity arm's coherent-sponge finding, at a second arm. Where the arm works it works through
+the exponent's weights, not the stop: `preset_shape` 0.51x -> **0.44x** uniform with the resolvable
+loss 3% -> 1%, because dropping the sea from both ends lets the exponent read the structure's own
+scaling. On `near-field` and `deep interior` every floor was the noise stop firing on structure
+(with it off, neither floors at all), and on `preset_prho` it costs 2% of the resolvable pixels.
+Right on one chart, wrong on three, along the curve on two.
+
+**THE LIVE MARCH TRAILS THE STATIC TREE THROUGH THE NO-GAIN MERGES, AND WITH THEM OFF IT IS THE
+STATIC TREE.** Dimension floor off: the march reproduces the static tree quad for quad on all three
+charts, zero merges, resident equal to computed, catch-up 91-96%. Dimension floor on: the sea
+chart's march computes more quads than its static tree (2105 against 2005), holds a fifth fewer
+resident (1621) and displays worse (0.2351 against 0.1894) -- a no-gain merge judged on early
+footprints survives the structure's appearance. The structured-weight expiry (`61ff00c`) is
+**inert** on `near-field` and `config_stability`, rows identical to the old pin, and moves the sea
+chart 0.2686 -> 0.2351. Unbuilt, both live-compatible: a time-to-live on the memory, or an expiry
+keyed on the exponent's own inputs.
+
+**STATIONARITY IS WORSE ON EVERY CHART WHERE IT FIRES.** Six charts: never on `near-field` or
+`deep interior`; `preset_prho` two coarse stops, full-depth error 0.3% -> 6.4% and 3x uniform on
+the resolvable arm; `config_stability` 51 stops, error doubled; `preset_shape_h1` ten stops,
+0.01% -> 1.2%. The verdict recorded on one chart holds on six.
+
+**A BUILD THAT PRINTS NOTHING BUILT NOTHING.** `cargo` dropped off the shell's PATH mid-session.
+Two builds silently did not run; a bitwise check of a pin against `target/` read "identical" because
+both were stale; a batch ran the old binary under a new name for two minutes. Caught by a filtered
+build log that was empty where a `Finished` line belonged. Print the build's `Finished` line
+unfiltered and check the binary for a string the change adds, every time a pin is cut.
+
+**EXACT SATURATION DOES NOT SEPARATE A SEA FROM A SPONGE, AND THAT IS WHY NO FLOOR CAN.**
+`alpha_lo = 0.001` floors only boxes whose children resolve under 0.14% of their structured area --
+saturated to the sampling. On `config_stability` **206 boxes** floor there (229 at 0.2) and 2.6% of
+the frame's resolvable pixels sit inside them; on `preset_shape_h1` 207 (334 at 0.2) with 3.5%. A
+sponge that thins only below the coarse sampling scale is exactly saturated seen from above, and no
+statistic of the levels computed can see the levels not computed: the floor is a bet on the depth it
+has declined to buy, by construction, and the ladder's flatness from 0.001 to 0.1 is that fact as a
+number. What the fine rung changes is the trade, not the mechanism: `config_stability` 1.15x ->
+**1.00x** uniform with the cost 11% -> 2.6%, while the sea chart keeps a 39% saving against 44%.
+
+**THE DEFAULT FLOOR IS "NO GAIN" AT A NOISE MARGIN OF 0.005, NOT A DIMENSION THRESHOLD OF 0.2.**
+`alpha_lo` is unchanged in meaning -- `alpha_area = 2 - d`, so 0.2 floors sets fatter than
+`d = 1.8` -- and its default moves to **0.005**: a split is floored only where its children resolved
+nothing to within a noise margin. Six charts, static: the sea chart keeps 39% of its saving against
+44% (cost 3.5% against 4.3%); `preset_shape` 17% against 26% (0.7% against 1.0%); `preset_prho` 8%
+against 28% (0.9% against 2.3%); `config_stability` 7% against 33%, and from **1.15x uniform to
+1.00x** (cost 2.6% against 12.4%); `near-field` and `deep interior` identical, their floors being the
+noise stop's. The marches at 0.005 merge less (sea chart 300 against 484) and trail their static
+trees less (0.1936 against 0.2351). No chart is above uniform at 0.005; one was at 0.2. The legacy
+`Policy::Alpha` pins carry `alpha_lo: 0.2` explicitly and do not move.
+
+**A CAPPED LEAF WAS TERMINAL IN THE LIVE FRONTIER, SO A RESOLVED PARENT COULD NEVER MERGE IT --
+AND THE DIMENSION RUNG HID IT.** Under `alpha_lo = 0.005` the pulse's live tree ended at **149
+quads against the static 69**, finer, not coarser: 24 parents read zero unresolved footprints at the
+horizon and still held 96 `MaxLevel` children. A leaf stopped by a cap left the frontier for good,
+so it was never re-decided and kept its cap label after its region resolved, and the merge pass
+took only `Keep`/`Floor`/`Stationary`/`Deferred` children as settled. At 0.2 the same parents had
+merged for no gain while the band was wide, which is why T16 passed for a year of session and
+failed the hour the margin tightened. The caps (`MaxLevel`, `ScreenFloor`, `MaxRelDepth`) are now
+re-tested every boundary -- a resolved quad is decided ahead of the caps, so they read `Keep` once
+the region resolves -- and any leaf that did not split this round is settled. The pulse reads
+69 == 69 with 128 merged. **Merging is the split rule read backwards** now includes the caps. On the
+three real charts at `t = 13` the route gives back little -- 16 to 28 more children merged, error
+within half a point -- because their screen-floored regions have not resolved by the horizon; a
+correctness property measured where it fires, nearly inert where it does not, both stated.

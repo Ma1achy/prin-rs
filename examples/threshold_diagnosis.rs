@@ -133,15 +133,14 @@ struct Row {
     dyn_range: f64,
     spread_med: f64,
     veto_pct: f64,
-    dec: [usize; 11],
+    dec: [usize; prin_rs::quad::Decision::ALL.len()],
 }
 
+/// Derived from `Decision::from_code`, never hand-maintained. The old form stopped at code 9,
+/// and the `[usize; 11]` histogram below silently DROPPED codes 11-14 rather than showing them
+/// as `"?"` -- a breakdown that summed to less than the leaf count with nothing saying so.
 fn dec_name(c: usize) -> &'static str {
-    match c {
-        0 => "pending", 1 => "split", 2 => "floor", 3 => "keep", 4 => "prec_floor",
-        5 => "max_level", 6 => "budget", 7 => "screen", 8 => "max_rel_depth", 9 => "collapsed",
-        _ => "?",
-    }
+    u8::try_from(c).ok().and_then(prin_rs::quad::Decision::from_code).map_or("?", |d| d.name())
 }
 
 fn main() {
@@ -209,11 +208,11 @@ fn main() {
                 })
                 .unwrap_or(f64::NAN);
 
-            let mut dec = [0usize; 11];
+            let mut dec = [0usize; prin_rs::quad::Decision::ALL.len()];
             if let Some(c) = col("decision") {
                 for r in &leaves {
                     let k = r[c] as usize;
-                    if k < 11 {
+                    if k < prin_rs::quad::Decision::ALL.len() {
                         dec[k] += 1;
                     }
                 }
@@ -305,7 +304,7 @@ fn main() {
     println!("their own decisions. WHICH GATE stopped each, from the dump's own decision column:");
     println!("  {:<34} {:>7} {:>10}  {}", "dump", "leaves", "spread med", "leaf decisions");
     for r in &free {
-        let br: Vec<String> = (0..11)
+        let br: Vec<String> = (0..prin_rs::quad::Decision::ALL.len())
             .filter(|&k| r.dec[k] > 0)
             .map(|k| format!("{}={}", dec_name(k), r.dec[k]))
             .collect();

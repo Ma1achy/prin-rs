@@ -208,3 +208,41 @@ fn the_sibling_range_is_set_on_the_parent_from_four_children() {
     assert!(checked > 0, "no parent carried a sibling range, so this test proves nothing");
     println!("{checked} parents carry the range of their four children's exponents");
 }
+
+/// **A new `Decision` variant reaches the code -> name table, or this fires.**
+///
+/// `code()` is an exhaustive match over the variants, so a new one compiles only after it is
+/// given a code — but nothing forced it into `Decision::ALL`, which is the table every dump
+/// reader now derives from. Codes are assigned sequentially, so a variant added to the enum and
+/// to `code()` but not to `ALL` takes code `ALL.len()`, and `from_code` at that index must be
+/// `None`. That is the arm with teeth; the round trip below is the arm that says the table is
+/// dense and in code order.
+///
+/// It matters because it has already gone wrong: two `.prnq` decoders hand-maintained this table,
+/// stopped at code 9, and one of them silently dropped `Undetermined`, `Stationary`, `Deferred`
+/// and `Merged` from a leaf-decision histogram — which then summed to less than the leaf count
+/// with nothing saying so.
+#[test]
+fn a_new_decision_variant_reaches_the_table() {
+    use prin_rs::quad::Decision;
+
+    for (i, d) in Decision::ALL.iter().enumerate() {
+        assert_eq!(d.code() as usize, i, "`ALL` must be dense and in code order at {i}");
+        assert_eq!(Decision::from_code(d.code()), Some(*d), "{} does not round-trip", d.name());
+        assert_ne!(d.name(), "?", "every variant needs a name");
+    }
+
+    // The guard. A variant added to the enum and to `code()` but not to `ALL` lands here.
+    assert!(
+        Decision::from_code(Decision::ALL.len() as u8).is_none(),
+        "code {} decodes, so a variant exists that `Decision::ALL` does not carry",
+        Decision::ALL.len()
+    );
+
+    // Names are distinct, or two decisions are indistinguishable in every dump and breakdown.
+    let mut names: Vec<&str> = Decision::ALL.iter().map(|d| d.name()).collect();
+    names.sort_unstable();
+    let n = names.len();
+    names.dedup();
+    assert_eq!(names.len(), n, "two variants share a name");
+}

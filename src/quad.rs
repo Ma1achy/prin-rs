@@ -828,6 +828,43 @@ impl Decision {
             Decision::Merged => 14,
         }
     }
+
+    /// **Every variant, in code order**, so a reader derives the code -> name table rather than
+    /// hand-maintaining one.
+    ///
+    /// Two `.prnq` decoders wrote that table by hand and stopped at code 9, which was correct
+    /// when they were written. `BalanceForced`, `Undetermined`, `Stationary`, `Deferred` and
+    /// `Merged` were appended afterwards, and one of the two silently *dropped* them from its
+    /// leaf-decision histogram — a breakdown summing to less than the leaf count with nothing
+    /// saying so. The fix for that class is never the instance; it is the table.
+    pub const ALL: [Decision; 15] = [
+        Decision::Pending,
+        Decision::Split,
+        Decision::Floor,
+        Decision::Keep,
+        Decision::PrecisionFloor,
+        Decision::MaxLevel,
+        Decision::BudgetExhausted,
+        Decision::ScreenFloor,
+        Decision::MaxRelDepth,
+        Decision::Collapsed,
+        Decision::BalanceForced,
+        Decision::Undetermined,
+        Decision::Stationary,
+        Decision::Deferred,
+        Decision::Merged,
+    ];
+
+    /// The inverse of [`Self::code`], reading a dump's decision column back.
+    ///
+    /// `None` for an unknown code — a dump written by a *later* build than this one, which is a
+    /// real state and must not decode as some existing variant. `code()` is an exhaustive match
+    /// over the variants, so a new variant compiles only after it is given a code; the guard that
+    /// it also reaches [`Self::ALL`] is `a_new_decision_variant_reaches_the_table`, which fires
+    /// because a new variant takes the next code and `from_code(ALL.len())` must be `None`.
+    pub fn from_code(c: u8) -> Option<Decision> {
+        Decision::ALL.get(c as usize).copied()
+    }
 }
 
 /// One node. A leaf is a quad with no children.

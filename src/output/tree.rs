@@ -168,24 +168,24 @@ pub fn write<W: Write>(
 
     let header = format!(
         "region={} body={} n_samples_per_axis={} n_copies={} budget={} bootstrap_levels={}\n\
-         tau_display={} hot_rule={} structure={} mode={} k_frac={} alpha_hi={} alpha_lo={} sib_tau={} policy={} order={} agg={} criterion={} max_level={:?} stationary={} c_stat={} delta_mix={} k_frac_post={} merge={} agreement={} dim_floor={}\n\
+         tau_display={} hot_rule={} structure={} mode={} k_frac={} alpha_hi={} alpha_lo={} sib_tau={} policy={} order={} agg={} criterion={} max_level={:?} stationary={} c_stat={} delta_mix={} k_frac_post={} merge={} agreement={} dim_floor={} balance={}\n\
          t_max={} eta={} n_sync={} r_coll_frac={} escape_rule={:?} closure_k={} stop_on_escape={} dtau_mode={:?} clamp_final={} lc_stable={} jitter_scheme={:?} precision={}\n\
          chart={} decode_path={} camera={:?}\n\
          chart_params={}\n\
-         quads_computed={} footprints={} iterations={} budget_exhausted={} wall_seconds={:.3}\n\
+         quads_computed={} footprints={} iterations={} budget_exhausted={} wall_seconds={:.3} balance_forced={}\n\
          trajectories_per_quad={} sibling_edge_overlap_frac={:.6}\n\
          config={}\n\
          fields={}\n",
         region, tree.body, tree.n, ens.n_extra + 1, cfg.budget, cfg.bootstrap_levels,
         cfg.tau_display, cfg.hot_rule.name(), cfg.structure.name(), cfg.mode.name(),
         cfg.k_frac, cfg.alpha_hi, cfg.alpha_lo, cfg.sib_tau,
-        cfg.policy.name(), cfg.order.name(), cfg.agg.name(), cfg.criterion.name(), cfg.max_level, cfg.stationary, cfg.c_stat, cfg.delta_mix, cfg.k_frac_post, cfg.merge, cfg.agreement, cfg.dim_floor,
+        cfg.policy.name(), cfg.order.name(), cfg.agg.name(), cfg.criterion.name(), cfg.max_level, cfg.stationary, cfg.c_stat, cfg.delta_mix, cfg.k_frac_post, cfg.merge, cfg.agreement, cfg.dim_floor, cfg.balance,
         ens.t_max, ens.eta, ens.n_sync, ens.r_coll_frac, ens.escape_rule, ens.closure_k, ens.stop_on_escape, ens.dtau_mode, ens.clamp_final_step, ens.lc_stable, ens.jitter_scheme,
         precision,
         // The chart is the one thing that now makes two otherwise identical dumps different
         // configurations. A dump that does not name it cannot be read back with confidence.
         tree.chart.name(), ens.decode_path.name(), cfg.camera, tree.chart.params(),
-        st.quads_computed, st.footprints, st.iterations, st.budget_exhausted, st.wall_seconds,
+        st.quads_computed, st.footprints, st.iterations, st.budget_exhausted, st.wall_seconds, st.balance_forced,
         tree.n * tree.n * (ens.n_extra + 1),
         1.0 / tree.n as f64,
         // **Derived, not enumerated.** Every line above this one is a hand-maintained list of

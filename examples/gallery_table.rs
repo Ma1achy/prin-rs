@@ -24,12 +24,11 @@
 
 use std::collections::HashMap;
 
+/// Derived from `Decision::from_code`, never hand-maintained: this match stopped at code 9 and
+/// mapped `balance`, `undetermined`, `stationary`, `deferred` and `merged` to `"?"` for as long
+/// as they had existed.
 fn dec_name(c: u8) -> &'static str {
-    match c {
-        0 => "pending", 1 => "split", 2 => "floor", 3 => "keep", 4 => "prec_floor",
-        5 => "max_level", 6 => "budget", 7 => "screen", 8 => "max_rel_depth", 9 => "collapsed",
-        _ => "?",
-    }
+    prin_rs::quad::Decision::from_code(c).map_or("?", |d| d.name())
 }
 
 fn read(path: &str) -> Option<(Vec<String>, Vec<Vec<f64>>)> {

@@ -465,6 +465,13 @@ pub struct LivePoint {
     pub deferred: usize,
     pub merged: usize,
     pub resident: usize,
+    /// Splits the 2:1 pass forced this boundary, which the criterion did not ask for.
+    ///
+    /// Separate from `split` on purpose: §4.4 wants the geometry share of the budget countable,
+    /// and it cannot be read off the stop-reason breakdown — [`Decision::BalanceForced`] is set on
+    /// the quad being *split*, which immediately gains children, so it is never a leaf and
+    /// `QuadTree::stop_breakdown` (which walks leaves) can never report it.
+    pub balance_forced: usize,
 }
 
 /// A footprint sampler: what fills one footprint of a slice. The integrator in production;
@@ -2079,6 +2086,31 @@ pub fn descend_live_with(
             next.extend_from_slice(&kids);
         }
         frontier = next;
+
+        // **The 2:1 balance pass, live.** The static descent has run this since it was written and
+        // this one never did, so every tree the live descent produced was unbalanced -- and the
+        // live descent is the one closest to the target design. It goes *here*, after the split
+        // loop rather than beside `decide`, because a forced child has to be computed **and caught
+        // up to the playhead** exactly like a child the criterion asked for; putting it next to the
+        // decision would have created quads that no boundary ever marched.
+        //
+        // It runs after the merge pass, which matters: a merge un-splits a parent and can itself
+        // create a violation against a neighbour, and running balance afterwards repairs that in
+        // the same round rather than leaving a cracked frame until the next one.
+        if cfg.balance {
+            let room = cfg.budget.saturating_sub(st.quads_computed);
+            let forced = balance_pass(&mut tree, j as u32, room);
+            st.balance_forced += forced.len();
+            point.balance_forced += forced.len();
+            for &k in &forced {
+                compute(&mut tree, &mut st, &mut px_of, k, j);
+                if j > 0 || post > 0 {
+                    let steps: u64 = px_of[k].iter().map(|p| p.total_substeps as u64).sum();
+                    st.catchup_substeps += (steps as f64 * (t_j / t_max).clamp(0.0, 1.0)).round() as u64;
+                }
+            }
+            frontier.extend_from_slice(&forced);
+        }
 
         point.j = j + post;
         point.computed = st.quads_computed;

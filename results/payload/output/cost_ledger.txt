@@ -1,0 +1,60 @@
+cost_ledger: results/payload, charts ["near-field", "deep_interior", "far", "preset_shape_h1"], descend true, eps 1e-2, k_frac 0.25
+  cost axis = total_substeps (machine-independent); evals = 4 x substeps for RK4;
+  core-s floor = substeps x 4 x 27.4 ns -- deriv arithmetic only, ~22% of the measured substep cost.
+  resident bytes per trajectory: HgState<f64> 104 B marching, PixelOut 656 B as a result record.
+
+=== the uniform ladder, per level, read from the caches ===
+            region lvl  quads  trajectories    substeps    st/traj       p10       p90       max  p90/p10
+        near-field   0      1           512    2.7592e6       5389      5389      5389      5389     1.00
+                     1      4          2048    1.1102e7       5421      5366      5500      5539     1.02
+                     2     16          8192    4.4501e7       5432      5334      5562      5605     1.04
+                     3     64         32768    1.7817e8       5437      5339      5607      5660     1.05
+                     4    256        131072    7.1271e8       5438      5335      5614      5686     1.05
+                     5   1024        524288    2.8509e9       5438      5337      5617      5699     1.05
+                     6   4096       2097152   1.1403e10       5438      5337      5619      5705     1.05
+     deep_interior   0      1           512    1.7508e6       3419      3419      3419      3419     1.00
+                     1      4          2048    6.7247e6       3284      2650      4073      4341     1.54
+                     2     16          8192    2.6802e7       3272      2381      3998      7116     1.68
+                     3     64         32768    1.0670e8       3256      2319      4321      9851     1.86
+                     4    256        131072    4.2713e8       3259      2261      3826     12259     1.69
+                     5   1024        524288    1.7081e9       3258      2233      3804     18184     1.70
+                     6   4096       2097152    6.8305e9       3257      2214      3798     19334     1.72
+               far   0      1           512    3.8344e5        749       749       749       749     1.00
+                     1      4          2048    1.5338e6        749       749       749       749     1.00
+                     2     16          8192    6.1354e6        749       749       749       749     1.00
+                     3     64         32768    2.4542e7        749       749       749       749     1.00
+                     4    256        131072    9.8167e7        749       749       749       749     1.00
+                     5   1024        524288    3.9267e8        749       749       749       749     1.00
+                     6   4096       2097152    1.5707e9        749       749       749       749     1.00
+   preset_shape_h1   0      1           512    1.8661e6       3645      3645      3645      3645     1.00
+                     1      4          2048    7.4550e6       3640      3187      4101      4127     1.29
+                     2     16          8192    2.8751e7       3510      1690      4919      5130     2.91
+                     3     64         32768    1.1534e8       3520       849      5642      7984     6.65
+                     4    256        131072    4.6355e8       3537       723      5892     11768     8.15
+                     5   1024        524288    1.8621e9       3552       699      6250     17445     8.94
+                     6   4096       2097152    7.4656e9       3560       695      6397     21476     9.20
+
+=== the ledger: the tolerance tree against uniform at max depth ===
+            region |  quads    substeps  st/traj    error march MB   rec MB |  quads    substeps march MB   rec MB |     mem     cpu cpu/mem
+                   |   ----------------- tolerance tree -----------------   |  ------- uniform at max depth -------  |    ratios to uniform   
+        near-field   guard: 125 of 125 quads matched to the cache (0 unmapped), worst per-quad substep disagreement 9.876e-7
+        near-field |    125    3.2647e8     5101  0.00034      6.3      5.0 |   4096   1.1403e10    208.0    164.0 |  0.0305  0.0286    0.94
+                   |  deriv-arithmetic floor on the compute saved: 1214.0 core-s
+                   |  uniform tree with parents: 5461 quads 1.5204e10 substeps -> mem 0.0229 cpu 0.0215; descent wall 24.6s on 11 cores
+     deep_interior   guard: 225 of 225 quads matched to the cache (0 unmapped), worst per-quad substep disagreement 9.688e-7
+     deep_interior |    225    7.8632e8     6826  0.00342     11.4      9.0 |   4096    6.8305e9    208.0    164.0 |  0.0549  0.1151    2.10
+                   |  deriv-arithmetic floor on the compute saved: 662.4 core-s
+                   |  uniform tree with parents: 5461 quads 9.1077e9 substeps -> mem 0.0412 cpu 0.0863; descent wall 57.7s on 11 cores
+               far   guard: 21 of 21 quads matched to the cache (0 unmapped), worst per-quad substep disagreement 0.000e0
+               far |     21    8.0526e6      749  0.00000      1.1      0.8 |   4096    1.5707e9    208.0    164.0 |  0.0051  0.0051    1.00
+                   |  deriv-arithmetic floor on the compute saved: 171.3 core-s
+                   |  uniform tree with parents: 5461 quads 2.0941e9 substeps -> mem 0.0038 cpu 0.0038; descent wall 0.3s on 11 cores
+   preset_shape_h1   guard: 2169 of 2169 quads matched to the cache (0 unmapped), worst per-quad substep disagreement 0.000e0
+   preset_shape_h1 |   2169    5.6657e9     5102  0.16681    110.1     86.8 |   4096    7.4656e9    208.0    164.0 |  0.5295  0.7589    1.43
+                   |  deriv-arithmetic floor on the compute saved: 197.3 core-s
+                   |  uniform tree with parents: 5461 quads 9.9446e9 substeps -> mem 0.3972 cpu 0.5697; descent wall 244.7s on 11 cores
+
+`cpu/mem` is the finding: 1.0 means the quad count is an honest compute model, and
+above 1.0 means the criterion is refining into the expensive trajectories, so the
+memory saving overstates the compute saving by that factor.
+EXIT 0

@@ -415,3 +415,70 @@ pixels a finer grid resolves, so it is the structure the tree gave up.
 - The live descent gains at most **one level per boundary** (children must catch up to the
   playhead before they can be decided) and continues in **post-horizon rounds** at the last
   boundary; without those it stopped with leaves still pending.
+
+---
+
+## The cost ledger: what the criterion saves in compute, against what it saves in memory
+
+Every table above reports memory as a **quad count**, because memory is what the plan optimises.
+A quad count is a memory model and it is **not** a compute model: `total_substeps` per trajectory
+varies across a frame, and the criterion refines exactly where the physics is hard, which is where
+trajectories are expensive. `examples/cost_ledger.rs` is what says by how much; full run in
+`output/cost_ledger.txt`.
+
+The control is **uniform at max depth** — the `4^L` deepest quads and nothing else, one sample per
+pixel, no parents. It is the cheapest uniform arm and it is what *"just go to max depth everywhere"*
+means. `error` is scored against the same cache on the metric the cache was written under, so
+uniform reads exactly `0` there by construction.
+
+| target | quads | substeps | st/traj | error | march MB | quads | substeps | march MB | mem | cpu | **cpu/mem** |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| | *tolerance tree* | | | | | *uniform at max depth* | | | | | |
+| `near-field` | 125 | 3.265e8 | 5101 | 0.00034 | 6.3 | 4096 | 1.140e10 | 208.0 | 0.0305 | 0.0286 | **0.94** |
+| `deep interior` | 225 | 7.863e8 | 6826 | 0.00342 | 11.4 | 4096 | 6.831e9 | 208.0 | 0.0549 | 0.1151 | **2.10** |
+| `far` | 21 | 8.053e6 | 749 | 0.00000 | 1.1 | 4096 | 1.571e9 | 208.0 | 0.0051 | 0.0051 | **1.00** |
+| `preset_shape_h1` | 2169 | 5.666e9 | 5102 | 0.16681 | 110.1 | 4096 | 7.466e9 | 208.0 | 0.5295 | 0.7589 | **1.43** |
+
+**`cpu/mem` is the finding, and it is not one number.** At 1.0 the quad count is an honest compute
+model. Above it the memory saving **overstates** the compute saving by that factor, because the
+budget is going to the expensive trajectories. `near-field` reads 0.94 — 33x less memory, 35x less
+compute, the quad count if anything understating the win. `deep interior` reads **2.10**: memory
+falls 18x and compute only 8.7x. `preset_shape_h1` reads **1.43** and its `cpu` column is **0.76**,
+so it uses half the memory and three quarters of the compute while displaying at 0.167 unresolved
+where uniform max depth is 0.
+
+**`far` reads exactly 1.00, and the ladder says why.** Its `steps/trajectory` is **749 at every quad
+at every level** — p10, p90 and max all 749. With no cost variation there is nothing to concentrate
+on and the two ratios cannot differ. It is the control that shows what the *absence* of the effect
+looks like.
+
+Read the distribution, not the level. Mean `steps/traj` is nearly flat across levels on every
+target (`near-field` 5389 -> 5438, `far` 748.9 -> 749.0), which alone would say `cpu/mem = 1`
+everywhere. Within a level the p90/p10 spread runs **1.05, 1.72, 1.00, 9.20**, and that is what
+sets the ratio.
+
+**The guard: two runs, one ratio.** The adaptive arm's substeps come from a fresh descent, the
+uniform arm's from the committed cache. Every quad the descent computes is checked against the
+cache's own count for the same key — 125/125, 225/225, 21/21, 2169/2169 matched, worst per-quad
+disagreement **9.9e-7** and **exactly 0.000e0 on `far` and `preset_shape_h1`**. So the residual is
+last-bit chaotic divergence in the field, not two different kernels. *A difference can be small
+because both sides are right or because both are dead* — this is the arm that says which.
+
+**Cost axis: `total_substeps`, never seconds.** Force evaluations are `4 x substeps` for RK4 to
+within 0.03% (measured, `output/../../output/logh_arms.txt`: Heggie `steps p50 1.536e5` against
+`evals p50 6.146e5`, the excess being the secant landing), so substeps and evals are one column
+here — they are **not** for leapfrog, which reads 1:1. The `core-s` column prices the `deriv` calls
+alone at the measured 27.40 ns and is a **floor, not a prediction**: the levels-6 cache build ran
+1.520e10 substeps in 681.9 s on 11 cores, about 493 ns per substep against 110 ns of `deriv`. The
+**ratio** transfers between machines; the constant does not.
+
+**Bytes.** `HgState<f64>` is thirteen numbers, 104 B — what a live playhead must hold per marching
+trajectory. `PixelOut` is 656 B, the finished result record. `near-field` goes **208 MB -> 6.3 MB**
+of marching state.
+
+Reproduce: `cargo run --release --example cost_ledger -- results/payload` (`descend=0` as argument
+three reads the caches only, at zero trajectories). The `.qcache` reader this needed did not exist
+— the module doc has said *"a reader never guesses"* since the writer was written — and adding it
+turned up a defect it had hidden: the header writes `region=` on a shared line, so `deep interior`
+truncated to `deep` under a whitespace read. `tests/qcache.rs` pins the fix with the naive parse as
+its control.

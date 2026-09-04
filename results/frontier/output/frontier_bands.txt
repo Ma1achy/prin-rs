@@ -1,0 +1,46 @@
+frontier_bands: results/payload, 24 log bands over [1e-12, 1e2]
+  stored term = spread_median (signal(Within, Median), the production criterion)
+  `overshoot` = scanned / k: 1.00 is perfect, n/k is the full sort `top_k` pays.
+
+        near-field  n = 5461, bands occupied 6 of 24, modal share 83.8%
+                    10:65 11:56 12:4576 13:716 14:45 15:3
+                    camera arm: relevance spans 1.000, 5051 of 5461 quads fully off-screen
+                         k/n  scan/n u overshoot scan/n vis overshoot  full sort
+                    visible frontier: 410 of 5461 quads
+                        0.01     0.140     13.89x      0.098      8.00x      99.29x
+                        0.05     0.140      2.79x      0.098      1.90x      19.93x
+                        0.25     0.978      3.91x      1.000      3.98x       4.00x
+                        0.50     0.978      1.96x      1.000      2.00x       2.00x
+
+     deep_interior  n = 5461, bands occupied 8 of 24, modal share 42.6%
+                    9:1740 10:2327 11:1030 12:242 13:71 14:41 15:6 16:4
+                    camera arm: relevance spans 1.000, 5051 of 5461 quads fully off-screen
+                         k/n  scan/n u overshoot scan/n vis overshoot  full sort
+                    visible frontier: 410 of 5461 quads
+                        0.01     0.022      2.22x      0.061      5.00x      99.29x
+                        0.05     0.067      1.33x      0.810     15.81x      19.93x
+                        0.25     0.255      1.02x      0.810      3.22x       4.00x
+                        0.50     0.681      1.36x      0.810      1.62x       2.00x
+
+               far  n = 5461, bands occupied 4 of 24, modal share 93.8%
+                    5:5120 6:320 7:20 8:1
+                    camera arm: relevance spans 1.000, 5051 of 5461 quads fully off-screen
+                         k/n  scan/n u overshoot scan/n vis overshoot  full sort
+                    visible frontier: 410 of 5461 quads
+                        0.01     0.062      6.20x      0.098      8.00x      99.29x
+                        0.05     0.062      1.24x      0.098      1.90x      19.93x
+                        0.25     1.000      4.00x      1.000      3.98x       4.00x
+                        0.50     1.000      2.00x      1.000      2.00x       2.00x
+
+   preset_shape_h1  n = 5461, bands occupied 10 of 24, modal share 23.7%
+                    10:324 11:1294 12:991 13:238 14:30 15:111 16:1167 17:713 18:558 19:35
+                    camera arm: relevance spans 1.000, 5051 of 5461 quads fully off-screen
+                         k/n  scan/n u overshoot scan/n vis overshoot  full sort
+                    visible frontier: 410 of 5461 quads
+                        0.01     0.109     10.78x      0.168     13.80x      99.29x
+                        0.05     0.109      2.16x      0.168      3.29x      19.93x
+                        0.25     0.453      1.81x      0.329      1.31x       4.00x
+                        0.50     0.522      1.04x      0.661      1.32x       2.00x
+
+If `scan/n` sits near 1.00 the signal is band-saturated and the buckets buy nothing;
+`top_k` would then be the honest implementation and the structure should be dropped.

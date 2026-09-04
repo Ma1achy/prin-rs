@@ -360,3 +360,92 @@ fn zooming_out_computes_a_subset_of_what_zooming_in_computed() {
     // persistent tree would therefore have to compute none of them.
     assert_eq!(novel, 0, "{novel} boxes are new on zoom-out; the parents were not already there");
 }
+
+
+/// **The three paths agree on TIED data, which is what the tie-break exists for.**
+///
+/// `top_k` flattens buckets top-down; `rebuild` reads an id-sorted list. Under a merely *stable*
+/// sort two entries of equal priority sitting in different bands come out in opposite orders — so
+/// `agrees_with_rebuild`, the staleness check, reported a **false** disagreement on tied data.
+/// This is the fixture that fires: `0.2 * 6/7` and `0.4 * 3/7` are bitwise equal and land in bands
+/// 18 and 19.
+#[test]
+fn the_orderings_agree_on_exact_ties_across_bands() {
+    use prin_rs::frontier::{band_of, Frontier};
+
+    let (a, b) = (41usize, 283usize);
+    let (sa, sb) = (0.2f64, 0.4f64);
+    let derive = |i: usize| ((i % 7) as f64) / 7.0;
+    assert_eq!(sa * derive(a), sb * derive(b), "the fixture must be an EXACT tie or it tests nothing");
+    assert_ne!(band_of(sa), band_of(sb), "the tie must straddle two bands or it tests nothing");
+
+    let mut f = Frontier::new();
+    f.insert(a, sa);
+    f.insert(b, sb);
+    for k in [1usize, 2] {
+        let full = f.top_k(k, derive);
+        let (bounded, _) = f.top_k_bounded(k, derive);
+        let rebuilt = Frontier::rebuild(&f.entries(), k, derive);
+        assert_eq!(full, rebuilt, "k={k}: top_k and rebuild disagree on a tie");
+        assert_eq!(bounded, rebuilt, "k={k}: the bounded walk disagrees on a tie");
+    }
+    // The total order puts the lower id first, whichever band it came from.
+    assert_eq!(f.top_k(1, derive), vec![a], "a tie must break by id ascending, not by band");
+    assert!(f.agrees_with_rebuild(1, derive) && f.agrees_with_rebuild(2, derive));
+}
+
+/// **The bounded walk equals the full sort, and equals the from-scratch rebuild.**
+///
+/// Three independent paths to one answer — the shape the `Gamma`-identity chain uses. The
+/// adversarial parts are the ones a naive early-out gets wrong: `NaN` scores (which must never
+/// satisfy the stopping test), exact ties (which must break the same way a single stable sort
+/// breaks them), and a `k` larger than the frontier.
+#[test]
+fn the_bounded_walk_agrees_with_the_full_sort_and_the_rebuild() {
+    use prin_rs::frontier::Frontier;
+
+    let mut f = Frontier::new();
+    for id in 0..300usize {
+        // Six orders of stored priority, a run of exact ties, and some NaN.
+        let stored = match id % 11 {
+            10 => f64::NAN,
+            9 => 1e-3, // the tie run
+            r => 10f64.powf(-9.0 + r as f64) * (1 + id % 5) as f64,
+        };
+        f.insert(id, stored);
+    }
+    let derive = |i: usize| ((i % 7) as f64) / 7.0; // in [0,1], zero for one in seven
+    let mut total_scanned = 0usize;
+    for k in [1usize, 5, 20, 100, 299, 300, 400] {
+        let full = f.top_k(k, derive);
+        let (bounded, scanned) = f.top_k_bounded(k, derive);
+        let rebuilt = Frontier::rebuild(&f.entries(), k, derive);
+        assert_eq!(bounded, full, "k={k}: the bounded walk disagrees with the full sort");
+        assert_eq!(bounded, rebuilt, "k={k}: the bounded walk disagrees with the rebuild");
+        total_scanned += scanned;
+    }
+    // The arm that says the early-out is doing something: at k=1 it must not scan everything.
+    let (_, scanned_1) = f.top_k_bounded(1, derive);
+    assert!(scanned_1 < f.len(), "k=1 scanned all {} entries -- the early-out never fired", f.len());
+    assert!(total_scanned > 0, "nothing was scanned at all; the test is vacuous");
+    println!("bounded walk: k=1 scanned {scanned_1} of {}", f.len());
+}
+
+/// **A frontier of undetermined quads walks to the bottom, and that is the correct direction.**
+///
+/// `NaN` never satisfies `kth >= band_upper(b)`, so the walk cannot stop early on a frontier it
+/// could not score. The failure this excludes is an early-out that treats `NaN` as large and
+/// returns undetermined quads as the top `k`.
+#[test]
+fn an_undetermined_frontier_is_not_stopped_early() {
+    use prin_rs::frontier::Frontier;
+
+    let mut f = Frontier::new();
+    for id in 0..50usize {
+        f.insert(id, f64::NAN);
+    }
+    let (ids, scanned) = f.top_k_bounded(5, |_| 1.0);
+    assert_eq!(scanned, 50, "a NaN frontier must be walked in full, scanned {scanned}");
+    assert_eq!(ids, (0..5).collect::<Vec<_>>(), "NaN ties break by id ascending");
+    assert_eq!(ids, f.top_k(5, |_| 1.0));
+}

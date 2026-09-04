@@ -358,6 +358,19 @@ pub struct SchedCfg {
     /// itself. **The camera enters `priority` here and `veto` never; a `Quad` gains no camera
     /// field.**
     pub camera_bias: Option<f64>,
+
+    /// **Where the pointer is (§18), or `None` — and `None` is the shipped default.**
+    ///
+    /// Foveation modulates camera relevance and never adds a term, so with no cursor the priority
+    /// is exactly §4.3's product. It stays off until it beats uniform on time-to-resolve *at the
+    /// cursor* by a clear margin: it costs a factor on the hot path and a mode in the telemetry,
+    /// and "it might be cool" is not a measurement.
+    pub cursor: Option<crate::camera::Cursor>,
+
+    /// How much the fovea may demote the periphery. `4.0` leaves the frame edge a quarter of its
+    /// priority: **slower, never starved.** Attention bias, not acuity exploitation — the viewer
+    /// can look away without moving the mouse.
+    pub fovea_cap: f64,
     /// Enforce the **2:1 balance constraint** — no two adjacent leaves more than one level
     /// apart, or the adaptive render has cracks.
     ///
@@ -405,6 +418,8 @@ impl Default for SchedCfg {
             mode: Mode::Balanced,
             k_frac: K_FRAC_RANKED,
             camera_bias: None,
+            cursor: None,
+            fovea_cap: 4.0,
             balance: false,
             chart: Chart::BodyPlane,
             keep_pixels: false,
@@ -1174,29 +1189,83 @@ pub fn descend(
     }
 }
 
-/// Run the descent with an injected footprint sampler — the integrator, or an analytic field
-/// from `crate::testing` whose right tree is known in advance.
-pub fn descend_with(
-    cx: f64,
-    cy: f64,
-    half: f64,
-    body: usize,
+/// Everything a descent round mutates, so the one-shot descent and a per-frame step are **one**
+/// implementation rather than two that agree today.
+///
+/// Extracted from `descend_with`'s loop body as a **move**: the same statements in the same order,
+/// with the two budget expressions kept character for character.
+pub struct DescentState {
+    pub tree: QuadTree,
+    pub stats: SchedStats,
+    /// Computed at the top of the next round.
+    pub pending: Vec<usize>,
+    /// Wanted to split and was outranked; re-decided next round. `Policy::Tolerance` only.
+    pub deferred: Vec<usize>,
+    pub iteration: u32,
+}
+
+impl DescentState {
+    pub fn new(cx: f64, cy: f64, half: f64, body: usize, cfg: &SchedCfg) -> DescentState {
+        DescentState {
+            tree: QuadTree::with_chart(cx, cy, half, cfg.n, body, cfg.chart),
+            stats: SchedStats::default(),
+            pending: vec![0usize],
+            deferred: Vec::new(),
+            iteration: 0,
+        }
+    }
+}
+
+/// What stops a round spending. **A count, never a deadline** — a wall-clock cut would make the
+/// tree a function of machine load, which is the one thing every result in `results/` is not.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Stop {
+    /// The one-shot descent: `cfg.budget` alone, evaluated exactly as it always has been.
+    Total,
+    /// A session frame: the total cap **and** this frame's quota, whichever binds first. Reported
+    /// separately, because a frame that stopped on its quota is not a run that exhausted its
+    /// budget and must not write `Decision::BudgetExhausted`.
+    Frame { quads: usize, substeps: Option<u64> },
+}
+
+/// What a frame has spent so far. Reset per frame; [`Stop::Total`] never reads it.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Spend {
+    pub quads: usize,
+    pub substeps: u64,
+    pub rounds: u32,
+}
+
+/// What one round did.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct RoundOut {
+    pub computed: usize,
+    pub substeps: u64,
+    pub balance_forced: usize,
+    /// Truncated by the **frame** quota and left `Decision::Pending`. Distinct from
+    /// `BudgetExhausted`, which is terminal for the run.
+    pub held: usize,
+}
+
+/// One round: compute, alpha, exponents, decide, order, truncate, split, balance.
+/// **The only place those eight steps exist.**
+pub fn round(
+    ds: &mut DescentState,
     cfg: &SchedCfg,
     t_max: f64,
     sampler: Sampler<'_>,
-) -> (QuadTree, SchedStats) {
-    let t0 = std::time::Instant::now();
-    let mut tree = QuadTree::with_chart(cx, cy, half, cfg.n, body, cfg.chart);
-    let mut st = SchedStats::default();
-    let mut pending = vec![0usize];
-    // **Quads that wanted to split and were outranked**, carried across rounds and re-decided
-    // each time. `Policy::Tolerance` only: under it `Keep` means *resolved*, and a dropped
-    // unresolved quad wearing that label was the conflation the stop-reason column exists to
-    // prevent. The legacy policies drop them as `Keep`, bitwise as before.
-    let mut deferred: Vec<usize> = Vec::new();
-    let mut iteration = 0u32;
+    stop: Stop,
+    spend: &mut Spend,
+) -> RoundOut {
+    let DescentState { tree, stats: st, pending, deferred, iteration } = ds;
+    let mut out = RoundOut::default();
+    let mut held_over: Vec<usize> = Vec::new();
+    spend.rounds += 1;
+    if pending.is_empty() {
+        return out;
+    }
+    loop {
 
-    while !pending.is_empty() {
         // ---- compute ------------------------------------------------------------------
         if st.quads_computed + pending.len() > cfg.budget {
             let room = cfg.budget.saturating_sub(st.quads_computed);
@@ -1205,6 +1274,24 @@ pub fn descend_with(
             }
             pending.truncate(room);
             st.budget_exhausted = true;
+        }
+        // **The frame quota, applied AFTER the total cap and never instead of it.** The two
+        // expressions above are the one-shot descent's, character for character: `saturating_sub`
+        // and the `> budget` form disagree nowhere today, and rewriting one into the other is
+        // exactly the class of change that survives review and moves a corpus. A quad held back by
+        // the frame keeps `Decision::Pending` -- it is NOT `BudgetExhausted`, which is a statement
+        // about the run and not about this frame.
+        // **Held over, not dropped.** The first cut truncated `pending` and counted the overflow,
+        // which *discarded* those children: the descent drained early with 58 leaves against the
+        // one-shot's 100. A frame quota bounds what a frame computes, not what the run computes,
+        // so the overflow is carried to the next round. They keep `Decision::Pending` throughout,
+        // which is the whole reason a held quad is not `BudgetExhausted`.
+        if let Stop::Frame { quads, .. } = stop {
+            let room = quads.saturating_sub(spend.quads);
+            if pending.len() > room {
+                held_over = pending.split_off(room);
+                out.held += held_over.len();
+            }
         }
         if pending.is_empty() {
             break;
@@ -1216,7 +1303,7 @@ pub fn descend_with(
             .collect();
         for (&i, (r, px)) in pending.iter().zip(reds) {
             tree.nodes[i].red = r;
-            tree.nodes[i].iteration = iteration;
+            tree.nodes[i].iteration = *iteration;
             st.footprints += r.n_footprints as usize;
             if cfg.keep_pixels {
                 if st.pixels.len() <= i {
@@ -1226,9 +1313,15 @@ pub fn descend_with(
             }
         }
         st.quads_computed += pending.len();
+        out.computed += pending.len();
+        spend.quads += pending.len();
+        let round_substeps: u64 =
+            pending.iter().map(|&i| tree.nodes[i].red.total_substeps as u64).sum();
+        out.substeps += round_substeps;
+        spend.substeps += round_substeps;
 
         // ---- alpha, against the quad's OWN parent -------------------------------------
-        for &i in &pending {
+        for &i in pending.iter() {
             if let Some(p) = tree.nodes[i].parent {
                 let (pr, cr) = (tree.nodes[p].red, tree.nodes[i].red);
                 tree.nodes[i].alpha = ratio_log2(pr.spread(cfg.agg), cr.spread(cfg.agg));
@@ -1292,7 +1385,7 @@ pub fn descend_with(
         }
 
         st.leaves_per_iteration.push(tree.leaves().count());
-        iteration += 1;
+        *iteration += 1;
 
         // ---- order, then split ---------------------------------------------------------
         order_queue(&mut want, &tree, cfg);
@@ -1354,27 +1447,51 @@ pub fn descend_with(
             st.budget_exhausted = true;
         }
 
-        pending = Vec::new();
+        *pending = held_over;
         for i in want {
             tree.nodes[i].alpha_area = None;
             tree.nodes[i].alpha_spread_set = None;
             tree.nodes[i].no_gain_weight = None;
-            pending.extend_from_slice(&tree.split(i, iteration));
+            pending.extend_from_slice(&tree.split(i, *iteration));
         }
 
         // **After the criterion's splits, not instead of them.** Balance is a rendering
         // requirement and never a reason to refine, so it runs last and can only add.
         if cfg.balance {
             let room = cfg.budget.saturating_sub(st.quads_computed + pending.len());
-            let forced = balance_pass(&mut tree, iteration, room);
+            let forced = balance_pass(tree, *iteration, room);
             st.balance_forced += forced.len();
+            out.balance_forced += forced.len();
             pending.extend_from_slice(&forced);
         }
+    
+        break;
+    }
+    out
+}
+
+/// Run the descent with an injected footprint sampler — the integrator, or an analytic field
+/// from `crate::testing` whose right tree is known in advance.
+pub fn descend_with(
+    cx: f64,
+    cy: f64,
+    half: f64,
+    body: usize,
+    cfg: &SchedCfg,
+    t_max: f64,
+    sampler: Sampler<'_>,
+) -> (QuadTree, SchedStats) {
+    let t0 = std::time::Instant::now();
+    let mut ds = DescentState::new(cx, cy, half, body, cfg);
+    let mut spend = Spend::default();
+
+    while !ds.pending.is_empty() {
+        round(&mut ds, cfg, t_max, sampler, Stop::Total, &mut spend);
     }
 
-    st.iterations = iteration;
-    st.wall_seconds = t0.elapsed().as_secs_f64();
-    (tree, st)
+    ds.stats.iterations = ds.iteration;
+    ds.stats.wall_seconds = t0.elapsed().as_secs_f64();
+    (ds.tree, ds.stats)
 }
 
 fn ratio_log2(parent: f64, child: f64) -> Option<f64> {
@@ -1715,7 +1832,17 @@ pub fn priority(tree: &QuadTree, i: usize, cfg: &SchedCfg) -> f64 {
     // which is the split the persistent frontier is built around, and the reason this is
     // computed here rather than stored.
     match (cfg.camera_bias, cfg.camera) {
-        (Some(margin), Some(cam)) => v * cam.relevance(q.cx, q.cy, q.half, margin),
+        // **Cursor bias MODULATES relevance; it is not a third factor** (§18). With no cursor, or
+        // a cursor still in motion (`dwell = 0`), `foveation` returns 1.0 and this is exactly the
+        // §4.3 product — the fallback is the default path, and every non-mouse route takes it.
+        (Some(margin), Some(cam)) => {
+            let rel = cam.relevance(q.cx, q.cy, q.half, margin);
+            let fov = cfg
+                .cursor
+                .as_ref()
+                .map_or(1.0, |c| cam.foveation(q.cx, q.cy, c, cfg.fovea_cap));
+            v * rel * fov
+        }
         _ => v,
     }
 }

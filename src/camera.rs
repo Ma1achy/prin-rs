@@ -31,6 +31,23 @@ use crate::quad::{Decision, Quad};
 /// `N = 8` on a 512² viewport, which is the configuration everything here is measured in.
 pub const MAX_REL_DEPTH: u32 = 6;
 
+/// Gaussian width of the fovea, in units of the viewport half-width. A quarter of the viewport,
+/// so the falloff is gentle across the visible field rather than a spot.
+pub const FOVEA_SIGMA: f64 = 0.25;
+
+/// **Where the pointer is, and how settled it is.** Lives beside the camera — never on a `Quad`,
+/// for the same reason camera state does not.
+///
+/// `dwell` is the low-pass: `0.0` while the pointer is moving fast, rising toward `1.0` as it
+/// settles. It is supplied rather than computed here because the smoothing window is a property of
+/// the input loop, and a `Camera` has no clock.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Cursor {
+    pub cx: f64,
+    pub cy: f64,
+    pub dwell: f64,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Camera {
     pub cx: f64,
@@ -164,6 +181,45 @@ impl Camera {
         } else {
             (ox * oy / area).clamp(0.0, 1.0)
         }
+    }
+
+    /// **Cursor bias (§18): where attention is, modulating relevance — never a third factor.**
+    ///
+    /// Returns a factor in `[1/cap, 1]` that multiplies [`Self::relevance`]. It is not added
+    /// beside it and it is not a separate priority term: §18 is explicit that the pointer
+    /// *modulates* camera relevance, so everything §4.3 says still holds, including that this
+    /// lives in **priority and never in veto** and that no cursor field goes on a `Quad`.
+    ///
+    /// **The fallback is the default path.** No cursor gives `1.0` everywhere and the whole
+    /// mechanism vanishes, which is exactly §2's uniform-over-viewport behaviour. Keyboard
+    /// navigation, touch after the finger lifts, an unfocused window and every headless render
+    /// take that path — so it is the primary case, and foveation is the modulation on top. The
+    /// reverse arrangement makes every non-mouse path a special case.
+    ///
+    /// **A smooth falloff, never a hard radius.** A hard edge is a disc of sharpness that moves
+    /// with the mouse, which reads worse than no foveation at all. The kernel is Gaussian in
+    /// screen-space distance from the cursor, in units of the viewport half-width.
+    ///
+    /// **Weighted by dwell.** A cursor still for a moment is a far stronger signal than one flying
+    /// across the canvas, and a fovea that *chases* a moving pointer spends the whole budget on
+    /// regions the user has already left. At `dwell = 0` this returns `1.0` — the mechanism is off
+    /// during motion, not merely weakened.
+    ///
+    /// **The periphery is slowed and never starved.** `cap` bounds the ratio: at `cap = 4` the far
+    /// edge keeps a quarter of its priority. This is *attention* bias and not acuity exploitation
+    /// — unlike VR the viewer can look away without moving the mouse, and a fovea tight enough
+    /// that the edges never resolve makes the image look broken the moment they do.
+    pub fn foveation(&self, cx: f64, cy: f64, cur: &Cursor, cap: f64) -> f64 {
+        if cap <= 1.0 || cur.dwell <= 0.0 || self.half_world <= 0.0 {
+            return 1.0;
+        }
+        // Distance in units of the viewport half-width, so the kernel is resolution-independent.
+        let (dx, dy) = ((cx - cur.cx) / self.half_world, (cy - cur.cy) / self.half_world);
+        let d2 = dx * dx + dy * dy;
+        let w = (-d2 / (2.0 * FOVEA_SIGMA * FOVEA_SIGMA)).exp();
+        let floor = 1.0 / cap;
+        // dwell 0 -> 1.0 everywhere; dwell 1 -> 1.0 at the cursor falling to `floor` far away.
+        1.0 - cur.dwell.clamp(0.0, 1.0) * (1.0 - floor) * (1.0 - w)
     }
 
     pub fn veto(&self, q: &Quad, n: usize, root_half: f64) -> Option<Decision> {

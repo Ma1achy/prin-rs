@@ -449,3 +449,118 @@ fn an_undetermined_frontier_is_not_stopped_early() {
     assert_eq!(ids, (0..5).collect::<Vec<_>>(), "NaN ties break by id ascending");
     assert_eq!(ids, f.top_k(5, |_| 1.0));
 }
+
+// ---------------------------------------------------------------------------------------
+// Cursor bias (§18) — foveation
+// ---------------------------------------------------------------------------------------
+
+/// **The fallback is the default path, and it is an exact identity.**
+///
+/// No cursor, or a cursor still in motion, must leave priority exactly as §4.3's product. §18 is
+/// explicit that the fallback is primary and foveation the modulation on top — the reverse makes
+/// keyboard navigation, touch-after-lift, an unfocused window and every headless render into
+/// special cases. Asserted as bitwise equality, not approximate.
+#[test]
+fn no_cursor_and_a_moving_cursor_are_both_exact_identities() {
+    use prin_rs::camera::{Camera, Cursor};
+
+    let cam = Camera::framing(1.0, 3.0, 0.05, 512);
+    let moving = Cursor { cx: 1.02, cy: 3.02, dwell: 0.0 };
+    let settled = Cursor { cx: 1.02, cy: 3.02, dwell: 1.0 };
+
+    let mut differs = 0;
+    for (qx, qy) in [(1.0, 3.0), (1.03, 3.03), (0.97, 2.97), (1.049, 3.049)] {
+        assert_eq!(cam.foveation(qx, qy, &moving, 4.0), 1.0, "dwell 0 must be an exact identity");
+        // cap <= 1 is the other off switch and must also be exact.
+        assert_eq!(cam.foveation(qx, qy, &settled, 1.0), 1.0, "cap 1 must be an exact identity");
+        if cam.foveation(qx, qy, &settled, 4.0) != 1.0 {
+            differs += 1;
+        }
+    }
+    // The control: with dwell up, it must NOT be an identity, or the two assertions above are
+    // passing because the mechanism does nothing at all.
+    assert!(differs > 0, "a settled cursor changed nothing anywhere -- the mechanism is inert");
+}
+
+/// **Smooth falloff, capped, and monotone in distance — no disc of sharpness.**
+///
+/// A hard radius produces a visible sharp disc that moves with the mouse, which §18 says reads
+/// worse than no foveation at all. And the periphery is *slowed, never starved*: the factor is
+/// bounded below by `1/cap`, because unlike VR the viewer can look away without moving the mouse.
+#[test]
+fn the_fovea_falls_off_smoothly_and_never_starves_the_periphery() {
+    use prin_rs::camera::{Camera, Cursor};
+
+    let cam = Camera::framing(0.0, 0.0, 1.0, 512);
+    let cur = Cursor { cx: 0.0, cy: 0.0, dwell: 1.0 };
+    let cap = 4.0;
+
+    let mut prev = f64::INFINITY;
+    let mut vals = Vec::new();
+    for i in 0..=20 {
+        let d = i as f64 * 0.15;
+        let f = cam.foveation(d, 0.0, &cur, cap);
+        assert!(f <= prev + 1e-15, "foveation must not rise with distance ({d}: {f} after {prev})");
+        assert!(f >= 1.0 / cap - 1e-12, "the periphery is starved at {d}: {f} < {}", 1.0 / cap);
+        assert!(f <= 1.0 + 1e-12);
+        prev = f;
+        vals.push(f);
+    }
+    assert!((vals[0] - 1.0).abs() < 1e-12, "the cursor itself must keep full priority");
+    assert!(*vals.last().unwrap() < 0.30, "the far edge should approach the floor, got {:?}", vals.last());
+
+    // **Smoothness is a bounded derivative, and it has to be sampled finely enough to say so.**
+    // The first cut of this sampled at 0.15 against a kernel width of 0.25 and read a step of
+    // 0.26 -- which measured the SAMPLE SPACING, not an edge. A Gaussian has no discontinuity by
+    // construction; what a hard radius would show is a step that does not shrink with the
+    // spacing. So sample at 0.01 and bound the step by roughly `max|df/dd| * spacing`.
+    let fine: Vec<f64> =
+        (0..=300).map(|i| cam.foveation(i as f64 * 0.01, 0.0, &cur, cap)).collect();
+    let step = fine.windows(2).map(|w| (w[0] - w[1]).abs()).fold(0.0f64, f64::max);
+    assert!(step < 0.03, "the falloff has a step of {step} at 0.01 spacing -- an edge, not a gradient");
+    // And the arm that says the bound is not trivially satisfied: over the whole sweep the factor
+    // must actually travel most of its range.
+    assert!(fine[0] - fine[fine.len() - 1] > 0.6, "the fovea barely varies; the test is vacuous");
+}
+
+/// **A cursor at the viewport centre cannot measure foveation** — and this is the trap the
+/// measurement has to avoid, not a property of the code.
+///
+/// Centred, the fovea is concentric with `relevance` itself, so the foveated ranking nearly
+/// reproduces the unfoveated one and the arm reads as "no effect" while being an identity. The
+/// measurement needs the cursor **off-centre**; this test pins that the two cases are genuinely
+/// different, so a harness that centres the cursor is measuring nothing.
+#[test]
+fn a_centred_cursor_is_nearly_an_identity_and_an_offset_one_is_not() {
+    use prin_rs::camera::{Camera, Cursor};
+
+    let cam = Camera::framing(0.0, 0.0, 1.0, 512);
+    let probes: Vec<(f64, f64)> =
+        (-3..=3).flat_map(|i| (-3..=3).map(move |j| (i as f64 * 0.3, j as f64 * 0.3))).collect();
+
+    let spread = |cur: &Cursor| {
+        let v: Vec<f64> = probes.iter().map(|&(x, y)| cam.foveation(x, y, cur, 4.0)).collect();
+        v.iter().cloned().fold(f64::MIN, f64::max) - v.iter().cloned().fold(f64::MAX, f64::min)
+    };
+
+    let centred = spread(&Cursor { cx: 0.0, cy: 0.0, dwell: 1.0 });
+    let offset = spread(&Cursor { cx: 0.7, cy: 0.7, dwell: 1.0 });
+    // Both vary — the point is not that centring kills the factor, but that it makes it a
+    // radially symmetric function of the same centre `relevance` already uses.
+    assert!(centred > 0.0 && offset > 0.0);
+
+    // The discriminator: which quads are favoured. Centred, the corner quads are all equal; offset,
+    // the near corner beats the far one by a wide margin.
+    // The discriminator is the offset ratio AGAINST the centred one, not an arbitrary bar: `cap`
+    // permits at most 4x in total, so a fixed ">3x" was asking the probe to sit almost on the
+    // cursor. Centred, opposite corners are exactly equal -- ratio 1.0 -- which is precisely why
+    // a centred cursor measures nothing.
+    let off = Cursor { cx: 0.7, cy: 0.7, dwell: 1.0 };
+    let mid = Cursor { cx: 0.0, cy: 0.0, dwell: 1.0 };
+    let ratio = |c: &Cursor| cam.foveation(0.9, 0.9, c, 4.0) / cam.foveation(-0.9, -0.9, c, 4.0);
+    let (r_off, r_mid) = (ratio(&off), ratio(&mid));
+
+    assert!((r_mid - 1.0).abs() < 1e-12, "a centred cursor must rate opposite corners equally, got {r_mid}");
+    assert!(r_off > 2.0, "an offset cursor must favour its own side: ratio {r_off}");
+    assert!(r_off > r_mid * 2.0, "the offset case must be far from the centred identity");
+}

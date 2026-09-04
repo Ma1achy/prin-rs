@@ -870,10 +870,13 @@ pub struct Quad {
     /// **The spread exponent of this quad's own split**: `log2(spread(self) / mean spread(children))`
     /// under the descent's aggregation. The second way a split can pay; see `scheduler::no_gain`.
     pub alpha_spread_set: Option<f64>,
-    /// **The unresolved weight at which a no-gain merge was judged.** The merged parent stays
-    /// floored while its own unresolved area stands within a factor of two of this; past that
-    /// the region has changed -- a band collapsing to a filament -- the memory expires and the
-    /// quad may split again. `None` on a quad that was never merged for no gain.
+    /// **The structured weight at which a no-gain merge was judged.** The merged parent stays
+    /// floored while its own structured area stands within a factor of two of this (or at zero,
+    /// if it was zero); past that the region has changed -- a band collapsing to a filament,
+    /// structure appearing in what was noise -- the memory expires and the quad may split
+    /// again. `None` on a quad that was never merged for no gain. Keyed on the structured weight
+    /// because on a sea the unresolved weight never moves: the first form, keyed on it, left the
+    /// live sea-chart tree at 2.0x the optimum's budget for its error against the static 1.4x.
     pub no_gain_weight: Option<f64>,
     /// Released by a merge. Stays in the arena (indices are stable) but is not a leaf.
     pub merged: bool,

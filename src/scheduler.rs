@@ -1570,10 +1570,13 @@ pub fn decide(tree: &QuadTree, i: usize, cfg: &SchedCfg) -> Decision {
         // into the same four children every boundary -- for as long as its unresolved area
         // stands within a factor of two of where it was when the split was judged. Past that the
         // region has changed (a band collapsing to a filament) and the memory expires.
+        // The memory is keyed on the STRUCTURED weight, the quantity the exponent judged: on a
+        // sea the unresolved weight never moves while structure can appear from nothing. A merge
+        // judged at zero structure expires the moment any appears.
         if q.is_leaf() && no_gain(q, cfg) {
             let stands = q.no_gain_weight.map_or(true, |w0| {
-                let w = q.red.unresolved_weight;
-                w > 0.5 * w0 && w < 2.0 * w0
+                let w = structured_weight(&q.red, cfg);
+                if w0 <= 0.0 { w <= 0.0 } else { w > 0.5 * w0 && w < 2.0 * w0 }
             });
             if stands {
                 return Decision::Floor;
@@ -2013,7 +2016,7 @@ pub fn descend_live_with(
                         tree.nodes[p].alpha_spread_set = None;
                         tree.nodes[p].no_gain_weight = None;
                     } else {
-                        tree.nodes[p].no_gain_weight = Some(tree.nodes[p].red.unresolved_weight);
+                        tree.nodes[p].no_gain_weight = Some(structured_weight(&tree.nodes[p].red, cfg));
                     }
                     rejoin.push(p);
                 }

@@ -69,6 +69,19 @@ pub struct QuadReduction {
     /// treats non-finite as *hot* by design.
     pub n_undetermined: u32,
 
+    /// **Whether a collapse here has a more precise decoder to hand off to.**
+    ///
+    /// Recorded on the reduction rather than read from a config, because `decide` is pure on the
+    /// reduction. `false` is the honest default and the production value: `n_distinct_ic` is
+    /// measured on `Slice::nominal::<f64>`, the **full f64 decode**, and f64 is the ceiling in this
+    /// build — so a collapse detected here is the floor, exactly as `Decision::Collapsed` has
+    /// always treated it.
+    ///
+    /// It becomes `true` only for an f32 consumer, where `LinSplitF32` sits above the collapsing
+    /// path. See [`crate::decode::Path::has_more_precise_path`] for why the key is the *ladder*
+    /// and not the linearised/full distinction the spec names.
+    pub decode_can_switch: bool,
+
     // ---------------------------------------------------------------------------------
     // The between-footprint arm.
     //
@@ -787,6 +800,27 @@ pub enum Decision {
     /// dropped unresolved quad wearing that label was the conflation the stop-reason column
     /// exists to prevent. `Policy::Alpha` still marks these `Keep`, bitwise as before. Code 13.
     Deferred,
+
+    /// **The full decoder ran out of precision — switch to the linearised path and KEEP GOING.**
+    /// Code 15, and **not a stop**.
+    ///
+    /// §14 is explicit and it is easy to get backwards: adjacent samples collapsing to identical
+    /// ICs on the *full* decoder means the f32 pipeline is exhausted and the linear path should
+    /// take over, not that there is nothing left to resolve. Treating it as terminal caps the
+    /// descent around depth 23 and looks exactly like a physics limit —
+    /// `results/output/deep_zoom.txt` measures `direct_f32` collapsing to 18/64 distinct ICs by
+    /// depth 18 while `lin_split_f32` holds **64/64 through depth 40**.
+    ///
+    /// It also fires **early** in a corner the depth threshold misses: a microscope tilt can shrink
+    /// `q1, q2` to tiny magnitudes at shallow quadtree depth, so the full decode loses precision
+    /// before the pyramid is deep. Still a switch, never a stop.
+    /// **`AT_F32_FLOOR` is [`Self::Collapsed`], not a new variant.** The spec lists the terminal
+    /// decode floor separately from the switchover, and in this build `Collapsed` already *is*
+    /// that floor — same condition, same response, and it is the label every committed dump
+    /// carries. A distinct `AtF32Floor` would be a synonym that could never be produced here,
+    /// since nothing measures distinctness through a linearised path; adding it would rename a
+    /// committed decision for no gain and put a code in the table that never fires.
+    DecodeSwitch,
 }
 
 impl Decision {
@@ -807,6 +841,7 @@ impl Decision {
             Decision::Stationary => "stationary",
             Decision::Deferred => "deferred",
             Decision::Merged => "merged",
+            Decision::DecodeSwitch => "decode_switch",
         }
     }
     pub fn code(self) -> u8 {
@@ -826,6 +861,7 @@ impl Decision {
             Decision::Stationary => 12,
             Decision::Deferred => 13,
             Decision::Merged => 14,
+            Decision::DecodeSwitch => 15,
         }
     }
 
@@ -837,7 +873,7 @@ impl Decision {
     /// `Merged` were appended afterwards, and one of the two silently *dropped* them from its
     /// leaf-decision histogram — a breakdown summing to less than the leaf count with nothing
     /// saying so. The fix for that class is never the instance; it is the table.
-    pub const ALL: [Decision; 15] = [
+    pub const ALL: [Decision; 16] = [
         Decision::Pending,
         Decision::Split,
         Decision::Floor,
@@ -853,6 +889,7 @@ impl Decision {
         Decision::Stationary,
         Decision::Deferred,
         Decision::Merged,
+        Decision::DecodeSwitch,
     ];
 
     /// The inverse of [`Self::code`], reading a dump's decision column back.

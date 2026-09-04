@@ -733,6 +733,12 @@ pub fn reduce(px: &[PixelOut], n: usize, tau: f64, hot_rule: HotRule, t_max: f64
         error_ratio_max: max_no_discard(px.iter().map(|p| p.error_ratio)),
         worst_energy_drift: max_no_discard(px.iter().map(|p| p.energy_drift_max)),
         n_nonfinite: px.iter().map(|p| p.n_nonfinite as u32).sum(),
+        // **`false`, and that is the truthful value here.** `n_distinct_ic` is measured on
+        // `Slice::nominal::<f64>` — the full f64 decode — and f64 is the ceiling in this build, so
+        // a collapse detected here has nothing above it to switch to. It becomes `true` only for
+        // an f32 consumer, and setting it from a config that did not measure the distinctness
+        // would be a field that lies about which decoder collapsed.
+        decode_can_switch: false,
         n_footprints: px.len() as u32,
         n_undetermined,
 
@@ -1187,6 +1193,19 @@ pub fn descend(
             descend_with(cx, cy, half, body, cfg, ens.t_max, &sampler)
         }
     }
+}
+
+/// Run [`decide`] on a hand-built reduction, for tests that are about the decision and not about
+/// the field that produced it.
+///
+/// Builds a one-node tree at `level` and hangs the reduction on it. Exposed rather than duplicated
+/// in each test file, because a test that reimplements the guard order is testing its own copy.
+#[doc(hidden)]
+pub fn decide_reduction_for_test(red: &QuadReduction, level: u32, cfg: &SchedCfg) -> Decision {
+    let mut tree = QuadTree::with_chart(0.0, 0.0, 1.0, cfg.n, 0, cfg.chart);
+    tree.nodes[0].red = *red;
+    tree.nodes[0].level = level;
+    decide(&tree, 0, cfg)
 }
 
 /// Everything a descent round mutates, so the one-shot descent and a per-frame step are **one**
@@ -1755,8 +1774,30 @@ pub fn decide(tree: &QuadTree, i: usize, cfg: &SchedCfg) -> Decision {
     // Undetermined, not resolved. Placed with the precision floor rather than among the policy
     // branches because it is a property of the samples, not of the signal read from them — a
     // collapsed quad is collapsed under every criterion at once.
+    // **The switchover, and it is the piece §14 says is easy to get backwards.**
+    //
+    // Adjacent samples collapsing to identical ICs means one of two opposite things, keyed to
+    // which decoder produced them. On a **full** decoder it means that pipeline is out of
+    // precision and the linear path should take over — refinement CONTINUES, and treating it as a
+    // stop caps the descent around depth 23 while looking exactly like a physics limit
+    // (`results/output/deep_zoom.txt`: `direct_f32` at 18/64 distinct ICs by depth 18 against
+    // `lin_split_f32` holding 64/64 through depth 40). On a **linearised** decoder it is the true
+    // `AT_F32_FLOOR`, terminal, around depth 50+.
+    //
+    // **And the spec's own framing needed correcting.** §14 keys this on *full vs linearised*,
+    // which is right for an f32 consumer and wrong for `DirectF64`: f64 is the ceiling here,
+    // `LinSplitF32` is measured tracking it rung for rung, and the linearisation buys none over
+    // f64. So the key is whether a MORE PRECISE PATH EXISTS, and at production settings the answer
+    // is no — `decode_can_switch` is false, this returns `Collapsed`, and the descent stops
+    // exactly where it always did. `AT_F32_FLOOR` IS `Collapsed`: adding a second terminal name
+    // for the same condition would rename a committed decision and put a code in the table that
+    // nothing in this build can produce.
     if q.red.between_collapsed() {
-        return Decision::Collapsed;
+        return if q.red.decode_can_switch {
+            Decision::DecodeSwitch
+        } else {
+            Decision::Collapsed
+        };
     }
 
     // **The second way to be undetermined**, and until this landed it had no decision at all.

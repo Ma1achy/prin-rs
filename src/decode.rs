@@ -93,8 +93,37 @@ impl Path {
             Path::LinSplitF64 => "lin_split_f64",
         }
     }
+    /// Whether this path forms an IC by **linearising about the quad centre** rather than running
+    /// the full nonlinear decode per sample.
+    ///
+    /// **It is the key the switchover turns on.** §14: sample-collapse on a *full* decoder means
+    /// the f32 pipeline is out of precision — hand off to the linear path, and refinement
+    /// **continues**. Sample-collapse on a *linearised* decoder is the true terminal floor. Same
+    /// visible symptom, opposite response, and the only thing distinguishing them is which decoder
+    /// produced the samples.
     pub fn is_linearised(self) -> bool {
         matches!(self, Path::LinNaiveF32 | Path::LinSplitF32 | Path::LinSplitF64)
+    }
+
+    /// **Is there a more precise path to hand off to when this one's samples collapse?**
+    ///
+    /// This — not `is_linearised` — is the key §14's switchover actually turns on, and the
+    /// difference matters. The spec frames it as *full decoder collapses → switch; linearised
+    /// decoder collapses → stop*, which is right for an f32 consumer where the linear path exists
+    /// above the full one. It is **wrong for [`Path::DirectF64`]**: f64 is the ceiling in this
+    /// build, `LinSplitF32` is measured tracking `DirectF64` rung for rung, and the linearisation
+    /// buys ~24 levels over f32 and **none over f64** — so a collapse there is the floor, and
+    /// labelling it a switch would send the descent to a path that cannot help.
+    ///
+    /// So the predicate is about the *ladder*, not the form: a path with something above it
+    /// switches, a path at the top stops.
+    pub fn has_more_precise_path(self) -> bool {
+        match self {
+            // f32 pipelines, full or naively linearised: `LinSplitF32` is above them.
+            Path::DirectF32 | Path::LinNaiveF32 => true,
+            // At the ceiling. `LinSplitF32` reaches f64's own floor and stops there.
+            Path::DirectF64 | Path::LinSplitF32 | Path::LinSplitF64 => false,
+        }
     }
 }
 

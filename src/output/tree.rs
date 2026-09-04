@@ -68,6 +68,7 @@ pub const FIELDS: &[&str] = &[
     "n_unresolved", "n_unresolved_undetermined", "n_unresolved_event_only",
     "spread_max", "max_excess",
     "coh_shape", "coh_class", "mix_tv_quadrants", "mix_tv_parent",
+    "alpha_area", "alpha_spread_set", "merged",
 ];
 
 /// The record width, tied to [`FIELDS`] at compile time: `record()`'s array length used to be a
@@ -146,6 +147,9 @@ pub fn record(t: &QuadTree, i: usize) -> [f64; N_FIELDS] {
         q.red.coh_class,
         q.red.mix_tv_quadrants,
         q.red.mix_tv_parent,
+        q.alpha_area.unwrap_or(nan),
+        q.alpha_spread_set.unwrap_or(nan),
+        if q.merged { 1.0 } else { 0.0 },
     ]
 }
 
@@ -164,7 +168,7 @@ pub fn write<W: Write>(
 
     let header = format!(
         "region={} body={} n_samples_per_axis={} n_copies={} budget={} bootstrap_levels={}\n\
-         tau_display={} hot_rule={} structure={} mode={} k_frac={} alpha_hi={} alpha_lo={} sib_tau={} policy={} order={} agg={} criterion={} max_level={:?} stationary={} c_stat={} delta_mix={} k_frac_post={}\n\
+         tau_display={} hot_rule={} structure={} mode={} k_frac={} alpha_hi={} alpha_lo={} sib_tau={} policy={} order={} agg={} criterion={} max_level={:?} stationary={} c_stat={} delta_mix={} k_frac_post={} merge={} agreement={}\n\
          t_max={} eta={} n_sync={} r_coll_frac={} escape_rule={:?} closure_k={} stop_on_escape={} dtau_mode={:?} clamp_final={} lc_stable={} jitter_scheme={:?} precision={}\n\
          chart={} decode_path={} camera={:?}\n\
          chart_params={}\n\
@@ -175,7 +179,7 @@ pub fn write<W: Write>(
         region, tree.body, tree.n, ens.n_extra + 1, cfg.budget, cfg.bootstrap_levels,
         cfg.tau_display, cfg.hot_rule.name(), cfg.structure.name(), cfg.mode.name(),
         cfg.k_frac, cfg.alpha_hi, cfg.alpha_lo, cfg.sib_tau,
-        cfg.policy.name(), cfg.order.name(), cfg.agg.name(), cfg.criterion.name(), cfg.max_level, cfg.stationary, cfg.c_stat, cfg.delta_mix, cfg.k_frac_post,
+        cfg.policy.name(), cfg.order.name(), cfg.agg.name(), cfg.criterion.name(), cfg.max_level, cfg.stationary, cfg.c_stat, cfg.delta_mix, cfg.k_frac_post, cfg.merge, cfg.agreement,
         ens.t_max, ens.eta, ens.n_sync, ens.r_coll_frac, ens.escape_rule, ens.closure_k, ens.stop_on_escape, ens.dtau_mode, ens.clamp_final_step, ens.lc_stable, ens.jitter_scheme,
         precision,
         // The chart is the one thing that now makes two otherwise identical dumps different

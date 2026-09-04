@@ -138,6 +138,27 @@ pub fn filament_in_sea(x0: f64, seed: u64, t_max: f64) -> impl Fn(&Slice, usize)
     }
 }
 
+/// **A filament THROUGH a sea**: the sea on both sides of `x0`, and the straddling column a
+/// coherent filament -- one shape, one class the sea does not use, spread 1. Every footprint is
+/// unresolved, so by unresolved area alone the filament is invisible: a split buys no less
+/// unresolved area anywhere. Only the whiteness arm tells the coherent column from the noise
+/// around it. [`filament_in_sea`] is the shore -- sea on one side, basin on the other -- which
+/// the area floor finds by itself, because the sea's edge is a line.
+pub fn filament_through_sea(x0: f64, seed: u64, t_max: f64) -> impl Fn(&Slice, usize) -> PixelOut + Sync {
+    let s = sea(seed, t_max);
+    let filament_class = crate::ensemble::stats::TERMINAL_TAG + ((State::Collision as u8) << 2);
+    move |sl: &Slice, k: usize| {
+        let (x, _y) = sl.decode_pos(k);
+        let (hx, _hy) = sl.cell_widths();
+        let straddles = (x - 0.5 * hx) < x0 && x0 <= (x + 0.5 * hx);
+        if straddles {
+            bounded([0.0, 0.0, 1.0], filament_class, 1.0, 1.0, t_max)
+        } else {
+            s(sl, k)
+        }
+    }
+}
+
 /// **A pulse**: the [`step`] at `x0`, plus an unresolved band around it whose half-width rises
 /// to `w_max` at mid-march and falls back to nothing by the horizon, `w(t) = w_max sin(pi t /
 /// t_max)`. The live series carries the band at each of `n_b` boundaries; the terminal fields

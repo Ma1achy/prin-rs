@@ -2575,3 +2575,59 @@ an argument (`render_leaves`), so a truncated frame keeps the coarse-ancestor fi
 node's samples used to disable. And the 26 `results/charts/*_uniform*.png` are still 25 August:
 the uniform block was skipped when ranked, on the argument that a scheduler change cannot move it
 — true, and the physics moved.
+
+**THE AREA FLOOR IS THE NO-GAIN TEST THE ALPHA POLICY WAS TRYING TO BE, ON THE QUANTITY THE
+TOLERANCE POLICY OPTIMISES.** `alpha_area = log2(unresolved_area(coarse)/unresolved_area(children))`
+per level, with the edge footprints weighed by the share of their cell inside the box so the
+cells tile. A line reads 1, a sea 0, a boundary of box dimension `d` reads `2 - d`, so
+`alpha_lo` is a dimension threshold: 0.2 refines where the unresolved set is thinner than
+`d = 1.8` and floors where it is fatter. It is judged on the children once computed, never
+predicted, and floors only when the **spread** exponent is flat too -- a smooth field under a
+tolerance below its cell spread gains no area at any level, being unresolved everywhere until
+the level at which it resolves everywhere at once, and its spread halving per level is the gain.
+`alpha_lo = 0` is the opt-in that allows full depth on a sea; it disables the noise stop with it.
+
+**A PER-PARENT EXPONENT OF A THIN STRUCTURE IS OFF BY A FACTOR OF TWO AT A QUAD BOUNDARY, IN
+BOTH DIRECTIONS, AND ONLY THE SUM OVER THE TWO PARENTS IS RIGHT.** A footprint cell on a quad
+boundary is shared by both quads at half weight; the finer grid below locates the same
+structure on one side at full weight. So a shore in a level-1 edge cell read no gain on the
+side it was on and infinite gain on the other, and its level-2 children floored. The exponent
+is judged over **two levels**, from the grandparent's quadrant -- whose cells split cleanly at
+the midlines, so it skips the parent's own straddle -- to the children; and where more than
+half of a sibling set's structure sits on the parent's outer edges it **declines**, because
+within a quarter-cell of the boundary the fine grid catches the structure on both sides and the
+coarse grid assigns it wholly to one. Measured on the synthetic step: min 1.00, max 1.05 over
+15 splits under the final form, against 0 at exactly one level under the one-level form.
+
+**NOISE IS TOLD FROM STRUCTURE BY NEIGHBOUR AGREEMENT PER FOOTPRINT, NOT BY A COHERENCE
+STATISTIC WITH A BASE RATE IN IT.** An unresolved footprint is structure iff at least two of its
+eight neighbours share its class and a nominal shape within `STRUCTURE_AGREE = 0.1` (chord/2,
+about 11 degrees). A sea footprint's neighbours are independent draws on the sphere, so two
+agreeing by chance is a few in ten thousand; a filament's neighbours along it agree exactly.
+Class-conditional coherence failed both ways first: a one-column filament between sea and
+resolved basin read **0.27 against a bar of 0.3** once its resolved neighbours were excluded,
+and a sea class confined to the unresolved third of a mixed quad read **0.3-0.5** against the
+whole quad's base rate and was counted as structure. One-of-four agreement let a few percent
+of a sea through, and those diluted the edge share to exactly one half. A sea is
+"uninteresting" and a filament through it "interesting" only under this arm
+(`SchedCfg::agreement`, default on): by unresolved area alone a filament with sea on both sides
+is **invisible** -- no split buys less area anywhere -- while a **shore** is a line the area
+floor follows by itself. `testing::filament_through_sea` and `filament_in_sea` are the two
+fields, and the first cut of the test had them the wrong way round: 32 cap leaves said so.
+
+**MERGING IS THE SPLIT RULE READ BACKWARDS AT A LATER BOUNDARY, AND A NO-GAIN MEMORY MUST
+EXPIRE.** A parent whose four children are leaves that did not split this boundary merges back
+when it has become resolved (`Keep`) or its split shows no gain (`Floor`); the children are
+`Decision::Merged` (code 14), not leaves, and `QuadTree::resident` is what a live design holds
+against `quads_computed`. On the pulse the band at its widest is uniformly hot on both levels
+-- a correct no-gain merge, 48 children at one boundary -- and later collapses to a step
+column those same quads must re-split to follow; with a permanent memory the live tree ended on
+the bootstrap with the step floored. The memory holds while the quad's own unresolved weight
+stays within a factor of two of where it was judged. Measured: resident 37 -> 85 -> 37 -> 69,
+the final tree bitwise the static tree at the horizon, 181 quads computed for 69 resident.
+`merge = false` is the running-union control.
+
+**THE LIVE PARENT WAS STALE.** The live descent projected a parent at the boundary to compute
+its children's `alpha` and did not store it, so the first exponents compared a parent at an
+earlier boundary with children at this one and merged a widening band as no gain. Parents and
+grandparents are projected and stored every boundary they are read.

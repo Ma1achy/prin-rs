@@ -119,6 +119,10 @@ fn camera_position_moves_the_ranking_and_never_the_veto() {
         alpha_mean: None,
         alpha_p90: None,
         alpha_sibling_spread: None,
+            alpha_area: None,
+            alpha_spread_set: None,
+            no_gain_weight: None,
+            merged: false,
         decision: Decision::Pending,
     };
     let here = Camera::framing(1.0, 3.0, 0.05, 512);

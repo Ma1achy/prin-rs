@@ -24,10 +24,10 @@
 //! - `replay <file.fcache> [eps] [root]` — zero trajectories: the floor (`uniform`), the
 //!   reference (`greedy_lookahead_1`), the random band and the ceiling (`dp_optimal`) from a
 //!   committed footprint file. A v1 file is replayed under the **outcome** arm only and says so.
-//! - `live <file.fcache> [policy] [eps] [k_frac] [root] [stationary]` — one static descent under
+//! - `live <file.fcache> [policy] [eps] [k_frac] [root] [stationary] [tau] [alpha_lo] [agreement]` — one static descent under
 //!   the named policy, integrated fresh, mapped onto the cache and scored against the ceiling:
 //!   the memory ratio at matched quality, `Policy::Tolerance` against `Policy::Alpha`.
-//! - `march <file.fcache> [eps] [k_frac] [root] [stationary] [live_stride]` — the **live**
+//! - `march <file.fcache> [eps] [k_frac] [root] [stationary] [live_stride] [alpha_lo] [merge] [agreement]` — the **live**
 //!   descent (`scheduler::descend_live`): the tree grown boundary by boundary from one march per
 //!   quad, with its growth curve and catch-up cost, scored the same way.
 //!
@@ -292,8 +292,8 @@ fn main() {
         _ => {
             eprintln!("usage: payload_metric build <target> [levels=6] [n=8] [eps=0.01] [t_max=13] [root=results]");
             eprintln!("       payload_metric replay <file.fcache> [eps=0.01] [root=results]");
-            eprintln!("       payload_metric live <file.fcache> [policy=tolerance|alpha] [eps=0.01] [k_frac=0.25] [root=results] [stationary=1]");
-            eprintln!("       payload_metric march <file.fcache> [eps=0.01] [k_frac=0.25] [root=results] [stationary=1] [live_stride=4]");
+            eprintln!("       payload_metric live <file.fcache> [policy=tolerance|alpha] [eps=0.01] [k_frac=0.25] [root=results] [stationary=0] [tau=eps] [alpha_lo=0.2] [agreement=1]");
+            eprintln!("       payload_metric march <file.fcache> [eps=0.01] [k_frac=0.25] [root=results] [stationary=0] [live_stride=4] [alpha_lo=0.2] [merge=1] [agreement=1]");
             std::process::exit(2);
         }
     }
@@ -311,16 +311,29 @@ fn march() {
     let root: String = std::env::args().nth(5).unwrap_or_else(|| "results".into());
     let stationary: bool = std::env::args().nth(6).map(|v| v != "0" && v != "false").unwrap_or(SchedCfg::default().stationary);
     let live_stride: usize = arg(7, 4);
+    // **The area floor and merging.** `alpha_lo` is the floor on the area exponent (0 allows
+    // full depth -- the opt-in); `merge` releases the children of a parent that has become
+    // resolved or whose split shows no gain.
+    let alpha_lo: f64 = arg(8, SchedCfg::default().alpha_lo);
+    let merge: bool = std::env::args().nth(9).map(|v| v != "0" && v != "false").unwrap_or(SchedCfg::default().merge);
+    // The agreement arm: off is the floor-only control, where a sea and a filament through it
+    // read alike.
+    let agreement: bool = std::env::args().nth(10).map(|v| v != "0" && v != "false").unwrap_or(SchedCfg::default().agreement);
     let fp = {
         let f = std::fs::File::open(&file).expect("open fcache");
         prin_rs::output::fcache::read(&mut std::io::BufReader::new(f)).expect("read fcache")
     };
     let t = target(&fp.region).unwrap_or_else(|| panic!("the file's region `{}` is not a known target", fp.region));
     let stem = std::path::Path::new(&file).file_stem().unwrap().to_string_lossy().to_string();
-    let log = Log::tee(&format!("{root}/output/payload_march_{stem}{}.txt", if stationary { "" } else { "_nostat" }));
+    let tag = format!("{}{}{}{}",
+        if stationary { "" } else { "_nostat" },
+        if alpha_lo != SchedCfg::default().alpha_lo { format!("_alo{alpha_lo}") } else { String::new() },
+        if merge { "" } else { "_nomerge" },
+        if agreement { "" } else { "_noagree" });
+    let log = Log::tee(&format!("{root}/output/payload_march_{stem}{tag}.txt"));
     let log = &log;
     let class = if fp.has_event_class() { ClassArm::EventClass } else { ClassArm::Outcome };
-    logln!(log, "payload_metric march: {file} -- region {}, levels {} N={} res {}, t_max {}; tolerance policy, stationary {stationary}, eps {eps:e} k_frac {k_frac}, live_stride {live_stride}; class arm {}",
+    logln!(log, "payload_metric march: {file} -- region {}, levels {} N={} res {}, t_max {}; tolerance policy, stationary {stationary}, eps {eps:e} k_frac {k_frac}, live_stride {live_stride}, alpha_lo {alpha_lo} merge {merge} agreement {agreement}; class arm {}",
            fp.region, fp.levels, fp.n, fp.res, fp.t_max, class.name());
 
     let base = EnsembleCfg::default();
@@ -345,6 +358,9 @@ fn march() {
         tau_display: eps,
         policy: prin_rs::scheduler::Policy::Tolerance,
         stationary,
+        alpha_lo,
+        merge,
+        agreement,
         k_frac,
         budget: fp.quads.len() * 2,
         camera: Some(Camera::framing(t.cx, t.cy, t.half, fp.res)),
@@ -361,9 +377,11 @@ fn march() {
     logln!(log, "  live descent: {} quads ({} leaves, depth {depth}) in {:.1}s, {steps:.3e} substeps, catch-up {:.3e} substeps ({:.1}% of the total), stop [{}]",
            st.quads_computed, leaves.len(), t0.elapsed().as_secs_f64(), st.catchup_substeps as f64,
            100.0 * st.catchup_substeps as f64 / steps.max(1) as f64, tree.stop_breakdown());
-    logln!(log, "  {:>3} {:>7} {:>9} {:>7} {:>6} {:>6} {:>10} {:>8}", "j", "t", "computed", "leaves", "split", "keep", "stationary", "deferred");
+    logln!(log, "  memory: {} quads ever computed (mem_all), resident peak {} and final {} (mem_resident), {} children merged",
+           st.quads_computed, st.resident_peak, st.resident_final, st.merged);
+    logln!(log, "  {:>3} {:>7} {:>9} {:>8} {:>7} {:>6} {:>6} {:>10} {:>8} {:>6}", "j", "t", "computed", "resident", "leaves", "split", "keep", "stationary", "deferred", "merged");
     for p in &st.live {
-        logln!(log, "  {:>3} {:>7.3} {:>9} {:>7} {:>6} {:>6} {:>10} {:>8}", p.j, p.t, p.computed, p.leaves, p.split, p.keep, p.stationary, p.deferred);
+        logln!(log, "  {:>3} {:>7.3} {:>9} {:>8} {:>7} {:>6} {:>6} {:>10} {:>8} {:>6}", p.j, p.t, p.computed, p.resident, p.leaves, p.split, p.keep, p.stationary, p.deferred, p.merged);
     }
     let by_level = {
         let mut m = std::collections::BTreeMap::new();
@@ -419,19 +437,24 @@ fn live() {
     // `eps = 0.003` and none at `eps = 0.01`. The factor between the two is a calibration to
     // measure, not a constant to assume; this argument is how.
     let tau: f64 = arg(8, eps);
+    // The floor on the area exponent; `0` is the opt-in that allows full depth on a sea.
+    let alpha_lo: f64 = arg(9, SchedCfg::default().alpha_lo);
+    let agreement: bool = std::env::args().nth(10).map(|v| v != "0" && v != "false").unwrap_or(SchedCfg::default().agreement);
     let fp = {
         let f = std::fs::File::open(&file).expect("open fcache");
         prin_rs::output::fcache::read(&mut std::io::BufReader::new(f)).expect("read fcache")
     };
     let t = target(&fp.region).unwrap_or_else(|| panic!("the file's region `{}` is not a known target", fp.region));
     let stem = std::path::Path::new(&file).file_stem().unwrap().to_string_lossy().to_string();
-    let tag = format!("{}{}{}", policy.name(),
+    let tag = format!("{}{}{}{}", policy.name(),
         if policy == prin_rs::scheduler::Policy::Tolerance && !stationary { "_nostat" } else { "" },
-        if tau != eps { format!("_tau{tau:e}") } else { String::new() });
+        if tau != eps { format!("_tau{tau:e}") } else { String::new() },
+        if alpha_lo != SchedCfg::default().alpha_lo { format!("_alo{alpha_lo}") } else { String::new() })
+        + if agreement { "" } else { "_noagree" };
     let log = Log::tee(&format!("{root}/output/payload_live_{stem}_{tag}.txt"));
     let log = &log;
     let class = if fp.has_event_class() { ClassArm::EventClass } else { ClassArm::Outcome };
-    logln!(log, "payload_metric live: {file} -- PRQF v{}, region {}, levels {} N={} res {}, t_max {}; policy {} stationary {stationary} eps {eps:e} tau {tau:e} k_frac {k_frac}; class arm {}",
+    logln!(log, "payload_metric live: {file} -- PRQF v{}, region {}, levels {} N={} res {}, t_max {}; policy {} stationary {stationary} eps {eps:e} tau {tau:e} alpha_lo {alpha_lo} agreement {agreement} k_frac {k_frac}; class arm {}",
            fp.version, fp.region, fp.levels, fp.n, fp.res, fp.t_max, policy.name(), class.name());
 
     let base = EnsembleCfg::default();
@@ -450,6 +473,8 @@ fn live() {
         tau_display: tau,
         policy,
         stationary,
+        alpha_lo,
+        agreement,
         k_frac,
         budget: fp.quads.len() * 2,
         camera: Some(Camera::framing(t.cx, t.cy, t.half, fp.res)),

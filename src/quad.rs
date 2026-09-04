@@ -201,6 +201,12 @@ pub struct QuadReduction {
     /// `spread_event > 0`). The tightest-pair switching surface lives here; read it per chart
     /// before believing a leaf count.
     pub n_unresolved_event_only: u32,
+    /// **`n_unresolved` with the edge footprints weighed by how much of their cell lies inside
+    /// the quad**: a half at an edge, a quarter at a corner, so a fully unresolved quad reads
+    /// `(N-1)^2` and the cells tile the quad exactly. A structure on a quad edge is otherwise
+    /// counted by both neighbours, which reads as no gain at exactly one level. What
+    /// `scheduler::area_exponent` compares between a parent and its children.
+    pub unresolved_weight: f64,
     /// `max` of `ensemble_spread` over the quad, no discard (`NaN` when nothing finite).
     pub spread_max: f64,
     /// `spread_max - tau`: how far the worst footprint sits past the tolerance.
@@ -234,6 +240,30 @@ pub struct QuadReduction {
     /// Total-variation distance between this quad's class mixture and its **parent's**, at the
     /// same playhead. Set by the descent once the parent is known; `NaN` at the root.
     pub mix_tv_parent: f64,
+    /// **The unresolved weight that is structure**: the unresolved footprints with at least two
+    /// of their eight neighbours of the same class and with a nominal shape within
+    /// `scheduler::STRUCTURE_AGREE` (chord/2) of theirs. A sea footprint's neighbours are
+    /// independent draws on the sphere and two of them agree by chance a few times in ten
+    /// thousand; a filament's neighbours along it agree exactly. What the exponent
+    /// and the noise stop read under `SchedCfg::agreement`. Per footprint and free of any base
+    /// rate -- class-conditional coherence read a one-column filament between sea and basin at
+    /// 0.27 against a bar of 0.3, and a sea class confined to a mixed quad's unresolved third at
+    /// 0.4, and each repair moved that artefact rather than removing it.
+    pub structured_weight: f64,
+    /// `unresolved_weight` and `structured_weight` per quadrant (index `qx + 2 qy`, the child
+    /// order), weighed relative to the quadrant's box: a half on the quad's outer edges, a
+    /// quarter at its corners, one on the midlines, whose cell edges the midlines are. What
+    /// `scheduler::area_exponent` reads from a grandparent: one quadrant at its own resolution,
+    /// two levels above the children it is compared with.
+    pub unresolved_quadrant: [f32; 4],
+    pub structured_quadrant: [f32; 4],
+    /// The unresolved and structured weight on each **outer edge** of the quad -- the `ix = 0`
+    /// column, the `ix = N-1` column, the `iy = 0` row, the `iy = N-1` row, in that order. What
+    /// says whether a sibling set's structure sits on its parent's boundary, where the coarse
+    /// grid above assigns it wholly to one side and the fine grid half to each, and the exponent
+    /// is not a measurement.
+    pub unresolved_edge: [f32; 4],
+    pub structured_edge: [f32; 4],
 }
 
 impl QuadReduction {
@@ -747,6 +777,11 @@ pub enum Decision {
     /// re-sample it. A **keep for now**, re-tested at every playhead; never a terminal stop.
     /// `Policy::Tolerance` only. Code 12.
     Stationary,
+    /// **Merged back into its parent** by the live descent: the parent had become resolved, or
+    /// its split had stopped paying (the unresolved area of its children was no more than its
+    /// own), so the children were released and the parent is the leaf again. Never a leaf
+    /// itself: `QuadTree::leaves` skips a merged quad. Code 14.
+    Merged,
     /// **Wanted to split and was outranked** by `k_frac` or the budget this round. Re-decided
     /// next round rather than dropped: under `Policy::Tolerance` `Keep` means *resolved*, and a
     /// dropped unresolved quad wearing that label was the conflation the stop-reason column
@@ -771,6 +806,7 @@ impl Decision {
             Decision::Undetermined => "undetermined",
             Decision::Stationary => "stationary",
             Decision::Deferred => "deferred",
+            Decision::Merged => "merged",
         }
     }
     pub fn code(self) -> u8 {
@@ -789,6 +825,7 @@ impl Decision {
             Decision::Undetermined => 11,
             Decision::Stationary => 12,
             Decision::Deferred => 13,
+            Decision::Merged => 14,
         }
     }
 }
@@ -824,6 +861,22 @@ pub struct Quad {
     /// trust.
     pub alpha_sibling_spread: Option<f64>,
     pub decision: Decision,
+    /// **The area exponent of this quad's own split**, once its four children are computed:
+    /// `log2(unresolved_area(self) / sum unresolved_area(children))`. A line reads 1, a sea 0, a
+    /// boundary of box dimension `d` reads `2 - d`; `+inf` when the children resolved everything,
+    /// `None` when the quad had nothing unresolved or has no children. What `Policy::Tolerance`'s
+    /// `Floor` reads, on the children: refining bought no less unresolved area.
+    pub alpha_area: Option<f64>,
+    /// **The spread exponent of this quad's own split**: `log2(spread(self) / mean spread(children))`
+    /// under the descent's aggregation. The second way a split can pay; see `scheduler::no_gain`.
+    pub alpha_spread_set: Option<f64>,
+    /// **The unresolved weight at which a no-gain merge was judged.** The merged parent stays
+    /// floored while its own unresolved area stands within a factor of two of this; past that
+    /// the region has changed -- a band collapsing to a filament -- the memory expires and the
+    /// quad may split again. `None` on a quad that was never merged for no gain.
+    pub no_gain_weight: Option<f64>,
+    /// Released by a merge. Stays in the arena (indices are stable) but is not a leaf.
+    pub merged: bool,
 }
 
 impl Quad {
@@ -901,6 +954,10 @@ impl QuadTree {
             alpha_p90: None,
             alpha_sibling_spread: None,
             decision: Decision::Pending,
+                alpha_area: None,
+                alpha_spread_set: None,
+                no_gain_weight: None,
+                merged: false,
         };
         QuadTree { nodes: vec![root], n, body, chart }
     }
@@ -926,6 +983,10 @@ impl QuadTree {
                 alpha_p90: None,
                 alpha_sibling_spread: None,
                 decision: Decision::Pending,
+                alpha_area: None,
+                alpha_spread_set: None,
+                no_gain_weight: None,
+                merged: false,
             });
         }
         let kids = [base, base + 1, base + 2, base + 3];
@@ -934,7 +995,13 @@ impl QuadTree {
     }
 
     pub fn leaves(&self) -> impl Iterator<Item = usize> + '_ {
-        (0..self.nodes.len()).filter(|&i| self.nodes[i].is_leaf())
+        (0..self.nodes.len()).filter(|&i| self.nodes[i].is_leaf() && !self.nodes[i].merged)
+    }
+
+    /// Quads currently resident: every node that is not merged. What a live design holds in
+    /// memory at this playhead, against `quads_computed`, which counts every quad ever built.
+    pub fn resident(&self) -> usize {
+        self.nodes.iter().filter(|q| !q.merged).count()
     }
 
     /// The stop-reason breakdown over the leaves, as `keep:48 max_rel_depth:16`, sorted by name.

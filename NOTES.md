@@ -2901,3 +2901,14 @@ decisions are a count, and let the caps stop only what wanted to go on.
 took its leaf set as an argument, a shadow tree was no longer a route at all — its orphaned deep
 nodes still list as leaves — and the "control" was asserting a fiction. The honest controls were
 the finished render equalling the deepest cap, and a capped frame carrying no texel from below it.
+
+## 2026-09-04 (early) -- Phase 2d: the area floor, the agreement arm, merging
+
+Fourteen builds of a scratch copy against thirteen synthetic-field tests before the design held;
+the sequence is in the plan file and the standing rules in `CLAUDE.md`. The parts that survived:
+`alpha_area` two-level from the grandparent's quadrant with an edge decline; `alpha_spread_set`
+as the second way a split pays; per-footprint neighbour agreement (two of eight within chord/2
+0.1) as the structure weight; a noise stop; merging with an expiring no-gain memory; the stale
+live parent fixed. The knobs: `alpha_lo` (0 allows full depth), `agreement` (on), `merge`
+(on), `stationary` (off). The real-chart sweep (`alpha_lo x stationary` on six caches) is the
+next section once it lands.

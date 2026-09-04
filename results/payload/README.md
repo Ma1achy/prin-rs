@@ -128,10 +128,14 @@ caches are in the sections below as they land.
 | `preset_prho` | 0.293 | 0.089 / 0.042 / 0.014 | 793 | 3345 | 21, 0.206, `floor:2 keep:14` |
 | `preset_plambda` | 0.189 | 0.070 / 0.033 / 0.014 | 557 | 3941 | 21, 0.114, `keep:16` |
 | `config_stability` | 0.923 | 0.658 / 0.238 / 0.068 | 4873 | 5325 | 73, 0.763, `floor:5 keep:42 screen_floor:8` |
+| `preset_shape_pl` | 0.202 | 0.061 / 0.034 / 0.015 | 557 | 3277 | 21, 0.111, `keep:16` |
+| `mid-field` | 0.000 | 0 / 0 / 0 | 1 | 1 | 21, 0.000, `keep:16` (resolved at the root, like `far`) |
+| `body2 core` | 0.397 | 0.009 / 0.002 / 0.002 | 113 | 1297 | 21, 0.061, `keep:16` |
 
 Three things the wider set adds. The momentum presets, which are one triangle at different
 initial velocities, are resolved by the optimum at a sixth to a seventh of uniform's memory, so
-the mechanism has room on them; `preset_shape` at the corrected window carries a 19% sea and
+the mechanism has room on them, and `body2 core` at an eleventh (113 against 1297 for 1%);
+`mid-field` is a second `far` -- resolved at the root, nothing for any policy to do; `preset_shape` at the corrected window carries a 19% sea and
 still shows 2.4x. `config_stability` is the other kind of chart: 92% of its pixels differ from
 their level-6 reference at the root, a quarter of the frame is sea at `eps = 0.01` and two
 thirds at `eps = 0.002`, and the exact optimum needs 4873 of 5461 quads to reach 1% -- there is

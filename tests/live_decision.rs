@@ -181,10 +181,10 @@ fn a_step_is_refined_along_the_step_and_nowhere_else() {
 /// **T3 — a sea refines uniformly to the cap** under the tolerance policy without a stationarity
 /// stop: the sea cost, made visible. The control is `Mode::Uniform` giving the identical tree.
 #[test]
-fn a_sea_refines_uniformly_to_the_cap_without_a_stationarity_stop() {
+fn a_sea_refines_uniformly_to_the_cap_when_full_depth_is_allowed() {
     let field = prin_rs::testing::sea(7, T);
-    // The stop OFF: this is the control that shows the sea cost.
-    let off = SchedCfg { stationary: false, ..cfg(4, 400) };
+    // The stop OFF and the area floor OFF (`alpha_lo = 0`, the opt-in): the sea cost, visible.
+    let off = SchedCfg { stationary: false, alpha_lo: 0.0, ..cfg(4, 400) };
     let (t, _) = scheduler::descend_with(0.0, 0.0, 1.0, 0, &off, T, &field);
     assert_eq!(t.leaves().count(), 256);
     assert_eq!(count(&t, Decision::MaxLevel), 256);
@@ -287,7 +287,7 @@ fn a_sea_stops_as_stationary_when_the_stop_is_on() {
              tvp.iter().cloned().fold(f64::NEG_INFINITY, f64::max));
     assert_eq!(count(&t, Decision::Stationary), 16, "the sea must stop at the bootstrap as Stationary");
     assert_eq!(t.leaves().count(), 16);
-    let off = SchedCfg { stationary: false, ..cfg(4, 400) };
+    let off = SchedCfg { stationary: false, alpha_lo: 0.0, ..cfg(4, 400) };
     let (t2, _) = scheduler::descend_with(0.0, 0.0, 1.0, 0, &off, T, &field);
     assert_eq!(t2.leaves().count(), 256, "with the stop off the sea must refine to the cap");
 }
@@ -310,9 +310,11 @@ fn a_filament_through_a_sea_is_refined_while_the_sea_stops() {
         let on_filament = (x0 - q.cx).abs() <= q.half + 0.5 * hx;
         let in_sea = q.cx + q.half < x0;
         match q.decision {
-            Decision::Stationary => {
+            Decision::Stationary | Decision::Floor => {
+                // Floor: the area floor reads a sea quad with no coherent population as noise
+                // and stops it too, where the mixture arm's sampling noise let it past the stop.
                 n_stat += 1;
-                assert!(in_sea && !on_filament, "a Stationary leaf off the sea: cx {} half {}", q.cx, q.half);
+                assert!(in_sea && !on_filament, "a {:?} leaf off the sea: cx {} half {}", q.decision, q.cx, q.half);
             }
             Decision::MaxLevel => {
                 n_cap += 1;
@@ -395,10 +397,11 @@ fn the_live_view_masks_everything_after_the_boundary() {
 /// the step, and every one of its leaves is a live leaf or has live leaves beneath it, with
 /// at least one strictly refined — the band the static tree never saw.
 #[test]
-fn the_live_tree_only_grows_and_is_the_running_union() {
+fn the_live_tree_only_grows_and_is_the_running_union_with_merging_off() {
     let field = prin_rs::testing::pulse(0.123, 0.35, 8, T);
     let levels = 4u32;
-    let (t, st) = scheduler::descend_live_with(0.0, 0.0, 1.0, 0, &cfg(levels, 2000), T, &field);
+    let no_merge = SchedCfg { merge: false, ..cfg(levels, 2000) };
+    let (t, st) = scheduler::descend_live_with(0.0, 0.0, 1.0, 0, &no_merge, T, &field);
     println!("live pulse: {} quads, {} boundaries, catchup {} substeps, stop [{}]",
              st.quads_computed, st.live.len(), st.catchup_substeps, t.stop_breakdown());
     for p in &st.live {
@@ -449,4 +452,144 @@ fn the_live_tree_only_grows_and_is_the_running_union() {
              ts.leaves().count(), live_leaves.len());
     assert!(strictly_refined > 0, "the live tree should carry the band the static tree collapsed");
     assert!(st.catchup_substeps > 0, "a late split must cost catch-up");
+}
+
+// ---------------------------------------------------------------------------------------
+// Phase 2d: the area floor and merging.
+// ---------------------------------------------------------------------------------------
+
+/// **T14 — the area floor stops a sea at the bootstrap and never a step.** A sea is unresolved
+/// over its whole area at every level, so every split reads `alpha_area = 0` and the level-2
+/// children are `Floor` under the default `alpha_lo`; T3 is the control, where `alpha_lo = 0`
+/// runs the same field to the cap. A step's unresolved area halves per level -- the edge
+/// columns weigh half, so a step on a quad edge is not counted twice -- and it reads
+/// `alpha_area = 1` at every split.
+#[test]
+fn the_area_floor_stops_a_sea_and_never_a_step() {
+    let sea = prin_rs::testing::sea(7, T);
+    let (t, st) = scheduler::descend_with(0.0, 0.0, 1.0, 0, &cfg(4, 400), T, &sea);
+    println!("sea under the floor: {} quads, {} leaves, stop [{}]", st.quads_computed, t.leaves().count(), t.stop_breakdown());
+    assert_eq!(t.leaves().count(), 16);
+    assert_eq!(count(&t, Decision::Floor), 16);
+    let exps: Vec<f64> = t.nodes.iter().filter_map(|q| q.alpha_area).collect();
+    assert_eq!(exps.len(), 5, "the root and its four children are the splits that happened");
+    for a in &exps {
+        assert!(a.abs() < 1e-9, "a sea split read alpha_area {a}");
+    }
+
+    let step = prin_rs::testing::step(0.123, T);
+    let (t, st) = scheduler::descend_with(0.0, 0.0, 1.0, 0, &cfg(5, 2000), T, &step);
+    println!("step under the floor: {} quads, {} leaves, stop [{}]", st.quads_computed, t.leaves().count(), t.stop_breakdown());
+    assert_eq!(count(&t, Decision::Floor), 0);
+    assert!(count(&t, Decision::MaxLevel) > 0, "the step never reached the cap");
+    let exps: Vec<f64> = t.nodes.iter().filter_map(|q| q.alpha_area).collect();
+    assert!(!exps.is_empty());
+    let lo = exps.iter().cloned().fold(f64::INFINITY, f64::min);
+    let hi = exps.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+    println!("step alpha_area over {} splits: min {lo:.4} max {hi:.4}", exps.len());
+    // Over two levels the exponent skips the parent's own grid; the straddles at the coarse
+    // and fine ends can each move it by half a level, and the sea's 0 is far below either.
+    assert!(lo >= 0.5 && hi <= 1.5, "a line's unresolved area halves per level; read {lo}..{hi}");
+}
+
+/// **T15 -- a filament THROUGH a sea is invisible to the area floor and found by the agreement
+/// arm; a shore is found by the floor alone.** With sea on both sides every footprint is
+/// unresolved, so no split buys less unresolved area and by area alone the level-2 children
+/// floor, filament and sea alike -- the limit, stated. With the stationarity stop on the sea
+/// children read white and count for nothing, the filament children carry the whole remaining
+/// area, and the column refines to the cap while the sea stops. `filament_in_sea` is a shore:
+/// sea on one side, basin on the other, and the sea's edge is a line the area floor follows
+/// by itself -- the first cut of this test assumed it could not, and 32 cap leaves said otherwise.
+#[test]
+fn a_filament_through_a_sea_needs_the_whiteness_arm_and_a_shore_does_not() {
+    let x0 = 0.123;
+    let levels = 5u32;
+    let on_filament = |t: &QuadTree, i: usize| {
+        let q = &t.nodes[i];
+        let hx = 2.0 * q.half / (t.n - 1) as f64;
+        (x0 - q.cx).abs() <= q.half + 0.5 * hx
+    };
+    // `off`: neither the stationarity stop nor the agreement arm -- the area floor alone.
+    let off = SchedCfg { stationary: false, agreement: false, ..cfg(levels, 2000) };
+    let on = SchedCfg { stationary: true, ..cfg(levels, 2000) };
+
+    let through = prin_rs::testing::filament_through_sea(x0, 11, T);
+    let (t, st) = scheduler::descend_with(0.0, 0.0, 1.0, 0, &off, T, &through);
+    println!("filament through sea, floor only: {} quads, stop [{}]", st.quads_computed, t.stop_breakdown());
+    assert_eq!(count(&t, Decision::MaxLevel), 0, "by area alone the filament through the sea cannot clear the floor");
+    assert_eq!(count(&t, Decision::Floor), 16, "everything floors at the bootstrap");
+
+    let (t, st) = scheduler::descend_with(0.0, 0.0, 1.0, 0, &on, T, &through);
+    println!("filament through sea, both arms: {} quads, stop [{}]", st.quads_computed, t.stop_breakdown());
+    assert!(count(&t, Decision::MaxLevel) > 0, "with the whiteness arm the filament should reach the cap");
+    for i in t.leaves() {
+        let q = &t.nodes[i];
+        match q.decision {
+            Decision::MaxLevel => assert!(on_filament(&t, i), "a cap leaf off the filament: cx {} half {}", q.cx, q.half),
+            Decision::Floor | Decision::Stationary => {
+                assert!(!on_filament(&t, i), "a filament quad stopped as {:?}: cx {} half {}", q.decision, q.cx, q.half)
+            }
+            _ => {}
+        }
+    }
+
+    let shore = prin_rs::testing::filament_in_sea(x0, 11, T);
+    let (t, st) = scheduler::descend_with(0.0, 0.0, 1.0, 0, &off, T, &shore);
+    println!("shore, floor only: {} quads, stop [{}]", st.quads_computed, t.stop_breakdown());
+    assert!(count(&t, Decision::MaxLevel) > 0, "the shore is a line and the floor alone should follow it");
+    assert!(count(&t, Decision::Floor) > 0, "the sea behind the shore should floor");
+    for i in t.leaves() {
+        let q = &t.nodes[i];
+        match q.decision {
+            Decision::MaxLevel => assert!(on_filament(&t, i), "a cap leaf off the shore: cx {} half {}", q.cx, q.half),
+            // A floored leaf sits on the sea side: a quad whose right edge just touches the
+            // filament holds sea and filament and no basin, gains no area by splitting, and
+            // floors, while its basin-side sibling carries the shore to the cap.
+            Decision::Floor => assert!(q.cx < x0, "a floored leaf off the sea side: cx {} half {}", q.cx, q.half),
+            _ => {}
+        }
+    }
+}
+
+/// **T16 — the live tree merges back once the band has collapsed.** The pulse's band widens
+/// and then collapses to a step; with merging on, the parents of the band's leaves become
+/// resolved at a late boundary and their children are released, so the resident count peaks and
+/// falls and the tree at the end **is** the static tree at the horizon. T11 is the control:
+/// with merging off the same march ends strictly finer than the static tree.
+#[test]
+fn the_live_tree_merges_back_after_the_band_collapses() {
+    let field = prin_rs::testing::pulse(0.123, 0.35, 8, T);
+    let levels = 4u32;
+    let (t, st) = scheduler::descend_live_with(0.0, 0.0, 1.0, 0, &cfg(levels, 2000), T, &field);
+    println!("live pulse with merging: {} quads computed, merged {}, resident peak {} final {}, stop [{}]",
+             st.quads_computed, st.merged, st.resident_peak, st.resident_final, t.stop_breakdown());
+    for p in &st.live {
+        println!("  j={} t={:.2} computed={} leaves={} resident={} split={} keep={} merged={}",
+                 p.j, p.t, p.computed, p.leaves, p.resident, p.split, p.keep, p.merged);
+    }
+    assert!(st.merged > 0, "nothing merged");
+    // The resident count falls after its peak: the memory a live design gives back.
+    let peak_at = st.live.iter().enumerate().max_by_key(|(_, p)| p.resident).map(|(i, _)| i).unwrap();
+    let trough = st.live[peak_at..].iter().map(|p| p.resident).min().unwrap();
+    println!("  resident peak {} at j={}, trough after it {trough}", st.resident_peak, st.live[peak_at].j);
+    assert!(trough < st.resident_peak, "the resident count never fell after its peak");
+    assert_eq!(st.resident_final, t.resident());
+    // No merged quad is a leaf, and every leaf tiles the root: the leaf areas sum to the root's.
+    let area: f64 = t.leaves().map(|i| 4.0 * t.nodes[i].half * t.nodes[i].half).sum();
+    assert!((area - 4.0).abs() < 1e-9, "the leaves do not tile the root: area {area}");
+    assert!(t.leaves().all(|i| !t.nodes[i].merged));
+    // The tree at the end is the static tree at the horizon.
+    let (ts, _) = scheduler::descend_with(0.0, 0.0, 1.0, 0, &cfg(levels, 2000), T, &field);
+    let key = |t: &QuadTree, i: usize| (t.nodes[i].level, t.nodes[i].cx.to_bits(), t.nodes[i].cy.to_bits());
+    let mut a: Vec<_> = t.leaves().map(|i| key(&t, i)).collect();
+    let mut b: Vec<_> = ts.leaves().map(|i| key(&ts, i)).collect();
+    a.sort_unstable();
+    b.sort_unstable();
+    assert_eq!(a, b, "the merged live tree is not the static tree at the horizon");
+    // Before the first merge the tree only grew.
+    let first_merge = st.live.iter().position(|p| p.merged > 0).expect("a merge happened");
+    assert!(first_merge > 0);
+    for j in 1..=first_merge {
+        assert!(st.live[j].computed >= st.live[j - 1].computed);
+    }
 }

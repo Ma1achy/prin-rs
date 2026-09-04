@@ -79,6 +79,7 @@ pub enum Override {
     RefineEtaFactor(f64),
     RefineMaxPasses(u8),
     DecodePath(Path),
+    SampleSpace(crate::uv::SampleSpace),
     KeepCopyOutcomes(bool),
     KeepCopyShapes(bool),
     KeepBoundaryShapes(bool),
@@ -124,6 +125,7 @@ impl Override {
             Override::RefineEtaFactor(v) => c.refine_eta_factor = v,
             Override::RefineMaxPasses(v) => c.refine_max_passes = v,
             Override::DecodePath(v) => c.decode_path = v,
+            Override::SampleSpace(v) => c.sample_space = v,
             Override::KeepCopyOutcomes(v) => c.keep_copy_outcomes = v,
             Override::KeepCopyShapes(v) => c.keep_copy_shapes = v,
             Override::KeepBoundaryShapes(v) => c.keep_boundary_shapes = v,
@@ -164,7 +166,7 @@ impl EnsembleCfg {
             step_limit, step_limit_f, ref_hysteresis, step_blend, blend_p, eta,
             land_iterate, land_max_iters,
             max_steps, ref_policy, lc_stable, integrator, r_coll_frac, stop_on_event, refine_flagged,
-            refine_threshold, refine_eta_factor, refine_max_passes, decode_path,
+            refine_threshold, refine_eta_factor, refine_max_passes, decode_path, sample_space,
             keep_copy_outcomes, keep_copy_shapes, keep_boundary_shapes, keep_live_series,
             live_stride, keep_drift_hist,
             keep_ref_path, ftle,
@@ -212,6 +214,7 @@ impl EnsembleCfg {
         cmp!("refine_eta_factor", refine_eta_factor, p.refine_eta_factor);
         cmp!("refine_max_passes", refine_max_passes, p.refine_max_passes);
         cmp!("decode_path", decode_path, p.decode_path);
+        cmp!("sample_space", sample_space, p.sample_space);
         cmp!("keep_copy_outcomes", keep_copy_outcomes, p.keep_copy_outcomes);
         cmp!("keep_copy_shapes", keep_copy_shapes, p.keep_copy_shapes);
         cmp!("keep_boundary_shapes", keep_boundary_shapes, p.keep_boundary_shapes);

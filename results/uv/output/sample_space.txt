@@ -1,0 +1,77 @@
+sample_space: §12, the global round-trip against quad-local coordinates
+  n = 8 (64 footprints per rung), max_depth = 60
+
+== at production settings: does `QuadLocal` move the shipped path?
+             chart    moved/n     max |du|     max |dx|          rel
+        near-field       0/64    1.998e-15      0.000e0      0.000e0
+  config_stability       8/64    1.110e-16    3.886e-16    6.094e-16
+  `rel` is the displacement in units of the CELL WIDTH -- the scale that decides
+  whether a sample still lands in its own cell. A last-ulp reordering of a sum, not
+  a different sample, and that is why the flag defaults to `Global`.
+
+== depth ladder at the O(1) coordinate: |cx| = 1, |cy| = 3
+  a healthy footprint reads 64 distinct; 1 is total collapse
+ depth        half  g/f64  l/f64  g/lin  l/lin  g/f32  g/L32  l/L32        |ju|
+     0    5.000e-2     64     64     64     64     64     64     64    5.000e-2
+     4    3.125e-3     64     64     64     64     64     64     64    3.125e-3
+     8    1.953e-4     64     64     64     64     64     64     64    1.953e-4
+    12    1.221e-5     64     64     64     64     64     64     64    1.221e-5
+    16    7.629e-7     64     64     64     64     56     64     64    7.629e-7
+    20    4.768e-8     64     64     64     64      2     64     64    4.768e-8
+    24    2.980e-9     64     64     64     64      1     64     64    2.980e-9
+    28   1.863e-10     64     64     64     64      1     64     64   1.863e-10
+    32   1.164e-11     64     64     64     64      1     64     64   1.164e-11
+    36   7.276e-13     64     64     64     64      1     64     64   7.276e-13
+    40   4.547e-14     64     64     64     64      1     64     64   4.552e-14
+    44   2.842e-15     64     64     64     64      1     64     64   2.887e-15
+    48   1.776e-16      4      4      4      4      1      4      4   2.220e-16
+    52   1.110e-17      1      1      1      1      1      1      1     0.000e0
+    56   6.939e-19      1      1      1      1      1      1      1     0.000e0
+    60   4.337e-20      1      1      1      1      1      1      1     0.000e0
+  first rung below full:  g/f64=48  l/f64=48  g/lin=48  l/lin=48  g/f32=16  g/L32=48  l/L32=48
+
+== depth ladder at the chart ORIGIN: |cx| = 0, |cy| = 0
+  a healthy footprint reads 64 distinct; 1 is total collapse
+ depth        half  g/f64  l/f64  g/lin  l/lin  g/f32  g/L32  l/L32        |ju|
+     0    5.000e-2     64     64     64     64     64     64     64    5.000e-2
+     4    3.125e-3     64     64     64     64     64     64     64    3.125e-3
+     8    1.953e-4     64     64     64     64     64     64     64    1.953e-4
+    12    1.221e-5     64     64     64     64     64     64     64    1.221e-5
+    16    7.629e-7     64     64     64     64     64     64     64    7.629e-7
+    20    4.768e-8     64     64     64     64     64     64     64    4.768e-8
+    24    2.980e-9     64     64     64     64     64     64     64    2.980e-9
+    28   1.863e-10     64     64     64     64     64     64     64   1.863e-10
+    32   1.164e-11     64     64     64     64     64     64     64   1.164e-11
+    36   7.276e-13     64     64     64     64     64     64     64   7.276e-13
+    40   4.547e-14     64     64     64     64     64     64     64   4.547e-14
+    44   2.842e-15     64     64     64     64     64     64     64   2.842e-15
+    48   1.776e-16     64     64     64     64     64     64     64   1.776e-16
+    52   1.110e-17     64     64     64     64     64     64     64   1.110e-17
+    56   6.939e-19     64     64     64     64     64     64     64   6.939e-19
+    60   4.337e-20     64     64     64     64     64     64     64   4.337e-20
+  first rung below full:  g/f64=none  l/f64=none  g/lin=none  l/lin=none  g/f32=none  g/L32=none  l/L32=none
+
+THE READING: `QuadLocal` buys NOTHING at any depth in this table, and the reason is
+a different global sum one level up.
+
+§12's defect is real -- `jitter` did recover `du` from a `u` the linespace had just
+built. Its cost is zero, because `decode::linearise` differences the chart at
+`cu +/- half`, which is the SAME global sum, and it collapses first: `|ju|` tracks
+`half` exactly to depth 44, quantises to the ulp of `cx` at 48, and is EXACTLY ZERO
+at 52. A linearisation whose own secant has collapsed carries no information for a
+carried `du` to preserve, so all four f64 cells must fail at the same rung -- and
+they do, at 48. The fix §12 actually needs is a Jacobian not built by a secant at
+the cell width.
+
+And `g/L32` is the control that stops the f32 result being misread: it is IDENTICAL
+to `l/L32` at every rung, so the ~28 levels the linearised f32 path holds over
+`g/f32` are `LinSplitF32`'s own -- the standing result, measured under `Global` long
+before this flag existed -- and not `QuadLocal`'s. Without that column the table
+would have read as this change buying 28 levels.
+
+The ORIGIN ladder is the control for the whole finding: with `cx = 0` nothing
+collapses at any rung in any cell and `|ju|` tracks `half` to 4.3e-20, because there
+is no O(1) neighbour for the increment to be absorbed into. Quote the coordinate
+magnitude with any floor depth.
+
+results/uv/output/sample_space.txt

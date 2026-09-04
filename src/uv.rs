@@ -205,3 +205,32 @@ pub fn axis_local(n: usize, i: usize) -> f64 {
     }
     -1.0 + 2.0 * (i as f64) / ((n - 1) as f64)
 }
+
+/// **Which space the ensemble's sample coordinates are formed in.**
+///
+/// `Global` is every committed number on this project and stays the default. `QuadLocal` is §12's
+/// form — the offset never enters a global sum, so it survives a cell width the chart coordinate
+/// cannot resolve. **They are not bitwise equal and neither is a rounding of the other**:
+/// `axis(c, h, n, i)` accumulates from the lower corner and `c + axis_local(n, i) * h` scales from
+/// the centre, so they round differently in the last ulp at f64 and differently by everything at
+/// depth 40.
+///
+/// Kept as a flag rather than switched, because moving it moves every committed number and the
+/// measurement that would justify that is `examples/sample_space.rs`.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum SampleSpace {
+    /// Form the chart coordinate globally, then recover `du` by subtraction. The shipped path.
+    #[default]
+    Global,
+    /// Form `du` directly and never build the global offset except where a decode needs one.
+    QuadLocal,
+}
+
+impl SampleSpace {
+    pub fn name(self) -> &'static str {
+        match self {
+            SampleSpace::Global => "global",
+            SampleSpace::QuadLocal => "quad_local",
+        }
+    }
+}

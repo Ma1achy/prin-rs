@@ -132,6 +132,12 @@ pub struct EnsembleCfg {
     /// footprints give a spread of exactly zero, which the criterion reads as
     /// "perfectly resolved" rather than as "no data".
     pub decode_path: Path,
+    /// Which space the ensemble's sample coordinates are formed in — §12.
+    ///
+    /// `Global` is every committed number and is the default. `QuadLocal` never builds the global
+    /// offset, which is free at f64 on an O(1) chart coordinate and is the whole difference at f32
+    /// or at depth 40. Measured in `results/uv/`.
+    pub sample_space: crate::uv::SampleSpace,
     /// Keep each copy's packed outcome, for the SSAA resolve. Off by default: it is only
     /// wanted at render time, and it makes `PixelOut` allocate.
     pub keep_copy_outcomes: bool,
@@ -248,6 +254,7 @@ impl EnsembleCfg {
             ftle: None,
             ftle_dt: 1e-4,
             decode_path: Path::DirectF64,
+            sample_space: crate::uv::SampleSpace::Global,
         }
     }
 }
@@ -621,8 +628,9 @@ pub fn evaluate<T: Real>(slice: &Slice, idx: usize, cfg: &EnsembleCfg) -> PixelO
 
 /// The single pass. `eta` is explicit so the refinement pass can differ from `cfg.eta`.
 pub fn evaluate_at<T: Real>(slice: &Slice, idx: usize, cfg: &EnsembleCfg, eta_v: f64) -> PixelOut {
-    let copies = jitter::copies_with_path::<T>(
+    let copies = jitter::copies_in_space::<T>(
         slice, idx, cfg.n_extra, cfg.jitter_frac, cfg.seed, cfg.jitter_scheme, cfg.decode_path,
+        cfg.sample_space,
     );
     let n = copies.len();
 

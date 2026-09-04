@@ -2767,3 +2767,68 @@ It is a **colouring and not a computation** -- the probe tree is identical quad 
 indistinguishable from a resolved dark one. So the harness prints `vetoed N/M` per slice and the
 sidecar carries `veto=quiet vetoed_footprints=N of=M`, and zero magenta pixels survive in the 62
 files of `results/live`.
+
+**A METRIC A BRIEF ASKS FOR CAN FAIL TO BE A QUANTITY, AND ONLY A CONTROL ARM SAYS SO.** §4.4 asks
+to *"report what fraction of splits are balance-forced rather than criterion-driven"*. Measured on
+six charts at `k_frac` 0.25 and 1.0, **every tree is identical and only the attribution moves --
+by 21-93%**: `config_stability` reads 0.113 or 0.007, a factor of fifteen, for the same tree. At
+`k_frac = 1.0` the criterion splits its whole want-list each round and reaches those quads first;
+throttled, the balance pass gets there first and takes the credit. The ordering does not survive
+either -- **spearman(fr at 0.25, fr at 1.0) = +0.771**, the same statistic on the same six trees
+disagreeing with itself, so it cannot even rank charts. `quad x` (1.03-1.76) is identical under
+both arms and is what to quote. *A ranking is invariant to a monotone rescaling* -- this is not one;
+the contamination varies threefold between charts.
+
+**AND THE CONTROL'S OWN LIMIT MUST BE STATED OR IT OVERCLAIMS.** The trees are identical *because
+the budget was non-binding* (20000 against a largest tree of 4869): `k_frac` truncates per round,
+deferred quads are re-decided next round, so everything the criterion wants eventually happens and
+only the order changes. The record's `k_frac` effects (near-field depth variance 1.015 -> 2.053)
+were measured at a **binding** budget. So throttle-invariance of `quad x` holds only where the
+budget does not bind -- and under a **frame** budget, which is the whole point of the slippy map,
+it binds. Unmeasured.
+
+**THE GEOMETRY TAX IS COST-NEUTRAL IN TRAJECTORIES; THE CRITERION'S IS NOT.** `steps/quad` runs
+**0.94-1.03** for balance-forced splits against the cost ledger's **0.94-2.10** for the criterion.
+Structural, not coincidence: the criterion selects on physics, which correlates with trajectory
+cost, and balance selects on geometry, which does not. So the geometry tax may be quoted in quads;
+the criterion's may not.
+
+**2:1 BALANCE IS A RENDERING REQUIREMENT BEING PAID FOR IN PHYSICS, AND THIS RENDERER CANNOT SHOW
+IT.** Every forced split integrates `N^2 (E+1) = 512` trajectories, 1.03-1.76x the tree. But texels
+are nearest-neighbour clipped to the quad box and **quadtree leaves tile the root exactly at any
+depth difference** (`adaptive::coverage`: zero gaps, zero overlaps), so an unbalanced tree produces
+a resolution *step*, not a hole -- and §4.5 already accepts resolution steps as honest (*"big texels
+during motion are a deliberate choice"*). It becomes load-bearing under interpolation across leaves
+or when quads are drawn as GPU geometry, where the remedy is render-side stitching: geometry, no
+integration. `balance` stays a flag; the default is a judgement about which renderer ships.
+
+**AND THE `Policy::Alpha` FINDING THAT THE PASS IS INERT DOES NOT SURVIVE THE POLICY CHANGE.**
+`tests/slippy.rs` records near-field at gap 1 in all twenty-four swept cells and has to drop to
+`n = 4` on `deep interior` to violate 2:1 at all. Under `Policy::Tolerance` **all six charts violate
+it**, at gap 2 or 3 -- a fixture measured once, measured again when the physics moved, for the fifth
+time on this project.
+
+**A SIGN THAT FLIPS IS NOT NOISE AROUND ZERO -- THE CRITERION RESPONDS TO A FORCED SPLIT IN BOTH
+DIRECTIONS.** A balance-forced split changes what its descendants and its parent subsequently
+decide, so the criterion's own split count moves: **+2, +14, -44, -56, -103, +65** across six
+charts. So `forced` is **not additive** and does not predict tree growth, and `quad x` -- which is
+growth -- is confounded by an effect of unknown sign. That is why depth contrast reads **+0.943**
+against the split share and only **+0.771** against growth (n = 6, 5% bar 0.886): the share isolates
+the mechanism, growth mixes it with the response. **Suggestive, not established** -- the better
+correlation is on the throttle-contaminated column, and three mechanisms were proposed before this
+one held anywhere (tree size, refuted by `preset_shape_h1` at 2169 quads / 1.45x against
+`config_stability` at 4729 / 1.03x).
+
+**`SchedStats::balance_forced` COUNTS NODES CREATED, NOT QUADS SPLIT.** `balance_pass` returns
+`made`, four children per split, so comparing it against a count of split parents is a
+factor-of-four error in the direction that flatters the finding. `1 + 4*(forced + splits) == nodes`
+catches it. And the first cut of that assert was `debug_assert!` in a harness that only ever runs
+in release -- **a guard that cannot fire, written in the same edit that added the guard**.
+
+**THE `.prnq` DECISION DECODERS HAND-MAINTAINED A TABLE AND WENT STALE, ONE OF THEM SILENTLY.**
+Both stopped at code 9, so `balance`, `undetermined`, `stationary`, `deferred` and `merged` read as
+`"?"` in `gallery_table` -- and `threshold_diagnosis`'s `[usize; 11]` histogram **dropped them
+entirely**, summing to less than the leaf count with nothing saying so. `Decision::ALL` and
+`from_code` are the table now; `a_new_decision_variant_reaches_the_table` fires because a new
+variant takes the next code and `from_code(ALL.len())` must be `None`. **The fix for that class is
+never the instance; it is the table.**

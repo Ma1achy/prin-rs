@@ -50,7 +50,9 @@ identical under both arms on all six.
 only reorders within a round — deferred quads are re-decided next round and everything the criterion
 wants eventually happens. That is **why** the trees are identical, and it means throttle-invariance
 of `quad ×` is established only at a non-binding budget. Under a **frame** budget `k_frac` binds and
-the trees will differ; that case is unmeasured and is the one Phase B needs.
+the trees will differ. **That case is now measured — see the section below, and the answer is that
+`quad ×` is throttle-dependent there**, so the column this table recommends quoting does not survive
+into the regime the slippy map runs in.
 
 ## The geometry tax is cost-neutral in trajectories; the criterion's is not
 
@@ -78,6 +80,37 @@ both directions, and no account of the sign is offered here.
 `violating_adjacencies` — adjacent leaf pairs differing by ≥2 levels, which is what the pass
 actually fires on and a perimeter rather than a spread — is computed by the harness and was added
 after this run. It is the next candidate.
+
+## The cell this measurement's own caveat named — `quad x` under a BINDING frame quota
+
+The table above records `balance_forced/split` as **not a quantity** (0.113 or 0.007 on the
+*identical* tree, spearman +0.771 between the two throttles) and `quad x` as the throttle-invariant
+column to quote instead. Its own caveat said why the trees were identical: **the budget was
+non-binding** — 20000 against a largest tree of 4869 — so `k_frac` truncates per round, deferred
+quads are re-decided next round, everything the criterion wants eventually happens, and only the
+*order* changes. And it named the cell it could not reach: under a **frame** budget, which is the
+whole point of the slippy map, it binds.
+
+Measured there, 12 frames × 16 quads (a hard ceiling of 192 against unconstrained trees in the
+hundreds to thousands):
+
+| chart | `k_frac` | quads− | quads+ | **quad ×** | forced | bound− | bound+ |
+|---|---|---|---|---|---|---|---|
+| `near-field` | 0.25 | 125 | 169 | **1.3520** | 14 | 9 | 12 |
+| `near-field` | 1.00 | 125 | 181 | **1.4480** | 11 | 8 | 12 |
+| `deep interior` | 0.25 | 177 | 181 | **1.0226** | 22 | 12 | 12 |
+| `deep interior` | 1.00 | 181 | 181 | **1.0000** | 17 | 12 | 12 |
+
+**`quad ×` is throttle-dependent here, so in the regime that matters there is no throttle-invariant
+summary of the balance tax at all.** The mechanism is exactly what the non-binding caveat implied in
+reverse: under a frame quota, work the throttle defers may never be *reached*, not merely reordered,
+so the throttle changes what gets built and not only in what order.
+
+**Read `bound` per row before either number.** `near-field`'s unbalanced arm drained on 3–4 of its
+12 frames, so its quota was only partly binding and its 7% gap is the weaker figure; `deep
+interior` bound on **all twelve** frames in both arms and shows 2.3%. A non-binding row proves
+nothing and is the same regime measured twice — the failure the derived-budget fixture already met
+once, where a constant 400 did not bind against a 389-quad tree.
 
 ## What this does not settle
 

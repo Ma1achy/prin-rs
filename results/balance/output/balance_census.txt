@@ -1,18 +1,18 @@
 BUILD EXIT 0
-    Finished `release` profile [optimized] target(s) in 0.08s
+    Finished `release` profile [optimized] target(s)
 === pass A: k_frac 0.25 (production) ===
 balance_census: 512^2 camera, policy Tolerance, tau 1e-2, k_frac 0.25, t=13 n_sync=32
   config: production + 1 override(s): refine_flagged=false (production true)
   `forced/split` is the number that decides the default; `gap off` is the control --
   where it is already 1 the chart says nothing about the constraint.
 
-             chart gap off  gap on  quads-  quads+  quad x  forced  splits  fr/split  substeps+  steps x   crit-   dvar-  moved
-        near-field       2       1     125     189   1.51x      14      33    0.2979    4.939e8    1.51x      31   2.098     14
-     deep interior       3       1     225     397   1.76x      29      70    0.2929    1.428e9    1.82x      56   1.516     25
-       preset_prho       3       1     977    1105   1.13x      76     200    0.2754    1.988e9    1.13x     244   0.586     73
-      preset_shape       3       1    1837    2121   1.15x     127     403    0.2396    4.552e9    1.08x     459   0.257    115
-  config_stability       2       1    4729    4869   1.03x     138    1079    0.1134   1.266e10    1.04x    1182   0.047    138
-   preset_shape_h1       3       1    2169    3141   1.45x     178     607    0.2268    7.716e9    1.36x     542   0.309    169
+             chart gap off  gap on  quads-  quads+  quad x  forced  splits  fr/split  substeps+  steps x   crit-   dvar-  viol-  moved
+        near-field       2       1     125     189   1.51x      14      33    0.2979    4.939e8    1.51x      31   2.098      8     14
+     deep interior       3       1     225     397   1.76x      29      70    0.2929    1.428e9    1.82x      56   1.516     16     25
+       preset_prho       3       1     977    1105   1.13x      76     200    0.2754    1.988e9    1.13x     244   0.586     44     73
+      preset_shape       3       1    1837    2121   1.15x     127     403    0.2396    4.552e9    1.08x     459   0.257     56    115
+  config_stability       2       1    4729    4869   1.03x     138    1079    0.1134   1.266e10    1.04x    1182   0.047     22    138
+   preset_shape_h1       3       1    2169    3141   1.45x     178     607    0.2268    7.716e9    1.36x     542   0.309     79    169
 
 The pass runs after the criterion and can only add, so `quads+ >= quads-` always.
 `moved` counts boxes in both trees whose decision differs -- a forced split changes
@@ -23,15 +23,40 @@ balance_census: 512^2 camera, policy Tolerance, tau 1e-2, k_frac 1, t=13 n_sync=
   `forced/split` is the number that decides the default; `gap off` is the control --
   where it is already 1 the chart says nothing about the constraint.
 
-             chart gap off  gap on  quads-  quads+  quad x  forced  splits  fr/split  substeps+  steps x   crit-   dvar-  moved
-        near-field       2       1     125     189   1.51x      11      36    0.2340    4.939e8    1.51x      31   2.098     11
-     deep interior       3       1     225     397   1.76x      17      82    0.1717    1.428e9    1.82x      56   1.516     15
-       preset_prho       3       1     977    1105   1.13x      20     256    0.0725    1.988e9    1.13x     244   0.586     18
-      preset_shape       3       1    1837    2121   1.15x      42     488    0.0792    4.552e9    1.08x     459   0.257     30
-  config_stability       2       1    4729    4869   1.03x       9    1208    0.0074   1.266e10    1.04x    1182   0.047      9
-   preset_shape_h1       3       1    2169    3141   1.45x      86     699    0.1096    7.716e9    1.36x     542   0.309     78
+             chart gap off  gap on  quads-  quads+  quad x  forced  splits  fr/split  substeps+  steps x   crit-   dvar-  viol-  moved
+        near-field       2       1     125     189   1.51x      11      36    0.2340    4.939e8    1.51x      31   2.098      8     11
+     deep interior       3       1     225     397   1.76x      17      82    0.1717    1.428e9    1.82x      56   1.516     16     15
+       preset_prho       3       1     977    1105   1.13x      20     256    0.0725    1.988e9    1.13x     244   0.586     44     18
+      preset_shape       3       1    1837    2121   1.15x      42     488    0.0792    4.552e9    1.08x     459   0.257     56     30
+  config_stability       2       1    4729    4869   1.03x       9    1208    0.0074   1.266e10    1.04x    1182   0.047     22      9
+   preset_shape_h1       3       1    2169    3141   1.45x      86     699    0.1096    7.716e9    1.36x     542   0.309     79     78
 
 The pass runs after the criterion and can only add, so `quads+ >= quads-` always.
 `moved` counts boxes in both trees whose decision differs -- a forced split changes
 what its descendants decide, so it is not bounded by `forced`.
+=== pass C: the binding frame quota ===
+balance_census: 512^2 camera, policy Tolerance, tau 1e-2, k_frac 0.25, t=13 n_sync=32
+  config: production + 1 override(s): refine_flagged=false (production true)
+  `forced/split` is the number that decides the default; `gap off` is the control --
+  where it is already 1 the chart says nothing about the constraint.
+
+  (static block skipped: chart list empty)
+
+== the balance tax under a BINDING FRAME QUOTA
+  12 frames x 16 quads, rounds 2 -- a hard ceiling of 192 quads,
+  against unconstrained trees in the hundreds to thousands above. `bound` is the
+  count of frames the quota actually stopped: **a non-binding row proves nothing**
+  and is the same regime measured twice, which is how the constant 400 failed.
+
+             chart k_frac   quads-   quads+   quad x   forced  bound-  bound+
+        near-field   0.25      125      169   1.3520       14       9      12
+        near-field   1.00      125      181   1.4480       11       8      12
+     deep interior   0.25      177      181   1.0226       22      12      12
+     deep interior   1.00      181      181   1.0000       17      12      12
+  near-field: quad x is 1.3520 at k=0.25 and 1.4480 at k=1.0 -- THROTTLE-DEPENDENT
+  deep interior: quad x is 1.0226 at k=0.25 and 1.0000 at k=1.0 -- THROTTLE-DEPENDENT
+
+  The non-binding result says `quad x` is throttle-invariant because everything
+  the criterion wants eventually happens and only the order changes. A frame quota
+  removes that: work the throttle defers may never be reached at all.
 EXIT 0

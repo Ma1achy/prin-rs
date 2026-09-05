@@ -144,6 +144,10 @@ fn main() {
         })
         .split(',')
         .map(|s| s.trim().to_string())
+        // **`-` runs the frame arm alone.** The static block is six charts at 512^2 and is the
+        // expensive half; the frame arm sweeps its own throttle, so a third pass that re-ran the
+        // static table would measure the same thing a third time and cost an hour doing it.
+        .filter(|s| !s.is_empty() && s != "-")
         .collect();
     let res: usize = arg(3, 512);
     // **The throttle is a control arm, not a constant.** Under `k_frac < 1` the criterion splits
@@ -152,6 +156,20 @@ fn main() {
     // rather than of balance. Argument four, so both arms run without an edit -- the standing
     // *"an argument hardcoded past is worse than an argument missing"*.
     let k_frac: f64 = arg(4, SchedCfg::default().k_frac);
+    // **Argument five: frames under a BINDING FRAME QUOTA.** The throttle-invariance result below
+    // was measured at a non-binding total budget (20000 against a largest tree of 4869), and its
+    // own write-up says so: `k_frac` truncates per round, deferred quads are re-decided next round,
+    // so everything the criterion wants eventually happens and only the ORDER changes. Under a
+    // frame quota -- which is the whole point of the slippy map -- it binds by construction, and
+    // the record marks that cell **unmeasured**. `0` skips the arm.
+    let frames: usize = arg(5, 0);
+    let frame_quads: usize = arg(6, 16);
+    let frame_charts: Vec<String> = std::env::args()
+        .nth(7)
+        .unwrap_or_else(|| "near-field,deep interior".into())
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .collect();
 
     let ens = EnsembleCfg { refine_flagged: false, ..Default::default() };
     let _ = std::fs::create_dir_all(format!("{root}/output"));
@@ -162,9 +180,13 @@ fn main() {
     println!("  config: {}", ens.provenance());
     println!("  `forced/split` is the number that decides the default; `gap off` is the control --");
     println!("  where it is already 1 the chart says nothing about the constraint.\n");
-    println!("{:>18} {:>7} {:>7} {:>7} {:>7} {:>7} {:>7} {:>7} {:>9} {:>10} {:>8} {:>7} {:>7} {:>6} {:>6}",
-             "chart", "gap off", "gap on", "quads-", "quads+", "quad x", "forced", "splits",
-             "fr/split", "substeps+", "steps x", "crit-", "dvar-", "viol-", "moved");
+    if charts.is_empty() {
+        println!("  (static block skipped: chart list empty)");
+    } else {
+        println!("{:>18} {:>7} {:>7} {:>7} {:>7} {:>7} {:>7} {:>7} {:>9} {:>10} {:>8} {:>7} {:>7} {:>6} {:>6}",
+                 "chart", "gap off", "gap on", "quads-", "quads+", "quad x", "forced", "splits",
+                 "fr/split", "substeps+", "steps x", "crit-", "dvar-", "viol-", "moved");
+    }
 
     for name in &charts {
         let Some(t) = target(name) else {
@@ -251,7 +273,76 @@ fn main() {
         }
     }
 
-    println!("\nThe pass runs after the criterion and can only add, so `quads+ >= quads-` always.");
-    println!("`moved` counts boxes in both trees whose decision differs -- a forced split changes");
-    println!("what its descendants decide, so it is not bounded by `forced`.");
+    if !charts.is_empty() {
+        println!("\nThe pass runs after the criterion and can only add, so `quads+ >= quads-` always.");
+        println!("`moved` counts boxes in both trees whose decision differs -- a forced split changes");
+        println!("what its descendants decide, so it is not bounded by `forced`.");
+    }
+
+    // -------------------------------------------------------------------------------------
+    // The cell the record marks unmeasured: `quad x` under a BINDING frame quota.
+    // -------------------------------------------------------------------------------------
+    if frames > 0 {
+        use prin_rs::session::{FrameQuota, Session, SessionCfg};
+        println!("\n== the balance tax under a BINDING FRAME QUOTA");
+        println!("  {frames} frames x {frame_quads} quads, rounds 2 -- a hard ceiling of {} quads,",
+                 frames * frame_quads);
+        println!("  against unconstrained trees in the hundreds to thousands above. `bound` is the");
+        println!("  count of frames the quota actually stopped: **a non-binding row proves nothing**");
+        println!("  and is the same regime measured twice, which is how the constant 400 failed.\n");
+        println!("{:>18} {:>6} {:>8} {:>8} {:>8} {:>8} {:>7} {:>7}",
+                 "chart", "k_frac", "quads-", "quads+", "quad x", "forced", "bound-", "bound+");
+        let mut pairs: Vec<(String, f64, f64)> = Vec::new();
+        for name in &frame_charts {
+            let Some(t) = target(name) else { continue };
+            for &k in &[0.25f64, 1.0] {
+                let run = |balance: bool| {
+                    let cam = Camera::framing(t.cx, t.cy, t.half, res);
+                    let cfg = SessionCfg {
+                        sched: SchedCfg {
+                            camera: Some(cam),
+                            chart: t.chart,
+                            balance,
+                            k_frac: k,
+                            budget: 20000,
+                            ..Default::default()
+                        },
+                        quota: FrameQuota { quads: frame_quads, substeps: None, rounds: 2 },
+                        ..Default::default()
+                    };
+                    let mut s = Session::new(t.cx, t.cy, t.half, t.body, cam, cfg, ens.t_max);
+                    let mut bound = 0usize;
+                    for _ in 0..frames {
+                        let (hit, _) =
+                            s.step(&|sl, i| prin_rs::ensemble::pixel::evaluate::<f64>(sl, i, &ens));
+                        bound += usize::from(hit != prin_rs::session::QuotaHit::Drained);
+                    }
+                    let forced = s
+                        .tree()
+                        .nodes
+                        .iter()
+                        .filter(|q| q.decision == Decision::BalanceForced)
+                        .count();
+                    (s.stats().quads_computed, forced, bound)
+                };
+                let (q_off, _, b_off) = run(false);
+                let (q_on, forced, b_on) = run(true);
+                let x = q_on as f64 / q_off.max(1) as f64;
+                println!("{name:>18} {k:>6.2} {q_off:>8} {q_on:>8} {x:>8.4} {forced:>8} {b_off:>7} {b_on:>7}");
+                pairs.push((name.clone(), k, x));
+            }
+        }
+        // **The claim under test, stated as a comparison rather than left to the eye.**
+        for name in &frame_charts {
+            let a = pairs.iter().find(|p| &p.0 == name && p.1 == 0.25).map(|p| p.2);
+            let b = pairs.iter().find(|p| &p.0 == name && p.1 == 1.0).map(|p| p.2);
+            if let (Some(a), Some(b)) = (a, b) {
+                println!("  {name}: quad x is {a:.4} at k=0.25 and {b:.4} at k=1.0 -- {}",
+                         if (a - b).abs() < 0.01 { "INVARIANT" } else { "THROTTLE-DEPENDENT" });
+            }
+        }
+        println!("\n  The non-binding result says `quad x` is throttle-invariant because everything");
+        println!("  the criterion wants eventually happens and only the order changes. A frame quota");
+        println!("  removes that: work the throttle defers may never be reached at all.");
+    }
 }

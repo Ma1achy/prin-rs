@@ -495,9 +495,24 @@ not, which is why the version moved.
 > uniform panel at 1024² exceeds **ten minutes** against **13 seconds** for its adaptive tree — over
 > 45× — so the full set is a multi-hour job on its own. That is a real staleness and it is stated
 > rather than left for a reader to discover, which is the failure this directory already carries
-> once. **A pass over the `_uniform*` set is running as of 2026-09-05 12:00** at ~45 min/chart on a
-> heavily loaded machine; `body_plane` and `plane_00deg` are done and the rest are not, so this
-> directory is **mixed-version between those panels and the other 24** until it completes.
+> once. **A pass over the `_uniform*` set was started 2026-09-05 10:44** at ~53 min/chart on a
+> heavily loaded machine, so this directory is **mixed-version** until it completes: the charts it
+> has reached carry current-kernel uniform panels and the rest are 25 August. Do not enumerate them
+> here — the count moves — ask **git**, not the filesystem:
+>
+> ```sh
+> git log --format='%ad %h' --date=short -1 -- results/charts/<case>_uniform.png
+> ```
+>
+> **A file's mtime is not its content's age** — the standing rule, and it applies to the obvious
+> `find -newermt` form of this check, which is right only while these files are uncommitted and
+> becomes a fact about the last checkout the moment they are not. The commit date is the honest
+> discriminator. (An mtime scan is still the right tool for watching the *live* run, and that is a
+> different question from dating a committed artefact.)
+>
+> The adaptive artefacts are **not** affected: re-running the gallery reproduces `.prnq` bitwise
+> except for `wall_seconds`, checked on `plane_00deg` — 4 differing bytes, all inside that field,
+> with the tree, the decisions and the whole record block identical.
 
 #### And those panels are not merely stale — they are SPECKLE, and the file size says so first
 

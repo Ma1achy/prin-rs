@@ -2084,7 +2084,12 @@ the quantiles that feed `signal()`. `quantile` returns `NaN` on empty and `decid
 reports *refinement does not pay*. `Decision::Collapsed` exists for undetermined quads, but
 `between_collapsed()` tests `n_distinct_ic < n_footprints`, a **decode** collapse; a quad with
 distinct ICs whose every footprint diverged never reaches it. **Two ways to be undetermined and one
-`Decision`.** Corpus-invalidating, so it wants its own measurement first.
+`Decision`.** Corpus-invalidating, so it wants its own measurement first. **[CLOSED by
+`Decision::Undetermined` and `scheduler::footprint_undetermined` -- and the measurement said the
+stated mechanism was the SMALLER half: at the shipped step control the `NaN`-to-`Keep` path is
+essentially never taken, because a truncated state is a perfectly good number. See that block
+below; a predicate written on the mechanism as stated here would have been a guard that cannot
+fire.]**
 
 **AND THE RULE EXISTED WHILE THE INSTRUMENTATION DID NOT ENFORCE IT.** *Read `steps`, not `secs`*
 is on this record, and the landing's cost was still quoted as +13% wall clock -- because the
@@ -2366,7 +2371,10 @@ by WHICH COORDINATES it varies* was measured through `alpha` interdecile and lea
 `preset_shape` is chaotic at **every** probe and `preset_prho` regular at every probe, measured on
 the trajectories. `config_basin` has **no beat at all** (lag exactly 0 on a live signal) because
 its window is **70x tighter**, so the pair period does not vary across it -- predicting no ribbon
-banding there, untested. So `spread_shape` is a **phase beat** in the regular patches and
+banding there, untested. **[Tested 2026-09-05 and REFUTED: it bands at 3.9x the reference, and the
+"70x" ignores `mag`, which is 4.0 there against 1.0 -- really 3.15x against the window measured.
+See the `config_basin` block at the end of this file.]** So `spread_shape` is a **phase beat** in
+the regular patches and
 **divergence** everywhere else; the criterion cannot tell them apart and two trajectories plus a
 correlation can.
 
@@ -2665,7 +2673,8 @@ resident (1621) and displays worse (0.2351 against 0.1894) -- a no-gain merge ju
 footprints survives the structure's appearance. The structured-weight expiry (`61ff00c`) is
 **inert** on `near-field` and `config_stability`, rows identical to the old pin, and moves the sea
 chart 0.2686 -> 0.2351. Unbuilt, both live-compatible: a time-to-live on the memory, or an expiry
-keyed on the exponent's own inputs.
+keyed on the exponent's own inputs. **[The TTL is now BUILT and MEASURED, and it loses at every
+rung -- see the `no_gain_ttl` block below. The exponent-keyed expiry is still unbuilt.]**
 
 **STATIONARITY IS WORSE ON EVERY CHART WHERE IT FIRES.** Six charts: never on `near-field` or
 `deep interior`; `preset_prho` two coarse stops, full-depth error 0.3% -> 6.4% and 3x uniform on
@@ -2785,7 +2794,9 @@ deferred quads are re-decided next round, so everything the criterion wants even
 only the order changes. The record's `k_frac` effects (near-field depth variance 1.015 -> 2.053)
 were measured at a **binding** budget. So throttle-invariance of `quad x` holds only where the
 budget does not bind -- and under a **frame** budget, which is the whole point of the slippy map,
-it binds. Unmeasured.
+it binds. Unmeasured. **[Now measured, and `quad x` is throttle-DEPENDENT there -- 1.3520 against
+1.4480 on `near-field`, 1.0226 against 1.0000 on a fully-bound `deep interior`. See the block
+below.]**
 
 **THE GEOMETRY TAX IS COST-NEUTRAL IN TRAJECTORIES; THE CRITERION'S IS NOT.** `steps/quad` runs
 **0.94-1.03** for balance-forced splits against the cost ledger's **0.94-2.10** for the criterion.

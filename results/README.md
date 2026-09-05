@@ -512,7 +512,19 @@ not, which is why the version moved.
 >
 > The adaptive artefacts are **not** affected: re-running the gallery reproduces `.prnq` bitwise
 > except for `wall_seconds`, checked on `plane_00deg` — 4 differing bytes, all inside that field,
-> with the tree, the decisions and the whole record block identical.
+> with the tree, the decisions and the whole record block identical. So
+> `output/gallery_table.txt`, which is derived from those dumps, does not move either.
+>
+> **The pass is resumable, and this is the command.** Argument ten is a chart list (`all` runs
+> every case), so an interrupted pass restarts on what it has not reached rather than from the
+> beginning:
+>
+> ```sh
+> cargo run --release --example chart_gallery -- >   40000 1e-2 0.5 1024 0.25 within results 1 1 "<remaining,charts>" 0.005
+> ```
+>
+> Argument nine is the `uniform` flag — **1** here, **0** in the adaptive-only line above, and that
+> single digit is the whole ~45× cost difference.
 
 #### And those panels are not merely stale — they are SPECKLE, and the file size says so first
 

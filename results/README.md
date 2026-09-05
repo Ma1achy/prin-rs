@@ -525,6 +525,13 @@ not, which is why the version moved.
 >
 > Argument nine is the `uniform` flag — **1** here, **0** in the adaptive-only line above, and that
 > single digit is the whole ~45× cost difference.
+>
+> **And the regeneration is checked over the whole corpus by `tools/verify_prnq_regen.sh`**, which
+> walks every `.prnq` in a directory against `HEAD` and passes a difference only if it is confined
+> to `wall_seconds`. §13 of this file already reported "reproduces bitwise" from **eleven** dumps
+> while **nineteen** had moved, and the thing that moved was the `decision` column on an unchanged
+> tree — a same-size binary difference, which is why file size is not the test. Mid-pass it reads
+> `identical=18  differ only in wall_seconds=8  MOVED=0`.
 
 #### And those panels are not merely stale — they are SPECKLE, and the file size says so first
 

@@ -104,6 +104,21 @@ pub const DEBUG_NAN: [u8; 3] = [255, 0, 255];
 /// different statements and must be three different colours.
 pub const BACKGROUND: [u8; 3] = [18, 18, 22];
 
+/// The quiet stand-in for an undetermined footprint on a **categorical** panel.
+///
+/// [`Veto::Quiet`] on the palette path paints the nominal hue at the floor of the lightness ramp.
+/// A categorical panel has no ramp and no hue to fall back on, and the standing rule for those
+/// panels is that an undetermined pixel **must never take a colourmap entry** -- painting it as a
+/// class claims a classification the run does not have. So the quiet form is a neutral that is
+/// off every palette by construction: **zero chroma**, where every viridis entry and every
+/// `outcome_rgb` family colour carries chroma.
+/// `tests/outcome_encoding.rs` asserts the separation rather than assuming it.
+///
+/// It is deliberately *not* [`BACKGROUND`]: "nothing was drawn here" and "this was drawn and is
+/// undetermined" stay two statements. And it is deliberately not loud -- the count moves to the
+/// harness print and the sidecar, which is what makes hiding it honest.
+pub const UNDETERMINED_QUIET: [u8; 3] = [128, 128, 128];
+
 /// Maximum chroma carried by a site colour.
 pub const C_MAX: f64 = 0.13;
 /// Lightness range. Not `[0, 1]`: pure black and pure white carry no chroma, so hue would vanish

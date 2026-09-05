@@ -835,3 +835,59 @@ fn the_criterion_transcribes_the_reference_including_its_body_ordering() {
                "the golden set must keep firing on half its rows -- a table that fires on none \
                 would pass under an implementation that never returns Some");
 }
+
+/// **A quiet undetermined pixel must still not be plausibly a class.**
+///
+/// `Veto::Quiet` exists because `DEBUG_NAN` is a debug flag and a gallery is a presentation
+/// render. But the standing rule for a categorical panel is that an undetermined pixel never takes
+/// a colourmap entry, so the quiet form has to be off the palette by *construction* rather than by
+/// choice of a colour that happens to look different today. The construction is **zero chroma**:
+/// every viridis entry and every `outcome_rgb` family colour carries chroma, and the neutral does
+/// not.
+///
+/// The control arm is what gives this teeth. Asserting only "the neutral is far from every entry"
+/// passes for any colour far from the ramp, including `DEBUG_NAN` itself -- so the test also
+/// asserts that a *deliberately on-palette* stand-in FAILS the same bar. Without it the test
+/// could not distinguish a well-chosen neutral from an arbitrary one.
+#[test]
+fn the_quiet_undetermined_colour_is_off_every_categorical_palette() {
+    use prin_rs::output::colour::UNDETERMINED_QUIET as Q;
+    use prin_rs::output::png::N_EVENT_CLASSES;
+    use prin_rs::output::viridis::viridis;
+
+    // Chroma as the max channel spread. A neutral is exactly 0; a palette entry is not.
+    let chroma = |c: [u8; 3]| {
+        let mx = c.iter().copied().max().unwrap() as i32;
+        let mn = c.iter().copied().min().unwrap() as i32;
+        mx - mn
+    };
+    assert_eq!(chroma(Q), 0, "the quiet neutral must have zero chroma, got {Q:?}");
+
+    // Every event-class entry, and the outcome families, carry chroma -- so chroma alone
+    // separates them. Report the minimum, because a palette that ever went neutral would break
+    // the construction and this is the number that would say so.
+    let mut min_chroma = i32::MAX;
+    for k in 0..N_EVENT_CLASSES {
+        min_chroma = min_chroma.min(chroma(viridis(k as f64 / (N_EVENT_CLASSES - 1) as f64)));
+    }
+    for base in [[220, 80, 60], [110, 190, 110], [70, 150, 220], [200, 190, 90], [40, 40, 48]] {
+        for d in 0..4 {
+            let k = 0.55 + 0.15 * d as f64;
+            let c = [
+                (base[0] as f64 * k).min(255.0) as u8,
+                (base[1] as f64 * k).min(255.0) as u8,
+                (base[2] as f64 * k).min(255.0) as u8,
+            ];
+            min_chroma = min_chroma.min(chroma(c));
+        }
+    }
+    println!("  min palette chroma {min_chroma}, quiet neutral chroma {}", chroma(Q));
+    assert!(min_chroma > 0, "a palette entry went neutral; the construction no longer separates");
+
+    // **The control.** A stand-in taken FROM the palette must fail the bar the neutral passes.
+    let on_palette = viridis(0.5);
+    assert!(
+        chroma(on_palette) > 0,
+        "the control is not on-palette, so this test cannot fail as intended"
+    );
+}

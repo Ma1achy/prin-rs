@@ -269,7 +269,21 @@ fn main() {
         let (distinct, _, _) = colour::quantisation(&all_px, Scalar::ShapeSpread);
         let m_here = grid::decode_state(chart, 0, cx, cy).m;
         let sites = colour::landmarks(&m_here);
-        let rgb = move |p: &PixelOut| colour::rgb(p, Scalar::ShapeSpread, &sites, lo, hi);
+        // **A debug flag is not a presentation colour.** `colour::rgb` is `Veto::Debug` and
+        // paints an undetermined footprint `DEBUG_NAN` magenta -- right for `_drift` and every
+        // census, wrong here: the gallery is a presentation render, and at the production
+        // `max_steps = 30_000` a screaming magenta speckle over a fraction of a percent of
+        // footprints is the first thing the eye reads in the frame. `Veto::Quiet` paints the
+        // nominal copy's own hue at the floor of the lightness ramp instead. That makes an
+        // undetermined footprint indistinguishable from a resolved dark one, which is exactly
+        // what the flag exists to prevent -- **so the information moves rather than vanishing**:
+        // the count is printed per chart below and named in every sidecar. Same treatment
+        // `live_animation` already gives `results/live`.
+        let vetoed_a =
+            all_px.iter().filter(|p| colour::vetoed(p, Scalar::ShapeSpread, &sites, lo, hi)).count();
+        let rgb = move |p: &PixelOut| {
+            colour::rgb_veto(p, Scalar::ShapeSpread, &sites, lo, hi, colour::Veto::Quiet)
+        };
 
         logln!(log, 
             "{:>18} {:>14} {:>6} {:>7} {:>7} {:>6} {:>7} {:>9} {:>10.4} {:>10.4} {:>9.3} {:>9}",
@@ -403,13 +417,15 @@ fn main() {
             &format!(
                 "chart={} leaves={} depth={} stop={} scalar=ShapeSpread window=({lo:.4e},{hi:.4e}) \
                  window_from={} res={res} viewport={res} budget={budget} tau_display={tau:e} \
-                 alpha_hi={alpha_hi} criterion={} k_frac={k_frac}\n",
+                 alpha_hi={alpha_hi} criterion={} k_frac={k_frac} \
+                 veto=quiet vetoed_footprints={vetoed_a} of={}\n",
                 chart.name(),
                 leaves.len(),
                 depth,
                 t.stop_breakdown(),
                 if upx.is_some() { "uniform_grid" } else { "tree_leaves" },
                 crit.name(),
+                all_px.len(),
             ),
         );
 
@@ -438,23 +454,41 @@ fn main() {
             // pixel, no interpolation anywhere.
             let ures = res;
             let usites = colour::landmarks(&m_here);
+            let vetoed_u =
+                upx.iter().filter(|p| colour::vetoed(p, Scalar::ShapeSpread, &usites, lo, hi)).count();
             let mut buf = Vec::with_capacity(upx.len() * 3);
             for p in upx {
-                buf.extend_from_slice(&colour::rgb(p, Scalar::ShapeSpread, &usites, lo, hi));
+                buf.extend_from_slice(&colour::rgb_veto(
+                    p,
+                    Scalar::ShapeSpread,
+                    &usites,
+                    lo,
+                    hi,
+                    colour::Veto::Quiet,
+                ));
             }
             let _ = prin_rs::output::provenance_sidecar(
                 &format!("{stem}_uniform.png"),
                 &ens,
                 &format!(
                     "chart={} panel=uniform scalar=ShapeSpread window=({lo:.4e},{hi:.4e}) \
-                     window_from=uniform_grid res={ures} one_sample_per_pixel=true\n",
-                    chart.name()
+                     window_from=uniform_grid res={ures} one_sample_per_pixel=true \
+                     veto=quiet vetoed_footprints={vetoed_u} of={}\n",
+                    chart.name(),
+                    upx.len()
                 ),
+            );
+            logln!(
+                log,
+                "{:>18}                uniform panel: vetoed {vetoed_u}/{} ({:.4}%), painted quiet",
+                name,
+                upx.len(),
+                100.0 * vetoed_u as f64 / upx.len().max(1) as f64
             );
             let _ = adaptive::save_rect(&format!("{stem}_uniform.png"), ures, ures, &buf);
             let mut obuf = Vec::with_capacity(upx.len() * 3);
             for p in upx {
-                obuf.extend_from_slice(&png::outcome_rgb(p));
+                obuf.extend_from_slice(&png::outcome_rgb_veto(p, colour::Veto::Quiet));
             }
             let _ =
                 adaptive::save_rect(&format!("{stem}_uniform_outcome.png"), ures, ures, &obuf);
@@ -472,7 +506,7 @@ fn main() {
             // is defined at every playhead, where the outcome label at t = 13 is saturated.
             let mut ebuf = Vec::with_capacity(upx.len() * 3);
             for p in upx {
-                ebuf.extend_from_slice(&png::event_class_rgb(p));
+                ebuf.extend_from_slice(&png::event_class_rgb_veto(p, colour::Veto::Quiet));
             }
             let _ = adaptive::save_rect(&format!("{stem}_uniform_event.png"), ures, ures, &ebuf);
 
@@ -498,13 +532,15 @@ fn main() {
         // physics or in the colouring. At t = 13 the outcome label is saturated, which is the
         // point.
         let (oimg, _) = adaptive::render(
-            &t, &st.pixels, &cam, res, adaptive::TexelMode::Adaptive, png::outcome_rgb,
+            &t, &st.pixels, &cam, res, adaptive::TexelMode::Adaptive,
+            |p| png::outcome_rgb_veto(p, colour::Veto::Quiet),
         );
         let _ = adaptive::save(&format!("{stem}_outcome.png"), res, &oimg);
 
         // The same matched-mode panel on the adaptive tree.
         let (eimg, _) = adaptive::render(
-            &t, &st.pixels, &cam, res, adaptive::TexelMode::Adaptive, png::event_class_rgb,
+            &t, &st.pixels, &cam, res, adaptive::TexelMode::Adaptive,
+            |p| png::event_class_rgb_veto(p, colour::Veto::Quiet),
         );
         let _ = adaptive::save(&format!("{stem}_event.png"), res, &eimg);
 

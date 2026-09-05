@@ -514,6 +514,14 @@ fn main() {
             );
         }
 
+        // **Freed before the live descent, and the reason is a measurement.** `upx` holds
+        // `res^2 * (E+1)` footprints -- 8.4M at 1024^2 -- and its last use is the event-class
+        // histogram just above. The live march below allocates a second pixel store plus a
+        // per-boundary series, so holding both is a peak neither pass needs. This gallery has
+        // been killed by swap exhaustion twice; a peak that is avoidable by a `drop` is not a
+        // reason to lose a fifteen-hour run.
+        drop(upx);
+
         // The outcome control on the ADAPTIVE tree, so the pair says whether a feature is in the
         // physics or in the colouring. At t = 13 the outcome label is saturated, which is the
         // point.
@@ -594,9 +602,33 @@ fn main() {
             // The recorded boundary while the playhead moved; the last one during the
             // post-horizon rounds, which are frames at `t = t_max`.
             let j = k.min(n_b.saturating_sub(1));
-            let projected: Vec<Vec<PixelOut>> = (0..lst.pixels.len())
-                .map(|i| lst.pixels[i].iter().map(|q| scheduler::project_at(q, j)).collect())
-                .collect();
+            // **Projected over the frame's leaves AND THEIR ANCESTORS, which is exactly what is
+            // drawn.** Projecting the whole store clones footprints no frame reads -- a second
+            // full copy of the live pixel store, per frame, on a gallery already killed twice by
+            // swap. But the leaf set alone is WRONG: `adaptive::paint_order` paints the set *and
+            // every ancestor*, coarsest first, and emptying an ancestor's samples is precisely
+            // what used to disable the coarse-ancestor fill -- an unresolved leaf would come back
+            // a hole, reading as "nothing here" rather than "not yet resolved". Descendants are
+            // not painted, so they stay empty. Asserted bitwise against the full-store form.
+            let mut want: Vec<bool> = vec![false; lst.pixels.len()];
+            for &i in lv {
+                let mut k = Some(i);
+                while let Some(n) = k {
+                    if want.get(n).copied().unwrap_or(true) {
+                        break;
+                    }
+                    want[n] = true;
+                    k = lt.nodes[n].parent;
+                }
+            }
+            let mut projected: Vec<Vec<PixelOut>> = vec![Vec::new(); lst.pixels.len()];
+            for (i, w) in want.iter().enumerate() {
+                if *w {
+                    if let Some(src) = lst.pixels.get(i) {
+                        projected[i] = src.iter().map(|q| scheduler::project_at(q, j)).collect();
+                    }
+                }
+            }
             let f = render_leaves(&lt, &projected, &acam, ares, lv, &lrgb);
             let mut wf = f.clone();
             // Graded by the FINISHED live tree's depth, held across every frame: regrading per

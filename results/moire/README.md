@@ -62,11 +62,17 @@ ramp, which is one of the six mechanisms the `osc/` work had to exclude.
 | 64² | `config_stability` | 45 | **1.60** | 918 | 0.7771 | 173 | 51.54 |
 | 192² | `config_basin` | 57 | **8.14** | 1 | 1.0000 | 184 | 49.21 |
 | 192² | `config_stability` | 64 | **2.11** | 8455 | 0.7708 | 197 | 54.81 |
-| 256² | `config_stability` | 55 | 2.14 | 14916 | 0.7723 | — | — |
 
-**`config_basin` bands at 3.9× the prominence of the field the banding was established on**, and its
-value is raster-stable — 8.20 at 64², 8.14 at 192², across a 3× change — where the control's is
-still converging (1.60 → 2.11 → 2.14).
+**`config_basin` bands at 3.9× the prominence of the field the banding was established on**
+(8.14 against 2.11 at 192², both float, matched raster), and its value is raster-stable — 8.20 at
+64², 8.14 at 192², across a 3× change — where the control's is still converging (1.60 → 2.11).
+
+**The committed 256² row is NOT in this table, and the reason is a column that did not exist.**
+`moire.txt` predates the float arm: its header is `lambda promin`, one pair, computed on the
+rendered 8-bit luminance. Its `55 / 2.14` is therefore an `lam:8bit` value and belongs beside the
+192² control's **2.82**, not beside its 2.11. Quoting it in the float column would have been
+comparing two different statistics under one heading — caught by reading the committed file's own
+header rather than trusting the number's shape.
 
 ## So the standing prediction is REFUTED, and the reason is arithmetic
 

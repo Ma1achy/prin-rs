@@ -47,20 +47,6 @@ fn arg<T: std::str::FromStr>(i: usize, d: T) -> T {
     std::env::args().nth(i).and_then(|s| s.parse().ok()).unwrap_or(d)
 }
 
-/// The leaf set of the same tree **truncated at `cap`**: nodes at or above `cap` that are either
-/// leaves already or sit exactly at the cap.
-///
-/// One descent, six pictures. A budget ladder would need a fresh descent per frame, which is a
-/// different tree each time and would make the animation a sequence of unrelated runs rather
-/// than one refinement seen at several depths.
-fn leaves_capped(t: &QuadTree, cap: u32) -> Vec<usize> {
-    (0..t.nodes.len())
-        .filter(|&i| {
-            let q = &t.nodes[i];
-            q.level <= cap && (q.children.is_none() || q.level == cap)
-        })
-        .collect()
-}
 
 fn render_leaves(
     t: &QuadTree,
@@ -549,57 +535,135 @@ fn main() {
             let _ = prin_rs::output::tree::write(&mut w, &t, &cfg, &ens, &st, name, "f64");
         }
 
-        // The level ladder: ONE descent, truncated at each depth.
+        // **THE ANIMATION IS THE LIVE MARCH, NOT A DEPTH SLICE OF A FINISHED TREE.**
         //
-        // Rendered at the same resolution as the stills. Re-rasterised rather than
-        // re-integrated, so it costs nothing but the raster.
+        // What was here was a level ladder: `for cap in 0..=depth { leaves_capped(&t, cap) }` --
+        // the *static* tree built to completion and then truncated at each depth. Every frame sat
+        // at `t = t_max`, so its axis was depth and nothing in the gallery moved over time. It
+        // also showed a tree the scheduler never passes through: the static descent has **zero**
+        // `project_at` and **zero** `merge` sites, so a depth slice of its result is not a stage
+        // the mechanism was ever in. It read as "how the tree got there" and was not.
+        //
+        // The frame axis is now the **playhead**: one frame per sync boundary and per
+        // post-horizon round, each rendered on the footprints **as they stood at that boundary**
+        // (`scheduler::project_at`), from `scheduler::descend_live`'s own recorded leaf sets. That
+        // is the mechanism -- catch-up, per-boundary re-reduction and the no-gain merges included.
+        // Same construction `live_animation` uses for `results/live`.
+        //
+        // **The stills and the table stay on the static descent**, deliberately. They are the
+        // statement about what the criterion settles on, they are what the committed gallery table
+        // is comparable against, and the live tree is a *different* tree once merging is on -- so
+        // folding the two would move every leaf count in the table for a reason that has nothing
+        // to do with the chart. The two leaf counts are printed side by side instead, because the
+        // gap between them is itself a measurement and the record carries it for three charts
+        // only.
+        //
+        // It costs a second descent per chart, and that descent is the expensive one: catch-up is
+        // 84-91% of a live march's substeps. The cost ratio is printed per chart rather than
+        // asserted.
         let ares = res;
         let acam = Camera::framing(cx, cy, half, ares);
+        let lt0 = std::time::Instant::now();
+        // `project_at` needs the per-boundary series, which production does not keep.
+        let lens = EnsembleCfg { keep_live_series: true, ..ens.clone() };
+        let (lt, lst) =
+            scheduler::descend_live(cx, cy, half, 0, &cfg, &lens, Precision::F64);
+        let lleaves: Vec<usize> = lt.leaves().collect();
+        let ldepth = lleaves.iter().map(|&i| lt.nodes[i].level).max().unwrap_or(0);
+        let lsteps: u64 = lt.nodes.iter().map(|q| q.red.total_substeps as u64).sum();
+        let ssteps: u64 = t.nodes.iter().map(|q| q.red.total_substeps as u64).sum();
+        // **One window for the whole animation, from the live tree's own terminal footprints.**
+        // Not the stills' window: that one is the uniform grid's, and a ramp fitted to a
+        // different population would move the apparent brightness of every frame for a reason
+        // that is not the march. And never per frame -- an auto-ranged ramp per frame stretches
+        // each boundary's own p1-p99 to full scale, which on a question about how a field
+        // develops manufactures the development.
+        let lall: Vec<PixelOut> =
+            lleaves.iter().flat_map(|&i| lst.pixels.get(i).cloned().unwrap_or_default()).collect();
+        let (llo, lhi) = colour::range(&lall, Scalar::ShapeSpread);
+        let lsites = colour::landmarks(&m_here);
+        let lrgb =
+            |p: &PixelOut| colour::rgb_veto(p, Scalar::ShapeSpread, &lsites, llo, lhi, colour::Veto::Quiet);
+        let lvetoed =
+            lall.iter().filter(|p| colour::vetoed(p, Scalar::ShapeSpread, &lsites, llo, lhi)).count();
 
-        let mut ladder: Vec<Vec<u8>> = Vec::new();
-        let mut wladder: Vec<Vec<u8>> = Vec::new();
-        for cap in 0..=depth {
-            let lv = leaves_capped(&t, cap);
-            let f = render_leaves(&t, &st.pixels, &acam, ares, &lv, &rgb);
+        let n_b = lst.pixels.get(0).and_then(|p| p.first()).map(|p| p.live_t.len()).unwrap_or(0);
+        let mut ladder: Vec<Vec<u8>> = Vec::with_capacity(lst.live_leaves.len());
+        let mut wladder: Vec<Vec<u8>> = Vec::with_capacity(lst.live_leaves.len());
+        for (k, lv) in lst.live_leaves.iter().enumerate() {
+            // The recorded boundary while the playhead moved; the last one during the
+            // post-horizon rounds, which are frames at `t = t_max`.
+            let j = k.min(n_b.saturating_sub(1));
+            let projected: Vec<Vec<PixelOut>> = (0..lst.pixels.len())
+                .map(|i| lst.pixels[i].iter().map(|q| scheduler::project_at(q, j)).collect())
+                .collect();
+            let f = render_leaves(&lt, &projected, &acam, ares, lv, &lrgb);
             let mut wf = f.clone();
-            // From the capped leaf set, not from a level filter over the finished tree's boxes.
-            // Filtering by level keeps every deep quad whose level happens to be <= cap while
-            // dropping nothing that the cap actually removed, so the wire drifted out of step
-            // with the colour frame beside it.
-            let b = wire::boxes_from_leaves(&t, &acam, ares, &lv);
-            // The FINISHED tree's depth grades every frame. `cap.max(1)` regraded each frame,
-            // so a level-3 box was bright in frame 3 and dim in frame 6 -- the ramp moving
-            // rather than the tree, the fault the colour frames avoid by holding one window.
-            wire::draw(&mut wf, ares, ares, &b, depth.max(1));
+            // Graded by the FINISHED live tree's depth, held across every frame: regrading per
+            // frame moves the ramp rather than the tree, which is the fault the colour frames
+            // avoid by holding one window.
+            wire::draw(&mut wf, ares, ares, &wire::boxes_from_leaves(&lt, &acam, ares, lv), ldepth.max(1));
             ladder.push(f);
             wladder.push(wf);
         }
-        // **Animations live in `results/animated/`, not beside the stills.** They are the only
-        // artefacts here that show *how the tree got there* rather than what it settled on, and
-        // 72 of them scattered through three directories were effectively unfindable.
+        // Hold the finished frame so the loop reads as an ending rather than a snap back.
+        for _ in 0..6 {
+            if let (Some(a), Some(b)) = (ladder.last().cloned(), wladder.last().cloned()) {
+                ladder.push(a);
+                wladder.push(b);
+            }
+        }
+        let lsecs = lt0.elapsed().as_secs_f64();
+        logln!(
+            log,
+            "{:>18}                live march: {} leaves (static {}), depth {ldepth}, {} frames, \
+             vetoed {lvetoed}/{}, substeps x{:.2} static, {lsecs:.1}s",
+            name,
+            lleaves.len(),
+            leaves.len(),
+            lst.live_leaves.len(),
+            lall.len(),
+            if ssteps > 0 { lsteps as f64 / ssteps as f64 } else { f64::NAN }
+        );
+
         let anim = format!("{adir}/{name}");
-        let _ = apng::write(&format!("{anim}_levels.png"), ares, ares, &ladder, 1, 2);
-        let _ = apng::write(&format!("{anim}_levels_wire.png"), ares, ares, &wladder, 1, 2);
-        // The duplicate-frame count, printed and kept: a ladder whose frames repeat is a still.
-        // And a sidecar per animation, because a frame carries no header of its own.
+        let _ = apng::write(&format!("{anim}_live.png"), ares, ares, &ladder, 1, 3);
+        let _ = apng::write(&format!("{anim}_live_wire.png"), ares, ares, &wladder, 1, 3);
         let (dup, wdup) =
             (apng::adjacent_duplicates(&ladder), apng::adjacent_duplicates(&wladder));
-        for (suffix, d) in [("levels", dup), ("levels_wire", wdup)] {
+        for (suffix, d) in [("live", dup), ("live_wire", wdup)] {
             let _ = prin_rs::output::provenance_sidecar(
                 &format!("{anim}_{suffix}.png"),
-                &ens,
+                &lens,
                 &format!(
-                    "chart={} animation={suffix} frames={} adjacent_duplicates={d} \
-                     scalar=ShapeSpread window=({lo:.4e},{hi:.4e}) res={ares} viewport={ares} \
-                     budget={budget} tau_display={tau:e} alpha_hi={alpha_hi} criterion={} \
-                     k_frac={k_frac} stop={}\n",
-                    chart.name(), ladder.len(), crit.name(), t.stop_breakdown()
+                    "chart={} animation={suffix} axis=playhead frames={} boundaries={n_b} \
+                     live_stride={} \
+                     adjacent_duplicates={d} scalar=ShapeSpread window=({llo:.4e},{lhi:.4e}) \
+                     window_from=live_tree_terminal res={ares} viewport={ares} budget={budget} \
+                     tau_display={tau:e} alpha_hi={alpha_hi} criterion={} k_frac={k_frac} \
+                     stop={} live_leaves={} static_leaves={} \
+                     veto=quiet vetoed_footprints={lvetoed} of={}\n",
+                    chart.name(),
+                    ladder.len(),
+                    lens.live_stride,
+                    crit.name(),
+                    lt.stop_breakdown(),
+                    lleaves.len(),
+                    leaves.len(),
+                    lall.len(),
                 ),
             );
         }
-        if dup > 0 || wdup > 0 {
-            logln!(log, "{:>18}  levels ladder: {dup}/{wdup} identical adjacent frame pairs of {} \
-                          (colour/wire)", "", ladder.len() - 1);
+        // **A ladder whose frames repeat is a still.** Printed, kept, and it is the arm that says
+        // the animation is animated at all -- six of the frames are the deliberate end hold.
+        if dup > 6 || wdup > 6 {
+            logln!(
+                log,
+                "{:>18}                live animation: {dup}/{wdup} identical adjacent pairs of {} \
+                 (colour/wire), 6 of them the end hold",
+                "",
+                ladder.len() - 1
+            );
         }
 
         // The control: `plane_00deg` is `body_plane` written a second way. Compared on INITIAL

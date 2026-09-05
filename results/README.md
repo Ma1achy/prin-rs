@@ -495,7 +495,32 @@ not, which is why the version moved.
 > uniform panel at 1024² exceeds **ten minutes** against **13 seconds** for its adaptive tree — over
 > 45× — so the full set is a multi-hour job on its own. That is a real staleness and it is stated
 > rather than left for a reader to discover, which is the failure this directory already carries
-> once.
+> once. **A pass over the `_uniform*` set is running as of 2026-09-05 12:00** at ~45 min/chart on a
+> heavily loaded machine; `body_plane` and `plane_00deg` are done and the rest are not, so this
+> directory is **mixed-version between those panels and the other 24** until it completes.
+
+#### And those panels are not merely stale — they are SPECKLE, and the file size says so first
+
+`body_plane_uniform.png` regenerated is **133,841 bytes against the committed 2,335,554**, a 17×
+fall at **identical 1024×1024 dimensions** — so it is not the raster-size failure this record
+already carries four times, and the dimensions are the first thing to check. What shrank is
+entropy. Measured on the two panels:
+
+| | distinct colours | magenta | L sd | **lag-1 coherence** | **local contrast** |
+|---|---|---|---|---|---|
+| committed, 25 Aug | 9314 | 1 px | 46.38 | 0.8296 | **14.628** |
+| regenerated | 1437 | **0** | 27.77 | **0.9927** | **0.200** |
+
+**Local contrast falls 73× while coherence rises to 0.9927.** Mean adjacent-pixel difference of
+14.6 levels across a whole 1024² frame is a speckle field, not a physics image; 0.20 is a coherent
+one. That is the standing *amplitude cannot tell a small real signal from noise; coherence can* —
+and the same signature as the bleaching investigation, where a texture that vanished while what
+remained became more coherent **was noise**. The old panels were showing the unrepaired kernel's
+diverged copies at pixel scale.
+
+**One chart, and `plane_00deg` is not a second one** — the gallery's own control asserts
+`max |dIC| = 0e0` between them, so they are the same chart under two names. The claim is one
+measurement until the pass finishes.
 
 ### Three standing results move, and one is the reason the corpus needed replacing
 

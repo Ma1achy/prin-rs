@@ -3093,3 +3093,89 @@ loops each contained the string they were searching for, so every one of them wa
 forever while the job had long finished -- and the log's own last line was the evidence. Match on
 the process name (`ps -eo comm`) or exclude the shell, and read the artefact rather than the
 process table when the artefact can say.
+
+**§18 FOVEATION IS MEASURED AND STAYS OFF: INERT WHERE STRUCTURE IS LOCALISED, 8 FRAMES OF 40 WHERE
+IT IS NOT.** `Camera::foveation` modulates camera relevance -- not a third factor, never in the
+veto, no cursor field on a `Quad` -- and with no cursor or `dwell = 0` it returns exactly `1.0`, so
+the fallback IS the default path. Measured against its own off-state: **`step` is inert in every
+arm** (only quads straddling the discontinuity want to split, so the quota never has to choose
+between distant ones and there is no ranking for the fovea to change). On `filament_through_sea`
+`fovea x4` saves 2 frames at the cursor and **loses 2 at the edge** -- the same budget moved, which
+is what the edge probe exists to catch -- and `fovea x16` saves 8 and loses 2. One field of two, at
+a cap demoting the periphery sixteenfold. Not a clear margin; `SchedCfg::cursor` stays `None`.
+
+**AND THE TWO PROBES' BASELINES DIFFER BY THE TIE-BREAK'S SCAN ORDER, SO THE GAIN NEEDED A SWAPPED
+ARM.** The probes are geometrically symmetric; the tie-break is lexicographic on `(level, ix, iy)`,
+so the lower-`y` one resolves **two frames sooner** in the `off` arm and a gain measured at one
+probe could be the scan order. Moving the fovea onto the other probe takes it **14 -> 8** while the
+first holds at 16: the advantage follows the **cursor**. Without that arm the 8 frames were not
+attributable. The `centre` arm is the named vacuous cell and is inert as named, and the final tree
+is bitwise identical in every arm -- foveation changes *when* a region resolves, never *what* the
+tree becomes.
+
+**AND THE FIRST CUT OF THAT HARNESS READ BOTH KNOBS BACKWARDS BECAUSE THE PROBES WERE OFF THE
+STRUCTURE.** With both discs in smooth regions `step` resolved at the bootstrap at mean depth
+2.000 -- the cost side had no subject, so a foveation that starved the edge would have looked free
+-- and x4 and x16 read *identical*, which was written up as `fovea_cap` saturating. On the
+structure they read 2 frames against 8. `dwell` is separately **continuous in the priority and
+discrete in the outcome**: 0.5 gives a peripheral factor of 0.625 against 1.0's 0.25, a different
+number and the same tree, because a ranking only moves when the demotion crosses another quad's
+priority.
+
+**EXPIRING A MEMORY BY DELETING IT IS THE OPPOSITE OF EXPIRING IT.** The no-gain merge memory's
+second live-compatible expiry -- a time-to-live, against the shipped structured-weight rule -- was
+first implemented by clearing `no_gain_weight`. But `decide` reads `map_or(true, ...)`: **no memory
+means never merged for no gain**, and the floor then stands on its own merits. So clearing it
+reverts to first-time behaviour and floors MORE: measured on the pulse, **421 quads against 645**, a
+third fewer. `Quad::no_gain_expired` is a separate flag that short-circuits the state rule, and the
+corrected form reads **741 against 645**. **An `assert_ne!` could not tell the two apart** -- it
+passed on the inversion exactly as it passes now -- and the arm with teeth asserts the *direction*:
+a lapsed memory releases a split, so the work can only go up.
+
+**AND THE TTL IS A BUDGET-QUALITY TRADE THAT LOSES, WITH A CLOCK THAT FIRES ONCE PER QUAD.** On the
+sea chart: error **0.19609** (shipped) against 0.20300 (`ttl` 1 and 4) and 0.21920 (`ttl` 0), on
+2225 / 2093 / 1977 quads -- every rung displays worse while computing less, the same shape as the
+`k_frac` result. `ttl = 1` is marginally *better* against uniform (0.66x against 0.67x) and
+absolutely worse, so a ratio-only table would have read as a win. **`ttl = 1` and `ttl = 4` are
+bitwise identical** because a lapsed memory splits, the split still shows no gain, the merge pass
+re-merges and records a **fresh** memory: the clock resets, so beyond one boundary the knob is
+inert. And the sign of the cost is not fixed -- the pulse computes *more* under a TTL and the sea
+chart *fewer*. `no_gain_ttl` defaults to `None`.
+
+**`quad x` IS NOT THROTTLE-INVARIANT UNDER A BINDING FRAME QUOTA, WHICH IS THE REGIME THAT
+MATTERS.** The balance census recorded `balance_forced/split` as *not a quantity* (0.113 or 0.007
+on the identical tree) and `quad x` as the throttle-invariant column to quote instead -- with its
+own caveat that the trees were identical *because the budget was non-binding*, and that under a
+frame budget it binds. Measured there: **`near-field` 1.3520 at `k = 0.25` against 1.4480 at
+`k = 1.0`**, and `deep interior` 1.0226 against 1.0000 on a row where the quota bound on **all
+twelve** frames. So in the slippy map's own regime there is no throttle-invariant summary of the
+balance tax at all -- the cost column moves too, because work the throttle defers may never be
+reached rather than merely reordered. **Print `bound` per row**: `near-field`'s off arm drained on
+3-4 of 12 frames, so its 7% is the weaker of the two numbers and the fully-bound 2.3% is the one to
+quote.
+
+**A STALE RENDER'S FILE SIZE IS THE FIRST DIAGNOSTIC, AND HERE IT SAID SPECKLE.**
+`body_plane_uniform.png` regenerated on the current kernel is **133,841 bytes against the committed
+2,335,554** -- a **17x** fall at **identical 1024x1024** dimensions, so it is not the raster-size
+failure this record already carries four times and the dimensions are what rules that out. What
+fell is entropy: distinct colours **9314 -> 1437**, magenta **1 -> 0**, and the pair that decides
+it, **lag-1 coherence 0.8296 -> 0.9927 with local contrast 14.628 -> 0.200, a 73x collapse.** A
+mean adjacent-pixel difference of 14.6 levels across a whole 1024^2 frame is a speckle field and
+not a physics image. *Amplitude cannot tell a small real signal from noise; coherence can*, at a
+fourth site -- and the same signature as the bleaching investigation, where **what left was the
+incoherent component**. So the 25-August `_uniform*` panels are not cosmetically old; they are the
+unrepaired kernel's diverged copies at pixel scale, and regenerating them is worth the multi-hour
+cost rather than merely tidy. **One chart, and `plane_00deg` is not a second** -- the gallery's own
+control asserts `max |dIC| = 0e0` between them, so they are one chart under two names.
+
+**AND A RENDER LANDED IN A COMMIT WHOSE CODE DID NOT MAKE IT.** `55795a8`, the no-gain TTL commit,
+carries **twelve `results/charts` and `results/animated` files for `body_plane`** -- swept in
+because a 26-chart gallery was writing into `results/` while an unrelated commit was staged. The
+standing rule is *commit renders in the same commit as the code that made them, or name the commit
+in the filename*; this is its mirror, and it is worse in one way: a reader of `55795a8` would
+attribute that panel's 17x shrink to a merge-memory time-to-live. Corrected here and in the
+gallery's own completion commit rather than by rewriting history, which is this project's
+precedent for a wrong commit message. **The scan that found it is one line** -- `git show --stat`
+per commit, counting files under a directory a batch is writing to -- and it should be run before
+staging anything while a batch is live, which is the only real remedy: eleven of the twelve would
+have been caught by looking.

@@ -105,19 +105,31 @@ fn main() {
     let dir: String = std::env::args().nth(2).unwrap_or_else(|| "results/moire".into());
     let _ = std::fs::create_dir_all(&dir);
 
-    let z0 = prin_rs::physics::decoder::Latent {
-        z_alpha: Z[1], z_beta: Z[0],
-        z_q: [Z[4], Z[5], Z[6], Z[7]], z_mu: [Z[8], Z[9]],
+    // **Argument three: which window.** `config_stability` is the committed run and the default,
+    // so it reproduces unchanged. `config_basin` is the standing PREDICTION: the band survey found
+    // it a regular island with **lag exactly 0 on a live signal** -- the pair period does not vary
+    // across a window 70x tighter -- which predicts **no ribbon banding there**, and that was
+    // recorded as untested. A prediction with a named discriminator and no measurement is exactly
+    // what this harness is for.
+    let case: String = std::env::args().nth(3).unwrap_or_else(|| "config_stability".into());
+    let (chart, cx, cy, half) = if case == "config_basin" {
+        let (c, bx, by, bh) = Chart::config_basin();
+        (c, bx, by, bh)
+    } else {
+        let z0 = prin_rs::physics::decoder::Latent {
+            z_alpha: Z[1], z_beta: Z[0],
+            z_q: [Z[4], Z[5], Z[6], Z[7]], z_mu: [Z[8], Z[9]],
+        };
+        let (mut q1, mut q2) = ([0.0f64; 8], [0.0f64; 8]);
+        q1[1] = 1.0;
+        q2[0] = 1.0;
+        let chart = Chart::Latent { z0, q1, q2 };
+        // A window inside the striated red band, upper-left of the full view: a quarter of the
+        // half-width, offset so it sits in the ribbon rather than across its edge.
+        let (fcx, fcy, fhalf) = (2.0 * PAN.0 - 1.0 + ZOOM, 2.0 * PAN.1 - 1.0 + ZOOM, ZOOM);
+        let h = fhalf * 0.18;
+        (chart, fcx - fhalf * 0.45, fcy + fhalf * 0.42, h)
     };
-    let (mut q1, mut q2) = ([0.0f64; 8], [0.0f64; 8]);
-    q1[1] = 1.0;
-    q2[0] = 1.0;
-    let chart = Chart::Latent { z0, q1, q2 };
-    // A window inside the striated red band, upper-left of the full view: a quarter of the
-    // half-width, offset so it sits in the ribbon rather than across its edge.
-    let (fcx, fcy, fhalf) = (2.0 * PAN.0 - 1.0 + ZOOM, 2.0 * PAN.1 - 1.0 + ZOOM, ZOOM);
-    let half = fhalf * 0.18;
-    let (cx, cy) = (fcx - fhalf * 0.45, fcy + fhalf * 0.42);
     let sl = grid::Slice::body_plane(res, res, cx, cy, half, 0).with_chart(chart);
     let m_here = grid::decode_state(&chart, 0, cx, cy).m;
     let sites = colour::landmarks(&m_here);
@@ -129,8 +141,17 @@ fn main() {
         ("step /4", N0, ETA0 / 4.0),          // one contrast arm; the sweep is already done
     ];
 
-    println!("MOIRE / BANDING on a ribbon window of config_stability, {res}^2, t_max = 50.");
-    println!("half = {half:.5} (0.18 of the full view), centre ({cx:.5}, {cy:.5}).");
+    println!("MOIRE / BANDING on a window of {case}, {res}^2, t_max = 50.");
+    println!("half = {half:.5}, centre ({cx:.5}, {cy:.5}).");
+    if case == "config_basin" {
+        println!();
+        println!("  **THIS IS A PREDICTION UNDER TEST.** The band survey found `config_basin` a");
+        println!("  regular island with lag EXACTLY 0 on a live signal -- its window is 70x");
+        println!("  tighter, so the bound pair's period does not vary across it and there is no");
+        println!("  frequency beat to draw bands. So the prominence here should be LOW where");
+        println!("  `config_stability` reads a sharp peak. A low number is the prediction");
+        println!("  confirmed; it is not a null.");
+    }
     println!();
     println!("  `cadence` scales eta WITH n_sync so the step size is held -- `steps p50` is the");
     println!("  check. `step` holds n_sync and shrinks eta. Bands moving under the first means");
@@ -138,9 +159,9 @@ fn main() {
     println!("  physics.");
     println!();
     println!(
-        "{:>12} {:>7} {:>9} {:>10} {:>8} {:>9} {:>8} {:>9} {:>9} {:>9} {:>8}",
+        "{:>12} {:>7} {:>9} {:>10} {:>8} {:>9} {:>8} {:>9} {:>9} {:>9} {:>8} {:>7} {:>8}",
         "arm", "n_sync", "eta", "steps p50", "lam:8bit", "prom", "lam:f64", "prom", "t_end dst",
-        "on bnd", "nonfin"
+        "on bnd", "nonfin", "l dst", "l sd"
     );
 
     let mut window: Option<(f64, f64)> = None;
@@ -155,6 +176,21 @@ fn main() {
         let px: Vec<PixelOut> =
             (0..sl.npix()).into_par_iter().map(|k| pixel::evaluate::<f64>(&sl, k, &cfg)).collect();
         let (lo, hi) = *window.get_or_insert_with(|| colour::range(&px, Scalar::ShapeSpread));
+        // **THE AUTO-RANGED-RAMP GUARD, both arms, because `prom` is read off the RAMPED field.**
+        // The lightness window is this window's own p1-p99, so a field with no dynamic range has
+        // its NOISE stretched to full scale and every spectral statistic below is computed on the
+        // stretch. A ratio test is not enough -- `far` cleared one at a span of x8. The second arm
+        // compares the window against the region's own median energy drift: a field whose whole
+        // range sits within two orders of the integrator's arithmetic is not physics.
+        let mut dr: Vec<f64> =
+            px.iter().map(|p| p.energy_drift_max).filter(|x| x.is_finite()).collect();
+        dr.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let dmed = if dr.is_empty() { f64::NAN } else { dr[dr.len() / 2] };
+        println!(
+            "  [ramp] {label:>10}  window ({lo:.4e}, {hi:.4e})  span x{:.3}  drift p50 {dmed:.3e}               lo/drift {:.2e}",
+            if lo > 0.0 { hi / lo } else { f64::INFINITY },
+            if dmed > 0.0 { lo / dmed } else { f64::NAN }
+        );
 
         let mut rgb = Vec::with_capacity(px.len() * 3);
         for p in &px {
@@ -181,6 +217,20 @@ fn main() {
             .collect();
         let (flam, fprom) = banding(&fld, res);
 
+        // **THE LIVENESS ARM, and it is the whole reason a low prominence can be read.** A
+        // prediction of *no banding* is a null, and this project's standing failure is reading a
+        // null off a dead arm. `prom` near 1 means "the largest bin of a flat spectrum" whether the
+        // window is a smooth ribbon field with no beat in it or a featureless patch with nothing in
+        // it at all -- the two are indistinguishable in every column above. `l dst` counts the
+        // distinct 8-bit luminance levels the render actually paints and `l sd` their spread: a
+        // window carrying ribbon structure has hundreds of levels, and a dead one has a handful.
+        let mut ldst: Vec<u8> = lum.iter().map(|x| *x as u8).collect();
+        ldst.sort_unstable();
+        ldst.dedup();
+        let lmean = lum.iter().sum::<f64>() / lum.len().max(1) as f64;
+        let lsd =
+            (lum.iter().map(|x| (x - lmean).powi(2)).sum::<f64>() / lum.len().max(1) as f64).sqrt();
+
         let dt = 50.0 / n_sync as f64;
         let te: Vec<f64> = px.iter().map(|p| p.t_end).filter(|x| x.is_finite()).collect();
         let mut d: Vec<u64> = te.iter().map(|t| (t / dt * 1e6).round() as u64).collect();
@@ -191,7 +241,7 @@ fn main() {
         steps.sort_unstable();
 
         println!(
-            "{:>12} {:>7} {:>9.2e} {:>10.3e} {:>8} {:>9.2} {:>8} {:>9.2} {:>9} {:>9.4} {:>8}",
+            "{:>12} {:>7} {:>9.2e} {:>10.3e} {:>8} {:>9.2} {:>8} {:>9.2} {:>9} {:>9.4} {:>8} {:>7} {:>8.2}",
             label,
             n_sync,
             eta,
@@ -202,14 +252,22 @@ fn main() {
             fprom,
             d.len(),
             on_b as f64 / te.len().max(1) as f64,
-            px.iter().filter(|p| !p.spread_shape.is_finite()).count()
+            px.iter().filter(|p| !p.spread_shape.is_finite()).count(),
+            ldst.len(),
+            lsd
         );
     }
 
     println!();
     println!("HOW TO READ THIS");
     println!();
-    println!("**`promin` first.** A peak with prominence near 1 is the largest bin of a FLAT");
+    println!("**`l dst` and `l sd` first, THEN `prom`.** A low prominence has two causes and the");
+    println!("spectrum cannot tell them apart: a structured window with no periodic beat in it, and");
+    println!("a featureless window with nothing in it at all. `l dst` is the number of distinct");
+    println!("8-bit luminance levels the render paints -- hundreds where there is ribbon structure,");
+    println!("a handful where there is not. Read it before calling a low `prom` a confirmation.");
+    println!();
+    println!("**`promin` next.** A peak with prominence near 1 is the largest bin of a FLAT");
     println!("spectrum, not a band. `lambda` means nothing without it.");
     println!();
     println!("**Then `steps p50` across the two `cadence` rows.** If it is not roughly flat the");

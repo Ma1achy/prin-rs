@@ -289,7 +289,33 @@ Here it is measured on the trajectories directly: `preset_shape` is **chaotic at
 **`config_basin` has no beat at all**, not merely a slow one: lag is exactly 0.0000 everywhere on
 a live signal (`|dr|` 6.3e-4, `sd_late` 4.1e-2). Its window is `zoom = 0.009095`, **70× tighter**
 than `config_stability`'s 0.63763, so the pair period does not vary measurably across it.
-**Prediction, untested: `config_basin` should show no ribbon banding.**
+~~**Prediction, untested: `config_basin` should show no ribbon banding.**~~
+
+> **TESTED 2026-09-05 AND REFUTED — it bands at 3.9× the reference, and the premise is off by a
+> magnification factor.** Full record and reproduction in [`results/moire/README.md`](../moire/README.md).
+> Matched raster, float field, both ramp-guard arms passing: `config_basin` reads `prom` **8.14**
+> at 192² and **8.20** at 64² against `config_stability`'s **2.11** and **1.60**. The basin value is
+> raster-stable across a 3× change where the control's is still converging.
+>
+> **"70× tighter" compares `zoom` across two charts with different `mag`.** `Chart::config_slice`
+> scales both basis vectors by `mag`, which is **4.0** for `config_basin` and **1.0** for
+> `config_stability`, so in latent units the basin view is **17.5×** tighter — and against the 0.18
+> sub-window this banding was measured in, only **3.15×**. Not 70. The standing
+> *a default that spans two coordinate systems silently means two different things*, at `zoom`.
+>
+> **And "lag exactly 0.0000" is a resolution statement.** The probes sit on interior grids, so their
+> separation scales with the window; a shift 3× smaller than the one the estimator was calibrated on
+> reads as zero without being zero. `band_guard.rs`'s three arms all pass — they separate lag-0 from
+> frozen and from identical inputs — but none of them asks whether the estimator *resolves* the
+> shift it is hunting.
+>
+> What the run **does** confirm, directly: `t_end dst = 1` at `on bnd = 1.0000` (nothing terminates,
+> the regular-island premise as a measurement) and `baseline` bitwise identical to `step /4` at
+> 2.09× the substeps — where the same arm on `config_stability` at the same raster moves **1496 of
+> 36864 pixels (4.06%)**, so the instrument can see a stepper change and the basin's zero is about
+> the basin. **Regularity does not
+> remove the beat; it cleans it** — which is why the chaotic slice needed a high-pass and a 2D
+> transform to show one at all.
 
 **Amplitude caveat on the momentum presets.** `preset_prho` and `preset_plambda` are regular on a
 signal of `sd_late` 2.4e-5 to 5.9e-5 — three orders below `config_basin`'s 4.1e-2. Real (six

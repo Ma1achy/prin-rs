@@ -1067,8 +1067,8 @@ python3 tools/contact_sheet.py --root results far deep_interior near-field
 Every one of these carries a finding already in the record, and none of them was reachable from
 this file — the same hole the camera table closed for the slippy-map work, at the directories that
 predate it. Listed with what each settles, so the index is a way in rather than a file listing.
-Six carry their own README (`circled/`, `osc/`, `step_control/`, `saturation/`, `live/`, and
-`closure/REPRODUCTION.md`); the rest are output plus panels.
+Seven carry their own README (`circled/`, `osc/`, `step_control/`, `saturation/`, `live/`,
+`moire/`, and `closure/REPRODUCTION.md`); the rest are output plus panels.
 
 **And the first pass at this table found twelve of the eighteen, because the check was substring
 matching**: `grep -q ttl` is satisfied by `logh_ttl`, `grep -q aa` by almost anything. *A test that
@@ -1081,7 +1081,7 @@ check that works anchors the name — `(\`|/)<dir>(/|\`)` — and it is what fou
 | `dither/` | whether a per-pixel step-phase dither removes the deep-zoom fringe. It does not: `Scheme::Pcg` **decoheres** the fringe without reducing it, which is the record's *a remedy that only changes the spatial correlation of an error is cosmetic* — live-playhead-compatible and still not a fix |
 | `dither2/` | **nothing — `out.txt` is 0 bytes.** An empty artefact committed by accident in `e717626`; a run that printed nothing measured nothing. Left in place rather than deleted, and flagged here so it is not read as a null |
 | `escgate/` | `EscapeRule::Distance` at `r_esc` 0 against 5 on four slices, outcome and uniform panels. `config_stability`'s persistence at +1/+2/+4/+8 goes `0.784/0.769/0.753/0.734` to `0.968/0.958/0.944/0.923`; `near-field` is flat at 0.0000 at every rung — the gate's sensitivity is regional |
-| `moire/` | the ribbon banding, six mechanisms excluded each by an arm that could have confirmed it — sync cadence, stepper, 8-bit quantisation, sub-pixel aliasing, substep count, and the sampler. The sharpest beat in the table (substep count, prominence 152858) is **not** the cause |
+| [`moire/`](moire/) | the ribbon banding, six mechanisms excluded each by an arm that could have confirmed it — sync cadence, stepper, 8-bit quantisation, sub-pixel aliasing, substep count, and the sampler. The sharpest beat in the table (substep count, prominence 152858) is **not** the cause. **And `config_basin`, predicted to show no banding, bands at 3.9×** the reference at matched raster: the premise compared `zoom` across two charts with different `mag`, so 70× is really 3.15× against the window measured |
 | [`osc/`](osc/) | and what it *is*: the bound pair's **orbital phase winding through IC space**, best-lag correlation 0.9999–1.0000 with the lag growing linearly. A frequency beat between two slightly different pair periods, not a divergence — and the window is a **regular island inside a mostly-chaotic slice** |
 | `osc_z1/` | the supersampling pair at `z1`. `colour::rgb_resolved` moves **1878 pixels (5.09%)** here against **1 of 36864** at `z4` — the mechanism is healthy and the depth is what has nothing left to average |
 | `overnight/` | the batch whose `PREDICTIONS.md` was written **before any stage ran**, with `RUNLOG.txt` timestamped per stage and the IAS15 reference for `near-field`. The prediction-first shape is the point |

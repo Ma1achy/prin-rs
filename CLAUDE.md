@@ -3179,3 +3179,40 @@ precedent for a wrong commit message. **The scan that found it is one line** -- 
 per commit, counting files under a directory a batch is writing to -- and it should be run before
 staging anything while a batch is live, which is the only real remedy: eleven of the twelve would
 have been caught by looking.
+
+**`config_basin` BANDS AT 3.9x THE REFERENCE, AND THE PREDICTION FAILED ON A MAGNIFICATION FACTOR
+RATHER THAN ON PHYSICS.** The standing note was *"its window is `zoom = 0.009095`, 70x tighter than
+`config_stability`'s 0.63763, so the pair period does not vary measurably across it -- prediction,
+untested: `config_basin` should show no ribbon banding."* Measured at matched raster on the FLOAT
+field with both ramp-guard arms passing: `prom` **8.14** at 192^2 and **8.20** at 64^2 against the
+reference's **2.11** and **1.60**, and the basin value is raster-stable across a 3x change where the
+control is still converging. **`Chart::config_slice` scales both basis vectors by `mag`, which is
+4.0 for `config_basin` and 1.0 for `config_stability`** -- so in latent units the basin view is
+**17.5x** tighter, and against the 0.18 sub-window the banding was actually measured in, only
+**3.15x**. The standing *a default that spans two coordinate systems silently means two different
+things*, at `zoom` compared across two magnifications.
+
+**AND THE PREMISE HOLDS WHILE THE CONCLUSION DOES NOT -- REGULARITY CLEANS THE BEAT RATHER THAN
+REMOVING IT.** `t_end dst = 1` at `on bnd = 1.0000` at both rasters: nothing terminates, the
+regular-island claim as a direct measurement. And the two cases clear the stepper by **opposite
+routes**, which is where the regularity actually shows: at 192^2 a 4x `eta` refinement moves
+**0 of 36864** basin pixels and **1496 of 36864 (4.06%, worst 3/255)** of the control's, with `prom`
+unmoved in both. *Never conclude "no effect" from an aggregate without the per-pixel distribution*
+is satisfied rather than assumed -- the control's pixels DO move, so the instrument can see a
+stepper change, and the basin's zero is about the basin. On the chaotic slice the beat is buried
+under divergence, which is why `osc/` needed a high-pass and a 2D transform to see one at all.
+
+**AND I QUOTED A 938x FROM A QUANTISED PANEL.** A first pass ran a 2D detrended spectrum on the
+**8-bit PNGs** and read `prom = 80,459` for the basin against `85.78` -- reported, then withdrawn.
+8-bit quantisation of a smooth ramp draws exactly periodic contour bands, which is the fourth of the
+six mechanisms `osc/` excluded and which nothing here excluded. **The tell was in the same output:
+the harness's float column read `lam = 57` where the quantised-panel tool read `lam = 34`. Two
+instruments disagreeing about the wavelength of one field means one of them is measuring the
+display.** Read the `lam:f64` column; `lam:8bit` is the control for exactly this.
+
+**A LOW SPECTRAL PROMINENCE HAS TWO CAUSES AND THE SPECTRUM CANNOT SEPARATE THEM.** A prediction of
+*no banding* is a null, so `moire.rs` now prints `l dst` and `l sd` -- the distinct 8-bit luminance
+levels the render paints and their spread -- and the ramp guard's two arms. Basin reads
+`l dst = 184`, window span x9.5 with its **floor 1.44e6 above** the region's median energy drift;
+the control x6730 with a floor at 2.18e1. Both are physics, and a span test alone would not have
+said so -- the record's `far` failure cleared a span of x8.

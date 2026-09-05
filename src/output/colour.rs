@@ -527,7 +527,31 @@ pub enum Veto {
     /// sidecar, and the diagnostic render of the same field keeps the flag. Measured on
     /// `preset_shape_h1` at 64², the nominal `shape_vec` is finite on **100%** of vetoed
     /// footprints, so the hue is real in every case this hits; the lightness is what is unknown.
+    ///
+    /// **It still paints the flagged set differently**, which is the whole complaint against it:
+    /// the ramp floor is a dark muddy patch exactly where `DEBUG_NAN` used to be a magenta one,
+    /// so the artefact moved colour and did not go away. Prefer [`Veto::None`] for a
+    /// presentation render.
     Quiet,
+    /// **The flag is not consulted.** The footprint is coloured by the ordinary expression --
+    /// the nominal copy's hue and the scalar's own place on the ramp -- exactly as a footprint
+    /// with no flag would be.
+    ///
+    /// This is the right default for a presentation render and the reason is that the flag says
+    /// nothing about the two quantities being drawn. `n_nonfinite` counts copies the driver
+    /// could not use; the nominal `shape_vec` is finite on **100%** of the flagged set, and
+    /// `spread_shape` is a perfectly ordinary number over the copies that did run. Painting
+    /// those footprints a reserved colour, loud or quiet, draws the *driver's* bookkeeping into
+    /// an image of the *physics*.
+    ///
+    /// The scalar is the one thing that can genuinely be absent, and that is not what the flag
+    /// tracks -- a non-finite scalar takes the ramp floor, which is where the ordinary ramp puts
+    /// everything below `lo` anyway, and a non-finite hue takes the neutral. Neither is
+    /// conditioned on the flag.
+    ///
+    /// The count does not vanish with the colour: a harness prints it and the sidecar names the
+    /// style, and every diagnostic render keeps [`Veto::Debug`].
+    None,
 }
 
 /// Whether [`rgb`] has no value for this footprint -- the vetoed set, for a harness to count.
@@ -540,19 +564,31 @@ pub fn rgb_veto(p: &PixelOut, s: Scalar, set: &SiteSet, lo: f64, hi: f64, v: Vet
     let quiet = |ab: Option<(f64, f64)>| -> [u8; 3] {
         match v {
             Veto::Debug => DEBUG_NAN,
-            Veto::Quiet => {
+            Veto::Quiet | Veto::None => {
                 let (a, b) = ab.unwrap_or((0.0, 0.0));
                 oklab::oklab_to_srgb([lightness(0.0), a, b])
             }
         }
     };
-    if p.n_nonfinite > 0 {
-        return quiet(hue_ab(set, p.shape_vec));
+    // **Under `Veto::None` the flag is not consulted at all.** `n_nonfinite` and the two failure
+    // states are the *driver's* bookkeeping about copies it could not use; neither says the
+    // nominal hue or the scalar is missing, and both are present on the whole flagged set. So
+    // there is no early return here and the footprint falls through to the ordinary expression
+    // below, which is the entire point: it is drawn as what it is, not as what it is flagged.
+    if v != Veto::None {
+        if p.n_nonfinite > 0 {
+            return quiet(hue_ab(set, p.shape_vec));
+        }
+        match State::from_bits(p.state) {
+            Some(State::SimFailed) | Some(State::DecodeFailed) | None => {
+                return quiet(hue_ab(set, p.shape_vec))
+            }
+            _ => {}
+        }
     }
-    match State::from_bits(p.state) {
-        Some(State::SimFailed) | Some(State::DecodeFailed) | None => return quiet(hue_ab(set, p.shape_vec)),
-        _ => {}
-    }
+    // Below this line nothing is conditioned on the flag under any style. A hue or a scalar that
+    // is genuinely absent still has to go somewhere, and it goes to the same place an ordinary
+    // footprint with those values would.
     let (a, b) = match hue_ab(set, p.shape_vec) {
         Some(x) => x,
         None => return quiet(None),

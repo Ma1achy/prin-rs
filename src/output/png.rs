@@ -31,8 +31,14 @@ pub fn outcome_rgb_veto(p: &PixelOut, v: crate::output::colour::Veto) -> [u8; 3]
     let undet = match v {
         crate::output::colour::Veto::Debug => crate::output::colour::DEBUG_NAN,
         crate::output::colour::Veto::Quiet => crate::output::colour::UNDETERMINED_QUIET,
+        // **Not consulted.** Under `None` a flagged footprint takes the same catch-all any
+        // unrecognised state takes -- no reserved colour, loud or quiet.
+        crate::output::colour::Veto::None => [40, 40, 48],
     };
-    if p.n_nonfinite > 0 {
+    // `n_nonfinite` is the driver's count of copies it could not use. It is not a statement about
+    // the nominal copy's terminal state, which is what this panel draws, so under `None` it is
+    // ignored and the footprint is classified on its own state like every other.
+    if p.n_nonfinite > 0 && v != crate::output::colour::Veto::None {
         return undet; // deliberately loud under `Debug`
     }
     let base = match State::from_bits(p.state) {
@@ -118,8 +124,11 @@ pub fn event_class_rgb_veto(p: &PixelOut, v: crate::output::colour::Veto) -> [u8
     let undet = match v {
         crate::output::colour::Veto::Debug => crate::output::colour::DEBUG_NAN,
         crate::output::colour::Veto::Quiet => crate::output::colour::UNDETERMINED_QUIET,
+        // See `outcome_rgb_veto`: not consulted, and the viridis low end is where an absent
+        // ordinal already sits.
+        crate::output::colour::Veto::None => crate::output::viridis::viridis(0.0),
     };
-    if p.n_nonfinite > 0 {
+    if p.n_nonfinite > 0 && v != crate::output::colour::Veto::None {
         return undet;
     }
     match State::from_bits(p.state) {

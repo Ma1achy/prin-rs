@@ -135,7 +135,19 @@ fn main() {
         .nth(8)
         .map(|v| v == "1" || v == "true")
         .unwrap_or(EnsembleCfg::production().refine_flagged);
-    let ens = EnsembleCfg { refine_flagged: refine, ..EnsembleCfg::production() };
+    // **`max_steps` is argument 12, and it exists because the render harnesses and the
+    // integrator harnesses were never running the same kernel.** `integrator_gallery` raises it
+    // to 400_000 for both arms and says why in its own header -- *"at the production
+    // max_steps = 30_000 Heggie exhausts the budget on 8.6% of config_stability and its drift
+    // panel comes back dominated by the magenta veto set"*. 27 diagnostic harnesses raise it;
+    // every render and scheduler harness takes production's 30_000. So a footprint that is
+    // undetermined here is determined there, and the difference was invisible because nothing
+    // took it as an argument. *A setting correct where it was born, silent where it was not* --
+    // and the remedy for that class is never the instance, it is the column.
+    let max_steps: usize =
+        std::env::args().nth(12).and_then(|v| v.parse().ok()).unwrap_or(EnsembleCfg::production().max_steps);
+    let ens =
+        EnsembleCfg { refine_flagged: refine, max_steps, ..EnsembleCfg::production() };
     // **The uniform panels are argument 9, default off.** `<case>_uniform*.png` is the chart at
     // one sample per pixel -- 8.4M trajectories per chart at 1024^2, about 95% of a run -- and
     // it used to be skipped whenever the tree was ranked, on the argument that a scheduler
@@ -255,20 +267,25 @@ fn main() {
         let (distinct, _, _) = colour::quantisation(&all_px, Scalar::ShapeSpread);
         let m_here = grid::decode_state(chart, 0, cx, cy).m;
         let sites = colour::landmarks(&m_here);
-        // **A debug flag is not a presentation colour.** `colour::rgb` is `Veto::Debug` and
-        // paints an undetermined footprint `DEBUG_NAN` magenta -- right for `_drift` and every
-        // census, wrong here: the gallery is a presentation render, and at the production
-        // `max_steps = 30_000` a screaming magenta speckle over a fraction of a percent of
-        // footprints is the first thing the eye reads in the frame. `Veto::Quiet` paints the
-        // nominal copy's own hue at the floor of the lightness ramp instead. That makes an
-        // undetermined footprint indistinguishable from a resolved dark one, which is exactly
-        // what the flag exists to prevent -- **so the information moves rather than vanishing**:
-        // the count is printed per chart below and named in every sidecar. Same treatment
-        // `live_animation` already gives `results/live`.
+        // **THE FLAG IS NOT CONSULTED. A footprint is drawn as what it is, not as what it is
+        // flagged.** `colour::rgb` is `Veto::Debug` and paints an undetermined footprint
+        // `DEBUG_NAN` magenta -- right for `_drift` and every census, wrong in a presentation
+        // render. `Veto::Quiet` was the first attempt and is not the answer either: painting the
+        // same set at the ramp floor moved the artefact from a magenta speckle to a dark muddy
+        // one in exactly the same pixels. It was still a reserved colour for a debug flag.
+        //
+        // `Veto::None` consults nothing. `n_nonfinite` counts copies the DRIVER could not use; it
+        // is not a statement about either quantity this image draws. The nominal `shape_vec` is
+        // finite on 100% of the flagged set and `spread_shape` is an ordinary number over the
+        // copies that did run, so both channels have real values and the footprint takes its
+        // ordinary place on the ramp.
+        //
+        // The count still does not vanish -- it is printed per chart below and named in every
+        // sidecar, and every diagnostic render keeps `Veto::Debug`.
         let vetoed_a =
             all_px.iter().filter(|p| colour::vetoed(p, Scalar::ShapeSpread, &sites, lo, hi)).count();
         let rgb = move |p: &PixelOut| {
-            colour::rgb_veto(p, Scalar::ShapeSpread, &sites, lo, hi, colour::Veto::Quiet)
+            colour::rgb_veto(p, Scalar::ShapeSpread, &sites, lo, hi, colour::Veto::None)
         };
 
         logln!(log, 
@@ -404,7 +421,7 @@ fn main() {
                 "chart={} leaves={} depth={} stop={} scalar=ShapeSpread window=({lo:.4e},{hi:.4e}) \
                  window_from={} res={res} viewport={res} budget={budget} tau_display={tau:e} \
                  alpha_hi={alpha_hi} criterion={} k_frac={k_frac} \
-                 veto=quiet vetoed_footprints={vetoed_a} of={}\n",
+                 veto=none flagged_footprints={vetoed_a} of={}\n",
                 chart.name(),
                 leaves.len(),
                 depth,
@@ -450,7 +467,7 @@ fn main() {
                     &usites,
                     lo,
                     hi,
-                    colour::Veto::Quiet,
+                    colour::Veto::None,
                 ));
             }
             let _ = prin_rs::output::provenance_sidecar(
@@ -459,14 +476,14 @@ fn main() {
                 &format!(
                     "chart={} panel=uniform scalar=ShapeSpread window=({lo:.4e},{hi:.4e}) \
                      window_from=uniform_grid res={ures} one_sample_per_pixel=true \
-                     veto=quiet vetoed_footprints={vetoed_u} of={}\n",
+                     veto=none flagged_footprints={vetoed_u} of={}\n",
                     chart.name(),
                     upx.len()
                 ),
             );
             logln!(
                 log,
-                "{:>18}                uniform panel: vetoed {vetoed_u}/{} ({:.4}%), painted quiet",
+                "{:>18}                uniform panel: {vetoed_u}/{} ({:.4}%) flagged undetermined by the driver, drawn normally",
                 name,
                 upx.len(),
                 100.0 * vetoed_u as f64 / upx.len().max(1) as f64
@@ -474,7 +491,7 @@ fn main() {
             let _ = adaptive::save_rect(&format!("{stem}_uniform.png"), ures, ures, &buf);
             let mut obuf = Vec::with_capacity(upx.len() * 3);
             for p in upx {
-                obuf.extend_from_slice(&png::outcome_rgb_veto(p, colour::Veto::Quiet));
+                obuf.extend_from_slice(&png::outcome_rgb_veto(p, colour::Veto::None));
             }
             let _ =
                 adaptive::save_rect(&format!("{stem}_uniform_outcome.png"), ures, ures, &obuf);
@@ -492,7 +509,7 @@ fn main() {
             // is defined at every playhead, where the outcome label at t = 13 is saturated.
             let mut ebuf = Vec::with_capacity(upx.len() * 3);
             for p in upx {
-                ebuf.extend_from_slice(&png::event_class_rgb_veto(p, colour::Veto::Quiet));
+                ebuf.extend_from_slice(&png::event_class_rgb_veto(p, colour::Veto::None));
             }
             let _ = adaptive::save_rect(&format!("{stem}_uniform_event.png"), ures, ures, &ebuf);
 
@@ -527,14 +544,14 @@ fn main() {
         // point.
         let (oimg, _) = adaptive::render(
             &t, &st.pixels, &cam, res, adaptive::TexelMode::Adaptive,
-            |p| png::outcome_rgb_veto(p, colour::Veto::Quiet),
+            |p| png::outcome_rgb_veto(p, colour::Veto::None),
         );
         let _ = adaptive::save(&format!("{stem}_outcome.png"), res, &oimg);
 
         // The same matched-mode panel on the adaptive tree.
         let (eimg, _) = adaptive::render(
             &t, &st.pixels, &cam, res, adaptive::TexelMode::Adaptive,
-            |p| png::event_class_rgb_veto(p, colour::Veto::Quiet),
+            |p| png::event_class_rgb_veto(p, colour::Veto::None),
         );
         let _ = adaptive::save(&format!("{stem}_event.png"), res, &eimg);
 
@@ -591,7 +608,7 @@ fn main() {
         let (llo, lhi) = colour::range(&lall, Scalar::ShapeSpread);
         let lsites = colour::landmarks(&m_here);
         let lrgb =
-            |p: &PixelOut| colour::rgb_veto(p, Scalar::ShapeSpread, &lsites, llo, lhi, colour::Veto::Quiet);
+            |p: &PixelOut| colour::rgb_veto(p, Scalar::ShapeSpread, &lsites, llo, lhi, colour::Veto::None);
         let lvetoed =
             lall.iter().filter(|p| colour::vetoed(p, Scalar::ShapeSpread, &lsites, llo, lhi)).count();
 
@@ -674,7 +691,7 @@ fn main() {
                      window_from=live_tree_terminal res={ares} viewport={ares} budget={budget} \
                      tau_display={tau:e} alpha_hi={alpha_hi} criterion={} k_frac={k_frac} \
                      stop={} live_leaves={} static_leaves={} \
-                     veto=quiet vetoed_footprints={lvetoed} of={}\n",
+                     veto=none flagged_footprints={lvetoed} of={}\n",
                     chart.name(),
                     ladder.len(),
                     lens.live_stride,

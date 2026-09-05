@@ -1,114 +1,90 @@
-budget 40000, tau=1e-4, alpha_hi=0.2, N=8, E+1=8, t=13, f64, 1024^2, screen floor ON.
+  config: production
+  uniform panels: off -- pass 1 as argument 9 to regenerate them
+budget 40000, tau=1e-2, alpha_hi=0.5, N=8, E+1=8, t=13, f64, 1024^2, screen floor ON.
 Colouring: hue = shape sphere by vMF site-blend, lightness = spread_shape on a log ramp
 over each chart's own p1-p99. The window is printed because a false-colour image without
 its scale is decoration.
 
               case          chart domain   quads  leaves  depth  screen  distinct  alpha med alpha idec ramp span     bound
-        body_plane     body_plane   free     549     412      6       0     23159     0.1402     1.1203   196.212  VETO 61%
-                    depth~terminated_fraction: spearman = -0.2114, mean escape_fraction = 0.0000
-                    L2:n=3 med=0.000 [0.000,0.000]  L3:n=28 med=0.000 [0.000,0.000]  L4:n=64 med=0.000 [0.000,0.203]  L5:n=65 med=0.000 [0.000,0.000]  L6:n=252 med=0.000 [0.000,0.000]
-                    event classes (8 of 27 fire, 0 undetermined): tightest (0,1)=9, tightest (0,2)=2401, tightest (1,2)=1024191, terminated: escape d0=23, terminated: escape d1=5, terminated: escape d2=5, terminated: escape d3=17, terminated: collision d2=21925
-       plane_00deg          plane   free     549     412      6       0     23159     0.1402     1.1203   196.212  VETO 61%
-                    depth~terminated_fraction: spearman = -0.2114, mean escape_fraction = 0.0000
-                    L2:n=3 med=0.000 [0.000,0.000]  L3:n=28 med=0.000 [0.000,0.000]  L4:n=64 med=0.000 [0.000,0.203]  L5:n=65 med=0.000 [0.000,0.000]  L6:n=252 med=0.000 [0.000,0.000]
-                    event classes (8 of 27 fire, 0 undetermined): tightest (0,1)=9, tightest (0,2)=2401, tightest (1,2)=1024191, terminated: escape d0=23, terminated: escape d1=5, terminated: escape d2=5, terminated: escape d3=17, terminated: collision d2=21925
+        body_plane     body_plane   free     125      94      6       0      5290     0.9998     0.7465 55768.728  crit 75%
+                    depth~terminated_fraction: spearman = +0.4564, mean escape_fraction = 0.0000
+                    L2:n=14 med=0.000 [0.000,0.000]  L3:n=3 med=0.000 [0.000,0.000]  L4:n=13 med=0.000 [0.000,1.000]  L5:n=16 med=0.000 [0.000,1.000]  L6:n=48 med=0.344 [0.000,1.000]
+       plane_00deg          plane   free     125      94      6       0      5290     0.9998     0.7465 55768.728  crit 75%
+                    depth~terminated_fraction: spearman = +0.4564, mean escape_fraction = 0.0000
+                    L2:n=14 med=0.000 [0.000,0.000]  L3:n=3 med=0.000 [0.000,0.000]  L4:n=13 med=0.000 [0.000,1.000]  L5:n=16 med=0.000 [0.000,1.000]  L6:n=48 med=0.344 [0.000,1.000]
                     [control] plane_00deg vs body_plane: max |dIC| = 0e0 -- the same chart, asserted
-      shape_sphere          shape   free    1293     970      6       0     52038     0.1905     0.9709  2107.649  VETO 79%
-                    depth~terminated_fraction: spearman = -0.2245, mean escape_fraction = 0.0993
-                    L2:n=4 med=0.766 [0.234,0.828]  L3:n=17 med=0.484 [0.000,0.906]  L4:n=41 med=0.078 [0.000,0.984]  L5:n=140 med=0.000 [0.000,1.000]  L6:n=768 med=0.000 [0.000,1.000]
-                    event classes (11 of 27 fire, 1477 undetermined): tightest (0,1)=1025, tightest (0,2)=83998, tightest (1,2)=550979, terminated: escape d0=70011, terminated: escape d1=22350, terminated: escape d2=14256, terminated: escape d3=20812, terminated: collision d0=4446, terminated: collision d1=60761, terminated: collision d2=218347, terminated: collision d3=114
-      latent_shape         latent   free    5461    4096      6       0    201601     1.0013     0.0383     5.528 VETO 100%
-                    depth~terminated_fraction: spearman = NaN, mean escape_fraction = 1.0000
-                    L6:n=4096 med=1.000 [1.000,1.000]
-                    event classes (3 of 27 fire, 0 undetermined): terminated: escape d0=57456, terminated: escape d2=224097, terminated: escape d3=767023
-    latent_inner_p         latent   free    5397    4048      6       0    199391     1.0091     0.1170    18.547  VETO 99%
-                    depth~terminated_fraction: spearman = NaN, mean escape_fraction = 1.0000
-                    L4:n=3 med=1.000 [1.000,1.000]  L5:n=1 med=1.000 [1.000,1.000]  L6:n=4044 med=1.000 [1.000,1.000]
-                    event classes (5 of 27 fire, 0 undetermined): terminated: escape d0=141385, terminated: escape d1=45165, terminated: escape d2=128820, terminated: escape d3=732324, terminated: collision d0=882
-    latent_outer_p         latent   free    5041    3781      6       0    186777     1.0046     0.3119    28.893  VETO 99%
-                    depth~terminated_fraction: spearman = NaN, mean escape_fraction = 0.9999
-                    L2:n=1 med=1.000 [1.000,1.000]  L4:n=2 med=1.000 [1.000,1.000]  L5:n=10 med=1.000 [1.000,1.000]  L6:n=3768 med=1.000 [1.000,1.000]
-                    event classes (8 of 27 fire, 13 undetermined): tightest (1,2)=2, terminated: escape d0=46487, terminated: escape d1=43257, terminated: escape d2=12055, terminated: escape d3=946318, terminated: collision d0=10, terminated: collision d1=13, terminated: collision d2=421
-       latent_mass         latent   free    5461    4096      6       0    201601     0.9979     0.0413     3.795 VETO 100%
-                    depth~terminated_fraction: spearman = NaN, mean escape_fraction = 1.0000
-                    L6:n=4096 med=1.000 [1.000,1.000]
-                    event classes (3 of 27 fire, 0 undetermined): terminated: escape d0=15268, terminated: escape d2=30785, terminated: escape d3=1002523
-      latent_mixed         latent   free    5117    3838      6       0    189388     1.0001     0.0696    21.089  VETO 99%
-                    depth~terminated_fraction: spearman = +0.7050, mean escape_fraction = 0.9987
-                    L4:n=16 med=1.000 [0.781,1.000]  L5:n=6 med=0.375 [0.375,0.422]  L6:n=3816 med=1.000 [1.000,1.000]
-                    event classes (10 of 27 fire, 0 undetermined): tightest (0,1)=4777, tightest (0,2)=2498, tightest (1,2)=2033, terminated: escape d0=60293, terminated: escape d1=85836, terminated: escape d2=256252, terminated: escape d3=636709, terminated: collision d0=24, terminated: collision d1=121, terminated: collision d2=33
-  latent_oblique_a         latent   free    5421    4066      6       0    200181     1.0026     0.0745     5.774  VETO 99%
-                    depth~terminated_fraction: spearman = NaN, mean escape_fraction = 0.9997
-                    L4:n=2 med=1.000 [1.000,1.000]  L6:n=4064 med=1.000 [1.000,1.000]
-                    event classes (3 of 27 fire, 0 undetermined): terminated: escape d2=107101, terminated: escape d3=940622, terminated: collision d0=853
-  latent_oblique_b         latent   free    4697    3523      6       0    173785     1.0024     0.2446     3.950  VETO 99%
-                    depth~terminated_fraction: spearman = +0.5774, mean escape_fraction = 1.0000
-                    L2:n=2 med=1.000 [0.969,1.000]  L3:n=1 med=1.000 [1.000,1.000]  L6:n=3520 med=1.000 [1.000,1.000]
-                    event classes (10 of 27 fire, 1 undetermined): tightest (0,1)=1333, tightest (0,2)=29, tightest (1,2)=59, terminated: escape d0=699, terminated: escape d1=1122, terminated: escape d2=146000, terminated: escape d3=896131, terminated: collision d0=3018, terminated: collision d1=26, terminated: collision d2=158
-       burrau_nu_k         burrau   unit    4753    3565      6       0    193388     1.0038     0.0788     5.968  VETO 98%
-                    depth~terminated_fraction: spearman = +0.3052, mean escape_fraction = 0.9894
-                    L2:n=1 med=0.703 [0.703,0.703]  L3:n=1 med=0.531 [0.531,0.531]  L4:n=7 med=1.000 [0.406,1.000]  L5:n=36 med=1.000 [1.000,1.000]  L6:n=3520 med=1.000 [1.000,1.000]
-                    event classes (11 of 27 fire, 29 undetermined): tightest (0,1)=12323, tightest (0,2)=21001, tightest (1,2)=1333, terminated: escape d0=998, terminated: escape d1=233316, terminated: escape d2=673462, terminated: escape d3=57611, terminated: collision d0=46383, terminated: collision d1=1956, terminated: collision d2=161, terminated: collision d3=3
-    invariant_lz_k invariant_lz_k   unit    5429    4072      6       0    220460     1.0001     0.0835     9.210  VETO 99%
-                    depth~terminated_fraction: spearman = +0.3951, mean escape_fraction = 0.9934
-                    L5:n=8 med=0.500 [0.391,0.547]  L6:n=4064 med=1.000 [1.000,1.000]
-                    event classes (4 of 27 fire, 0 undetermined): tightest (0,1)=9831, terminated: escape d2=637005, terminated: escape d3=401280, terminated: collision d0=460
-      mass_simplex   mass_simplex   unit    5461    4096      6       0    221784     1.0010     0.1319     5.153 VETO 100%
-                    depth~terminated_fraction: spearman = NaN, mean escape_fraction = 1.0000
-                    L6:n=4096 med=1.000 [1.000,1.000]
-                    event classes (2 of 27 fire, 0 undetermined): terminated: escape d0=58472, terminated: escape d3=990104
-      preset_shape         latent   free      21      16      2       0       838     1.2685    13.4654 18966.573 crit 100%
-                    depth~terminated_fraction: spearman = NaN, mean escape_fraction = 0.0547
-                    L2:n=16 med=0.984 [0.719,1.000]
-                    event classes (11 of 27 fire, 1088 undetermined): tightest (0,1)=33807, tightest (0,2)=45683, tightest (1,2)=45690, terminated: escape d0=26822, terminated: escape d1=26804, terminated: escape d2=23855, terminated: escape d3=13285, terminated: collision d0=361886, terminated: collision d1=234807, terminated: collision d2=234812, terminated: collision d3=37
-       preset_prho         latent   free    3593    2695      6       0    134133     1.0001     0.7106    33.243  VETO 98%
-                    depth~terminated_fraction: spearman = +0.2822, mean escape_fraction = 0.9995
-                    L2:n=4 med=1.000 [0.984,1.000]  L3:n=2 med=0.969 [0.969,0.969]  L4:n=10 med=1.000 [1.000,1.000]  L5:n=35 med=1.000 [1.000,1.000]  L6:n=2644 med=1.000 [1.000,1.000]
-                    event classes (10 of 27 fire, 4 undetermined): tightest (0,1)=1073, tightest (0,2)=498, tightest (1,2)=498, terminated: escape d0=50014, terminated: escape d1=50014, terminated: escape d2=1039, terminated: escape d3=942569, terminated: collision d0=521, terminated: collision d1=1172, terminated: collision d2=1174
-    preset_plambda         latent   free    3361    2521      6       0    126144     0.9929     0.9491    44.686  VETO 95%
-                    depth~terminated_fraction: spearman = NaN, mean escape_fraction = 0.9997
-                    L2:n=4 med=1.000 [1.000,1.000]  L4:n=21 med=1.000 [1.000,1.000]  L5:n=80 med=1.000 [1.000,1.000]  L6:n=2416 med=1.000 [1.000,1.000]
-                    event classes (10 of 27 fire, 1 undetermined): tightest (0,1)=868, tightest (0,2)=457, tightest (1,2)=457, terminated: escape d0=93289, terminated: escape d1=93290, terminated: escape d2=840882, terminated: escape d3=16664, terminated: collision d0=480, terminated: collision d1=1094, terminated: collision d2=1094
-   preset_shape_pl         latent   free    1729    1297      6       0     65131     1.0311     0.5315    88.995  VETO 96%
-                    depth~terminated_fraction: spearman = NaN, mean escape_fraction = 0.9945
-                    L2:n=8 med=1.000 [1.000,1.000]  L3:n=10 med=1.000 [1.000,1.000]  L4:n=5 med=1.000 [1.000,1.000]  L5:n=18 med=1.000 [1.000,1.000]  L6:n=1256 med=1.000 [1.000,1.000]
-                    event classes (11 of 27 fire, 22 undetermined): tightest (0,1)=658, tightest (0,2)=448, tightest (1,2)=448, terminated: escape d0=150713, terminated: escape d1=150713, terminated: escape d2=615335, terminated: escape d3=7041, terminated: collision d0=122672, terminated: collision d1=261, terminated: collision d2=261, terminated: collision d3=4
-   preset_shape_h1         latent   free     769     577      6       0     29768     0.6285     3.0724 10008.876  VETO 77%
-                    depth~terminated_fraction: spearman = +0.3756, mean escape_fraction = 0.7053
-                    L2:n=6 med=0.812 [0.609,0.828]  L3:n=20 med=0.875 [0.750,1.000]  L4:n=35 med=0.984 [0.781,1.000]  L5:n=68 med=1.000 [0.828,1.000]  L6:n=448 med=1.000 [0.984,1.000]
-                    event classes (11 of 27 fire, 6697 undetermined): tightest (0,1)=53314, tightest (0,2)=46208, tightest (1,2)=46209, terminated: escape d0=104138, terminated: escape d1=104156, terminated: escape d2=111889, terminated: escape d3=63898, terminated: collision d0=160565, terminated: collision d1=175653, terminated: collision d2=175576, terminated: collision d3=273
-    preset_prho_h1         latent   free    4357    3268      6       0    161601     1.0153     0.1198    19.709  VETO 99%
-                    depth~terminated_fraction: spearman = +0.8164, mean escape_fraction = 0.9995
-                    L2:n=2 med=0.969 [0.969,0.969]  L3:n=4 med=1.000 [0.672,1.000]  L4:n=4 med=0.984 [0.984,0.984]  L5:n=2 med=1.000 [1.000,1.000]  L6:n=3256 med=1.000 [1.000,1.000]
-                    event classes (10 of 27 fire, 41 undetermined): tightest (0,1)=9678, tightest (0,2)=4439, tightest (1,2)=4437, terminated: escape d0=285449, terminated: escape d1=285453, terminated: escape d2=5375, terminated: escape d3=446928, terminated: collision d0=4279, terminated: collision d1=1251, terminated: collision d2=1246
- preset_plambda_h1         latent   free    4493    3370      6       0    166840     0.9983     0.2893    14.680  VETO 99%
-                    depth~terminated_fraction: spearman = +0.4724, mean escape_fraction = 0.9994
-                    L2:n=2 med=0.969 [0.969,0.969]  L3:n=2 med=0.719 [0.719,0.719]  L4:n=4 med=1.000 [1.000,1.000]  L5:n=10 med=1.000 [1.000,1.000]  L6:n=3352 med=1.000 [1.000,1.000]
-                    event classes (11 of 27 fire, 42 undetermined): tightest (0,1)=7684, tightest (0,2)=4034, tightest (1,2)=4032, terminated: escape d0=237324, terminated: escape d1=237328, terminated: escape d2=539537, terminated: escape d3=8834, terminated: collision d0=4423, terminated: collision d1=2666, terminated: collision d2=2668, terminated: collision d3=4
-preset_shape_pl_h1         latent   free    4645    3484      6       0    172205     0.9882     0.3613    13.271  VETO 99%
-                    depth~terminated_fraction: spearman = +0.4769, mean escape_fraction = 0.9970
-                    L2:n=2 med=0.953 [0.953,0.953]  L4:n=4 med=0.719 [0.609,0.719]  L5:n=14 med=1.000 [0.781,1.000]  L6:n=3464 med=1.000 [1.000,1.000]
-                    event classes (11 of 27 fire, 19 undetermined): tightest (0,1)=5907, tightest (0,2)=3974, tightest (1,2)=3974, terminated: escape d0=253693, terminated: escape d1=253696, terminated: escape d2=514932, terminated: escape d3=1218, terminated: collision d0=7009, terminated: collision d1=2077, terminated: collision d2=2075, terminated: collision d3=2
-   latent_shape_h3         latent   free    5269    3952      6       0    195150     0.9989     0.5933    38.528  VETO 99%
-                    depth~terminated_fraction: spearman = NaN, mean escape_fraction = 1.0000
-                    L3:n=1 med=1.000 [1.000,1.000]  L4:n=2 med=1.000 [1.000,1.000]  L5:n=17 med=1.000 [1.000,1.000]  L6:n=3932 med=1.000 [1.000,1.000]
-                    event classes (4 of 27 fire, 0 undetermined): terminated: escape d0=166335, terminated: escape d1=23542, terminated: escape d2=356954, terminated: escape d3=501745
- latent_inner_p_h3         latent   free    3821    2866      6       0    142226     1.0067     0.1618    77.192  VETO 99%
-                    depth~terminated_fraction: spearman = NaN, mean escape_fraction = 1.0000
-                    L2:n=4 med=1.000 [1.000,1.000]  L3:n=2 med=1.000 [1.000,1.000]  L4:n=3 med=1.000 [1.000,1.000]  L5:n=13 med=1.000 [1.000,1.000]  L6:n=2844 med=1.000 [1.000,1.000]
-                    event classes (5 of 27 fire, 0 undetermined): terminated: escape d0=226604, terminated: escape d1=143651, terminated: escape d2=52531, terminated: escape d3=624739, terminated: collision d0=1051
- latent_outer_p_h3         latent   free    3877    2908      6       0    144471     1.0023     0.6853    71.772  VETO 99%
-                    depth~terminated_fraction: spearman = NaN, mean escape_fraction = 0.9999
-                    L2:n=4 med=1.000 [1.000,1.000]  L3:n=1 med=1.000 [1.000,1.000]  L4:n=3 med=1.000 [1.000,1.000]  L5:n=20 med=1.000 [1.000,1.000]  L6:n=2880 med=1.000 [1.000,1.000]
-                    event classes (7 of 27 fire, 10 undetermined): terminated: escape d0=11676, terminated: escape d1=10882, terminated: escape d2=9025, terminated: escape d3=1016619, terminated: collision d0=25, terminated: collision d1=15, terminated: collision d2=324
-    latent_mass_h3         latent   free    4953    3715      6       0    183304     0.9966     0.1216    18.694  VETO 99%
-                    depth~terminated_fraction: spearman = NaN, mean escape_fraction = 1.0000
-                    L2:n=1 med=1.000 [1.000,1.000]  L3:n=2 med=1.000 [1.000,1.000]  L6:n=3712 med=1.000 [1.000,1.000]
-                    event classes (3 of 27 fire, 0 undetermined): terminated: escape d0=3812, terminated: escape d2=25877, terminated: escape d3=1018887
-   latent_mixed_h3         latent   free    4953    3715      6       0    183651     0.9994     0.2110    66.783  VETO 98%
-                    depth~terminated_fraction: spearman = +0.3203, mean escape_fraction = 0.9950
-                    L3:n=3 med=1.000 [1.000,1.000]  L4:n=7 med=1.000 [1.000,1.000]  L5:n=29 med=1.000 [0.484,1.000]  L6:n=3676 med=1.000 [1.000,1.000]
-                    event classes (10 of 27 fire, 11 undetermined): tightest (0,1)=6858, tightest (0,2)=920, tightest (1,2)=990, terminated: escape d0=30894, terminated: escape d1=42205, terminated: escape d2=367497, terminated: escape d3=598969, terminated: collision d0=62, terminated: collision d1=116, terminated: collision d2=54
+      shape_sphere          shape   free    2253    1690      6       0     89021     1.0324     1.7849 36983.666  VETO 52%
+                    depth~terminated_fraction: spearman = -0.1121, mean escape_fraction = 0.0000
+                    L3:n=11 med=0.000 [0.000,0.094]  L4:n=69 med=0.000 [0.000,1.000]  L5:n=226 med=0.000 [0.000,1.000]  L6:n=1384 med=0.000 [0.000,0.953]
+      latent_shape         latent   free     233     175      6       0      9379     1.2558     1.1524     9.907 crit 100%
+                    depth~terminated_fraction: spearman = -0.1549, mean escape_fraction = 0.0002
+                    L2:n=12 med=0.000 [0.000,0.000]  L3:n=8 med=0.000 [0.000,0.000]  L4:n=9 med=0.000 [0.000,0.000]  L5:n=74 med=0.000 [0.000,0.000]  L6:n=72 med=0.000 [0.000,0.000]
+    latent_inner_p         latent   free    1001     751      6       0     39430     1.0255     0.5370   105.846  crit 64%
+                    depth~terminated_fraction: spearman = +0.0180, mean escape_fraction = 0.1257
+                    L2:n=2 med=0.875 [0.391,0.875]  L3:n=25 med=0.000 [0.000,0.734]  L4:n=61 med=0.000 [0.000,0.156]  L5:n=115 med=0.000 [0.000,1.000]  L6:n=548 med=0.000 [0.000,0.750]
+    latent_outer_p         latent   free     669     502      6       0     26151     1.0987     2.5086   927.757  crit 55%
+                    depth~terminated_fraction: spearman = +0.2867, mean escape_fraction = 0.0079
+                    L2:n=8 med=0.000 [0.000,0.000]  L3:n=10 med=0.000 [0.000,0.000]  L4:n=46 med=0.000 [0.000,0.000]  L5:n=78 med=0.000 [0.000,0.000]  L6:n=360 med=0.000 [0.000,0.094]
+       latent_mass         latent   free     725     544      6       0     29075     1.0019     0.1107     5.672  crit 70%
+                    depth~terminated_fraction: spearman = -0.0888, mean escape_fraction = 0.2526
+                    L2:n=2 med=1.000 [0.531,1.000]  L3:n=17 med=0.000 [0.000,1.000]  L4:n=117 med=0.000 [0.000,1.000]  L5:n=72 med=0.000 [0.000,1.000]  L6:n=336 med=0.000 [0.000,1.000]
+      latent_mixed         latent   free     693     520      6       0     26423     1.1377     1.1556    72.143  VETO 53%
+                    depth~terminated_fraction: spearman = +0.1541, mean escape_fraction = 0.0049
+                    L2:n=7 med=0.000 [0.000,0.000]  L3:n=19 med=0.000 [0.000,0.000]  L4:n=34 med=0.000 [0.000,0.000]  L5:n=28 med=0.000 [0.000,0.000]  L6:n=432 med=0.000 [0.000,0.125]
+  latent_oblique_a         latent   free     929     697      6       0     36801     1.0060     0.4560   109.739  crit 71%
+                    depth~terminated_fraction: spearman = -0.0425, mean escape_fraction = 0.5521
+                    L3:n=26 med=1.000 [0.391,1.000]  L4:n=92 med=0.969 [0.000,1.000]  L5:n=127 med=0.844 [0.000,1.000]  L6:n=452 med=0.984 [0.000,1.000]
+  latent_oblique_b         latent   free    1185     889      6       0     46991     1.0061     0.8805  1171.599  crit 62%
+                    depth~terminated_fraction: spearman = -0.1048, mean escape_fraction = 0.5453
+                    L3:n=27 med=1.000 [0.875,1.000]  L4:n=69 med=1.000 [0.000,1.000]  L5:n=157 med=1.000 [0.000,1.000]  L6:n=636 med=1.000 [0.000,1.000]
+       burrau_nu_k         burrau   unit    1217     913      6       0     44871     1.0003     1.4265  9310.924  crit 63%
+                    depth~terminated_fraction: spearman = +0.0912, mean escape_fraction = 0.0677
+                    L2:n=8 med=1.000 [0.500,1.000]  L3:n=2 med=0.000 [0.000,0.000]  L4:n=25 med=0.000 [0.000,0.062]  L5:n=214 med=0.000 [0.000,0.000]  L6:n=664 med=0.000 [0.000,0.250]
+    invariant_lz_k invariant_lz_k   unit     745     559      6       0     31033     0.9853     1.0847   937.787  crit 86%
+                    depth~terminated_fraction: spearman = +0.2671, mean escape_fraction = 0.0096
+                    L3:n=16 med=0.250 [0.000,0.969]  L4:n=137 med=0.000 [0.000,0.000]  L5:n=158 med=0.000 [0.000,0.000]  L6:n=248 med=0.000 [0.000,0.859]
+      mass_simplex   mass_simplex   unit     765     574      6       0     32347     1.0055     0.1949    11.167  crit 67%
+                    depth~terminated_fraction: spearman = +0.0877, mean escape_fraction = 0.1116
+                    L2:n=2 med=0.125 [0.000,0.125]  L3:n=25 med=0.000 [0.000,0.125]  L4:n=78 med=0.000 [0.000,0.000]  L5:n=89 med=0.000 [0.000,0.688]  L6:n=380 med=0.000 [0.000,1.000]
+      preset_shape         latent   free    1837    1378      6       0     69733     1.1016     6.3506 65473.975  VETO 71%
+                    depth~terminated_fraction: spearman = -0.3318, mean escape_fraction = 0.0003
+                    L2:n=6 med=1.000 [1.000,1.000]  L3:n=6 med=1.000 [1.000,1.000]  L4:n=33 med=1.000 [0.422,1.000]  L5:n=105 med=1.000 [0.344,1.000]  L6:n=1228 med=0.438 [0.000,1.000]
+       preset_prho         latent   free     977     733      6       0     38248     1.0681     2.4174 28205.457  crit 55%
+                    depth~terminated_fraction: spearman = -0.0665, mean escape_fraction = 0.4299
+                    L2:n=4 med=1.000 [0.828,1.000]  L3:n=24 med=1.000 [0.000,1.000]  L4:n=35 med=0.688 [0.000,1.000]  L5:n=102 med=0.484 [0.000,1.000]  L6:n=568 med=0.125 [0.000,1.000]
+    preset_plambda         latent   free     837     628      6       0     32720     1.0615     3.0950 1108076.437  crit 54%
+                    depth~terminated_fraction: spearman = -0.0402, mean escape_fraction = 0.2396
+                    L2:n=8 med=1.000 [0.812,1.000]  L3:n=14 med=1.000 [0.484,1.000]  L4:n=22 med=0.500 [0.016,1.000]  L5:n=72 med=0.000 [0.000,1.000]  L6:n=512 med=0.266 [0.000,1.000]
+   preset_shape_pl         latent   free     625     469      6       0     24909     1.0597     4.6330 635369.755  crit 63%
+                    depth~terminated_fraction: spearman = -0.0487, mean escape_fraction = 0.3179
+                    L2:n=6 med=1.000 [1.000,1.000]  L3:n=26 med=0.781 [0.125,1.000]  L4:n=15 med=1.000 [0.000,1.000]  L5:n=78 med=1.000 [0.000,1.000]  L6:n=344 med=1.000 [0.000,1.000]
+   preset_shape_h1         latent   free    2169    1627      6       0     82349     0.8781     3.4727 30186.689  VETO 72%
+                    depth~terminated_fraction: spearman = -0.2872, mean escape_fraction = 0.0007
+                    L3:n=15 med=1.000 [0.266,1.000]  L4:n=81 med=0.750 [0.125,1.000]  L5:n=103 med=0.844 [0.031,1.000]  L6:n=1428 med=0.156 [0.000,1.000]
+    preset_prho_h1         latent   free    1421    1066      6       0     54881     1.0376     1.4190 11092.382  crit 57%
+                    depth~terminated_fraction: spearman = +0.2645, mean escape_fraction = 0.0040
+                    L2:n=2 med=0.000 [0.000,0.000]  L3:n=21 med=0.000 [0.000,0.000]  L4:n=47 med=0.000 [0.000,0.000]  L5:n=164 med=0.000 [0.000,0.000]  L6:n=832 med=0.000 [0.000,0.344]
+ preset_plambda_h1         latent   free    1385    1039      6       0     53256     1.0604     1.9702 344688.595  VETO 51%
+                    depth~terminated_fraction: spearman = +0.0626, mean escape_fraction = 0.0105
+                    L2:n=2 med=0.469 [0.469,0.469]  L3:n=26 med=0.984 [0.000,1.000]  L4:n=40 med=0.000 [0.000,1.000]  L5:n=103 med=0.000 [0.000,1.000]  L6:n=868 med=0.000 [0.000,0.594]
+preset_shape_pl_h1         latent   free     741     556      6       0     29176     1.1084     2.2246 205887.167  crit 67%
+                    depth~terminated_fraction: spearman = +0.0373, mean escape_fraction = 0.0540
+                    L2:n=4 med=1.000 [1.000,1.000]  L3:n=28 med=0.141 [0.000,1.000]  L4:n=32 med=0.000 [0.000,0.062]  L5:n=92 med=0.000 [0.000,1.000]  L6:n=400 med=0.000 [0.000,1.000]
+   latent_shape_h3         latent   free     717     538      6       0     28062     1.0261     1.1117    17.907  crit 78%
+                    depth~terminated_fraction: spearman = +0.0574, mean escape_fraction = 0.0384
+                    L2:n=3 med=0.000 [0.000,0.000]  L3:n=30 med=0.000 [0.000,0.125]  L4:n=43 med=0.000 [0.000,0.000]  L5:n=86 med=0.000 [0.000,0.000]  L6:n=376 med=0.000 [0.000,0.188]
+ latent_inner_p_h3         latent   free    1073     805      6       0     42349     1.0311     1.3671  9864.216  crit 59%
+                    depth~terminated_fraction: spearman = +0.0156, mean escape_fraction = 0.3824
+                    L2:n=2 med=1.000 [1.000,1.000]  L3:n=23 med=0.734 [0.000,1.000]  L4:n=64 med=0.078 [0.000,1.000]  L5:n=124 med=0.000 [0.000,1.000]  L6:n=592 med=0.125 [0.000,1.000]
+ latent_outer_p_h3         latent   free     477     358      6       0     18945     1.0990     2.6879  1734.909  crit 63%
+                    depth~terminated_fraction: spearman = +0.0920, mean escape_fraction = 0.0856
+                    L2:n=8 med=0.734 [0.344,0.984]  L3:n=18 med=0.000 [0.000,0.234]  L4:n=23 med=0.000 [0.000,1.000]  L5:n=73 med=0.000 [0.000,0.031]  L6:n=236 med=0.000 [0.000,0.297]
+    latent_mass_h3         latent   free     969     727      6       0     38518     1.0035     0.2764    29.966  crit 77%
+                    depth~terminated_fraction: spearman = +0.0816, mean escape_fraction = 0.6345
+                    L2:n=1 med=0.844 [0.844,0.844]  L3:n=15 med=1.000 [0.000,1.000]  L4:n=91 med=0.672 [0.000,1.000]  L5:n=268 med=1.000 [0.000,1.000]  L6:n=352 med=1.000 [0.000,1.000]
+   latent_mixed_h3         latent   free     529     397      6       0     17605     1.0682     1.3770   589.540  crit 53%
+                    depth~terminated_fraction: spearman = +0.0188, mean escape_fraction = 0.0022
+                    L2:n=7 med=0.000 [0.000,0.031]  L3:n=15 med=0.000 [0.000,0.078]  L4:n=48 med=0.000 [0.000,0.000]  L5:n=83 med=0.000 [0.000,0.000]  L6:n=244 med=0.000 [0.000,0.000]
 
 26 charts: still + wire twin + outcome control + level ladder (both) + .prnq each,
 plus the two gallery APNGs. Everything at 1024^2.
@@ -135,10 +111,14 @@ are facts about the budget and are the same for every such row by construction. 
 `crit` row's tree shape is a statement about the chart.
 
 And the substantive finding this table carries: the reference's chart families, centred
-where they are centred here, are TAME. `alpha med` sits at 0.99-1.01 on every latent,
-Burrau and simplex row against 0.14 for `body_plane` and 0.19 for the shape sphere.
+where they are centred here, are TAME in `alpha` -- but the numbers this paragraph
+used to quote were measured on the PRE-FIX kernel and no longer describe the table
+above it. `body_plane` read 0.14 and the shape sphere 0.19; they now read 1.02 and
+1.26, and no row runs to the budget at all. Read the printed columns, not this text.
 alpha near 1 means splitting halves the spread -- refinement pays, so the scheduler
-refines everywhere and runs to the budget. That is correct behaviour on a tame region,
+refines everywhere. On the fixed kernel it does NOT run to the budget: the spread fell
+with the integration failure that inflated it, so at a fixed `tau` the quads now read
+resolved and stop as `Keep`. That is correct behaviour on a tame region,
 not a scheduler fault.
 
 But it means these charts are not exercising the criterion where it is hard. Tameness is

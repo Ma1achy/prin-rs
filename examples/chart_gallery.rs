@@ -90,6 +90,21 @@ fn main() {
     // in `results/charts/README.md`; a bare run now means the shipped configuration.
     let tau: f64 = arg(2, SchedCfg::default().tau_display);
     let alpha_hi: f64 = arg(3, SchedCfg::default().alpha_hi);
+    // **`alpha_lo` was TIED to `alpha_hi` here, which is a `Policy::Alpha`-era coupling.**
+    //
+    // Under that policy they were the two ends of one band -- split above `alpha_hi`, floor below
+    // `alpha_lo`, keep between -- and setting them equal collapsed the band to a single threshold,
+    // which is what the corpus was measured at. Under `Policy::Tolerance` they are **different
+    // mechanisms**: `alpha_hi` is inert (the split test is the tolerance, not an exponent) and
+    // `alpha_lo` is the **area floor's dimension threshold**, `alpha_area = 2 - d`. Carrying the
+    // coupling into a tolerance run silently sets that floor to `alpha_hi` -- the documented
+    // command's `0.2`, or the argument default's **0.5** -- against its own measured default of
+    // `0.005`, where `0.2` alone costs 11% of `config_stability`'s resolvable pixels and puts its
+    // tree ABOVE uniform at its own error.
+    //
+    // So it is argument 11, defaulting to the struct's value. The `Policy::Alpha` reproduction
+    // passes it explicitly, exactly as `k_frac = 1.0` does for the unranked control.
+    let alpha_lo: f64 = arg(11, SchedCfg::default().alpha_lo);
     let res: usize = arg(4, 1024);
     // **The knob that made the whole committed gallery a uniform-mode render.** `k_frac = 1`
     // takes the top 100% of the frontier, so the ranking runs and changes nothing. It was the
@@ -204,7 +219,7 @@ fn main() {
             budget,
             tau_display: tau,
             alpha_hi,
-            alpha_lo: alpha_hi,
+            alpha_lo,
             agg: Agg::Median,
             chart: *chart,
             camera: Some(cam),

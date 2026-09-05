@@ -236,6 +236,23 @@ pub fn overlay(
     res: usize,
     base_rgb: impl Fn(&PixelOut) -> [u8; 3],
 ) -> io::Result<()> {
+    let img = overlay_buffer(tree, base, res, base_rgb);
+    save(Path::new(&format!("{stem}_{suffix}.png")), res as u32, res as u32, &img)
+}
+
+/// The overlay's pixels, without writing them.
+///
+/// Split out so the **orientation** can be pinned. This function carries its own `to_px` rather
+/// than going through [`crate::camera::Camera::to_px`] — it projects against the root box and not
+/// a camera — so it is one of the two seams §17 names as unpinned, and *a wrong flip is silent and
+/// reads as physics*. `tests/render_geometry.rs` asserts row 0 is the minimum `y` here with the
+/// mirrored image as the negative arm, which is what a bitwise check without a control lacks.
+pub fn overlay_buffer(
+    tree: &QuadTree,
+    base: &[PixelOut],
+    res: usize,
+    base_rgb: impl Fn(&PixelOut) -> [u8; 3],
+) -> Vec<u8> {
     let root = tree.root_node();
     let (x0, y0) = (root.cx - root.half, root.cy - root.half);
     let span = 2.0 * root.half;
@@ -287,5 +304,5 @@ pub fn overlay(
         }
     }
 
-    save(Path::new(&format!("{stem}_{suffix}.png")), res as u32, res as u32, &img)
+    img
 }

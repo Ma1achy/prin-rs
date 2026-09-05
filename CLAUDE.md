@@ -2963,3 +2963,133 @@ Unifying them would grow `round` live-only branches for the batch path's benefit
 opposite of the extraction it had just had. The genuinely repeated block was **four lines**, now
 `scheduler::set_alpha_against`, taking the parent reduction as an *argument* so each loop passes
 the one it means. A refactor proposed from a line count is a guess; read what the lines do.
+
+**THE FRAME'S PHYSICS RANKING IS A TOTAL TIE, AND THE TIE-BREAK IS WHAT IT REPLACED.** The frame
+quota truncates `pending` -- the quads about to be *computed* -- and truncated them by **position**,
+which is split order. Wiring the persistent frontier there looks like an obvious improvement and is
+half of one: children of a single split all inherit their parent's stored term (they have no
+reduction of their own -- ranking on that would score every child of every parent at exactly zero,
+which is *no* ordering rather than a weak one), ties break by id ascending, and **id order IS split
+order**. Measured on two analytic fields at a binding quota: the physics arm moves **0 boxes** on
+both. Only `physics x camera` moves anything, and only where the quota has a choice --
+`filament_through_sea` (`floor:96`, everything wants to split, 47 boxes in and 47 out) against
+`step` (`keep:96`, few want to split, nothing moves). **Read the stop column** or the identical
+`145/189/1.6323` rows read as one field measured twice. And the drained arm is the correctness
+property, asserted rather than printed: all three arms reach the identical 196-leaf tree in 34
+frames, because a ranking that changed the *destination* would be changing the criterion.
+
+**A HEADLINE MEASURED ON ONE POPULATION DOES NOT TRANSFER TO ANOTHER, AND THE ARITHMETIC SAYS SO
+IN ADVANCE.** `results/frontier/` reads 83-94% saved at `k/n = 0.01` on the **visible frontier**.
+At the frame quota `pending` is about `4s` times the previous round's quota, so `k/n` sits in
+`[0.25, 1]` **by construction** -- measured **0.66-0.74**, inside that same measurement's own
+0-67% band for large `k`. Quoting the 83-94% for the frame loop would have been quoting a number
+about a different set. It reaches **0.165-0.211** in the `uniform` arm, where the criterion wants
+everything and the frontier holds 232 entries against a quota of 24, then returns to 0.96 two
+frames later -- so the regime is a property of *how much the criterion wants*, and both ends are in
+one committed run.
+
+**§12'S ROUND-TRIP IS REAL AND COSTS NOTHING, BECAUSE A DIFFERENT GLOBAL SUM COLLAPSES FIRST.**
+`jitter` recovered `du` as `(u - cx)/half` from a `u` the linespace had just built -- precision
+spent on the offset and then the offset subtracted back off. `SampleSpace::QuadLocal` forms `du`
+directly and never builds the sum. At production settings it is a last-ulp reordering: `near-field`
+moves **0 of 64**, bitwise, and `config_stability` 8 of 64 at `6.1e-16` of a **cell width**. At
+depth, all four f64 cells of `{Global, QuadLocal} x {Direct, Lin}` fail at **exactly rung 48**, and
+`|ju|` is why: `decode::linearise` differences the chart at `cu +/- half`, the **same global sum one
+level up**, tracking `half` to depth 44, quantising to the ulp of `cx` at 48 and reading **exactly
+`0.000e0` at 52**. A linearisation whose secant has collapsed carries no information for a carried
+`du` to preserve. The fix §12 needs is a Jacobian not built by a secant at the cell width.
+
+**AND THE CONTROL STOPPED IT BEING CREDITED WITH SOMEONE ELSE'S RESULT.** `QuadLocal + LinSplitF32`
+holds 64 distinct through depth 44 against plain f32's collapse at 16 -- **28 levels**, which reads
+as the change buying them. `Global + LinSplitF32` is **identical at every rung**: they are
+`LinSplitF32`'s own, the standing *"the linearised decoder buys ~24 levels over f32 and none over
+f64"*, measured under `Global` long before this flag existed. The origin ladder is the second
+control -- at `cx = cy = 0` **nothing collapses in any cell at any rung** with `|ju|` tracking
+`half` to `4.3e-20`, reproducing *the deep-zoom floor is a property of where you zoom* on a
+different construction.
+
+**A GROWN ROOT LEAVES THE ABSOLUTE LATTICE IN THREE DIRECTIONS OF FOUR.** `src/uv.rs` is the space
+the deep-zoom spec's *"`h` is an exact power of two at every depth"* was always about -- the claim
+is exact in UV, where the root half is `1/2`, and false in chart space, where `0.05` halves exactly
+forever and never becomes a power of two. Both are asserted side by side. The frame is **fixed**,
+because an address relative to the tree root would renumber the whole store on a zoom-out, which is
+the cost re-rooting exists to avoid -- and a cell has exactly **one** parent, so only growth toward
+it stays addressable. `id_of` returns `None` for the other three rather than a plausible wrong
+answer, the same refusal the half-cell guard makes. That is the seam between this **rooted** tree
+and the caching contract's **flat** store, as a measurement rather than a paragraph.
+
+**A POLICY CHANGE LEAVES ITS OLD PARAMETER COUPLINGS BEHIND, AND THEY GO ON MEANING THE OLD THING.**
+`chart_gallery` set `alpha_lo: alpha_hi`. Under `Policy::Alpha` that is coherent -- they are the two
+ends of one band and collapsing it to a single threshold is what the corpus was measured at. Under
+`Policy::Tolerance` they are **different mechanisms**: `alpha_hi` is inert, because the split test
+is the tolerance and not an exponent, while `alpha_lo` is the **area floor's dimension threshold**.
+So the coupling silently set that floor to `0.5` -- against its own measured default of `0.005`,
+where even `0.2` costs 11% of `config_stability`'s resolvable pixels and puts its tree *above*
+uniform at its own error. Same family as `refine_flagged` spreading by copy and `k_frac = 1.0`
+shipping as the default: **a setting correct where it was born, silent where it was not.** It is
+argument 11 now, defaulting to the struct's value, and the `Policy::Alpha` reproduction passes it
+explicitly exactly as `k_frac = 1.0` does.
+
+**THE TWO ORIENTATION SEAMS THAT DO NOT GO THROUGH `Camera::to_px` ARE NOW PINNED, AND THE FIXTURE
+FAILED FIRST FOR THE RIGHT REASON.** `adaptive::render` and `wire` project through the one
+projection and were already pinned with a mirror control; `tree::overlay` carries its **own**
+`to_px` closure (it projects against the root box, not a camera) and `metric::Cache::render` indexes
+tiles directly. Either could have been flipped with nothing noticing, and *a wrong flip is silent
+and reads as physics* -- it already produced a vertically mirrored adaptive panel beside a correct
+uniform one for a whole build. `overlay` is split into `overlay_buffer` + the writer so the pixels
+are testable at all. **And the metric arm's first probe used the root centre, which at level 2 is a
+cell CORNER**: `key_of` refused it, correctly, by the half-cell guard that exists for exactly that
+-- so the fixture's failure was the guard working, not the seam being wrong. Cell centres are
+`cx - half + (2i+1)h`, and the test carries a transposition arm because an index assertion alone
+passes on a swap of `x` and `y`.
+
+**THE CHART GALLERY UNDER `Policy::Tolerance` OVERTURNS THREE STANDING RESULTS, AND THE ONE THAT
+MATTERS IS THAT THE CRITERION NOW DECIDES ANYTHING AT ALL.** 26 charts at 1024², budget 40000,
+`tau = 1e-2`, `alpha_hi = 0.5`, `alpha_lo = 0.005`, `refine_flagged` on, ~50 minutes.
+
+**The criterion decides 27-100% of leaves, against "under 1%".** *"`Decision::MaxRelDepth` stops
+95%+ of leaves on 23 of 26 charts, and 100% on three"* was a `Policy::Alpha` measurement. `veto%`
+now runs **0.0% to 73.0%**, median near 36%, and `latent_shape` reads **100% `keep`, 0% veto** -- a
+tree that is entirely its own decisions. The most veto-bound rows, `preset_shape` (71.3%) and
+`preset_shape_h1` (73.0%), carry the highest `floor%` (12.2%, 12.5%), which is the area floor
+working rather than a cap.
+
+**`preset_shape` is no longer the 16-leaf failure.** The record has it at *"16 leaves, depth 2,
+against a complete 4096"* and names it as where the criterion fails outright. It reads **1378
+leaves over 5 depths**; `preset_shape_h1` **1627**. Its `alpha` interdecile still separates it --
+**6.35** against 0.11 for `latent_mass` -- so the *ordering* that finding rests on survives while
+its mechanism does not.
+
+**THE MECHANISM TEST IS READABLE ON 24 OF 26, UP FROM 2, AND THE POOLED NUMBER STILL CANNOT ANSWER
+IT.** `depth ~ terminated_fraction` had **zero** readable charts to spare: ten y-constant, twelve
+y-saturated. Now there are **zero** x-constant, **zero** y-constant and two y-saturated. And the
+answer is not the one the mechanism predicts: spearman runs **-0.33 to +0.46**, 14 positive and 10
+negative, mostly under 0.15. **The per-depth medians say what the correlation cannot** --
+`preset_shape` runs 1.000, 1.000, 1.000, 1.000, **0.438** and `preset_shape_h1` 1.000, 0.750, 0.844,
+**0.156**, a sharp fall at the deepest level exactly as the absorbing-state mechanism predicts;
+`body_plane` runs 0.000, 0.000, 0.000, 0.000, **0.344**, the other way, because almost nothing there
+has terminated until the finest leaves. The mechanism holds on the **sea** charts and reverses where
+termination is rare. Both coherent, neither general.
+
+**AND THE READABILITY VERDICT HAS A FOURTH BLIND SPOT IT DOES NOT NAME.** `shape_sphere` passes as
+READABLE on 65 distinct values with a 64.6% modal share, and its per-depth median is **0.000 at
+every depth** -- there is nothing for a correlation to be about. The verdict tests the distribution
+over *all* leaves; per-depth medians that are all identical are a fourth way to be uninformative,
+and the three named modes do not catch it. Same shape as the three they do catch, one aggregation
+level down.
+
+**`Decision::Undetermined` FIRES IN PRODUCTION FOR THE FIRST TIME** -- 22 quads of `burrau_nu_k`,
+23 of `latent_mixed_h3`, 45 of ~21,000. The record has it as *"inert where the integration
+succeeds"*, measured on three Burrau regions; these two charts are where it is not.
+
+**AND THE EXPENSIVE HALF IS NOT REGENERATED, WHICH IS SAID RATHER THAN LEFT TO BE FOUND.** One
+chart's `_uniform` panel at 1024² exceeds **ten minutes** against **13 seconds** for its adaptive
+tree -- over 45x, so the 26-chart set is a multi-hour job by itself. Those panels remain 25 August.
+That is the same staleness the record already carries once for this directory, and the only thing
+that makes it different is that the number is now printed beside it.
+
+**`pgrep -f <name>` MATCHES THE WAITER'S OWN COMMAND LINE.** Four `until ! pgrep -qf cg_tol...`
+loops each contained the string they were searching for, so every one of them waited on itself
+forever while the job had long finished -- and the log's own last line was the evidence. Match on
+the process name (`ps -eo comm`) or exclude the shell, and read the artefact rather than the
+process table when the artefact can say.

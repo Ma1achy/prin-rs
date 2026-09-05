@@ -1,3 +1,3 @@
 image=results/charts/latent_mass.png
 config=production
-chart=latent leaves=64 depth=6 stop=keep:48 max_rel_depth:16
+chart=latent leaves=544 depth=6 stop=keep:382 max_rel_depth:162 scalar=ShapeSpread window=(1.3255e-3,7.5181e-3) window_from=tree_leaves res=1024 viewport=1024 budget=40000 tau_display=1e-2 alpha_hi=0.5 criterion=within k_frac=0.25

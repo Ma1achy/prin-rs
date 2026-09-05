@@ -15,8 +15,13 @@ than a record.
 
 ## THE SCHEDULER CORPUS IS SUPERSEDED, AND REPLACING IT IS A RE-MEASUREMENT
 
-**Read this before quoting any number from `charts/`, `criterion/`, `vertical/`,
-`charts_ranked/`, `criterion_ranked/`, `sweep/`, `refinement/`, `animated/` or
+> **2026-09-05: `charts/` and `animated/` are REGENERATED** on the current kernel under
+> `Policy::Tolerance`, and are no longer part of the list below — see the dated block in the
+> `charts/` section. Their `_uniform*.png` panels are the exception and are **still 25 August**;
+> the cost of fixing that is measured and stated there. Everything else here stands.
+
+**Read this before quoting any number from `criterion/`, `vertical/`,
+`charts_ranked/`, `criterion_ranked/`, `sweep/`, `refinement/` or
 `animated_ranked/`.** They are 1009 files and **188 `.prnq` dumps**, and every one of them was
 written on **25-26 August**. Every change to the integrator landed on **27 August or later**:
 
@@ -77,7 +82,8 @@ its reproduction command in its own README.
 | [`balance/`](balance/) | what the 2:1 constraint costs. **`balance_forced/split` is not a quantity** — 0.113 or 0.007 on the *identical* tree depending only on `k_frac`, and spearman(0.25, 1.0) = +0.771, so it cannot even rank six charts. Quote `quad x` (1.03–1.76), which is throttle-invariant. All six charts violate 2:1 under Tolerance at gap 2–3, overturning the `Policy::Alpha`-era "gap 1 everywhere" |
 | [`frontier/`](frontier/) | whether the priority bucketing earns its place. `top_k` flattened every bucket and sorted, so the `O(n log n)` it exists to remove was still paid. `top_k_bounded` saves **83–94% at `k/n = 0.01`** against 0–67% at `k_frac = 0.25` — a frame budget is the small-`k` regime and `descend_with` is not |
 | [`camera/`](camera/) | `camera_bias` moves **0 decisions** at a non-binding budget, with `rel span` 0.49–1.00 proving the arm live, and 17 of 93 / 29 of 185 when the budget binds. The margin is a weak knob and only the **shared** count reveals it |
-| [`session/`](session/) | §9's acceptance test — playhead and camera marching together, one `PRNF` record per frame. Balanced **0.8789** depth variance against uniform's **0.0000**, which is the control that says the test discriminates |
+| [`session/`](session/) | §9's acceptance test — playhead and camera marching together, one `PRNF` record per frame. Balanced **0.8789** depth variance against uniform's **0.0000**, which is the control that says the test discriminates. Also `output/frame_rank.txt`: the frame frontier's physics arm moves **0 boxes** and only the camera term moves a tree |
+| [`uv/`](uv/) | §12. The exactness claim is true in UV and false in chart space, asserted side by side; a grown root leaves the absolute lattice in **three directions of four**; and `SampleSpace::QuadLocal` buys **nothing at any depth**, because `linearise`'s own secant at `cu ± half` is the same global sum one level up and reads exactly `0.000e0` two rungs before the samples collapse |
 
 **One conclusion, arrived at three times.** All three Phase A knobs act through `order_queue`, and
 `order_queue` only matters where something truncates it. They are **frame-budget mechanisms**, so
@@ -477,6 +483,63 @@ not, which is why the version moved.
 ---
 
 ## `charts/` — every chart family, from `examples/chart_gallery.rs`
+
+> **Regenerated 2026-09-05 under `Policy::Tolerance` on the current kernel.**
+> `cargo run --release --example chart_gallery -- 40000 1e-2 0.5 1024 0.25 within results 1 0 all 0.005`
+> — 26 charts, ~50 minutes, `refine_flagged` **on** (production), `uniform` **off**.
+> `output/chart_gallery.txt` is the captured stdout and every `.prnq` header carries
+> `policy=tolerance tau_display=0.01 alpha_hi=0.5 alpha_lo=0.005`.
+>
+> **The `_uniform*.png` panels are NOT regenerated and are still 25 August.** Measured: one chart's
+> uniform panel at 1024² exceeds **ten minutes** against **13 seconds** for its adaptive tree — over
+> 45× — so the full set is a multi-hour job on its own. That is a real staleness and it is stated
+> rather than left for a reader to discover, which is the failure this directory already carries
+> once.
+
+### Three standing results move, and one is the reason the corpus needed replacing
+
+**The criterion decides 27–100% of leaves, against "under 1%".** The record's
+*"`Decision::MaxRelDepth` stops 95%+ of leaves on 23 of 26 charts, and 100% on three"* was a
+`Policy::Alpha` measurement. Under the tolerance policy `veto%` runs **0.0% to 73.0%** with a median
+near 36%; `latent_shape` is **100% `keep`, 0% veto** — a tree that is entirely its own decisions.
+The two most veto-bound rows are `preset_shape` (71.3%) and `preset_shape_h1` (73.0%), and they also
+carry the highest `floor%` (12.2%, 12.5%), which is the area floor doing its work.
+
+**`preset_shape` is no longer the 16-leaf failure.** The record has it at *"16 leaves, depth 2,
+against a complete 4096 — the only case in the set whose tree is entirely its own decisions"* and
+names it as where the criterion fails outright. Under the tolerance policy it reads **1378 leaves
+over 5 distinct depths**; `preset_shape_h1` reads **1627**. The `alpha` interdecile still separates
+it — **6.35** against 0.11 for `latent_mass` — so the *ordering* the old finding rests on survives
+while its mechanism does not.
+
+**And the mechanism test is readable on 24 of 26 charts, up from 2 — with no consistent sign.**
+`depth ~ terminated_fraction` was *"readable on 2, and the two disagree"*. Now there are **zero**
+x-constant and **zero** y-constant charts and two y-saturated ones. The pooled Spearman runs
+**−0.33 to +0.46**, 14 positive and 10 negative, mostly under 0.15 — so on a population that can
+finally answer, the anti-correlation the mechanism predicts is **not** what the pooled number says.
+
+**Read the per-depth medians, as the record insists, and they say something the Spearman cannot.**
+
+| case | L2 | L3 | L4 | L5 | L6 | spearman |
+|---|---|---|---|---|---|---|
+| `preset_shape` | 1.000 | 1.000 | 1.000 | 1.000 | **0.438** | −0.3318 |
+| `preset_shape_h1` | — | 1.000 | 0.750 | 0.844 | **0.156** | −0.2872 |
+| `body_plane` | 0.000 | 0.000 | 0.000 | 0.000 | **0.344** | +0.4564 |
+| `shape_sphere` | — | 0.000 | 0.000 | 0.000 | 0.000 | −0.1121 |
+
+The mechanism is visible on the **sea** charts, where termination saturates and the deepest level
+falls sharply away from it, and it runs the other way on `body_plane`, where almost nothing has
+terminated until the finest leaves. Both are coherent; neither generalises.
+
+**And `shape_sphere` exposes a gap in the readability verdict itself.** It passes as READABLE on 65
+distinct values with a 64.6% modal share, and its per-depth median is **0.000 at every depth** —
+there is nothing for a correlation to be about. The verdict tests the distribution over *all*
+leaves; a chart whose per-depth medians are all identical is a **fourth** way to be uninformative
+that the three named modes do not catch.
+
+**`Decision::Undetermined` fires in production for the first time**, on 22 quads of `burrau_nu_k`
+and 23 of `latent_mixed_h3` — 45 of 21,000. The record has it as *"inert where the integration
+succeeds"*, measured on three Burrau regions; these two charts are where it is not.
 
 Twenty-six chart instances, all at **1024²**, budget 40000 so every descent stops on the
 criterion rather than the cap. Thirteen across the reference's five families, the four `preset_*`

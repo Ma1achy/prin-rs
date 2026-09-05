@@ -79,8 +79,13 @@ fn main() {
         "What actually stopped each descent, read from the committed .prnq dumps.\n\
          `max_rel_depth` and `screen` are CAMERA VETOES -- a quad stopped by one has not\n\
          exercised the criterion, and the row's leaf count and alpha are facts about the cap.\n\
-         `floor` (spread below tau) and `keep` (alpha says refinement does not pay) are the\n\
-         criterion's own two answers.\n"
+         `floor` and `keep` are the criterion's own two answers, and THEY MEAN DIFFERENT THINGS\n\
+         UNDER THE TWO POLICIES. Under `Policy::Alpha`: floor = the spread fell below tau, keep =\n\
+         alpha says refinement does not pay, i.e. between the two thresholds. Under\n\
+         `Policy::Tolerance`, which is the default and what the committed dumps now carry:\n\
+         **keep = every footprint is RESOLVED at the tolerance**, and **floor = the area floor\n\
+         found no gain**. Read the `policy=` token in the dump's own header before reading this\n\
+         table -- the same column name carries two mechanisms.\n"
     );
     println!(
         "{:>20} {:>7} {:>7} {:>8} {:>8} {:>8} {:>8}   stopped by",

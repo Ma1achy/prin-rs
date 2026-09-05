@@ -1,3 +1,3 @@
 image=results/charts/plane_00deg.png
 config=production
-chart=plane leaves=64 depth=6 stop=keep:48 max_rel_depth:16
+chart=plane leaves=94 depth=6 stop=floor:3 keep:68 max_rel_depth:23 scalar=ShapeSpread window=(3.7463e-6,2.0893e-1) window_from=tree_leaves res=1024 viewport=1024 budget=40000 tau_display=1e-2 alpha_hi=0.5 criterion=within k_frac=0.25

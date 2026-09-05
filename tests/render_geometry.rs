@@ -241,3 +241,99 @@ fn truncation_is_the_leaf_set_and_not_a_mask() {
         assert_eq!(n_own, res * res, "cap {l} frame is not made only of level-{l} texels");
     }
 }
+
+/// **The seam that does NOT go through `Camera::to_px` is pinned too — §17.**
+///
+/// `adaptive::render` and `wire` project through `Camera::to_px` and the test above covers the
+/// first. `tree::overlay` carries its **own** `to_px` closure — it projects against the root box
+/// rather than a camera — so it could be flipped without any test noticing. **A wrong flip is
+/// silent and reads as physics**: it produced a vertically mirrored adaptive panel that sat beside
+/// a correct uniform one through a whole build.
+///
+/// The construction is a base asymmetric in `y` and nothing else. Row 0 must carry the
+/// **minimum-`y`** colour, and the mirror arm is what makes that mean something rather than being
+/// satisfied by any constant image.
+#[test]
+fn the_overlays_own_projection_writes_slice_order() {
+    use prin_rs::output::tree as treeout;
+
+    let res = 64usize;
+    let t = complete(1, 4);
+    let px = node_pixels(&t);
+    let sl = Slice::body_plane(res, res, CX, CY, HALF, 0);
+    let base: Vec<prin_rs::ensemble::pixel::PixelOut> = (0..sl.npix())
+        .map(|k| {
+            let (x, y) = sl.decode_pos(k);
+            px[leaf_at(&t, x, y)][0].clone()
+        })
+        .collect();
+    let over = treeout::overlay_buffer(&t, &base, res, node_rgb);
+
+    // The overlay dims the base by a constant before drawing, so the ORDER survives even though
+    // the values do not. Read a column away from the midline, on rows the boundary lines miss.
+    let dim = |c: [u8; 3]| {
+        [(c[0] as f64 * 0.55) as u8, (c[1] as f64 * 0.55) as u8, (c[2] as f64 * 0.55) as u8]
+    };
+    let col = res / 4;
+    let row0 = &over[(1 * res + col) * 3..(1 * res + col) * 3 + 3];
+    let rowN = &over[((res - 2) * res + col) * 3..((res - 2) * res + col) * 3 + 3];
+    let want_lo = dim(node_rgb(&base[1 * res + col]));
+    let want_hi = dim(node_rgb(&base[(res - 2) * res + col]));
+
+    // The control FIRST: a base constant in `y` would satisfy any orientation.
+    assert_ne!(want_lo, want_hi, "the base is constant in y, so this test has no subject");
+    assert_eq!(row0, &want_lo[..], "tree::overlay put the MAXIMUM y in row 0 -- it is mirrored");
+    assert_eq!(rowN, &want_hi[..]);
+    // And the negative arm, stated the way the adaptive test states it.
+    assert_ne!(row0, &want_hi[..], "row 0 carries the mirrored colour");
+}
+
+/// **`metric::Cache::render` indexes tiles directly and is the other unpinned seam.**
+///
+/// It never touches `Camera::to_px` either: `py0 = iy * span` with the row written at `py0 + dy`.
+/// So `iy = 0` must be the **minimum** `y`. Checked against `Cache::key_of`, which is the inverse
+/// map and already carries the half-cell paragraph — two independent directions through the same
+/// convention, which is what makes agreement evidence.
+#[test]
+fn the_metric_cache_indexes_rows_in_slice_order() {
+    // A real cache, small: 2 levels of 2 gives an 8x8 raster and 64 trajectories at a short
+    // horizon -- cheap enough to be a committed test, and the geometry is what is under test.
+    let (levels, n) = (2u32, 2usize);
+    let res = (1usize << levels) * n;
+    let ens = prin_rs::ensemble::pixel::EnsembleCfg {
+        t_max: 1.0,
+        n_sync: 4,
+        n_extra: 1,
+        refine_flagged: false,
+        ..prin_rs::ensemble::pixel::EnsembleCfg::production()
+    };
+    let c = prin_rs::metric::build(
+        "orientation", CX, CY, HALF, 0, prin_rs::grid::Chart::BodyPlane, levels, n, res, 1e-2,
+        &ens, prin_rs::metric::Colouring::Outcome,
+    );
+
+    // **Cell CENTRES, not the root centre.** At level 2 the root centre is a cell *corner*, and
+    // `key_of` refuses it -- correctly, and it did on the first cut of this test. The centre of
+    // cell `(ix, iy)` is `cx - half + (2 ix + 1) h` with `h` the cell half-width.
+    let h = HALF / (1u32 << levels) as f64;
+    let cen = |ix: u32, iy: u32| {
+        (CX - HALF + (2 * ix + 1) as f64 * h, CY - HALF + (2 * iy + 1) as f64 * h)
+    };
+    let lim = (1u32 << levels) - 1;
+
+    let (lx, ly) = cen(1, 0);
+    let low = c.key_of(lx, ly, levels).expect("the low-y cell centre is not on the lattice");
+    let (hx, hy) = cen(1, lim);
+    let high = c.key_of(hx, hy, levels).expect("the high-y cell centre is not on the lattice");
+    assert_eq!(low.2, 0, "the MINIMUM y did not map to iy = 0 -- the cache is mirrored");
+    assert_eq!(high.2, lim, "the maximum y is not the last row");
+    // The control: the two ends must differ, or the assertion above holds for any mapping.
+    assert_ne!(low.2, high.2);
+
+    // And `x` is not silently swapped with `y` -- an index assertion alone passes on a
+    // transposition, which is the standing `shape_pl` lesson at a second site.
+    let (rx, ry) = cen(lim, 1);
+    let right = c.key_of(rx, ry, levels).expect("the high-x cell centre is not on the lattice");
+    assert_eq!(right.1, lim, "x and y are transposed");
+    assert_eq!(right.2, 1);
+}

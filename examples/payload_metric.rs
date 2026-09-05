@@ -293,7 +293,7 @@ fn main() {
             eprintln!("usage: payload_metric build <target> [levels=6] [n=8] [eps=0.01] [t_max=13] [root=results]");
             eprintln!("       payload_metric replay <file.fcache> [eps=0.01] [root=results]");
             eprintln!("       payload_metric live <file.fcache> [policy=tolerance|alpha] [eps=0.01] [k_frac=0.25] [root=results] [stationary=0] [tau=eps] [alpha_lo=0.2] [agreement=1] [dim_floor=1]");
-            eprintln!("       payload_metric march <file.fcache> [eps=0.01] [k_frac=0.25] [root=results] [stationary=0] [live_stride=4] [alpha_lo=0.2] [merge=1] [agreement=1] [dim_floor=1]");
+            eprintln!("       payload_metric march <file.fcache> [eps=0.01] [k_frac=0.25] [root=results] [stationary=0] [live_stride=4] [alpha_lo=0.2] [merge=1] [agreement=1] [dim_floor=1] [no_gain_ttl=-1]");
             std::process::exit(2);
         }
     }
@@ -322,6 +322,12 @@ fn march() {
     // The dimension floor: off leaves only the noise stop, so a sea floors and a fat fractal
     // does not. Measured against on, it says which of the two is doing the flooring.
     let dim_floor: bool = std::env::args().nth(11).map(|v| v != "0" && v != "false").unwrap_or(SchedCfg::default().dim_floor);
+    // **The no-gain memory's time-to-live**, the second of the two live-compatible expiries the
+    // record names. The shipped one is a *state* rule keyed on the structured weight; this is a
+    // *clock* rule. `-1` means the shipped behaviour (no clock), and they compose when both are
+    // on, because a memory must satisfy both to stand.
+    let ttl_arg: i64 = arg(12, -1);
+    let no_gain_ttl: Option<u32> = (ttl_arg >= 0).then(|| ttl_arg as u32);
     let fp = {
         let f = std::fs::File::open(&file).expect("open fcache");
         prin_rs::output::fcache::read(&mut std::io::BufReader::new(f)).expect("read fcache")
@@ -334,10 +340,13 @@ fn march() {
         if merge { "" } else { "_nomerge" },
         if agreement { "" } else { "_noagree" },
         if dim_floor { "" } else { "_nodim" });
+    // **A self-describing filename has to carry every setting that is swept**, or the last writer
+    // wins over a stem that says nothing about the difference -- the `criterion_sweep` failure.
+    let tag = format!("{tag}{}", no_gain_ttl.map_or(String::new(), |t| format!("_ttl{t}")));
     let log = Log::tee(&format!("{root}/output/payload_march_{stem}{tag}.txt"));
     let log = &log;
     let class = if fp.has_event_class() { ClassArm::EventClass } else { ClassArm::Outcome };
-    logln!(log, "payload_metric march: {file} -- region {}, levels {} N={} res {}, t_max {}; tolerance policy, stationary {stationary}, eps {eps:e} k_frac {k_frac}, live_stride {live_stride}, alpha_lo {alpha_lo} merge {merge} agreement {agreement} dim_floor {dim_floor}; class arm {}",
+    logln!(log, "payload_metric march: {file} -- region {}, levels {} N={} res {}, t_max {}; tolerance policy, stationary {stationary}, eps {eps:e} k_frac {k_frac}, live_stride {live_stride}, alpha_lo {alpha_lo} merge {merge} agreement {agreement} dim_floor {dim_floor} no_gain_ttl {no_gain_ttl:?}; class arm {}",
            fp.region, fp.levels, fp.n, fp.res, fp.t_max, class.name());
 
     let base = EnsembleCfg::default();
@@ -364,6 +373,7 @@ fn march() {
         stationary,
         alpha_lo,
         merge,
+        no_gain_ttl,
         agreement,
         dim_floor,
         k_frac,
@@ -448,6 +458,12 @@ fn live() {
     // The dimension floor: off leaves only the noise stop, so a sea floors and a fat fractal
     // does not. Measured against on, it says which of the two is doing the flooring.
     let dim_floor: bool = std::env::args().nth(11).map(|v| v != "0" && v != "false").unwrap_or(SchedCfg::default().dim_floor);
+    // **The no-gain memory's time-to-live**, the second of the two live-compatible expiries the
+    // record names. The shipped one is a *state* rule keyed on the structured weight; this is a
+    // *clock* rule. `-1` means the shipped behaviour (no clock), and they compose when both are
+    // on, because a memory must satisfy both to stand.
+    let ttl_arg: i64 = arg(12, -1);
+    let no_gain_ttl: Option<u32> = (ttl_arg >= 0).then(|| ttl_arg as u32);
     let fp = {
         let f = std::fs::File::open(&file).expect("open fcache");
         prin_rs::output::fcache::read(&mut std::io::BufReader::new(f)).expect("read fcache")

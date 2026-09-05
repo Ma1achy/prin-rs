@@ -265,6 +265,41 @@ pixels a finer grid resolves, so it is the structure the tree gave up.
 | config_stability | 4729 | 0.0582 | 4813 | 4629 | 184 | 0.0638 | 4813 | 4601 | 212 | 0.0689 | 0.0293 | 1.04x | 95% |
 | preset_shape | 1837 | 0.0322 | 1725 | 1517 | 208 | 0.0698 | 1725 | 1513 | 212 | 0.0702 | 0.0159 | 0.48x | 91% |
 
+#### The no-gain memory's TIME-TO-LIVE — the second expiry, measured and not adopted
+
+The record named two live-compatible expiries for the no-gain merge memory and built one. The
+shipped rule is a **state** rule: the memory stands while the structured weight is within a factor
+of two of where the split was judged. `SchedCfg::no_gain_ttl` is the **clock** rule. They compose —
+a memory must satisfy both to stand — and `None` is the default.
+
+`preset_shape_h1`, the sea chart, `alpha_lo = 0.005`, `live_stride = 4`, everything else held.
+Reproduce: `payload_metric march results/payload/preset_shape_h1_t13_L6.fcache 0.01 0.25 <root> 0 4
+0.005 1 1 1 <ttl>`.
+
+| `no_gain_ttl` | computed | resident | merged | error | vs uniform |
+|---|---|---|---|---|---|
+| **none** (shipped) | 2225 | 1909 | 316 | **0.19609** | 0.67× |
+| 0 | 1977 | 1681 | 296 | 0.21920 | 0.73× |
+| 1 | 2093 | 1785 | 308 | 0.20300 | 0.66× |
+| 4 | 2093 | 1785 | 308 | 0.20300 | 0.66× |
+
+**Every rung displays worse than the state rule while computing fewer quads.** That is a
+budget–quality trade and not an improvement at fixed cost — the same shape as the `k_frac` result,
+and the same reason it is not adopted: `ttl = 1` is marginally *better* relative to uniform (0.66×
+against 0.67×) and absolutely worse, so a table quoting only the ratio would have read as a win.
+
+**`ttl = 1` and `ttl = 4` are bitwise identical, and the mechanism is that the clock fires at most
+once per quad.** A lapsed memory lets the quad split; if the split still shows no gain, the merge
+pass re-merges it and records a **fresh** memory, resetting the clock. So beyond one boundary the
+knob is inert and the whole thing is effectively binary — with eight boundaries in this march, a
+`ttl` of 4 should have differed from 1 and does not.
+
+**And the sign of the cost is not fixed.** On `testing::pulse` — the synthetic fixture whose band
+widens and collapses — `ttl = 0` computes **741 quads against the shipped 645**, i.e. *more*. On the
+sea chart it computes **1977 against 2225**, i.e. *fewer*. Expiring a memory releases a split, and
+whether that split then costs or saves depends on what the region has become. Measured on both,
+attributed on neither.
+
 #### The live march at 0.005 before and after the live-view fix
 
 | target | static: quads | vs ref | before: computed | resident | merged | vs ref | after: computed | resident | merged | vs ref | resolvable left | vs uniform | catch-up |

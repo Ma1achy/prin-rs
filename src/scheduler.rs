@@ -324,6 +324,22 @@ pub struct SchedCfg {
     /// the noise stop alone. Under the legacy policies it thresholds the spread exponent, as
     /// before, and their pins carry `0.2` explicitly.
     pub alpha_lo: f64,
+
+    /// **Boundaries a no-gain merge memory survives, or `None` for the weight-keyed expiry alone.**
+    ///
+    /// A parent merged back for no gain remembers its own exponents so it is not re-split into the
+    /// same four children every boundary. The shipped expiry is keyed on the **structured weight**
+    /// staying within a factor of two of where the split was judged — a *state* rule. A
+    /// time-to-live is the other live-compatible form the record names as unbuilt, and it is a
+    /// *clock* rule: the memory simply lapses, and the quad is re-judged on whatever the region has
+    /// become.
+    ///
+    /// They fail in opposite directions. The weight rule holds forever on a region whose weight
+    /// does not move — a sea, where structure can appear inside an unchanged unresolved area — and
+    /// the clock rule cannot hold at all past `ttl`, so it pays re-splits on a genuinely static
+    /// region. `None` is the default and is the shipped behaviour; the two compose when both are
+    /// on, because a memory must satisfy **both** to stand.
+    pub no_gain_ttl: Option<u32>,
     /// Floor above this sibling range, under [`Policy::Sibling`].
     pub sib_tau: f64,
     pub policy: Policy,
@@ -406,6 +422,7 @@ impl Default for SchedCfg {
             hot_rule: HotRule::Quantile(0.5),
             alpha_hi: 0.5,
             alpha_lo: 0.005,
+            no_gain_ttl: None,
             sib_tau: 0.5,
             // The enum's `#[default]`, so the struct and the enum cannot disagree on it again:
             // they did, and every harness built on `..Default::default()` ran the legacy policy
@@ -1495,6 +1512,8 @@ pub fn round(
             tree.nodes[i].alpha_area = None;
             tree.nodes[i].alpha_spread_set = None;
             tree.nodes[i].no_gain_weight = None;
+            tree.nodes[i].no_gain_at = None;
+            tree.nodes[i].no_gain_expired = false;
             pending.extend_from_slice(&tree.split(i, *iteration));
         }
 
@@ -1760,10 +1779,14 @@ pub fn decide(tree: &QuadTree, i: usize, cfg: &SchedCfg) -> Decision {
         // sea the unresolved weight never moves while structure can appear from nothing. A merge
         // judged at zero structure expires the moment any appears.
         if q.is_leaf() && no_gain(q, cfg) {
-            let stands = q.no_gain_weight.map_or(true, |w0| {
-                let w = structured_weight(&q.red, cfg);
-                if w0 <= 0.0 { w <= 0.0 } else { w > 0.5 * w0 && w < 2.0 * w0 }
-            });
+            // **The clock rule short-circuits the state rule, and it is not `no_gain_weight =
+            // None`.** No memory means *never merged for no gain*, and the floor then stands on
+            // its own merits -- so clearing the memory to expire it floors MORE, not less.
+            let stands = !q.no_gain_expired
+                && q.no_gain_weight.map_or(true, |w0| {
+                    let w = structured_weight(&q.red, cfg);
+                    if w0 <= 0.0 { w <= 0.0 } else { w > 0.5 * w0 && w < 2.0 * w0 }
+                });
             if stands {
                 return Decision::Floor;
             }
@@ -2150,6 +2173,20 @@ pub fn descend_live_with(
     let mut post = 0usize;
     loop {
         let t_j = px_of[0][0].live_t[j];
+
+        // **The time-to-live, applied BEFORE anything reads the memory.** A clock rule, against
+        // the shipped weight rule's state rule -- and the two compose rather than replacing one
+        // another, because a memory has to satisfy both to stand. Expiring here rather than
+        // inside `decide` keeps `decide` a pure function of `(tree, i, cfg)`; the boundary index
+        // is a fact about the march and `decide` has no business knowing it.
+        if let Some(ttl) = cfg.no_gain_ttl {
+            for q in tree.nodes.iter_mut() {
+                if q.no_gain_at.is_some_and(|a| (j as u32).saturating_sub(a) > ttl) {
+                    q.no_gain_expired = true;
+                }
+            }
+        }
+
         // Project every live leaf and its parent to `j`, so the decision reads the boundary.
         for &i in &frontier {
             let proj: Vec<PixelOut> = px_of[i].iter().map(|p| project_at(p, j)).collect();
@@ -2282,8 +2319,12 @@ pub fn descend_live_with(
                         tree.nodes[p].alpha_area = None;
                         tree.nodes[p].alpha_spread_set = None;
                         tree.nodes[p].no_gain_weight = None;
+                        tree.nodes[p].no_gain_at = None;
+                        tree.nodes[p].no_gain_expired = false;
                     } else {
                         tree.nodes[p].no_gain_weight = Some(structured_weight(&tree.nodes[p].red, cfg));
+                        tree.nodes[p].no_gain_at = Some(j as u32);
+                        tree.nodes[p].no_gain_expired = false;
                     }
                     rejoin.push(p);
                 }
@@ -2302,6 +2343,8 @@ pub fn descend_live_with(
             tree.nodes[i].alpha_area = None;
             tree.nodes[i].alpha_spread_set = None;
             tree.nodes[i].no_gain_weight = None;
+            tree.nodes[i].no_gain_at = None;
+            tree.nodes[i].no_gain_expired = false;
             let kids = tree.split(i, j as u32);
             for &k in &kids {
                 compute(&mut tree, &mut st, &mut px_of, k, j);

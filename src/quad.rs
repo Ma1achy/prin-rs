@@ -952,6 +952,26 @@ pub struct Quad {
     /// because on a sea the unresolved weight never moves: the first form, keyed on it, left the
     /// live sea-chart tree at 2.0x the optimum's budget for its error against the static 1.4x.
     pub no_gain_weight: Option<f64>,
+
+    /// The boundary at which the no-gain memory above was recorded.
+    ///
+    /// The memory's expiry is keyed on the **structured weight** — the quantity the exponent
+    /// judged — and that is one of two live-compatible forms; a **time-to-live** is the other, and
+    /// it needs to know how old the memory is. `None` when there is no memory. Written together
+    /// with `no_gain_weight` and cleared together with it, so the two cannot disagree about
+    /// whether a memory exists.
+    pub no_gain_at: Option<u32>,
+
+    /// **The no-gain memory has lapsed and must NOT stand this boundary.**
+    ///
+    /// Separate from clearing `no_gain_weight`, and the distinction is the whole mechanism.
+    /// `scheduler::decide` reads `no_gain_weight.map_or(true, ...)` — *no memory* means **this quad
+    /// has never been merged for no gain**, and the floor stands on its own merits. So clearing the
+    /// memory to expire it reverts to first-time behaviour, which is to floor: the exact opposite
+    /// of expiry. Measured on the pulse, that inversion computed **421 quads against 645** — fewer,
+    /// by flooring more — and an assertion that merely required the tree to *differ* could not tell
+    /// it from a working expiry.
+    pub no_gain_expired: bool,
     /// Released by a merge. Stays in the arena (indices are stable) but is not a leaf.
     pub merged: bool,
 }
@@ -1004,6 +1024,8 @@ impl Quad {
             alpha_area: None,
             alpha_spread_set: None,
             no_gain_weight: None,
+            no_gain_at: None,
+            no_gain_expired: false,
             merged: false,
         }
     }
@@ -1067,6 +1089,8 @@ impl QuadTree {
                 alpha_area: None,
                 alpha_spread_set: None,
                 no_gain_weight: None,
+                no_gain_at: None,
+                no_gain_expired: false,
                 merged: false,
         };
         QuadTree { nodes: vec![root], root: 0, n, body, chart }
@@ -1096,6 +1120,8 @@ impl QuadTree {
                 alpha_area: None,
                 alpha_spread_set: None,
                 no_gain_weight: None,
+                no_gain_at: None,
+                no_gain_expired: false,
                 merged: false,
             });
         }

@@ -6,3 +6,7 @@ over each chart's own p1-p99. The window is printed because a false-colour image
 its scale is decoration.
 
               case          chart domain   quads  leaves  depth  screen  distinct  alpha med alpha idec ramp span     bound
+        body_plane     body_plane   free     125      94      6       0      5290     0.9998     0.7465    16.234  crit 75%
+                    depth~terminated_fraction: spearman = +0.4564, mean escape_fraction = 0.0000
+                    L2:n=14 med=0.000 [0.000,0.000]  L3:n=3 med=0.000 [0.000,0.000]  L4:n=13 med=0.000 [0.000,1.000]  L5:n=16 med=0.000 [0.000,1.000]  L6:n=48 med=0.344 [0.000,1.000]
+                    event classes (2 of 27 fire, 0 undetermined): tightest (1,2)=1023927, terminated: collision d2=24649

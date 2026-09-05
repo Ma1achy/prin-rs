@@ -122,6 +122,8 @@ fn camera_position_moves_the_ranking_and_never_the_veto() {
             alpha_area: None,
             alpha_spread_set: None,
             no_gain_weight: None,
+            no_gain_at: None,
+            no_gain_expired: false,
             merged: false,
         decision: Decision::Pending,
     };

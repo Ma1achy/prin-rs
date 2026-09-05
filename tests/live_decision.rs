@@ -643,3 +643,74 @@ fn the_live_tree_merges_back_after_the_band_collapses() {
         assert!(st.live[j].computed >= st.live[j - 1].computed);
     }
 }
+
+/// **The no-gain memory's TIME-TO-LIVE, the second of the two live-compatible expiries.**
+///
+/// A parent merged back for no gain remembers its own exponents so it is not re-split into the
+/// same four children every boundary. The shipped expiry is a **state** rule — the memory stands
+/// while the structured weight is within a factor of two of where the split was judged. A
+/// time-to-live is the **clock** rule the record names as unbuilt, and the two compose: a memory
+/// must satisfy both to stand.
+///
+/// The two fail in opposite directions, which is the whole reason both exist. The weight rule
+/// holds forever on a region whose weight does not move — a sea, where structure can appear inside
+/// an unchanged unresolved area. The clock rule cannot hold past `ttl` at all, so it pays
+/// re-splits on a genuinely static region.
+///
+/// **`None` must be bitwise the shipped tree**, and a finite TTL must actually do something —
+/// both arms, because a knob that changes nothing and a knob that is not wired look identical.
+#[test]
+fn the_no_gain_ttl_is_inert_when_absent_and_live_when_set() {
+    let field = prin_rs::testing::pulse(0.123, 0.35, 8, T);
+    let levels = 5;
+    let base = SchedCfg { merge: true, ..cfg(levels, 2000) };
+    assert_eq!(base.no_gain_ttl, None, "the shipped default must be the state rule alone");
+
+    let (t0, s0) = scheduler::descend_live_with(0.0, 0.0, 1.0, 0, &base, T, &field);
+    assert!(s0.merged > 0, "nothing merged, so this test has no subject");
+
+    // `None` explicitly: identical by construction, and asserted so a later default change is
+    // caught here rather than in a corpus.
+    let (tn, sn) = scheduler::descend_live_with(
+        0.0, 0.0, 1.0, 0, &SchedCfg { no_gain_ttl: None, ..base.clone() }, T, &field);
+    assert_eq!(tree_hash(&t0), tree_hash(&tn));
+    assert_eq!((s0.merged, s0.quads_computed), (sn.merged, sn.quads_computed));
+
+    // **A TTL of 0 expires every memory at the next boundary**, so a no-gain parent is re-judged
+    // from scratch each time. It must differ from the shipped tree, or the clock is not wired.
+    let (t1, s1) = scheduler::descend_live_with(
+        0.0, 0.0, 1.0, 0, &SchedCfg { no_gain_ttl: Some(0), ..base.clone() }, T, &field);
+    println!("pulse: shipped {} computed / {} merged; ttl=0 {} computed / {} merged",
+             s0.quads_computed, s0.merged, s1.quads_computed, s1.merged);
+    assert_ne!(
+        (tree_hash(&t0), s0.quads_computed, s0.merged),
+        (tree_hash(&t1), s1.quads_computed, s1.merged),
+        "a TTL of 0 changed nothing -- the clock rule is not reaching the decision"
+    );
+    // **THE DIRECTION, because "it differs" cannot tell a fix from an inversion.** The first cut
+    // of this expired a memory by clearing `no_gain_weight`, and `decide` reads
+    // `map_or(true, ...)`: no memory means *never merged for no gain*, so the floor stood on its
+    // own merits and the quad floored MORE. It computed 421 quads against 645 -- a third fewer --
+    // and passed this test's `assert_ne!` exactly as a working expiry would. A lapsed memory must
+    // let the quad SPLIT again, so the work can only go up.
+    assert!(
+        s1.quads_computed > s0.quads_computed,
+        "expiring the memory computed FEWER quads ({} against {}): the lapse is flooring rather \
+         than releasing, which is the inversion this arm exists to catch",
+        s1.quads_computed, s0.quads_computed
+    );
+
+    // And a TTL wide enough to outlast the march is the shipped tree again: the clock never fires,
+    // so only the state rule decides. This is the arm that says the difference above is the TTL
+    // and not merely "any non-default config differs".
+    let (tw, sw) = scheduler::descend_live_with(
+        0.0, 0.0, 1.0, 0, &SchedCfg { no_gain_ttl: Some(10_000), ..base.clone() }, T, &field);
+    assert_eq!(tree_hash(&t0), tree_hash(&tw),
+               "a TTL longer than the march moved the tree, so it is not a pure clock");
+    assert_eq!((s0.merged, s0.quads_computed), (sw.merged, sw.quads_computed));
+
+    // The tree stays a tiling whatever the memory does -- no merged quad is a leaf.
+    for t in [&t1, &tw] {
+        assert!(t.leaves().all(|i| !t.nodes[i].merged));
+    }
+}

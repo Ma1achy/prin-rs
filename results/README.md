@@ -1037,12 +1037,18 @@ cargo run --release --example logh_arms -- 256 results all 400000 all
 python3 tools/contact_sheet.py --root results far deep_interior near-field
 ```
 
-## Twelve directories that were never indexed
+## Eighteen directories that were never indexed
 
 Every one of these carries a finding already in the record, and none of them was reachable from
 this file — the same hole the camera table closed for the slippy-map work, at the directories that
 predate it. Listed with what each settles, so the index is a way in rather than a file listing.
-Three carry their own README (`circled/`, `osc/`, `step_control/`); the rest are output plus panels.
+Six carry their own README (`circled/`, `osc/`, `step_control/`, `saturation/`, `live/`, and
+`closure/REPRODUCTION.md`); the rest are output plus panels.
+
+**And the first pass at this table found twelve of the eighteen, because the check was substring
+matching**: `grep -q ttl` is satisfied by `logh_ttl`, `grep -q aa` by almost anything. *A test that
+cannot fail is indistinguishable from a test that passes*, at the verification of an index. The
+check that works anchors the name — `(\`|/)<dir>(/|\`)` — and it is what found the remaining six.
 
 | directory | what it settles |
 |---|---|
@@ -1058,6 +1064,12 @@ Three carry their own README (`circled/`, `osc/`, `step_control/`); the rest are
 | `refine_bug/` | the `refine_flagged` discovery: 62 harnesses under `examples/` set it `false`, including every render harness, while `results/README.md` asserted the opposite. One field: `error_ratio` p99 **1.039e10 → 35.6**, drift max **1.97e12 → 6.74e-2**, non-finite **30109 → 0** |
 | [`step_control/`](step_control/) | the four step-control candidates as numbers. **B wins** — a predictive, branch-free `dtau <= f*d_min/(\|v_rel\|*A*B)` fixes the defect for **+1.9% of the steps**, where the dumb global control leaves 153 overshoots at four times the cost |
 | `wedge/` | the wedge census and the one-at-a-time ablation. **`limit_only` reproduces `all` on every column** — the wedges are the predictive step limit alone — while the `dtau` fix removes the *magenta* and leaves the wedges untouched. Two artefacts, never one defect |
+| `aa/` | the antialiasing check: one march, two colourings, 8 samples per pixel already computed. `colour::rgb_resolved` supersamples **hue** and holds `l` fixed, because `spread_shape` is a footprint statistic with no per-copy analogue — so it moves 5.09% of pixels at `z1` and cannot reach the deep-zoom fringe at all |
+| `artefact/` | the spatial artefact census at 256² on `log10(energy_drift_max)`, in **decades**. Diagnostic pass: termination off, `r_coll = 0`, `refine_flagged` off — the repair pass removes the population the census is about, which is the standing reason a comparison render and a science render want opposite settings |
+| [`closure/`](closure/REPRODUCTION.md) | the closure-criterion renders, `stop_on_escape` 0 against 1 on four slices. **Closure does not certify that the displayed quantity has settled** — the criterion fires at a median `t = 11.8` of 13 with persistence 1.0000 and the shape still moves by up to 0.6 afterwards, so `stop_on_escape` stays off. Carries `..._AT_220d928.png`, the panel that named its own commit after a pre-fix render was found committed into a post-fix tree |
+| [`live/`](live/) | 125 files: the live-march panels and wireframes under `colour::Veto::Quiet`, where a vetoed footprint takes the nominal copy's hue at the floor of the ramp instead of `DEBUG_NAN` magenta. A **colouring and not a computation** — the probe tree is identical quad for quad — so the harness prints `vetoed N/M` and the sidecar carries it, because the information moves rather than vanishing |
+| [`saturation/`](saturation/) | what stops the march, and whether it draws the artefact. All three forms refuted: `ab_floored` **0.000000**, `budget_exhausted` **0.000000**, and `n_cap_hits > 0` on **every pixel of 262144** — the third is saturated, so its lift is exactly 1.000 *by arithmetic*, which is why the frame base rate is printed above the lift table |
+| `ttl/` | **`Integrator::Ttl` — time-transformed leapfrog, not the no-gain merge memory's `no_gain_ttl`**, which lives in `payload/`. A mass-ratio ladder at 48², with the prediction (TTL beats logH at high ratio, ties at `q = 1`) recorded in the file before the run |
 
 ## A note on the default integrator
 

@@ -1,0 +1,42 @@
+cursor_bias: §18, foveation against its own off-state
+  frames=40 quota=12, camera half_world=0.6 at the origin
+  cursor probe at (0.137, 0.4), edge probe at (0.137, -0.4), disc r=0.12
+
+  time-to-resolve is the FIRST frame the disc's leaves have all settled;
+  `-` means it never did within 40 frames.
+
+== step
+       arm  t_cursor    t_edge   leaves    quads  d_cursor    d_edge       vs off
+       off        12        22      196      261     5.462     5.462            -
+    centre        12        22      196      261     5.462     5.462  0m 0new/196
+    moving        12        22      196      261     5.462     5.462  0m 0new/196
+  fovea x4        12        22      196      261     5.462     5.462  0m 0new/196
+ fovea x16        12        22      196      261     5.462     5.462  0m 0new/196
+ dwell 0.5        12        22      196      261     5.462     5.462  0m 0new/196
+ x16 @edge        12        22      196      261     5.462     5.462  0m 0new/196
+  moving cursor (dwell = 0) reproduces `off` bitwise: the fallback IS the default path
+  centre cursor does NOT move the tree -- the named vacuous cell
+   fovea x4: frames saved at the cursor = 0, frames LOST at the edge = 0
+  fovea x16: frames saved at the cursor = 0, frames LOST at the edge = 0
+  x16 @edge: with the fovea moved ONTO the edge probe, edge 22 -> 22 (+0) and cursor 12 -> 12 (+0). The advantage follows the CURSOR if the first number improves.
+
+== filament_through_sea
+       arm  t_cursor    t_edge   leaves    quads  d_cursor    d_edge       vs off
+       off        16        14      196      261     5.462     5.462            -
+    centre        16        14      196      261     5.462     5.462  0m 0new/196
+    moving        16        14      196      261     5.462     5.462  0m 0new/196
+  fovea x4        14        16      196      261     5.462     5.462  0m 0new/196
+ fovea x16         8        16      196      261     5.462     5.462  0m 0new/196
+ dwell 0.5        14        16      196      261     5.462     5.462  0m 0new/196
+ x16 @edge        16         8      196      261     5.462     5.462  0m 0new/196
+  moving cursor (dwell = 0) reproduces `off` bitwise: the fallback IS the default path
+  centre cursor does NOT move the tree -- the named vacuous cell
+   fovea x4: frames saved at the cursor = 2, frames LOST at the edge = 2
+  fovea x16: frames saved at the cursor = 8, frames LOST at the edge = 2
+  x16 @edge: with the fovea moved ONTO the edge probe, edge 14 -> 8 (+6) and cursor 16 -> 16 (+0). The advantage follows the CURSOR if the first number improves.
+
+THE DECISION RULE, stated before the numbers were seen: foveation ships only if it
+beats its own off-state on time-to-resolve at the cursor BY A CLEAR MARGIN, and the
+edge column is what says whether a saving is a gain or the same budget moved.
+
+results/cursor/output/cursor_bias.txt

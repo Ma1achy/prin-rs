@@ -9,7 +9,18 @@ raster, which is what makes them comparable.
 cargo run --release --example moire -- 256 results/moire                          # moire.txt
 cargo run --release --example moire -- 192 results/moire/config_basin config_basin
 cargo run --release --example moire -- 192 results/moire/config_stability_192 config_stability
+cargo run --release --example moire --  64 <scratch>/basin config_basin           # ramp_guard_64
+cargo run --release --example moire --  64 <scratch>/ctl   config_stability
 ```
+
+**These commands no longer reproduce the two 192² logs byte for byte, and the difference is named
+rather than left to be discovered.** The ramp-guard `[ramp]` line was added to the harness *after*
+those two runs, so re-running them now emits one extra line per arm that the committed files do not
+carry. Nothing else moved: the table rows, the panels and every number quoted below are from the
+same code path, and the guard is a separate print of values `colour::range` was already computing.
+The 64² pair was run with the later binary and is where the guard output lives. *A documented
+reproduction command can be wrong, and only running it finds out* — this one was checked against
+what actually ran rather than reconstructed from memory.
 
 ## Read `l dst` and `l sd` first, then the ramp guard, then `prom`
 

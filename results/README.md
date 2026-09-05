@@ -1037,6 +1037,28 @@ cargo run --release --example logh_arms -- 256 results all 400000 all
 python3 tools/contact_sheet.py --root results far deep_interior near-field
 ```
 
+## Twelve directories that were never indexed
+
+Every one of these carries a finding already in the record, and none of them was reachable from
+this file — the same hole the camera table closed for the slippy-map work, at the directories that
+predate it. Listed with what each settles, so the index is a way in rather than a file listing.
+Three carry their own README (`circled/`, `osc/`, `step_control/`); the rest are output plus panels.
+
+| directory | what it settles |
+|---|---|
+| [`circled/`](circled/) | what the circled ICs on `config_stability` have in common. Hierarchical, with the **heaviest and lightest bodies as the wide pair** — `tightest == (1,2)` on 0.07% of the magenta against 28.9% of the frame, a 413x depletion. And the near-degeneracy hypothesis is **refuted by the sign**: tie statistics are *depleted* ~2.5x where the argmax-coin-flip story needs them enriched |
+| `dither/` | whether a per-pixel step-phase dither removes the deep-zoom fringe. It does not: `Scheme::Pcg` **decoheres** the fringe without reducing it, which is the record's *a remedy that only changes the spatial correlation of an error is cosmetic* — live-playhead-compatible and still not a fix |
+| `dither2/` | **nothing — `out.txt` is 0 bytes.** An empty artefact committed by accident in `e717626`; a run that printed nothing measured nothing. Left in place rather than deleted, and flagged here so it is not read as a null |
+| `escgate/` | `EscapeRule::Distance` at `r_esc` 0 against 5 on four slices, outcome and uniform panels. `config_stability`'s persistence at +1/+2/+4/+8 goes `0.784/0.769/0.753/0.734` to `0.968/0.958/0.944/0.923`; `near-field` is flat at 0.0000 at every rung — the gate's sensitivity is regional |
+| `moire/` | the ribbon banding, six mechanisms excluded each by an arm that could have confirmed it — sync cadence, stepper, 8-bit quantisation, sub-pixel aliasing, substep count, and the sampler. The sharpest beat in the table (substep count, prominence 152858) is **not** the cause |
+| [`osc/`](osc/) | and what it *is*: the bound pair's **orbital phase winding through IC space**, best-lag correlation 0.9999–1.0000 with the lag growing linearly. A frequency beat between two slightly different pair periods, not a divergence — and the window is a **regular island inside a mostly-chaotic slice** |
+| `osc_z1/` | the supersampling pair at `z1`. `colour::rgb_resolved` moves **1878 pixels (5.09%)** here against **1 of 36864** at `z4` — the mechanism is healthy and the depth is what has nothing left to average |
+| `overnight/` | the batch whose `PREDICTIONS.md` was written **before any stage ran**, with `RUNLOG.txt` timestamped per stage and the IAS15 reference for `near-field`. The prediction-first shape is the point |
+| `postfix/` | `escape_every` 0 against 4 on five slices after the confirmation guard, uniform and outcome. The labels are stride-invariant where the guard holds and the `t_end` resolution improves — which is what makes the stride a **cost** knob and not a correctness one |
+| `refine_bug/` | the `refine_flagged` discovery: 62 harnesses under `examples/` set it `false`, including every render harness, while `results/README.md` asserted the opposite. One field: `error_ratio` p99 **1.039e10 → 35.6**, drift max **1.97e12 → 6.74e-2**, non-finite **30109 → 0** |
+| [`step_control/`](step_control/) | the four step-control candidates as numbers. **B wins** — a predictive, branch-free `dtau <= f*d_min/(\|v_rel\|*A*B)` fixes the defect for **+1.9% of the steps**, where the dumb global control leaves 153 overshoots at four times the cost |
+| `wedge/` | the wedge census and the one-at-a-time ablation. **`limit_only` reproduces `all` on every column** — the wedges are the predictive step limit alone — while the `dtau` fix removes the *magenta* and leaves the wedges untouched. Two artefacts, never one defect |
+
 ## A note on the default integrator
 
 **Everything committed to `results/` before 2026-09-02 was rendered under `Integrator::Az`, which

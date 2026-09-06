@@ -699,7 +699,14 @@ pub fn range(px: &[PixelOut], s: Scalar) -> (f64, f64) {
 /// Percentiles rather than min/max, for the same reason: one undetermined footprint at `1e12`
 /// would compress every other pixel into the bottom of the range.
 pub fn range_q(px: &[PixelOut], s: Scalar, lo_q: f64, hi_q: f64) -> (f64, f64) {
-    let mut v: Vec<f64> = px.iter().map(|p| s.value(p)).filter(|x| x.is_finite()).collect();
+    range_q_of(px.iter().map(|p| s.value(p)), lo_q, hi_q)
+}
+
+/// [`range_q`] over the values directly, so a grid too large to hold as `PixelOut` can be ranged
+/// from a [`crate::ensemble::pixel::PixelSlim`] pass. `range_q` delegates here, so there is one
+/// implementation and not two.
+pub fn range_q_of(vals: impl Iterator<Item = f64>, lo_q: f64, hi_q: f64) -> (f64, f64) {
+    let mut v: Vec<f64> = vals.filter(|x| x.is_finite()).collect();
     if v.is_empty() {
         return (0.0, 1.0);
     }
@@ -767,11 +774,15 @@ pub fn drift_rgb(p: &PixelOut, lo: f64, hi: f64) -> [u8; 3] {
 /// Values are compared by bit pattern, so this counts *exact* distinct values and never merges
 /// two that a tolerance would.
 pub fn quantisation(px: &[PixelOut], s: Scalar) -> (usize, usize, f64) {
+    quantisation_of(px.iter().map(|p| s.value(p)))
+}
+
+/// [`quantisation`] over the values directly. See [`range_q_of`].
+pub fn quantisation_of(vals: impl Iterator<Item = f64>) -> (usize, usize, f64) {
     use std::collections::HashMap;
     let mut counts: HashMap<u64, usize> = HashMap::new();
     let mut finite = 0usize;
-    for p in px {
-        let v = s.value(p);
+    for v in vals {
         if v.is_finite() {
             finite += 1;
             *counts.entry(v.to_bits()).or_insert(0) += 1;

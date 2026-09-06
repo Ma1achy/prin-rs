@@ -149,15 +149,24 @@ pub fn event_class_rgb_veto(p: &PixelOut, v: crate::output::colour::Veto) -> [u8
 /// and reads as a zero here; without the histogram an image with three colours in it and one
 /// with twenty are indistinguishable at a glance.
 pub fn event_class_histogram(px: &[PixelOut]) -> (Vec<(u8, usize)>, usize) {
+    event_class_histogram_of(px.iter().map(|p| (p.n_nonfinite, p.state, p.event_class)))
+}
+
+/// [`event_class_histogram`] over `(n_nonfinite, state, event_class)` triples, so a grid held as
+/// [`crate::ensemble::pixel::PixelSlim`] can be counted without being widened. The slice form
+/// delegates here.
+pub fn event_class_histogram_of(
+    px: impl Iterator<Item = (u8, u8, u8)>,
+) -> (Vec<(u8, usize)>, usize) {
     let mut counts = vec![0usize; N_EVENT_CLASSES];
     let mut undetermined = 0usize;
-    for p in px {
-        let bad = p.n_nonfinite > 0
+    for (n_nonfinite, state, event_class) in px {
+        let bad = n_nonfinite > 0
             || matches!(
-                State::from_bits(p.state),
+                State::from_bits(state),
                 Some(State::SimFailed) | Some(State::DecodeFailed) | None
             );
-        match (bad, event_class_ordinal(p.event_class)) {
+        match (bad, event_class_ordinal(event_class)) {
             (false, Some(k)) => counts[k] += 1,
             _ => undetermined += 1,
         }

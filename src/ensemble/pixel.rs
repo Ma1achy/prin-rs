@@ -234,7 +234,31 @@ impl EnsembleCfg {
             eta: 0.01,
             land_iterate: true,
             land_max_iters: 4,
-            max_steps: 30_000,
+            // **Sized for AZ, and the default integrator has been Heggie since `84830a1`
+            // (2026-09-02).** `30_000` is the value the whole corpus was taken at and it does not
+            // bind on any of the eight Burrau regions -- bitwise zero flagged at every rung --
+            // which is exactly why it survived: it binds on the LATENT charts, where the gallery
+            // lives. Measured over 35 targets on a fixed grid (`results/step_budget/`):
+            // **every target reaches `flagged = 0` at 480_000**, `flagged == budget` in every row
+            // so budget exhaustion is the only mechanism present, and the cost is **1.000x
+            // bitwise wherever the budget never bound** and at worst **1.351x** (`burrau_nu_k`)
+            // where it did.
+            //
+            // **A too-small budget MANUFACTURES work.** A truncated footprint reads as
+            // undetermined, its quad can never resolve, and it splits: `burrau_nu_k` 415 static
+            // leaves at 30k against 373 from 60k up, `latent_mixed_h3` 214 against 142 and the
+            // whole chart 2.5x faster at the larger budget. So this is not a cost/quality trade
+            // in the direction it looks.
+            //
+            // **The committed corpus does not reproduce under this default** on the 12 of 35
+            // targets where the old value bound. Stated rather than discovered, the same way
+            // `StepLimit::Predictive` was; `provenance` names it in every header. The 30_000
+            // arm is reachable and is what every committed number before this was taken at.
+            //
+            // Not settled by the sweep and recorded there: `burrau_nu_k`'s `error_ratio` p99
+            // reads `1.24e2` at every rung INCLUDING 480_000, so something on that chart is not
+            // data whatever the budget -- an `eta` question, not a budget one.
+            max_steps: 480_000,
             ref_policy: RefPolicy::PerCopy,
             lc_stable: true,
             integrator: Integrator::default(),
@@ -1251,5 +1275,64 @@ pub fn evaluate_at<T: Real>(slice: &Slice, idx: usize, cfg: &EnsembleCfg, eta_v:
         ftle: ftle_out.map(|o| o.ftle.to_f64().unwrap()).unwrap_or(f64::NAN),
         diffusion: ftle_out.map(|o| o.diffusion.to_f64().unwrap()).unwrap_or(f64::NAN),
         ftle_renorm: ftle_out.map(|o| o.n_renorm).unwrap_or(0),
+    }
+}
+
+/// **The five fields a presentation panel actually reads, so a full-resolution uniform grid
+/// need not be held as `PixelOut`.**
+///
+/// A `PixelOut` is 656 bytes. At `1024^2` a uniform pass is **688 MB in one `Vec`**, and with
+/// rayon's per-thread collect the peak is over a gigabyte -- which is why the committed
+/// `results/charts/*_uniform*.png` panels sat unregenerated at 25 August with *"could not be
+/// regenerated on this machine"* beside them. A `PixelSlim` is 40 bytes: **42 MB** for the same
+/// grid, so the pass can be evaluated in strips and the strip's `PixelOut`s dropped.
+///
+/// The three panels the gallery draws -- the `spread_shape` ramp, the outcome class and the event
+/// class -- read exactly `spread_shape`, `shape_vec`, `n_nonfinite`, `state`, `detail` and
+/// `event_class` between them, and nothing else. `detail` is the one that is easy to miss and
+/// `tests/pixel_slim.rs` found it: the outcome panel shades its base colour by
+/// `0.55 + 0.15 * detail`, so a five-field record reproduced the class and not the shade. [`PixelSlim::fat`] rebuilds a `PixelOut` carrying those and
+/// `Default` elsewhere, so every existing colour function applies unchanged rather than being
+/// reimplemented against a second type.
+///
+/// **It is lossless only for those panels.** `fat()` writes the value into `spread_shape`, so it
+/// is a [`crate::output::colour::Scalar::ShapeSpread`] record and nothing else -- a `Drift` or
+/// `TEnd` panel built from one would read `0.0` everywhere and look like a converged field.
+/// `tests/pixel_slim.rs` asserts the round trip is **byte-identical on all three panels** over
+/// real pixels, with an arm that says the fixture contains flagged and unflagged footprints.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct PixelSlim {
+    pub spread_shape: f64,
+    pub shape_vec: [f64; 3],
+    pub n_nonfinite: u8,
+    pub state: u8,
+    pub detail: u8,
+    pub event_class: u8,
+}
+
+impl PixelSlim {
+    pub fn thin(p: &PixelOut) -> Self {
+        Self {
+            spread_shape: p.spread_shape,
+            shape_vec: p.shape_vec,
+            n_nonfinite: p.n_nonfinite,
+            state: p.state,
+            detail: p.detail,
+            event_class: p.event_class,
+        }
+    }
+
+    /// A `PixelOut` carrying the five fields and `Default` elsewhere. See the type note: this is
+    /// a `ShapeSpread` record, not a general one.
+    pub fn fat(&self) -> PixelOut {
+        PixelOut {
+            spread_shape: self.spread_shape,
+            shape_vec: self.shape_vec,
+            n_nonfinite: self.n_nonfinite,
+            state: self.state,
+            detail: self.detail,
+            event_class: self.event_class,
+            ..PixelOut::default()
+        }
     }
 }

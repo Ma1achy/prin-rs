@@ -33,7 +33,7 @@
 //! picture of anything. Every dump's `chart_params` records the chart it was built from.
 
 use prin_rs::camera::Camera;
-use prin_rs::ensemble::pixel::{EnsembleCfg, PixelOut};
+use prin_rs::ensemble::pixel::{EnsembleCfg, PixelOut, PixelSlim};
 use prin_rs::grid::{self, Domain};
 use prin_rs::output::colour::{self, Scalar};
 use prin_rs::output::{adaptive, apng, png, wire};
@@ -249,19 +249,34 @@ fn main() {
         // The uniform grid, when asked for, is evaluated here so that ONE window colours the
         // adaptive panel and the uniform panel beside it. Two auto-ranges made the pair
         // incomparable pixel for pixel.
-        let upx: Option<Vec<PixelOut>> = if uniform {
+        //
+        // **In STRIPS, and holding [`PixelSlim`], because the whole-grid form is what kept these
+        // panels at 25 August.** A `PixelOut` is 656 bytes, so `1024^2` is 688 MB in one `Vec`
+        // and over a gigabyte through rayon's per-thread collect -- on a machine with ~1 GB of
+        // headroom that is not a slow run, it is an impossible one, and the note beside the stale
+        // panels said so. A strip's `PixelOut`s are dropped as soon as they are thinned, so the
+        // peak is one strip (43 MB at `STRIP = 64`) plus 50 MB of slims. The physics is
+        // untouched: `evaluate` is called with the same slice index and the same config.
+        let upx: Option<Vec<PixelSlim>> = if uniform {
+            const STRIP: usize = 64;
             let usl = grid::Slice::body_plane(res, res, cx, cy, half, 0).with_chart(*chart);
-            Some(
-                (0..usl.npix())
+            let mut acc: Vec<PixelSlim> = Vec::with_capacity(usl.npix());
+            let mut row = 0usize;
+            while row < res {
+                let hi_row = (row + STRIP).min(res);
+                let mut band: Vec<PixelSlim> = (row * res..hi_row * res)
                     .into_par_iter()
-                    .map(|k| prin_rs::ensemble::pixel::evaluate::<f64>(&usl, k, &ens))
-                    .collect(),
-            )
+                    .map(|k| PixelSlim::thin(&prin_rs::ensemble::pixel::evaluate::<f64>(&usl, k, &ens)))
+                    .collect();
+                acc.append(&mut band);
+                row = hi_row;
+            }
+            Some(acc)
         } else {
             None
         };
         let (lo, hi) = match &upx {
-            Some(u) => colour::range(u, Scalar::ShapeSpread),
+            Some(u) => colour::range_q_of(u.iter().map(|p| p.spread_shape), 0.01, 0.99),
             None => colour::range(&all_px, Scalar::ShapeSpread),
         };
         let (distinct, _, _) = colour::quantisation(&all_px, Scalar::ShapeSpread);
@@ -457,12 +472,14 @@ fn main() {
             // pixel, no interpolation anywhere.
             let ures = res;
             let usites = colour::landmarks(&m_here);
-            let vetoed_u =
-                upx.iter().filter(|p| colour::vetoed(p, Scalar::ShapeSpread, &usites, lo, hi)).count();
+            let vetoed_u = upx
+                .iter()
+                .filter(|p| colour::vetoed(&p.fat(), Scalar::ShapeSpread, &usites, lo, hi))
+                .count();
             let mut buf = Vec::with_capacity(upx.len() * 3);
-            for p in upx {
+            for p in upx.iter().map(|p| p.fat()) {
                 buf.extend_from_slice(&colour::rgb_veto(
-                    p,
+                    &p,
                     Scalar::ShapeSpread,
                     &usites,
                     lo,
@@ -490,8 +507,8 @@ fn main() {
             );
             let _ = adaptive::save_rect(&format!("{stem}_uniform.png"), ures, ures, &buf);
             let mut obuf = Vec::with_capacity(upx.len() * 3);
-            for p in upx {
-                obuf.extend_from_slice(&png::outcome_rgb_veto(p, colour::Veto::None));
+            for p in upx.iter().map(|p| p.fat()) {
+                obuf.extend_from_slice(&png::outcome_rgb_veto(&p, colour::Veto::None));
             }
             let _ =
                 adaptive::save_rect(&format!("{stem}_uniform_outcome.png"), ures, ures, &obuf);
@@ -508,15 +525,17 @@ fn main() {
             // event class is the currently-tightest pair joined with the terminal outcome and
             // is defined at every playhead, where the outcome label at t = 13 is saturated.
             let mut ebuf = Vec::with_capacity(upx.len() * 3);
-            for p in upx {
-                ebuf.extend_from_slice(&png::event_class_rgb_veto(p, colour::Veto::None));
+            for p in upx.iter().map(|p| p.fat()) {
+                ebuf.extend_from_slice(&png::event_class_rgb_veto(&p, colour::Veto::None));
             }
             let _ = adaptive::save_rect(&format!("{stem}_uniform_event.png"), ures, ures, &ebuf);
 
             // The histogram, before the image. 27 slots on one ramp means adjacent classes are
             // close in colour by construction, so the legend and the counts are the instrument.
             // A class that never fires is a fact about the slice and reads as a zero here.
-            let (rows, undet) = png::event_class_histogram(upx);
+            let (rows, undet) = png::event_class_histogram_of(
+                upx.iter().map(|p| (p.n_nonfinite, p.state, p.event_class)),
+            );
             let live: Vec<String> = rows
                 .iter()
                 .filter(|&&(_, n)| n > 0)

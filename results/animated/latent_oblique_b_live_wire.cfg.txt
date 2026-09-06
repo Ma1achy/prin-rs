@@ -1,3 +1,3 @@
 image=results/animated/latent_oblique_b_live_wire.png
 config=production + 1 override(s): keep_live_series=true (production false)
-chart=latent animation=live_wire axis=playhead frames=19 boundaries=8 live_stride=4 adjacent_duplicates=7 scalar=ShapeSpread window=(1.1071e-4,1.3084e-1) window_from=live_tree_terminal res=1024 viewport=1024 budget=40000 tau_display=1e-2 alpha_hi=0.5 criterion=within k_frac=0.25 stop=floor:1 keep:549 max_rel_depth:333 live_leaves=883 static_leaves=889 veto=none flagged_footprints=457 of=56512
+chart=latent animation=live_wire axis=playhead frames=19 boundaries=8 live_stride=4 adjacent_duplicates=7 scalar=ShapeSpread window=(9.9682e-5,8.5319e-2) window_from=live_tree_terminal res=1024 viewport=1024 budget=40000 tau_display=1e-2 alpha_hi=0.5 criterion=within k_frac=0.25 stop=floor:2 keep:549 max_rel_depth:317 live_leaves=868 static_leaves=889 veto=none flagged_footprints=0 of=55552

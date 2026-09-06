@@ -1,0 +1,3 @@
+image=results/charts/latent_inner_p_h3_uniform.png
+config=production
+chart=latent panel=uniform scalar=ShapeSpread window=(2.4612e-5,7.9232e-3) window_from=uniform_grid res=1024 one_sample_per_pixel=true veto=none flagged_footprints=0 of=1048576

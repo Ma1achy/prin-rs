@@ -4,7 +4,7 @@
 latent_mass_h3: leaf depth against terminated_fraction
 </text>
 <text x="14" y="26" dy="0.76em" text-anchor="start" font-family="sans-serif" font-size="10.483870967741936" opacity="1" fill="#787884">
-727 leaves, spearman(depth, terminated) = +0.0816, mean escape_fraction = 0.6345
+715 leaves, spearman(depth, terminated) = +0.0915, mean escape_fraction = 0.6285
 </text>
 <text x="14" y="44" dy="0.76em" text-anchor="start" font-family="sans-serif" font-size="10.483870967741936" opacity="1" fill="#787884">
 Anti-correlation is the prediction: the criterion chases non-convergence, not structure. Terminated regions are absorbing, so copies agree, spread_event collapses and the quad reads resolved.
@@ -340,6 +340,7 @@ leaf depth
 </text>
 <polyline fill="none" opacity="1" stroke="#787884" stroke-width="1" points="1383,738 1383,743 "/>
 <circle cx="217" cy="213" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
+<circle cx="217" cy="120" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
 <circle cx="735" cy="473" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
 <circle cx="476" cy="120" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
 <circle cx="476" cy="120" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
@@ -477,12 +478,12 @@ leaf depth
 <circle cx="994" cy="120" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
 <circle cx="994" cy="714" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
 <circle cx="994" cy="714" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
+<circle cx="994" cy="714" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
+<circle cx="994" cy="714" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
+<circle cx="994" cy="714" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
+<circle cx="994" cy="714" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
 <circle cx="994" cy="649" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
 <circle cx="994" cy="380" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
-<circle cx="994" cy="714" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
-<circle cx="994" cy="714" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
-<circle cx="994" cy="714" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
-<circle cx="994" cy="714" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
 <circle cx="994" cy="120" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
 <circle cx="994" cy="120" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
 <circle cx="994" cy="120" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
@@ -1033,9 +1034,6 @@ leaf depth
 <circle cx="1253" cy="120" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
 <circle cx="1253" cy="120" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
 <circle cx="1253" cy="120" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
-<circle cx="476" cy="120" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
-<circle cx="476" cy="120" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
-<circle cx="476" cy="120" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
 <circle cx="1253" cy="120" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
 <circle cx="1253" cy="120" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
 <circle cx="1253" cy="120" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
@@ -1056,20 +1054,10 @@ leaf depth
 <circle cx="1253" cy="120" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
 <circle cx="1253" cy="120" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
 <circle cx="1253" cy="120" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
-<circle cx="735" cy="120" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
-<circle cx="735" cy="120" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
-<circle cx="735" cy="120" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
-<circle cx="994" cy="120" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
-<circle cx="994" cy="120" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
-<circle cx="994" cy="120" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
-<circle cx="1253" cy="120" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
-<circle cx="1253" cy="139" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
-<circle cx="1253" cy="120" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
-<circle cx="1253" cy="120" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
-<polyline fill="none" opacity="1" stroke="#F0AA46" stroke-width="3" points="217,213 476,120 735,315 994,120 1253,120 "/>
-<circle cx="217" cy="213" r="5" opacity="1" fill="#F0AA46" stroke="none" stroke-width="1"/>
+<polyline fill="none" opacity="1" stroke="#F0AA46" stroke-width="3" points="217,120 476,120 735,324 994,120 1253,120 "/>
+<circle cx="217" cy="120" r="5" opacity="1" fill="#F0AA46" stroke="none" stroke-width="1"/>
 <circle cx="476" cy="120" r="5" opacity="1" fill="#F0AA46" stroke="none" stroke-width="1"/>
-<circle cx="735" cy="315" r="5" opacity="1" fill="#F0AA46" stroke="none" stroke-width="1"/>
+<circle cx="735" cy="324" r="5" opacity="1" fill="#F0AA46" stroke="none" stroke-width="1"/>
 <circle cx="994" cy="120" r="5" opacity="1" fill="#F0AA46" stroke="none" stroke-width="1"/>
 <circle cx="1253" cy="120" r="5" opacity="1" fill="#F0AA46" stroke="none" stroke-width="1"/>
 </svg>

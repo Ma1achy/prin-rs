@@ -4,7 +4,7 @@
 preset_shape_h1: leaf depth against terminated_fraction
 </text>
 <text x="14" y="26" dy="0.76em" text-anchor="start" font-family="sans-serif" font-size="10.483870967741936" opacity="1" fill="#787884">
-1627 leaves, spearman(depth, terminated) = -0.2872, mean escape_fraction = 0.0007
+1627 leaves, spearman(depth, terminated) = -0.2867, mean escape_fraction = 0.0015
 </text>
 <text x="14" y="44" dy="0.76em" text-anchor="start" font-family="sans-serif" font-size="10.483870967741936" opacity="1" fill="#787884">
 Anti-correlation is the prediction: the criterion chases non-convergence, not structure. Terminated regions are absorbing, so copies agree, spread_event collapses and the quad reads resolved.
@@ -439,9 +439,9 @@ leaf depth
 <circle cx="1221" cy="417" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
 <circle cx="1221" cy="677" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
 <circle cx="1221" cy="510" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
-<circle cx="1221" cy="667" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
+<circle cx="1221" cy="658" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
 <circle cx="1221" cy="538" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
-<circle cx="1221" cy="667" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
+<circle cx="1221" cy="658" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
 <circle cx="1221" cy="538" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
 <circle cx="1221" cy="677" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
 <circle cx="1221" cy="510" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
@@ -469,14 +469,14 @@ leaf depth
 <circle cx="1221" cy="621" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
 <circle cx="1221" cy="714" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
 <circle cx="1221" cy="621" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
-<circle cx="1221" cy="278" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
-<circle cx="1221" cy="408" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
-<circle cx="1221" cy="287" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
-<circle cx="1221" cy="426" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
 <circle cx="1221" cy="584" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
 <circle cx="1221" cy="482" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
 <circle cx="1221" cy="500" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
 <circle cx="1221" cy="361" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
+<circle cx="1221" cy="278" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
+<circle cx="1221" cy="408" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
+<circle cx="1221" cy="287" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
+<circle cx="1221" cy="426" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
 <circle cx="1221" cy="714" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
 <circle cx="1221" cy="621" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
 <circle cx="1221" cy="714" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
@@ -1437,26 +1437,26 @@ leaf depth
 <circle cx="1221" cy="695" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
 <circle cx="1221" cy="417" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
 <circle cx="1221" cy="352" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
-<circle cx="1221" cy="640" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
-<circle cx="1221" cy="649" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
-<circle cx="1221" cy="538" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
-<circle cx="1221" cy="473" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
-<circle cx="1221" cy="538" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
-<circle cx="1221" cy="473" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
-<circle cx="1221" cy="640" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
-<circle cx="1221" cy="649" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
 <circle cx="1221" cy="417" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
 <circle cx="1221" cy="352" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
 <circle cx="1221" cy="704" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
 <circle cx="1221" cy="695" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
-<circle cx="1221" cy="621" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
-<circle cx="1221" cy="398" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
-<circle cx="1221" cy="436" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
-<circle cx="1221" cy="389" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
+<circle cx="1221" cy="408" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
+<circle cx="1221" cy="408" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
+<circle cx="1221" cy="640" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
+<circle cx="1221" cy="649" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
 <circle cx="1221" cy="148" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
 <circle cx="1221" cy="593" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
 <circle cx="1221" cy="315" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
 <circle cx="1221" cy="714" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
+<circle cx="1221" cy="640" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
+<circle cx="1221" cy="649" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
+<circle cx="1221" cy="408" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
+<circle cx="1221" cy="408" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
+<circle cx="1221" cy="602" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
+<circle cx="1221" cy="306" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
+<circle cx="1221" cy="426" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
+<circle cx="1221" cy="361" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
 <circle cx="1221" cy="649" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
 <circle cx="1221" cy="528" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
 <circle cx="1221" cy="130" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
@@ -1497,10 +1497,10 @@ leaf depth
 <circle cx="1221" cy="714" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
 <circle cx="1221" cy="148" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
 <circle cx="1221" cy="593" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
-<circle cx="1221" cy="436" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
-<circle cx="1221" cy="389" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
-<circle cx="1221" cy="621" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
-<circle cx="1221" cy="398" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
+<circle cx="1221" cy="426" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
+<circle cx="1221" cy="361" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
+<circle cx="1221" cy="602" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
+<circle cx="1221" cy="306" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
 <circle cx="1221" cy="389" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
 <circle cx="1221" cy="334" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>
 <circle cx="1221" cy="194" r="2" opacity="0.16" fill="#78AAE6" stroke="none" stroke-width="1"/>

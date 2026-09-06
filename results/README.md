@@ -1,7 +1,8 @@
 > **2026-09-03, the refinement rebuild.** The measurement that supersedes every `error(B)` curve
 > below is `results/payload/` (its README first): the physics-space metric, the tolerance policy
-> against the exact ceiling, and the live descent. `results/charts/` is the 3 September
-> regeneration; its `_uniform*` panels are still 25 August (see that README).
+> against the exact ceiling, and the live descent. **`results/charts/` is fully regenerated as of
+> 2026-09-06, `_uniform*` panels included, at the new production `max_steps = 480_000`** — see the
+> dated block in the `charts/` section for the ten-hour run and the account of which trees moved.
 
 # Committed results
 
@@ -15,10 +16,11 @@ than a record.
 
 ## THE SCHEDULER CORPUS IS SUPERSEDED, AND REPLACING IT IS A RE-MEASUREMENT
 
-> **2026-09-05: `charts/` and `animated/` are REGENERATED** on the current kernel under
+> **2026-09-05/06: `charts/` and `animated/` are REGENERATED** on the current kernel under
 > `Policy::Tolerance`, and are no longer part of the list below — see the dated block in the
-> `charts/` section. Their `_uniform*.png` panels are the exception and are **still 25 August**;
-> the cost of fixing that is measured and stated there. Everything else here stands.
+> `charts/` section. **The `_uniform*.png` panels are no longer the exception**: they were
+> regenerated 2026-09-06 in the same pass, once `PixelSlim` and a strip loop made a 1024² uniform
+> grid a 50 MB job rather than a 688 MB one. Everything else here stands.
 
 **Read this before quoting any number from `criterion/`, `vertical/`,
 `charts_ranked/`, `criterion_ranked/`, `sweep/`, `refinement/` or
@@ -485,20 +487,43 @@ not, which is why the version moved.
 
 ## `charts/` — every chart family, from `examples/chart_gallery.rs`
 
-> **Regenerated 2026-09-05 under `Policy::Tolerance` on the current kernel.**
-> `cargo run --release --example chart_gallery -- 40000 1e-2 0.5 1024 0.25 within results 1 0 all 0.005`
-> — 26 charts, ~50 minutes, `refine_flagged` **on** (production), `uniform` **off**.
-> `output/chart_gallery.txt` is the captured stdout and every `.prnq` header carries
-> `policy=tolerance tau_display=0.01 alpha_hi=0.5 alpha_lo=0.005`.
+> **Regenerated 2026-09-06, `_uniform*` panels included, at `max_steps = 480_000`.**
+> `cargo run --release --example chart_gallery -- 40000 1e-2 0.5 1024 0.25 within results 1 1 all 0.005`
+> — 26 charts, **about ten and a half hours** (02:36 to 12:51 plus a 50-minute pair re-run),
+> `refine_flagged` **on** (production), `uniform` **ON** — argument nine, and that single digit is
+> the whole ~45x cost difference. `output/chart_gallery.txt` is the stitched stdout.
 >
-> **The `_uniform*.png` panels are NOT regenerated and are still 25 August.** Measured: one chart's
-> uniform panel at 1024² exceeds **ten minutes** against **13 seconds** for its adaptive tree — over
-> 45× — so the full set is a multi-hour job on its own. That is a real staleness and it is stated
-> rather than left for a reader to discover, which is the failure this directory already carries
-> once. **A pass over the `_uniform*` set was started 2026-09-05 10:44** at ~53 min/chart on a
-> heavily loaded machine, so this directory is **mixed-version** until it completes: the charts it
-> has reached carry current-kernel uniform panels and the rest are 25 August. Do not enumerate them
-> here — the count moves — ask **git**, not the filesystem:
+> **Run it one chart at a time and stitch, because `Log::tee` is `File::create`.** Every
+> invocation TRUNCATES `output/chart_gallery.txt`, so a batched regeneration ends holding only its
+> last batch — and a single-chart probe run mid-session destroyed a table that had just been
+> committed. Capture each chart's stdout separately and stitch at the end.
+>
+> **But `body_plane` and `plane_00deg` must run in ONE process.** The control asserts they are
+> bitwise the same chart on **initial conditions** — `max |dIC| = 0e0`, exact, where an image
+> comparison would conflate *same chart* with *the rasteriser rounds the same way at O(1) and O(0)
+> coordinate magnitudes* — and it holds `body_plane`'s ICs in a variable from its own iteration.
+> Splitting the run by chart removes that control silently. It panicked with
+> `body_plane must run first` instead, which is the behaviour worth having.
+>
+> **The uniform pass is no longer memory-bound, and it never was time-bound.** The note that used
+> to sit here said these panels *could not be regenerated on this machine*. The reason was not the
+> ten minutes a chart: a `PixelOut` is **656 bytes**, so a 1024² grid is **688 MB in one `Vec`**
+> and over a gigabyte through rayon's per-thread collect, against about a gigabyte of headroom.
+> `PixelSlim` (48 bytes) plus a 64-row strip loop puts the peak at one strip — the probe ran at
+> **24 MB resident**. `body_plane_uniform.png` came back **bitwise identical** to the whole-grid
+> render committed before it, same 133,841 bytes and the same ramp window to the digit, which is a
+> better guard on the refactor than any unit test: one million pixels, through `range_q_of` as well
+> as the colouring.
+>
+> **The adaptive panels move when the uniform arm runs, by design.** With `upx` present the ramp
+> window comes from the uniform grid rather than the tree leaves — `window_from=uniform_grid`
+> against `tree_leaves` — which is the whole reason the two are rendered in one pass, so the pair
+> is comparable pixel for pixel.
+>
+> **Nothing in these artefacts records the production step budget, and that is not a gap in the
+> provenance.** A *departure* from production is recorded — `overrides_vs_production` derives the
+> declaration by diffing, so a run at the old `30_000` says `max_steps=30000` in its sidecar. Only
+> the **baseline** moving is invisible, and the baseline is the code. Date these files by commit:
 >
 > ```sh
 > git log --format='%ad %h' --date=short -1 -- results/charts/<case>_uniform.png
@@ -509,6 +534,50 @@ not, which is why the version moved.
 > becomes a fact about the last checkout the moment they are not. The commit date is the honest
 > discriminator. (An mtime scan is still the right tool for watching the *live* run, and that is a
 > different question from dating a committed artefact.)
+>
+> #### The budget move is the cause of every tree that moved, and the match is one-directional
+>
+> `tools/verify_prnq_regen.sh results/charts` reads `identical=0  differ only in wall_seconds=11
+> MOVED=15`, and it refuses the commit until that is understood. It is understood:
+>
+> **Sixteen charts carried budget-truncated footprints under `max_steps = 30_000`. Fifteen of them
+> moved their tree. Not one chart moved without one.** The gallery total runs **14,970 vetoed
+> footprints to 9**:
+>
+> ```
+>   burrau_nu_k        8456/61120 ->    0/48256      preset_plambda        2/37696 -> 0/37696
+>   latent_mixed_h3    4362/43648 ->    0/36160      preset_plambda_h1    25/64576 -> 0/64576
+>   latent_oblique_a    633/44416 ->    0/43648      preset_prho           3/45568 -> 0/45568
+>   latent_oblique_b    457/56512 ->    0/55552      preset_prho_h1       24/67072 -> 0/67072
+>   preset_shape_h1     446/91648 ->    5/91648      latent_mass          33/30784 -> 0/30208
+>   preset_shape        349/72640 ->    2/72640      latent_mass_h3       14/31744 -> 0/30784
+>   mass_simplex        150/34432 ->    0/32896      latent_shape_h3       4/35968 -> 0/35968
+>   preset_shape_pl_h1   10/48448 ->    2/48448      preset_shape_pl       2/37312 -> 0/37312
+> ```
+>
+> **`preset_shape_pl` is the one that changed its veto count without moving its tree** — 2 to 0,
+> and no quad decision flipped. A footprint count is not a quad count, and under a tolerance a
+> quad splits if *any* footprint is unresolved, so clearing two footprints in already-unresolved
+> quads changes nothing. That row is the reason the match is stated as one-directional rather than
+> as an equivalence.
+>
+> **And the trees SHRANK.** `burrau_nu_k` 1217 quads to 1101, `latent_mixed_h3` 529 to 333. A
+> truncated footprint reads undetermined, a quad holding one can never resolve, and it splits — so
+> the old budget was *manufacturing* work, which is the sweep's finding at production resolution.
+>
+> **The 48² sweep under-predicted which charts would move, and the direction is the standing
+> lesson.** It named eleven gallery charts; fifteen moved. The four extras — `latent_mass`,
+> `preset_prho`, `preset_prho_h1`, `preset_plambda` — read **0 of 1,048,576** flagged on their
+> uniform panels, so it is not the pixels: the tree's footprints are Halton-jittered ensemble
+> copies at different sample points from the pixel centres, and a quad footprint can be
+> budget-bound where no uniform pixel is. *Read it at the resolution that ships.*
+>
+> **What remains flagged is the sea-chart family and it is an `eta` question, not a budget one.**
+> `preset_shape_h1` 13 of 1,048,576 on its uniform panel (0.0012%), `preset_shape` 10,
+> `preset_shape_pl_h1` 1 — 24 pixels out of 25 million across the whole set, and **zero magenta in
+> any of the 191 regenerated PNGs**, because the flag is not consulted in a presentation render.
+> The sweep already recorded that `error_ratio` p99 stays high on the worst charts at every rung
+> including 480_000.
 >
 > The adaptive artefacts are **not** affected: re-running the gallery reproduces `.prnq` bitwise
 > except for `wall_seconds`, checked on `plane_00deg` — 4 differing bytes, all inside that field,
@@ -553,8 +622,39 @@ remained became more coherent **was noise**. The old panels were showing the unr
 diverged copies at pixel scale.
 
 **One chart, and `plane_00deg` is not a second one** — the gallery's own control asserts
-`max |dIC| = 0e0` between them, so they are the same chart under two names. The claim is one
-measurement until the pass finishes.
+`max |dIC| = 0e0` between them, so they are the same chart under two names. The claim was one
+measurement until the pass finished.
+
+#### The pass finished, and the FILE SIZE reading does not survive it — coherence does
+
+Across all 26 regenerated panels: **19 smaller, 6 larger, 1 identical.** `burrau_nu_k` grew
+**1.67x** (852,285 to 1,426,548) and `invariant_lz_k` **1.55x**. A size heuristic read off one
+chart would have called those a regression.
+
+The discriminator this record already names reads the same way on **every** panel measured,
+whichever way its size went:
+
+```
+                       distinct    L sd   coherence   contrast
+  plane_00deg      cm      9314   45.11      0.8256     24.785
+                   re      1437   25.77      0.9914      0.308
+  shape_sphere     cm    139312   46.60      0.9281     11.080
+                   re     16000   47.01      0.9876      2.239
+  burrau_nu_k      cm     35924   23.09      0.8481      2.865
+                   re     20771   50.73      0.9904      2.059
+  invariant_lz_k   cm     13338   29.21      0.8224      4.226
+                   re      5987   35.84      0.9748      0.579
+  latent_mixed_h3  cm     74515   35.10      0.8246      5.895
+                   re     34806   41.33      0.9853      1.999
+```
+
+**Lag-1 coherence rises on all five, 0.82-0.93 to 0.97-0.99, and local contrast falls on all
+five.** What separates the panels that grew from the panels that shrank is `L sd` — the two that
+grew are the two whose *large-scale* dynamic range went **up** (23.09 to 50.73, 29.21 to 35.84)
+while their pixel-scale noise went down. So the file size is set by large-scale structure and the
+pixel-scale noise is what the fix removed; the two move independently and only one of them is the
+question being asked. *Amplitude cannot tell a small real signal from noise; coherence can* — and
+here amplitude does not even point consistently.
 
 ### Three standing results move, and one is the reason the corpus needed replacing
 

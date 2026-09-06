@@ -1,3 +1,3 @@
 image=results/charts/burrau_nu_k.png
 config=production
-chart=burrau leaves=913 depth=6 stop=floor:13 keep:571 max_rel_depth:307 undetermined:22 scalar=ShapeSpread window=(3.4857e-5,3.2455e-1) window_from=tree_leaves res=1024 viewport=1024 budget=40000 tau_display=1e-2 alpha_hi=0.5 criterion=within k_frac=0.25 veto=none flagged_footprints=6512 of=58432
+chart=burrau leaves=826 depth=6 stop=floor:12 keep:563 max_rel_depth:251 scalar=ShapeSpread window=(9.7338e-8,2.0750e-2) window_from=uniform_grid res=1024 viewport=1024 budget=40000 tau_display=1e-2 alpha_hi=0.5 criterion=within k_frac=0.25 veto=none flagged_footprints=0 of=52864

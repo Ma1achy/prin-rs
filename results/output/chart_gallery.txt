@@ -1,140 +1,193 @@
   config: production
-  uniform panels: off -- pass 1 as argument 9 to regenerate them
+  uniform panels: ON (8.4M trajectories per chart at 1024^2)
 budget 40000, tau=1e-2, alpha_hi=0.5, N=8, E+1=8, t=13, f64, 1024^2, screen floor ON.
 Colouring: hue = shape sphere by vMF site-blend, lightness = spread_shape on a log ramp
 over each chart's own p1-p99. The window is printed because a false-colour image without
 its scale is decoration.
 
               case          chart domain   quads  leaves  depth  screen  distinct  alpha med alpha idec ramp span     bound
-        body_plane     body_plane   free     125      94      6       0      5290     0.9998     0.7465 55768.728  crit 75%
+        body_plane     body_plane   free     125      94      6       0      5290     0.9998     0.7465    16.234  crit 75%
                     depth~terminated_fraction: spearman = +0.4564, mean escape_fraction = 0.0000
                     L2:n=14 med=0.000 [0.000,0.000]  L3:n=3 med=0.000 [0.000,0.000]  L4:n=13 med=0.000 [0.000,1.000]  L5:n=16 med=0.000 [0.000,1.000]  L6:n=48 med=0.344 [0.000,1.000]
-        body_plane                live march: 91 leaves (static 94), depth 6, 12 frames, vetoed 0/5824, substeps x1.00 static, 9.9s
+        body_plane                uniform panel: 0/1048576 (0.0000%) flagged undetermined by the driver, drawn normally
+                    event classes (2 of 27 fire, 0 undetermined): tightest (1,2)=1023927, terminated: collision d2=24649
+        body_plane                live march: 91 leaves (static 94), depth 6, 12 frames, vetoed 0/5824, substeps x1.00 static, 11.7s
                                   live animation: 7/7 identical adjacent pairs of 17 (colour/wire), 6 of them the end hold
-       plane_00deg          plane   free     125      94      6       0      5290     0.9998     0.7465 55768.728  crit 75%
+       plane_00deg          plane   free     125      94      6       0      5290     0.9998     0.7465    16.234  crit 75%
                     depth~terminated_fraction: spearman = +0.4564, mean escape_fraction = 0.0000
                     L2:n=14 med=0.000 [0.000,0.000]  L3:n=3 med=0.000 [0.000,0.000]  L4:n=13 med=0.000 [0.000,1.000]  L5:n=16 med=0.000 [0.000,1.000]  L6:n=48 med=0.344 [0.000,1.000]
-       plane_00deg                live march: 91 leaves (static 94), depth 6, 12 frames, vetoed 0/5824, substeps x1.00 static, 9.9s
+       plane_00deg                uniform panel: 0/1048576 (0.0000%) flagged undetermined by the driver, drawn normally
+                    event classes (2 of 27 fire, 0 undetermined): tightest (1,2)=1023927, terminated: collision d2=24649
+       plane_00deg                live march: 91 leaves (static 94), depth 6, 12 frames, vetoed 0/5824, substeps x1.00 static, 16.2s
                                   live animation: 7/7 identical adjacent pairs of 17 (colour/wire), 6 of them the end hold
-      shape_sphere          shape   free    2253    1690      6       0     89021     1.0324     1.7849 36983.666  VETO 52%
+                    [control] plane_00deg vs body_plane: max |dIC| = 0e0 -- the same chart, asserted
+      shape_sphere          shape   free    2253    1690      6       0     89021     1.0324     1.7849 13723.030  VETO 52%
                     depth~terminated_fraction: spearman = -0.1121, mean escape_fraction = 0.0000
                     L3:n=11 med=0.000 [0.000,0.094]  L4:n=69 med=0.000 [0.000,1.000]  L5:n=226 med=0.000 [0.000,1.000]  L6:n=1384 med=0.000 [0.000,0.953]
-      shape_sphere                live march: 1372 leaves (static 1690), depth 6, 14 frames, vetoed 0/87808, substeps x0.86 static, 159.8s
+      shape_sphere                uniform panel: 0/1048576 (0.0000%) flagged undetermined by the driver, drawn normally
+                    event classes (6 of 27 fire, 0 undetermined): tightest (0,1)=4895, tightest (0,2)=115518, tightest (1,2)=638002, terminated: collision d0=1837, terminated: collision d1=64805, terminated: collision d2=223519
+      shape_sphere                live march: 1372 leaves (static 1690), depth 6, 14 frames, vetoed 0/87808, substeps x0.86 static, 173.0s
                                   live animation: 7/7 identical adjacent pairs of 19 (colour/wire), 6 of them the end hold
-      latent_shape         latent   free     233     175      6       0      9379     1.2558     1.1524     9.907 crit 100%
+      latent_shape         latent   free     233     175      6       0      9379     1.2558     1.1524    43.531 crit 100%
                     depth~terminated_fraction: spearman = -0.1549, mean escape_fraction = 0.0002
                     L2:n=12 med=0.000 [0.000,0.000]  L3:n=8 med=0.000 [0.000,0.000]  L4:n=9 med=0.000 [0.000,0.000]  L5:n=74 med=0.000 [0.000,0.000]  L6:n=72 med=0.000 [0.000,0.000]
-      latent_shape                live march: 175 leaves (static 175), depth 6, 11 frames, vetoed 0/11200, substeps x1.04 static, 13.0s
+      latent_shape                uniform panel: 0/1048576 (0.0000%) flagged undetermined by the driver, drawn normally
+                    event classes (1 of 27 fire, 0 undetermined): tightest (0,1)=1048576
+      latent_shape                live march: 175 leaves (static 175), depth 6, 11 frames, vetoed 0/11200, substeps x1.04 static, 19.3s
                                   live animation: 7/7 identical adjacent pairs of 16 (colour/wire), 6 of them the end hold
-    latent_inner_p         latent   free    1001     751      6       0     39430     1.0255     0.5370   105.846  crit 64%
+    latent_inner_p         latent   free    1001     751      6       0     39430     1.0255     0.5370    70.628  crit 64%
                     depth~terminated_fraction: spearman = +0.0180, mean escape_fraction = 0.1257
                     L2:n=2 med=0.875 [0.391,0.875]  L3:n=25 med=0.000 [0.000,0.734]  L4:n=61 med=0.000 [0.000,0.156]  L5:n=115 med=0.000 [0.000,1.000]  L6:n=548 med=0.000 [0.000,0.750]
-    latent_inner_p                live march: 748 leaves (static 751), depth 6, 12 frames, vetoed 0/47872, substeps x1.00 static, 55.1s
+    latent_inner_p                uniform panel: 0/1048576 (0.0000%) flagged undetermined by the driver, drawn normally
+                    event classes (5 of 27 fire, 0 undetermined): tightest (0,1)=112468, tightest (0,2)=343339, tightest (1,2)=590431, terminated: collision d0=1953, terminated: collision d1=385
+    latent_inner_p                live march: 748 leaves (static 751), depth 6, 12 frames, vetoed 0/47872, substeps x1.00 static, 60.8s
                                   live animation: 7/7 identical adjacent pairs of 17 (colour/wire), 6 of them the end hold
-    latent_outer_p         latent   free     669     502      6       0     26151     1.0987     2.5086   927.757  crit 55%
+    latent_outer_p         latent   free     669     502      6       0     26151     1.0987     2.5086   398.920  crit 55%
                     depth~terminated_fraction: spearman = +0.2867, mean escape_fraction = 0.0079
                     L2:n=8 med=0.000 [0.000,0.000]  L3:n=10 med=0.000 [0.000,0.000]  L4:n=46 med=0.000 [0.000,0.000]  L5:n=78 med=0.000 [0.000,0.000]  L6:n=360 med=0.000 [0.000,0.094]
-    latent_outer_p                live march: 496 leaves (static 502), depth 6, 14 frames, vetoed 0/31744, substeps x1.00 static, 34.2s
+    latent_outer_p                uniform panel: 0/1048576 (0.0000%) flagged undetermined by the driver, drawn normally
+                    event classes (6 of 27 fire, 0 undetermined): tightest (0,1)=1028944, tightest (0,2)=8431, tightest (1,2)=9562, terminated: collision d0=160, terminated: collision d1=685, terminated: collision d2=794
+    latent_outer_p                live march: 496 leaves (static 502), depth 6, 14 frames, vetoed 0/31744, substeps x1.00 static, 44.8s
                                   live animation: 7/7 identical adjacent pairs of 19 (colour/wire), 6 of them the end hold
-       latent_mass         latent   free     725     544      6       0     29075     1.0019     0.1107     5.672  crit 70%
-                    depth~terminated_fraction: spearman = -0.0888, mean escape_fraction = 0.2526
-                    L2:n=2 med=1.000 [0.531,1.000]  L3:n=17 med=0.000 [0.000,1.000]  L4:n=117 med=0.000 [0.000,1.000]  L5:n=72 med=0.000 [0.000,1.000]  L6:n=336 med=0.000 [0.000,1.000]
-       latent_mass                live march: 481 leaves (static 544), depth 6, 12 frames, vetoed 33/30784, substeps x0.88 static, 36.9s
+       latent_mass         latent   free     717     538      6       0     28795     1.0019     0.1097    10.321  crit 70%
+                    depth~terminated_fraction: spearman = -0.0801, mean escape_fraction = 0.2554
+                    L2:n=2 med=1.000 [0.531,1.000]  L3:n=17 med=0.000 [0.000,1.000]  L4:n=117 med=0.000 [0.000,1.000]  L5:n=74 med=0.000 [0.000,1.000]  L6:n=328 med=0.000 [0.000,1.000]
+       latent_mass                uniform panel: 0/1048576 (0.0000%) flagged undetermined by the driver, drawn normally
+                    event classes (3 of 27 fire, 0 undetermined): tightest (0,1)=534443, tightest (0,2)=150770, tightest (1,2)=363363
+       latent_mass                live march: 472 leaves (static 538), depth 6, 12 frames, vetoed 0/30208, substeps x0.88 static, 53.3s
                                   live animation: 7/7 identical adjacent pairs of 17 (colour/wire), 6 of them the end hold
-      latent_mixed         latent   free     693     520      6       0     26423     1.1377     1.1556    72.143  VETO 53%
+      latent_mixed         latent   free     693     520      6       0     26423     1.1377     1.1556   316.698  VETO 53%
                     depth~terminated_fraction: spearman = +0.1541, mean escape_fraction = 0.0049
                     L2:n=7 med=0.000 [0.000,0.000]  L3:n=19 med=0.000 [0.000,0.000]  L4:n=34 med=0.000 [0.000,0.000]  L5:n=28 med=0.000 [0.000,0.000]  L6:n=432 med=0.000 [0.000,0.125]
-      latent_mixed                live march: 907 leaves (static 520), depth 6, 13 frames, vetoed 0/58048, substeps x1.75 static, 63.2s
+      latent_mixed                uniform panel: 0/1048576 (0.0000%) flagged undetermined by the driver, drawn normally
+                    event classes (7 of 27 fire, 0 undetermined): tightest (0,1)=908831, tightest (0,2)=78062, tightest (1,2)=59689, terminated: escape d0=4, terminated: collision d0=40, terminated: collision d1=1341, terminated: collision d2=609
+      latent_mixed                live march: 907 leaves (static 520), depth 6, 13 frames, vetoed 0/58048, substeps x1.75 static, 106.2s
                                   live animation: 7/7 identical adjacent pairs of 18 (colour/wire), 6 of them the end hold
-  latent_oblique_a         latent   free     929     697      6       0     36801     1.0060     0.4560   109.739  crit 71%
-                    depth~terminated_fraction: spearman = -0.0425, mean escape_fraction = 0.5521
-                    L3:n=26 med=1.000 [0.391,1.000]  L4:n=92 med=0.969 [0.000,1.000]  L5:n=127 med=0.844 [0.000,1.000]  L6:n=452 med=0.984 [0.000,1.000]
-  latent_oblique_a                live march: 694 leaves (static 697), depth 6, 12 frames, vetoed 633/44416, substeps x1.00 static, 71.3s
+  latent_oblique_a         latent   free     913     685      6       0     36115     1.0067     0.4674    13.934  crit 71%
+                    depth~terminated_fraction: spearman = -0.0156, mean escape_fraction = 0.5638
+                    L3:n=26 med=1.000 [0.391,1.000]  L4:n=94 med=0.953 [0.000,1.000]  L5:n=121 med=1.000 [0.000,1.000]  L6:n=444 med=1.000 [0.000,1.000]
+  latent_oblique_a                uniform panel: 0/1048576 (0.0000%) flagged undetermined by the driver, drawn normally
+                    event classes (4 of 27 fire, 0 undetermined): tightest (0,1)=728084, tightest (0,2)=308509, tightest (1,2)=8185, terminated: collision d0=3798
+  latent_oblique_a                live march: 682 leaves (static 685), depth 6, 12 frames, vetoed 0/43648, substeps x1.00 static, 118.9s
                                   live animation: 7/7 identical adjacent pairs of 17 (colour/wire), 6 of them the end hold
-  latent_oblique_b         latent   free    1185     889      6       0     46991     1.0061     0.8805  1171.599  crit 62%
-                    depth~terminated_fraction: spearman = -0.1048, mean escape_fraction = 0.5453
+  latent_oblique_b         latent   free    1185     889      6       0     46991     1.0064     0.8564    33.454  crit 62%
+                    depth~terminated_fraction: spearman = -0.0989, mean escape_fraction = 0.5453
                     L3:n=27 med=1.000 [0.875,1.000]  L4:n=69 med=1.000 [0.000,1.000]  L5:n=157 med=1.000 [0.000,1.000]  L6:n=636 med=1.000 [0.000,1.000]
-  latent_oblique_b                live march: 883 leaves (static 889), depth 6, 13 frames, vetoed 457/56512, substeps x0.99 static, 76.3s
+  latent_oblique_b                uniform panel: 0/1048576 (0.0000%) flagged undetermined by the driver, drawn normally
+                    event classes (6 of 27 fire, 0 undetermined): tightest (0,1)=677244, tightest (0,2)=46278, tightest (1,2)=318843, terminated: collision d0=5969, terminated: collision d1=75, terminated: collision d2=167
+  latent_oblique_b                live march: 868 leaves (static 889), depth 6, 13 frames, vetoed 0/55552, substeps x0.96 static, 102.8s
                                   live animation: 7/7 identical adjacent pairs of 18 (colour/wire), 6 of them the end hold
-       burrau_nu_k         burrau   unit    1217     913      6       0     44871     1.0003     1.4265  9310.924  crit 63%
-                    depth~terminated_fraction: spearman = +0.0912, mean escape_fraction = 0.0677
-                    L2:n=8 med=1.000 [0.500,1.000]  L3:n=2 med=0.000 [0.000,0.000]  L4:n=25 med=0.000 [0.000,0.062]  L5:n=214 med=0.000 [0.000,0.000]  L6:n=664 med=0.000 [0.000,0.250]
-       burrau_nu_k                live march: 955 leaves (static 913), depth 6, 13 frames, vetoed 8456/61120, substeps x1.25 static, 230.3s
+       burrau_nu_k         burrau   unit    1101     826      6       0     45429     1.0401     1.6846 213179.417  crit 69%
+                    depth~terminated_fraction: spearman = +0.0472, mean escape_fraction = 0.0336
+                    L2:n=8 med=1.000 [1.000,1.000]  L3:n=4 med=0.594 [0.141,1.000]  L4:n=27 med=0.000 [0.000,1.000]  L5:n=191 med=0.000 [0.000,1.000]  L6:n=596 med=0.000 [0.000,0.875]
+       burrau_nu_k                uniform panel: 0/1048576 (0.0000%) flagged undetermined by the driver, drawn normally
+                    event classes (6 of 27 fire, 0 undetermined): tightest (0,1)=119706, tightest (0,2)=311019, tightest (1,2)=2430, terminated: collision d0=612584, terminated: collision d1=2613, terminated: collision d2=224
+       burrau_nu_k                live march: 754 leaves (static 826), depth 6, 13 frames, vetoed 0/48256, substeps x0.87 static, 329.6s
                                   live animation: 7/7 identical adjacent pairs of 18 (colour/wire), 6 of them the end hold
-    invariant_lz_k invariant_lz_k   unit     745     559      6       0     31033     0.9853     1.0847   937.787  crit 86%
+    invariant_lz_k invariant_lz_k   unit     745     559      6       0     31033     0.9853     1.0847   336.890  crit 86%
                     depth~terminated_fraction: spearman = +0.2671, mean escape_fraction = 0.0096
                     L3:n=16 med=0.250 [0.000,0.969]  L4:n=137 med=0.000 [0.000,0.000]  L5:n=158 med=0.000 [0.000,0.000]  L6:n=248 med=0.000 [0.000,0.859]
-    invariant_lz_k                live march: 556 leaves (static 559), depth 6, 13 frames, vetoed 0/35584, substeps x1.00 static, 42.9s
+    invariant_lz_k                uniform panel: 0/1048576 (0.0000%) flagged undetermined by the driver, drawn normally
+                    event classes (2 of 27 fire, 0 undetermined): tightest (0,1)=1027569, terminated: collision d0=21007
+    invariant_lz_k                live march: 556 leaves (static 559), depth 6, 13 frames, vetoed 0/35584, substeps x1.00 static, 55.4s
                                   live animation: 7/7 identical adjacent pairs of 18 (colour/wire), 6 of them the end hold
-      mass_simplex   mass_simplex   unit     765     574      6       0     32347     1.0055     0.1949    11.167  crit 67%
-                    depth~terminated_fraction: spearman = +0.0877, mean escape_fraction = 0.1116
-                    L2:n=2 med=0.125 [0.000,0.125]  L3:n=25 med=0.000 [0.000,0.125]  L4:n=78 med=0.000 [0.000,0.000]  L5:n=89 med=0.000 [0.000,0.688]  L6:n=380 med=0.000 [0.000,1.000]
-      mass_simplex                live march: 538 leaves (static 574), depth 6, 12 frames, vetoed 150/34432, substeps x0.94 static, 39.5s
+      mass_simplex   mass_simplex   unit     733     550      6       0     30983     1.0055     0.1943     8.239  crit 67%
+                    depth~terminated_fraction: spearman = +0.0910, mean escape_fraction = 0.1164
+                    L2:n=2 med=0.125 [0.000,0.125]  L3:n=27 med=0.000 [0.000,0.125]  L4:n=72 med=0.000 [0.000,0.000]  L5:n=85 med=0.000 [0.000,0.703]  L6:n=364 med=0.000 [0.000,1.000]
+      mass_simplex                uniform panel: 0/1048576 (0.0000%) flagged undetermined by the driver, drawn normally
+                    event classes (3 of 27 fire, 0 undetermined): tightest (0,1)=169845, tightest (0,2)=102127, tightest (1,2)=776604
+      mass_simplex                live march: 514 leaves (static 550), depth 6, 12 frames, vetoed 0/32896, substeps x0.93 static, 39.5s
                                   live animation: 7/7 identical adjacent pairs of 17 (colour/wire), 6 of them the end hold
-      preset_shape         latent   free    1837    1378      6       0     69733     1.1016     6.3506 65473.975  VETO 71%
-                    depth~terminated_fraction: spearman = -0.3318, mean escape_fraction = 0.0003
-                    L2:n=6 med=1.000 [1.000,1.000]  L3:n=6 med=1.000 [1.000,1.000]  L4:n=33 med=1.000 [0.422,1.000]  L5:n=105 med=1.000 [0.344,1.000]  L6:n=1228 med=0.438 [0.000,1.000]
-      preset_shape                live march: 1135 leaves (static 1378), depth 6, 13 frames, vetoed 349/72640, substeps x0.93 static, 120.4s
+      preset_shape         latent   free    1821    1366      6       0     69187     1.1015     6.4731 528210.558  VETO 70%
+                    depth~terminated_fraction: spearman = -0.3226, mean escape_fraction = 0.0005
+                    L2:n=6 med=1.000 [1.000,1.000]  L3:n=6 med=1.000 [1.000,1.000]  L4:n=33 med=1.000 [0.422,1.000]  L5:n=109 med=1.000 [0.344,1.000]  L6:n=1212 med=0.438 [0.000,1.000]
+      preset_shape                uniform panel: 10/1048576 (0.0010%) flagged undetermined by the driver, drawn normally
+                    event classes (6 of 27 fire, 10 undetermined): tightest (0,1)=55621, tightest (0,2)=72099, tightest (1,2)=72099, terminated: collision d0=367265, terminated: collision d1=240741, terminated: collision d2=240741
+      preset_shape                live march: 1135 leaves (static 1366), depth 6, 13 frames, vetoed 2/72640, substeps x0.94 static, 131.5s
                                   live animation: 7/7 identical adjacent pairs of 18 (colour/wire), 6 of them the end hold
-       preset_prho         latent   free     977     733      6       0     38248     1.0681     2.4174 28205.457  crit 55%
+       preset_prho         latent   free     977     733      6       0     38248     1.0681     2.4174 13640.600  crit 55%
                     depth~terminated_fraction: spearman = -0.0665, mean escape_fraction = 0.4299
                     L2:n=4 med=1.000 [0.828,1.000]  L3:n=24 med=1.000 [0.000,1.000]  L4:n=35 med=0.688 [0.000,1.000]  L5:n=102 med=0.484 [0.000,1.000]  L6:n=568 med=0.125 [0.000,1.000]
-       preset_prho                live march: 712 leaves (static 733), depth 6, 14 frames, vetoed 3/45568, substeps x1.00 static, 51.8s
+       preset_prho                uniform panel: 0/1048576 (0.0000%) flagged undetermined by the driver, drawn normally
+                    event classes (6 of 27 fire, 0 undetermined): tightest (0,1)=3410, tightest (0,2)=520100, tightest (1,2)=520100, terminated: collision d0=1458, terminated: collision d1=1754, terminated: collision d2=1754
+       preset_prho                live march: 712 leaves (static 733), depth 6, 14 frames, vetoed 0/45568, substeps x1.00 static, 61.0s
                                   live animation: 7/7 identical adjacent pairs of 19 (colour/wire), 6 of them the end hold
-    preset_plambda         latent   free     837     628      6       0     32720     1.0615     3.0950 1108076.437  crit 54%
+    preset_plambda         latent   free     837     628      6       0     32720     1.0615     3.0950 537343.752  crit 54%
                     depth~terminated_fraction: spearman = -0.0402, mean escape_fraction = 0.2396
                     L2:n=8 med=1.000 [0.812,1.000]  L3:n=14 med=1.000 [0.484,1.000]  L4:n=22 med=0.500 [0.016,1.000]  L5:n=72 med=0.000 [0.000,1.000]  L6:n=512 med=0.266 [0.000,1.000]
-    preset_plambda                live march: 589 leaves (static 628), depth 6, 14 frames, vetoed 2/37696, substeps x1.00 static, 49.9s
+    preset_plambda                uniform panel: 0/1048576 (0.0000%) flagged undetermined by the driver, drawn normally
+                    event classes (6 of 27 fire, 0 undetermined): tightest (0,1)=584998, tightest (0,2)=3829, tightest (1,2)=3829, terminated: collision d0=453244, terminated: collision d1=1338, terminated: collision d2=1338
+    preset_plambda                live march: 589 leaves (static 628), depth 6, 14 frames, vetoed 0/37696, substeps x1.00 static, 60.7s
                                   live animation: 7/7 identical adjacent pairs of 19 (colour/wire), 6 of them the end hold
-   preset_shape_pl         latent   free     625     469      6       0     24909     1.0597     4.6330 635369.755  crit 63%
+   preset_shape_pl         latent   free     625     469      6       0     24909     1.0597     4.6330 98444.363  crit 63%
                     depth~terminated_fraction: spearman = -0.0487, mean escape_fraction = 0.3179
                     L2:n=6 med=1.000 [1.000,1.000]  L3:n=26 med=0.781 [0.125,1.000]  L4:n=15 med=1.000 [0.000,1.000]  L5:n=78 med=1.000 [0.000,1.000]  L6:n=344 med=1.000 [0.000,1.000]
-   preset_shape_pl                live march: 583 leaves (static 469), depth 6, 14 frames, vetoed 2/37312, substeps x1.32 static, 50.4s
+   preset_shape_pl                uniform panel: 0/1048576 (0.0000%) flagged undetermined by the driver, drawn normally
+                    event classes (7 of 27 fire, 0 undetermined): tightest (0,1)=531426, tightest (0,2)=3545, tightest (1,2)=3545, terminated: escape d0=38, terminated: collision d0=508286, terminated: collision d1=868, terminated: collision d2=868
+   preset_shape_pl                live march: 583 leaves (static 469), depth 6, 14 frames, vetoed 0/37312, substeps x1.32 static, 57.5s
                                   live animation: 7/7 identical adjacent pairs of 19 (colour/wire), 6 of them the end hold
-   preset_shape_h1         latent   free    2169    1627      6       0     82349     0.8781     3.4727 30186.689  VETO 72%
-                    depth~terminated_fraction: spearman = -0.2872, mean escape_fraction = 0.0007
+   preset_shape_h1         latent   free    2169    1627      6       0     82349     0.8765     3.4727 176953.767  VETO 72%
+                    depth~terminated_fraction: spearman = -0.2867, mean escape_fraction = 0.0015
                     L3:n=15 med=1.000 [0.266,1.000]  L4:n=81 med=0.750 [0.125,1.000]  L5:n=103 med=0.844 [0.031,1.000]  L6:n=1428 med=0.156 [0.000,1.000]
-   preset_shape_h1                live march: 1432 leaves (static 1627), depth 6, 14 frames, vetoed 446/91648, substeps x1.02 static, 171.3s
+   preset_shape_h1                uniform panel: 13/1048576 (0.0012%) flagged undetermined by the driver, drawn normally
+                    event classes (6 of 27 fire, 13 undetermined): tightest (0,1)=162302, tightest (0,2)=141768, tightest (1,2)=141768, terminated: collision d0=192000, terminated: collision d1=205363, terminated: collision d2=205362
+   preset_shape_h1                live march: 1432 leaves (static 1627), depth 6, 14 frames, vetoed 5/91648, substeps x1.02 static, 199.3s
                                   live animation: 7/7 identical adjacent pairs of 19 (colour/wire), 6 of them the end hold
-    preset_prho_h1         latent   free    1421    1066      6       0     54881     1.0376     1.4190 11092.382  crit 57%
+    preset_prho_h1         latent   free    1421    1066      6       0     54881     1.0376     1.4190  7128.263  crit 57%
                     depth~terminated_fraction: spearman = +0.2645, mean escape_fraction = 0.0040
                     L2:n=2 med=0.000 [0.000,0.000]  L3:n=21 med=0.000 [0.000,0.000]  L4:n=47 med=0.000 [0.000,0.000]  L5:n=164 med=0.000 [0.000,0.000]  L6:n=832 med=0.000 [0.000,0.344]
-    preset_prho_h1                live march: 1048 leaves (static 1066), depth 6, 14 frames, vetoed 24/67072, substeps x1.00 static, 75.1s
+    preset_prho_h1                uniform panel: 0/1048576 (0.0000%) flagged undetermined by the driver, drawn normally
+                    event classes (6 of 27 fire, 0 undetermined): tightest (0,1)=30514, tightest (0,2)=500699, tightest (1,2)=500699, terminated: collision d0=6254, terminated: collision d1=5205, terminated: collision d2=5205
+    preset_prho_h1                live march: 1048 leaves (static 1066), depth 6, 14 frames, vetoed 0/67072, substeps x1.00 static, 86.5s
                                   live animation: 7/7 identical adjacent pairs of 19 (colour/wire), 6 of them the end hold
- preset_plambda_h1         latent   free    1385    1039      6       0     53256     1.0604     1.9702 344688.595  VETO 51%
+ preset_plambda_h1         latent   free    1385    1039      6       0     53256     1.0604     1.9702 863898.066  VETO 51%
                     depth~terminated_fraction: spearman = +0.0626, mean escape_fraction = 0.0105
                     L2:n=2 med=0.469 [0.469,0.469]  L3:n=26 med=0.984 [0.000,1.000]  L4:n=40 med=0.000 [0.000,1.000]  L5:n=103 med=0.000 [0.000,1.000]  L6:n=868 med=0.000 [0.000,0.594]
- preset_plambda_h1                live march: 1009 leaves (static 1039), depth 6, 14 frames, vetoed 25/64576, substeps x1.01 static, 73.5s
+ preset_plambda_h1                uniform panel: 0/1048576 (0.0000%) flagged undetermined by the driver, drawn normally
+                    event classes (6 of 27 fire, 0 undetermined): tightest (0,1)=718876, tightest (0,2)=24491, tightest (1,2)=24491, terminated: collision d0=271102, terminated: collision d1=4808, terminated: collision d2=4808
+ preset_plambda_h1                live march: 1009 leaves (static 1039), depth 6, 14 frames, vetoed 0/64576, substeps x1.01 static, 84.0s
                                   live animation: 7/7 identical adjacent pairs of 19 (colour/wire), 6 of them the end hold
-preset_shape_pl_h1         latent   free     741     556      6       0     29176     1.1084     2.2246 205887.167  crit 67%
+preset_shape_pl_h1         latent   free     741     556      6       0     29176     1.1084     2.2246 322294.280  crit 67%
                     depth~terminated_fraction: spearman = +0.0373, mean escape_fraction = 0.0540
                     L2:n=4 med=1.000 [1.000,1.000]  L3:n=28 med=0.141 [0.000,1.000]  L4:n=32 med=0.000 [0.000,0.062]  L5:n=92 med=0.000 [0.000,1.000]  L6:n=400 med=0.000 [0.000,1.000]
-preset_shape_pl_h1                live march: 757 leaves (static 556), depth 6, 14 frames, vetoed 10/48448, substeps x1.47 static, 61.4s
+preset_shape_pl_h1                uniform panel: 1/1048576 (0.0001%) flagged undetermined by the driver, drawn normally
+                    event classes (6 of 27 fire, 1 undetermined): tightest (0,1)=539808, tightest (0,2)=25334, tightest (1,2)=25334, terminated: collision d0=449832, terminated: collision d1=4134, terminated: collision d2=4133
+preset_shape_pl_h1                live march: 757 leaves (static 556), depth 6, 14 frames, vetoed 2/48448, substeps x1.48 static, 61.5s
                                   live animation: 7/7 identical adjacent pairs of 19 (colour/wire), 6 of them the end hold
-   latent_shape_h3         latent   free     717     538      6       0     28062     1.0261     1.1117    17.907  crit 78%
+   latent_shape_h3         latent   free     717     538      6       0     28062     1.0261     1.1117    68.287  crit 78%
                     depth~terminated_fraction: spearman = +0.0574, mean escape_fraction = 0.0384
                     L2:n=3 med=0.000 [0.000,0.000]  L3:n=30 med=0.000 [0.000,0.125]  L4:n=43 med=0.000 [0.000,0.000]  L5:n=86 med=0.000 [0.000,0.000]  L6:n=376 med=0.000 [0.000,0.188]
-   latent_shape_h3                live march: 562 leaves (static 538), depth 6, 11 frames, vetoed 4/35968, substeps x1.13 static, 59.8s
+   latent_shape_h3                uniform panel: 0/1048576 (0.0000%) flagged undetermined by the driver, drawn normally
+                    event classes (2 of 27 fire, 0 undetermined): tightest (0,1)=1019258, tightest (1,2)=29318
+   latent_shape_h3                live march: 562 leaves (static 538), depth 6, 11 frames, vetoed 0/35968, substeps x1.13 static, 62.7s
                                   live animation: 7/7 identical adjacent pairs of 16 (colour/wire), 6 of them the end hold
- latent_inner_p_h3         latent   free    1073     805      6       0     42349     1.0311     1.3671  9864.216  crit 59%
+ latent_inner_p_h3         latent   free    1073     805      6       0     42349     1.0311     1.3671   321.920  crit 59%
                     depth~terminated_fraction: spearman = +0.0156, mean escape_fraction = 0.3824
                     L2:n=2 med=1.000 [1.000,1.000]  L3:n=23 med=0.734 [0.000,1.000]  L4:n=64 med=0.078 [0.000,1.000]  L5:n=124 med=0.000 [0.000,1.000]  L6:n=592 med=0.125 [0.000,1.000]
- latent_inner_p_h3                live march: 802 leaves (static 805), depth 6, 13 frames, vetoed 0/51328, substeps x1.00 static, 70.5s
+ latent_inner_p_h3                uniform panel: 0/1048576 (0.0000%) flagged undetermined by the driver, drawn normally
+                    event classes (6 of 27 fire, 0 undetermined): tightest (0,1)=28125, tightest (0,2)=400046, tightest (1,2)=611968, terminated: collision d0=1376, terminated: collision d1=770, terminated: collision d2=6291
+ latent_inner_p_h3                live march: 802 leaves (static 805), depth 6, 13 frames, vetoed 0/51328, substeps x1.00 static, 66.8s
                                   live animation: 7/7 identical adjacent pairs of 18 (colour/wire), 6 of them the end hold
- latent_outer_p_h3         latent   free     477     358      6       0     18945     1.0990     2.6879  1734.909  crit 63%
+ latent_outer_p_h3         latent   free     477     358      6       0     18945     1.0990     2.6879   786.870  crit 63%
                     depth~terminated_fraction: spearman = +0.0920, mean escape_fraction = 0.0856
                     L2:n=8 med=0.734 [0.344,0.984]  L3:n=18 med=0.000 [0.000,0.234]  L4:n=23 med=0.000 [0.000,1.000]  L5:n=73 med=0.000 [0.000,0.031]  L6:n=236 med=0.000 [0.000,0.297]
- latent_outer_p_h3                live march: 343 leaves (static 358), depth 6, 14 frames, vetoed 0/21952, substeps x1.00 static, 31.1s
+ latent_outer_p_h3                uniform panel: 0/1048576 (0.0000%) flagged undetermined by the driver, drawn normally
+                    event classes (6 of 27 fire, 0 undetermined): tightest (0,1)=1042944, tightest (0,2)=2102, tightest (1,2)=2388, terminated: collision d0=154, terminated: collision d1=570, terminated: collision d2=418
+ latent_outer_p_h3                live march: 343 leaves (static 358), depth 6, 14 frames, vetoed 0/21952, substeps x1.00 static, 44.3s
                                   live animation: 7/7 identical adjacent pairs of 19 (colour/wire), 6 of them the end hold
-    latent_mass_h3         latent   free     969     727      6       0     38518     1.0035     0.2764    29.966  crit 77%
-                    depth~terminated_fraction: spearman = +0.0816, mean escape_fraction = 0.6345
-                    L2:n=1 med=0.844 [0.844,0.844]  L3:n=15 med=1.000 [0.000,1.000]  L4:n=91 med=0.672 [0.000,1.000]  L5:n=268 med=1.000 [0.000,1.000]  L6:n=352 med=1.000 [0.000,1.000]
-    latent_mass_h3                live march: 496 leaves (static 727), depth 6, 13 frames, vetoed 14/31744, substeps x0.71 static, 56.0s
-                                  live animation: 8/7 identical adjacent pairs of 18 (colour/wire), 6 of them the end hold
-   latent_mixed_h3         latent   free     529     397      6       0     17605     1.0682     1.3770   589.540  crit 53%
-                    depth~terminated_fraction: spearman = +0.0188, mean escape_fraction = 0.0022
-                    L2:n=7 med=0.000 [0.000,0.031]  L3:n=15 med=0.000 [0.000,0.078]  L4:n=48 med=0.000 [0.000,0.000]  L5:n=83 med=0.000 [0.000,0.000]  L6:n=244 med=0.000 [0.000,0.000]
-   latent_mixed_h3                live march: 682 leaves (static 397), depth 6, 13 frames, vetoed 4362/43648, substeps x1.09 static, 142.5s
+    latent_mass_h3         latent   free     953     715      6       0     37836     1.0037     0.2776    53.312  crit 77%
+                    depth~terminated_fraction: spearman = +0.0915, mean escape_fraction = 0.6285
+                    L2:n=2 med=1.000 [0.844,1.000]  L3:n=12 med=1.000 [0.000,1.000]  L4:n=88 med=0.656 [0.000,1.000]  L5:n=265 med=1.000 [0.000,1.000]  L6:n=348 med=1.000 [0.000,1.000]
+    latent_mass_h3                uniform panel: 0/1048576 (0.0000%) flagged undetermined by the driver, drawn normally
+                    event classes (3 of 27 fire, 0 undetermined): tightest (0,1)=461735, tightest (0,2)=256249, tightest (1,2)=330592
+    latent_mass_h3                live march: 481 leaves (static 715), depth 6, 11 frames, vetoed 0/30784, substeps x0.67 static, 41.9s
+                                  live animation: 7/7 identical adjacent pairs of 16 (colour/wire), 6 of them the end hold
+   latent_mixed_h3         latent   free     333     250      6       0     13095     1.1214     1.3758  1341.756  crit 64%
+                    depth~terminated_fraction: spearman = -0.0169, mean escape_fraction = 0.0056
+                    L2:n=9 med=0.016 [0.000,0.125]  L3:n=15 med=0.000 [0.000,0.156]  L4:n=30 med=0.000 [0.000,0.000]  L5:n=52 med=0.000 [0.000,0.000]  L6:n=144 med=0.000 [0.000,0.031]
+   latent_mixed_h3                uniform panel: 0/1048576 (0.0000%) flagged undetermined by the driver, drawn normally
+                    event classes (7 of 27 fire, 0 undetermined): tightest (0,1)=985501, tightest (0,2)=32178, tightest (1,2)=29256, terminated: escape d0=6, terminated: collision d0=62, terminated: collision d1=892, terminated: collision d2=681
+   latent_mixed_h3                live march: 565 leaves (static 250), depth 6, 13 frames, vetoed 0/36160, substeps x2.05 static, 55.2s
                                   live animation: 7/7 identical adjacent pairs of 18 (colour/wire), 6 of them the end hold
 
 26 charts: still + wire twin + outcome control + level ladder (both) + .prnq each,

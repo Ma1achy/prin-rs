@@ -215,6 +215,52 @@ rows = [struct.unpack_from(f"<{nf}d", d, off + i*nf*8) for i in range(n)]
 | `output/structure_metric.txt` | **§2.2 settled**: `error(B)` for `off` / `multiply` / `replace` on three targets, with `structure_only` and the threshold-free `grad_rms` as controls. Read the oracle-to-random separation first, then `off` against `multiply` on the *same arm* |
 | `output/balanced_march.txt` | **§3.2's acceptance test**: depth variance and per-quad churn against `t`, balanced against the uniform control. Carries the median leaf spread per row, which is what shows the treadmill premise to be wrong in sign |
 | `output/hot_rule_sweep.txt` | the hot rule swept per region — mask saturation and component counts under `abs` against `q[0.50/0.75/0.90]`, with a constant leaf count asserted as the control |
+| `output/deep_zoom.txt` | **§3.4 in situ**: the four decode paths inside a real descent, at eight zoom depths. `distinct` first, then the tree. Carries the **stop-reason breakdown** and a `budget?` column, added 2026-09-06 — see below |
+| `output/err_ratio_residual.txt` | **`burrau_nu_k`'s `error_ratio` residual, diagnosed**: the repair pass, the two arms of the ratio, outcome disagreement, the mass seam at `t = 0`, and the `stop_on_event` arm that collapses it. Write-up in `results/step_budget/README.md` |
+
+### `output/deep_zoom.txt` — regenerated 2026-09-06
+
+```
+cargo run --release --example deep_zoom 400 results        # ~2m50s, writes the file itself
+```
+
+**The command was not written down anywhere.** The committed file was redirected stdout — it still
+carried its own `cargo` build lines — so the reproduction lived only in shell history. *A documented
+reproduction command can be wrong, and only running it finds out*; one that is not written down
+cannot even be run. The harness now takes an output root and writes the file through `Log::tee`,
+with the absolute kernel stamp and the command in its own header.
+
+**The `distinct` column is unmoved on all 32 rows, and that is an identity rather than a result.**
+It is computed from `Slice::body_plane -> decode::linearise -> decode::sample -> decode::distinct`,
+a bitwise comparison, **before `EnsembleCfg` is constructed** — no integration enters it, so no
+integrator, budget or step-control change can move it. The three sites that cite this file
+(`src/quad.rs:811`, `src/scheduler.rs:1823`, `tests/decode_switchover.rs:5-7`) quote only that
+column and both quoted figures reproduce exactly: `direct_f32` at **18/64 by depth 18**,
+`lin_split_f32` holding **64/64 through depth 40**. None of them moved.
+
+**What did move, and the new column is why it is legible.** Depth 0 is **budget-bound** —
+`budget_exhausted:119 deferred:179` — where the file was being read as a criterion-driven tree.
+The plan for this re-run predicted three quads of headroom against the budget of 400; there is
+none. And at a bound budget the `quads` and `leaves` columns are **arithmetic in the split count,
+not evidence**: 99 splits give `1 + 4*99 = 397` computed and `397 - 99 = 298` leaves, which is why
+they are identical across a change that moved the tree. The max depth fell **6 -> 5**: the same
+budget, the same counts, one level shallower. Only `depth` and the stop reasons carry information
+in that row.
+
+**And 28 of the 32 rows are inert as a live arm.** Every block from depth 14 down reads 21 quads /
+16 leaves / depth 2 for all four paths, camera-vetoed. Quoting a 32-row diff as "reproduces" would
+be the standing `nf w/ hot nbr` failure — 1.0000 in every cell.
+
+The `spread(collap)` column moved as a file predating the `dtau` fix, the landing clamp, the
+predictive step limit and the Heggie default must: `1.811e-7 -> 8.565e-8` at depth 14, a real
+ensemble spread halving. The `~1e-17` entries below it shuffled (`5.551e-17 -> 2.776e-17`,
+`6.206e-17 -> 5.594e-17`) and are the module note's own point — eight identical `shape_vec`s summed
+and divided by eight do not return the value bitwise. **They are ulp residue and no threshold can
+read them**, which is why collapse is detected by `decode::distinct` and never by a spread
+comparison.
+
+Run twice, to a scratch root and then to `results/`: **bitwise identical** apart from the header
+line naming the root.
 
 ## The scheduler
 

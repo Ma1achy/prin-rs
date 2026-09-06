@@ -69,8 +69,8 @@ fn target(name: &str) -> Option<Target> {
     if let Some(&(n, cx, cy, body)) = grid::REGIONS.iter().find(|r| r.0 == name) {
         return Some(Target { name: n.into(), chart: Chart::BodyPlane, cx, cy, half: 0.05, body });
     }
-    if name == "config_stability" {
-        let (chart, cx, cy, half) = Chart::config_stability();
+    // Every named slice with its own window, from the one table in `grid`.
+    if let Some((chart, cx, cy, half)) = grid::named_slice(name) {
         return Some(Target { name: name.into(), chart, cx, cy, half, body: 0 });
     }
     grid::gallery_cases()

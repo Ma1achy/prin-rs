@@ -32,8 +32,8 @@ fn target(name: &str) -> Option<(String, Chart, f64, f64, f64, usize)> {
     if let Some(&(n, cx, cy, body)) = grid::REGIONS.iter().find(|r| r.0 == name) {
         return Some((n.into(), Chart::BodyPlane, cx, cy, 0.05, body));
     }
-    if name == "config_stability" {
-        let (chart, cx, cy, half) = Chart::config_stability();
+    // Every named slice with its own window, from the one table in `grid`.
+    if let Some((chart, cx, cy, half)) = grid::named_slice(name) {
         return Some((name.into(), chart, cx, cy, half, 0));
     }
     grid::gallery_cases().into_iter().find(|c| c.0 == name).map(|(n, c, cx, cy, h)| (n.into(), c, cx, cy, h, 0))

@@ -474,6 +474,197 @@ impl Chart {
             q2: [0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0],
         }
     }
+
+    /// **Live-8D index -> spec index.** The reference UI numbers its dimensions over the ten
+    /// GLSL slots with the two dead ones (`z2`, `z3`, consumed by the canonical frame) deleted
+    /// *positionally*, giving
+    ///
+    /// ```text
+    ///   live-8D:  0 beta   1 alpha   2 pRho.x  3 pRho.y  4 pLam.x  5 pLam.y  6 mu1  7 mu2
+    ///   spec:     0 alpha  1 beta    2 z_q0    3 z_q1    4 z_q2    5 z_q3    6 mu1  7 mu2
+    /// ```
+    ///
+    /// so the two differ **only at 0 and 1**, where the GLSL puts beta first and the spec puts
+    /// alpha first. Indices 2..7 are identical, which is why `plambda = (e4, e5)` reads the same
+    /// in both and why the swap is easy to miss: it is invisible on every slice that does not
+    /// touch a configuration coordinate. `config_slice` open-codes the same renumber; this is
+    /// the named form, and it is a function so a dim can be converted wherever one appears.
+    fn live8_to_spec(i: usize) -> usize {
+        assert!(i < 8, "live-8D dim {i} out of range; the dead slots are already deleted");
+        match i {
+            0 => 1,
+            1 => 0,
+            k => k,
+        }
+    }
+
+    /// A latent slice from the reference UI's own controls: ten-slot `z0`, basis dims, tilts,
+    /// an in-plane rotation, `zoom` and `pan`.
+    ///
+    /// Returns `(chart, cx, cy, half)` — the window is part of the slice, exactly as in
+    /// [`Chart::config_slice`], whose `cx = 2*pan - 1 + zoom`, `half = zoom` convention this
+    /// reuses rather than re-deriving.
+    ///
+    /// # The tilt, transcribed and not derived
+    ///
+    /// The chart reference §1.1: *"A tilt is a rotation of the 2-plane, not a re-centering. A
+    /// 2-plane in 8D has 12 tilt axes (6 hidden dimensions x 2 basis vectors)."* So a tilt is
+    /// `(which basis vector, which dim, how far)` and it **rotates** rather than adds:
+    ///
+    /// ```text
+    ///   q_k <- cos(amt)*q_k + sin(amt)*e_dim
+    /// ```
+    ///
+    /// The amounts are **radians**, which is fixed by the reference framing of the tilt this
+    /// slice DROPPED: an `amt = 1.00` into a dead dimension leaves the basis vector only
+    /// `cos(1.00) = 0.5403` of its live component. That is a 46% shrink of an axis wearing the
+    /// name of a tilt, and it is not reintroduced here — a rotation toward a coordinate the
+    /// decoder never reads is an extent change in disguise, and the two want different spellings.
+    ///
+    /// `tilts` entries are `(basis, dim, amt)` with `basis` 0 for the horizontal vector and 1 for
+    /// the vertical, and `dim` in **live-8D** indexing ([`Chart::live8_to_spec`]).
+    ///
+    /// # No `mag`
+    ///
+    /// [`Chart::config_slice`] takes one because it does **not** orthonormalise, so a scale on
+    /// the basis survives into the window. Here the basis is always orthonormalised and any scale
+    /// is divided straight back out, so a `mag` argument would be a knob that cannot move —
+    /// *an argument hardcoded past is worse than an argument missing*, and one that is silently
+    /// normalised away is worse than either. Scale the window through `zoom`.
+    pub fn latent_ui_slice(
+        z_glsl: [f64; 10],
+        dim_h: usize,
+        dim_v: usize,
+        tilts: &[(usize, usize, f64)],
+        gamma_deg: f64,
+        zoom: f64,
+        pan: (f64, f64),
+    ) -> (Chart, f64, f64, f64) {
+        // `z2`/`z3` dropped and the angle pair renumbered, identically to `config_slice`.
+        let z0 = decoder::Latent {
+            z_alpha: z_glsl[1],
+            z_beta: z_glsl[0],
+            z_q: [z_glsl[4], z_glsl[5], z_glsl[6], z_glsl[7]],
+            z_mu: [z_glsl[8], z_glsl[9]],
+        };
+
+        let (hh, vv) = (Chart::live8_to_spec(dim_h), Chart::live8_to_spec(dim_v));
+        assert_ne!(hh, vv, "the two basis dims coincide; that is a line, not a plane");
+        let mut q1 = [0.0f64; 8];
+        let mut q2 = [0.0f64; 8];
+        q1[hh] = 1.0;
+        q2[vv] = 1.0;
+
+        for &(basis, dim, amt) in tilts {
+            assert!(basis < 2, "tilt basis {basis} must be 0 (horizontal) or 1 (vertical)");
+            let d = Chart::live8_to_spec(dim);
+            let q = if basis == 0 { &mut q1 } else { &mut q2 };
+            let (c, sn) = (amt.cos(), amt.sin());
+            for k in 0..8 {
+                q[k] *= c;
+            }
+            q[d] += sn;
+        }
+
+        // **Gamma is a rotation about the NORMAL through `z0`** — an axis perpendicular to the
+        // slice, through the slice origin — so the plane spins in place about a pin through its
+        // own centre. It never changes *which* slice is seen, only which direction is "right" on
+        // screen. That is a different operation from a tilt, which rotates a basis vector *out*
+        // of the plane and does change the slice.
+        //
+        // It pivots about `z0`, **not** about the camera: `decode_state` is
+        // `z = z0 + u*q1 + v*q2` with `u, v` the absolute window coordinates, so `z0` sits at
+        // signed `(0,0)` and rotating the basis while holding the window sweeps an off-centre
+        // camera. For this slice the camera is `0.0419` uv from `z0` and 4.5 deg moves the image
+        // by 20 px at 1024 — small enough to look correct and wrong enough not to match. The two
+        // conventions coincide only for a perfectly centred camera, which is presumably why this
+        // has not bitten before.
+        //
+        // Orthonormalise FIRST, then rotate by gamma. The same Gram-Schmidt as
+        // `latent_oblique`, including its refusal: a degenerate pair decodes every pixel
+        // identically, `ensemble_spread` reads exactly zero, and the criterion calls the quad
+        // perfectly resolved.
+        //
+        // **The order is load-bearing and was measured, not assumed.** Mixing a *non*-orthonormal
+        // pair by a rotation matrix is not a rotation: applied before Gram-Schmidt, this slice's
+        // `gamma = 4.5 deg` turns the frame by **2.45 deg** (basis angle -57.140 deg against the
+        // -55.088 deg that `amt + gamma` predicts), because after the tilt `q1` and `q2` are no
+        // longer orthogonal and the normalisation absorbs part of the mix. A parameter named
+        // `gammaDeg` that produces a different number of degrees is a parameter that does not
+        // mean what it says. Rotating the orthonormal pair is exact — an orthogonal combination
+        // of two orthonormal vectors stays orthonormal, so no second Gram-Schmidt is needed and
+        // none is done.
+        let chart = Chart::latent_oblique(z0, q1, q2);
+        let Chart::Latent { z0, q1: o1, q2: o2 } = chart else { unreachable!() };
+        let g = gamma_deg.to_radians();
+        let (cg, sg) = (g.cos(), g.sin());
+        let (mut r1, mut r2) = ([0.0f64; 8], [0.0f64; 8]);
+        for k in 0..8 {
+            r1[k] = cg * o1[k] + sg * o2[k];
+            r2[k] = -sg * o1[k] + cg * o2[k];
+        }
+        // **`pan` is the window CENTRE here, and that is not what `config_slice` does.**
+        //
+        // This constructor first carried `config_slice`'s `2*pan - 1 + zoom`, which places the
+        // window's lower-left *corner* at `pan`. The supplier's own arithmetic refuses it: with
+        // `pan` as the centre the camera sits `0.0419` uv from `z0` and a `gamma` of 4.5 deg
+        // sweeps the image by **20.1 px** at 1024; with the `+ zoom` it sits at `0.1585` and
+        // sweeps **75.9 px**. Two independently quoted figures — the offset and the pixel count —
+        // both land on the centre reading, and the corner reading misses both. The error is half
+        // a window in each axis, which is large and does not look like an error.
+        //
+        // **`config_slice` is deliberately NOT changed.** `config_stability` and `config_basin`
+        // are measured across a large committed corpus under it, and whether that `+ zoom` is a
+        // second UI convention or the same defect at an older site is a question that wants its
+        // own measurement, not a silent edit made while transcribing a different slice. Recorded
+        // in `results/README.md` rather than resolved here.
+        (Chart::Latent { z0, q1: r1, q2: r2 }, 2.0 * pan.0 - 1.0, 2.0 * pan.1 - 1.0, zoom)
+    }
+
+    /// **`tilt_plambda` — the first slice in the project with a non-zero tilt.**
+    ///
+    /// Supplied as a ten-slot UI config; two of those dims are dead (`z2`, `z3`, consumed by the
+    /// canonical frame), verified by perturbation at exactly `0.000e+00` — `tests/charts.rs`
+    /// holds that as a committed test rather than a remembered check.
+    ///
+    /// ```text
+    ///   preset    plambda      q1 = e4, q2 = e5   (live-8D)
+    ///   z0        [2.23, -0.56, 0.05, -0.04, -0.02, 0.12, -0.1, 0.02]   (live-8D)
+    ///   gammaDeg  2.0    (supplied at 4.5; reduced on request, 2026-09-06)
+    ///   tilt      basis 0 -> dim 5, amt -1.04 rad
+    ///   zoom      0.16779844723178242
+    ///   pan       (0.5169659939566047, 0.5383226703503323)
+    /// ```
+    ///
+    /// **`z0` decodes to unequal masses `(0.35333, 0.27523, 0.37144)`**, against `1/3` each for
+    /// every `z0 = 0` preset. That is the guard the supplier asked for: a run reporting equal
+    /// masses here is not decoding this chart. `tests/charts.rs` asserts the triple.
+    ///
+    /// **And the tilt is in-plane, which is measured rather than assumed.** `dim 5` is `q2`
+    /// itself, so the rotation stays inside `span{e4, e5}` and this slice spans the **same
+    /// 2-plane** as [`Chart::preset_plambda`] — the frame within it is rotated, not the plane
+    /// through 8-space. The consequence is real and not a null: the sampling square is rotated,
+    /// so pixel `(u,v)` maps to a different IC and the rendered field is a rotated resampling.
+    /// It is a different *slice* and not a different *plane*, and saying which is the whole
+    /// point — `shape_pl` is on record as a case where a basis that looked like a reorientation
+    /// was a genuinely different 2-plane, and the two are told apart by measurement.
+    pub fn tilt_plambda() -> (Chart, f64, f64, f64) {
+        Chart::latent_ui_slice(
+            [2.23, -0.56, -0.05, 0.0, 0.05, -0.04, -0.02, 0.12, -0.1, 0.02],
+            4,
+            5,
+            &[(0, 5, -1.04)],
+            // **The supplied value was 4.5; the shipped slice is 2.0.** `gamma` is a rotation
+            // about the normal through `z0` and the camera is `0.0419` uv off-centre, so it
+            // sweeps the image as well as turning the frame -- 20 px at 4.5 deg over a 1024
+            // raster, about 9 px at 2.0. The supplied figure is kept as the negative control in
+            // `tests/tilt_slice.rs`, which is where the 20 px number is pinned, so reducing the
+            // shipped value does not retire the arithmetic it was checked by.
+            2.0,
+            0.167_798_447_231_782_42,
+            (0.516_965_993_956_604_7, 0.538_322_670_350_332_3),
+        )
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -695,6 +886,26 @@ pub fn region(name: &str, nx: usize, ny: usize, half: f64) -> Option<Slice> {
         .iter()
         .find(|r| r.0 == name)
         .map(|&(_, cx, cy, body)| Slice::body_plane(nx, ny, cx, cy, half, body))
+}
+
+/// **Named slices that carry their own window and are NOT part of the 26-chart gallery.**
+///
+/// `gallery_cases` is the corpus that `results/charts` is measured over; adding to it changes
+/// what a gallery run produces and silently makes the committed set incomplete. These are named
+/// slices with their own `zoom`/`pan` window, resolved by name wherever a harness takes a chart.
+///
+/// **This is the table.** Seven harnesses each open-coded `if name == "config_stability"` before
+/// falling through to `gallery_cases`, so a new named slice needed seven edits and was reachable
+/// from whichever of them had been remembered. *The fix for that class is never the instance; it
+/// is the table.* (The 52 harnesses that call `Chart::config_stability()` directly are untouched
+/// — they name one slice on purpose and do not resolve by string.)
+pub fn named_slice(name: &str) -> Option<(Chart, f64, f64, f64)> {
+    match name {
+        "config_stability" => Some(Chart::config_stability()),
+        "config_basin" => Some(Chart::config_basin()),
+        "tilt_plambda" => Some(Chart::tilt_plambda()),
+        _ => None,
+    }
 }
 
 /// **The gallery's 26 chart instances**, as `(name, chart, cx, cy, half)`.

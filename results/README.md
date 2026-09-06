@@ -1242,6 +1242,146 @@ cargo run --release --example logh_arms -- 256 results all 400000 all
 python3 tools/contact_sheet.py --root results far deep_interior near-field
 ```
 
+## `tilt/` — `tilt_plambda`, the first slice with a non-zero tilt
+
+```
+cargo run --release --example tilt_slice_render results 1024 13 1    # stills + uniform-over-time
+cargo run --release --example live_animation results tilt_plambda 256   # refinement over time
+```
+
+Supplied as a reference-UI config and transcribed rather than derived. `Chart::tilt_plambda`
+carries the literal; `Chart::latent_ui_slice` is the general constructor, taking the ten-slot
+`z0`, basis dims, tilts, `gammaDeg`, `zoom` and `pan`.
+
+| control | value |
+|---|---|
+| preset | `plambda`, `q1 = e4`, `q2 = e5` (live-8D) |
+| `z0` | `[2.23, -0.56, 0.05, -0.04, -0.02, 0.12, -0.1, 0.02]` (live-8D) |
+| `gammaDeg` | **2.0** (supplied at 4.5, reduced on request 2026-09-06) |
+| tilt | basis 0 -> dim 5, amt −1.04 rad |
+| `zoom` | 0.16779844723178242 |
+| pan | (0.5169659939566047, 0.5383226703503323) |
+
+Window: **`pan` is the window centre** — `cx = 2·pan − 1 = 0.03393`, `cy = 0.07665`,
+`half = zoom = 0.16780`.
+
+**The first cut used `config_slice`'s `2·pan − 1 + zoom`, which places the lower-left corner at
+`pan` — half a window out in each axis.** Two independently supplied figures refuse it and both
+are now asserted, because they are properties of the picture where the bare arithmetic is a
+constant typed in twice:
+
+| convention | camera uv offset from `z0` | gamma sweep at 1024 |
+|---|---|---|
+| `pan` = centre | **0.0419** | **20.1 px** |
+| `pan` = corner (`+ zoom`) | 0.1585 | 75.9 px |
+
+The supplied figures are 0.0419 and 20 px. Half a window is large and does not look like an error;
+a 20-pixel sweep is small enough to look correct and wrong enough not to match.
+
+**`config_slice` is deliberately not changed.** `config_stability` and `config_basin` are measured
+across a large committed corpus under its `+ zoom`, and whether that is a second UI convention or
+the same defect at an older site is a question wanting its own measurement, not a silent edit made
+while transcribing a different slice. **Open, and recorded rather than resolved.**
+
+**It is not in `gallery_cases()`.** That list is the corpus `results/charts` is measured over, and
+adding to it would make the committed 26-chart set silently incomplete. It resolves through
+`grid::named_slice`, which is now the one table the seven harness `target()` functions read —
+each had open-coded `if name == "config_stability"`, so a new named slice needed seven edits and
+was reachable from whichever had been remembered.
+
+### Three things checkable without integrating anything, and all three are asserted
+
+`tests/tilt_slice.rs`, each with the arm that says the test could have failed.
+
+**Two of the ten slots are dead.** `z2`/`z3` are consumed by the canonical frame and `decodeIC`
+never reads them: perturbing either by `+0.7` moves the IC by **exactly `0.000e+00`**. The control
+is the other eight, every one of which must move it — without that arm, a decoder ignoring its
+input would pass.
+
+**The masses are unequal: `0.35333, 0.27523, 0.37144`**, against `1/3` each for every `z0 = 0`
+preset, which is asserted beside it so "unequal" is a claim about something. That is the supplied
+guard: a run reporting equal masses here is not decoding this chart.
+
+**The tilt is IN-PLANE, and this is measured rather than assumed.** `dim 5` is `q2` itself, so the
+rotation never leaves `span{e4, e5}` — the component outside it is **exactly `0.000e0`**. So this
+slice spans the *same 2-plane* as `preset_plambda` with the frame turned by **−57.5876°** at the shipped
+`gamma = 2.0` (−55.0876° at the supplied 4.5); it is a different **slice**, not a different
+**plane**. The opposite mistake is on this project's record:
+`shape_pl`'s crossed basis looked like a reorientation and was a genuinely different 2-plane, told
+apart by `max |dIC|`. Two negative controls hold this one — a tilt into a genuinely hidden live
+dimension (`z_mu2`) must leave the span, or the constructor is ignoring `tilts` and the zero is
+vacuous; and the rotated frame must map a given pixel to a *different* IC, or the tilt changes
+nothing observable.
+
+### Two things the transcription had to decide, both measured rather than chosen
+
+**`amt` is radians, and the dropped tilt is what says so.** The supplied config carried a second
+tilt, `dim2 = 2, amt2 = 1.00`, aimed at a **dead** dimension. Under the rotation form
+`q <- cos(amt)·q + sin(amt)·e_dim` that leaves `q2` with only `cos(1.00) = 0.5403` of its live
+component — a **46% shrink of the v axis wearing the name of a tilt**. Dropped on the supplier's
+instruction and not reintroduced: a rotation toward a coordinate nothing reads is an extent change
+in disguise, and the two want different spellings.
+
+**Gamma is a rotation about the NORMAL through `z0`, not a re-framing.** An axis perpendicular to
+the slice, through the slice origin: the plane spins in place about a pin through its own centre,
+so gamma never changes *which* slice is seen — only which direction is "right" on screen. That is a
+different operation from a tilt, which rotates a basis vector *out* of the plane and does change
+the slice. `tests/tilt_slice.rs` sweeps gamma over six angles including 90 and 180 deg and asserts
+the plane is untouched at every one, against a hidden tilt that leaves it at every non-zero amount.
+
+It pivots about `z0` and **not** about the camera. `decode_state` is `z = z0 + u·q1 + v·q2` with
+`u, v` the absolute window coordinates, so `z0` sits at signed `(0,0)` and rotating the basis while
+holding the window sweeps an off-centre camera — by **20 px at the supplied 4.5°**, which is the
+figure that decided the convention, and about **8.9 px at the shipped 2.0°**. The sweep is linear
+in `sin(gamma/2)`, so the shipped value is pinned at its own number rather than scaled off the
+other: **reducing the shipped gamma must not retire the arithmetic the convention was checked by**,
+and `tests/tilt_slice.rs` holds both. The two conventions coincide only
+for a perfectly centred camera, which is presumably why this had not bitten before.
+
+**Gamma is applied *after* orthonormalisation, because otherwise it is not degrees.** Mixing a
+non-orthonormal pair by a rotation matrix is not a rotation: applied before Gram–Schmidt, this
+slice's `gamma = 4.5°` turns the frame by **2.45°** — basis angle −57.140° against the −55.088°
+that `amt + gamma` predicts — because after the tilt `q1` and `q2` are no longer orthogonal and the
+normalisation absorbs part of the mix. A parameter named `gammaDeg` that produces a different
+number of degrees is a parameter that does not mean what it says. Rotating the orthonormal pair is
+exact and needs no second Gram–Schmidt. The wrong order is carried in the test as a negative
+control, asserted to be measurably different rather than merely described.
+
+`Chart::latent_ui_slice` takes **no `mag`**, unlike `config_slice`, which does not orthonormalise
+and so lets a basis scale survive into the window. Here any scale is divided straight back out, so
+a `mag` argument would be a knob that cannot move.
+
+### The panels
+
+One colour window for the whole ladder, the p1–p99 of the **1024²** pass, printed and in every
+sidecar. A ramp re-ranged per panel would stretch each raster's own quantiles to full scale, which
+on a question about what changes with resolution manufactures the answer. The animation carries
+its own fixed window computed over **every** frame for the same reason. All panels are
+`Veto::None`: a presentation render does not colour a pixel by a debug flag, and the flagged count
+is printed and named in the sidecars instead.
+
+The ladder is 1024, 512, 256 and 64, run in **one invocation** so every rung takes the finest
+pass's window; a window argument would only be a way to skip the expensive rung, and it would put a
+second reproduction command in the header.
+
+`tilt_plambda_uniform_time.png` is 1024², one frame per recorded sync boundary, each a **full
+uniform render** of the grid at that playhead — no tree anywhere. It is the control the live refinement
+animation is read against: same physics, same playhead, no scheduler. The adjacent-duplicate count
+is asserted below the frame count, because *a frozen playhead and a converged field are the same
+picture* and only that number separates them.
+
+**The animation is streamed, and the rewrite carries its own control.** It held a
+`Vec<PixelOut>` for the whole grid with the live series attached — about 2.3 KB a footprint
+against `PixelSlim`'s 48 bytes, which is **2.4 GB at 1024²**, and is why it was capped at 256. It
+now projects strip by strip into a `PixelSlim` store and drops the fat records as it goes. The
+store is `PixelSlim` and **not** the two fields the colouring reads: the panel is
+`Scalar::ShapeSpread` under `Veto::None`, which needs only `shape_vec` and `spread_shape`, but the
+flagged count is taken at `Veto::Debug`, which reads `n_nonfinite` and `state` — a narrower record
+would have made that count **silently zero**. At `anim_res <= 64` the harness also evaluates the
+whole grid the direct way and asserts the frames are **bitwise identical**, so a restructure
+justified by memory has to show it changed nothing else, on every smoke pass rather than in a
+commit message.
+
 ## Eighteen directories that were never indexed
 
 Every one of these carries a finding already in the record, and none of them was reachable from

@@ -91,7 +91,18 @@ struct Row {
     steps_tot: u64,
 }
 
-fn cell(t: &Target, res: usize, ms: usize) -> Row {
+/// One cell, plus the **raw** per-pixel `error_ratio` — non-finite entries included, in grid
+/// order — so the caller can intersect the finite populations across the ladder.
+///
+/// **The quantiles below are each taken over their own row's finite population, and that is a
+/// different statistic in every row.** `stats::max_dev` returns `+inf` for a non-finite copy, so
+/// at 30_000 the 521 truncated footprints of 2304 are the ones excluded — the hardest pixels in
+/// the frame, dropped from exactly the rung where they exist. The `err p99` column then *rises*
+/// as truncation is removed, which reads as the budget making the residual worse. It is the
+/// selection moving. Same defect as *a median conditioned on each arm's own selection*, which
+/// already read the `dtau` fix backwards once. The common-population column is the repair; the
+/// per-row column is kept beside it because the two disagreeing is the finding.
+fn cell(t: &Target, res: usize, ms: usize) -> (Row, Vec<f64>) {
     let ens = EnsembleCfg { max_steps: ms, ..EnsembleCfg::production() };
     let sl = grid::Slice::body_plane(res, res, t.cx, t.cy, t.half, t.body).with_chart(t.chart);
     let px: Vec<PixelOut> =
@@ -103,7 +114,7 @@ fn cell(t: &Target, res: usize, ms: usize) -> Row {
     let mut d: Vec<f64> = px.iter().map(|p| p.energy_drift_max).filter(|x| x.is_finite()).collect();
     let mut e: Vec<f64> = px.iter().map(|p| p.error_ratio).filter(|x| x.is_finite()).collect();
     let mut s: Vec<f64> = px.iter().map(|p| p.total_substeps as f64).collect();
-    Row {
+    let row = Row {
         flagged,
         budget,
         drift50: q(&mut d, 0.50),
@@ -111,7 +122,8 @@ fn cell(t: &Target, res: usize, ms: usize) -> Row {
         err99: q(&mut e, 0.99),
         steps50: q(&mut s, 0.50),
         steps_tot: px.iter().map(|p| p.total_substeps).sum(),
-    }
+    };
+    (row, px.iter().map(|p| p.error_ratio).collect())
 }
 
 fn main() {
@@ -155,8 +167,10 @@ fn main() {
         // it alone would be *a statistic that cannot move being read as a statistic that did not
         // move*.
         let mut base: Option<u64> = None;
+        let mut raw: Vec<Vec<f64>> = Vec::new();
         for &ms in &ladder {
-            let r = cell(t, res, ms);
+            let (r, e) = cell(t, res, ms);
+            raw.push(e);
             sig.push((r.flagged, r.budget, r.steps_tot));
             let b = *base.get_or_insert(r.steps_tot);
             println!(
@@ -174,6 +188,24 @@ fn main() {
                 if b > 0 { r.steps_tot as f64 / b as f64 } else { f64::NAN }
             );
         }
+        // **`err p99` over the SAME pixels in every row.** A footprint enters only if its
+        // `error_ratio` is finite at *every* rung, so the population is fixed by construction and
+        // `n` is printed to say so — a column of quantiles with no denominator is what let the
+        // per-row version read backwards. `n` is identical down the block or the mask is wrong.
+        let npix = raw[0].len();
+        let keep: Vec<bool> =
+            (0..npix).map(|k| raw.iter().all(|v| v[k].is_finite())).collect();
+        let n_common = keep.iter().filter(|x| **x).count();
+        println!("  --- err p99 over the population finite at EVERY rung (n = {n_common} of {npix}, \
+                  {:.1}% dropped) ---", 100.0 * (npix - n_common) as f64 / npix as f64);
+        for (i, &ms) in ladder.iter().enumerate() {
+            let mut v: Vec<f64> =
+                (0..npix).filter(|&k| keep[k]).map(|k| raw[i][k]).collect();
+            let (p50, p99) = (q(&mut v.clone(), 0.50), q(&mut v, 0.99));
+            println!("  {:>16} {ms:>9}  n {n_common:>6}  err p50 {p50:>10.3e}  err p99 {p99:>10.3e}",
+                     t.name);
+        }
+
         // The first target that flags nothing at the coarsest rung is the control.
         if control.is_none() && sig[0].0 == 0 {
             control = Some((t.name.clone(), sig));

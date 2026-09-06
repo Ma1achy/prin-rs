@@ -188,9 +188,9 @@ pub fn assert_not_uniform_in_disguise(cfg: &SchedCfg, path: &str, allow: bool) {
 /// the integrator from the default while two pinned `Az` deliberately; a setting correct where
 /// it was born and copied into a tree-writing harness would produce a corpus of the wrong
 /// physics wearing the right filenames, which is what `refine_flagged: false` did for six days.
-/// This checks the four kernel knobs that moved between the superseded corpus and the current
-/// one — `integrator`, `step_limit`, `dtau_mode`, `clamp_final_step` — and nothing else:
-/// `refine_flagged` is a legitimate named argument, `t_max` and `eta` are experiment axes.
+/// This checks the five kernel knobs that moved between the superseded corpus and the current
+/// one — `integrator`, `step_limit`, `dtau_mode`, `clamp_final_step`, `max_steps` — and nothing
+/// else: `refine_flagged` is a legitimate named argument, `t_max` and `eta` are experiment axes.
 ///
 /// Same shape as [`assert_not_uniform_in_disguise`]: a configuration that silently reproduces
 /// the old behaviour needs a guard, not a convention. Call it from every harness that writes a
@@ -220,6 +220,16 @@ pub fn assert_production_kernel(ens: &EnsembleCfg, path: &str) {
             "clamp_final_step={} (production {})",
             ens.clamp_final_step, p.clamp_final_step
         ));
+    }
+    // **`max_steps` belongs here and was missing until 2026-09-06.** The step budget moved
+    // 30_000 -> 480_000 with the integrator default, and this guard -- whose whole panic message
+    // is *"a tree built on another kernel is the superseded corpus over again"* -- would have
+    // passed a 30_000 tree straight into `results/`. It is a kernel field in exactly the sense the
+    // other four are: it decides which trajectories complete, a truncated footprint reads
+    // undetermined, and its quad splits. Measured across the gallery: 15 of 26 trees moved on the
+    // budget alone.
+    if ens.max_steps != p.max_steps {
+        bad.push(format!("max_steps={} (production {})", ens.max_steps, p.max_steps));
     }
     if !bad.is_empty() {
         panic!(

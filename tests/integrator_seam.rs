@@ -146,23 +146,48 @@ fn the_shared_reference_policy_is_a_no_op_under_heggie() {
 /// so a config says what it is however it was built — a hand-maintained list goes stale, which is
 /// the same failure one level up.
 ///
-/// **Both directions, and the roles swapped when the default moved.** The non-production value
-/// must name itself and the production value must stay silent — a header line that is always true
-/// carries no information. Asserting only the first half would pass on a `provenance` that named
-/// the integrator unconditionally.
+/// **Both directions, and the roles swapped when the default moved.** In the **diff** the
+/// non-production value must name itself and the production value must stay silent — a diff entry
+/// that is always present carries no information, and asserting only the first half would pass on
+/// a diff that named the integrator unconditionally.
+///
+/// **Rebased 2026-09-06 onto `overrides_vs_production` rather than the whole `provenance` line,
+/// and the reason is the other half of the same lesson.** `provenance` now appends an absolute
+/// `[kernel: ...]` stamp, so it names the integrator on *every* config including production, and
+/// this test failed on that — correctly, because it was written against the whole line. The
+/// resolution is not to loosen it: the two are different instruments. A **diff** is informative
+/// exactly when it is silent for the baseline, which is what the first three arms hold. An
+/// **absolute** stamp is informative exactly when it is unconditional, because a baseline that
+/// moves takes a diff's meaning with it — `max_steps` moved 30_000 -> 480_000 and every header
+/// reading `production` silently re-pointed. So the last arm asserts the opposite property of the
+/// same string, and a test that checked only one of the two would miss whichever failure the
+/// other guards.
 #[test]
 fn the_integrator_appears_in_the_provenance() {
-    // `Az` is now the override.
+    // The DIFF names the departure. `Az` is now the override.
     let c = cfg_at(Integrator::Az);
-    let p = c.provenance();
-    println!("{p}");
-    assert!(p.contains("integrator"), "the integrator is missing from the provenance: {p}");
-    assert!(p.contains("Az"), "the provenance does not name the integrator: {p}");
+    let d = c.overrides_vs_production();
+    println!("{}", c.provenance());
+    assert!(d.iter().any(|(k, _, _)| k.contains("integrator")), "the integrator is missing: {d:?}");
+    assert!(d.iter().any(|(_, a, _)| a.contains("Az")), "the diff does not name the value: {d:?}");
     assert!(!c.is_production());
 
-    // `Heggie` is production and declares nothing — reached by the default AND by an explicit
-    // override to the same value, because *overriding to the production value is not an override*.
-    assert!(!EnsembleCfg::production().provenance().contains("integrator"));
-    assert!(!cfg_at(Integrator::Heggie).provenance().contains("integrator"));
+    // And it stays silent for `Heggie`, which is production — reached by the default AND by an
+    // explicit override to the same value, because *overriding to the production value is not an
+    // override*. This is the arm that says the diff is a diff.
+    assert!(!EnsembleCfg::production()
+        .overrides_vs_production()
+        .iter()
+        .any(|(k, _, _)| k.contains("integrator")));
+    assert!(!cfg_at(Integrator::Heggie)
+        .overrides_vs_production()
+        .iter()
+        .any(|(k, _, _)| k.contains("integrator")));
     assert!(cfg_at(Integrator::Heggie).is_production());
+
+    // The STAMP names the kernel unconditionally — the property the diff cannot have, on the
+    // config where the diff is empty and therefore says nothing at all.
+    let prod = EnsembleCfg::production().provenance();
+    assert!(prod.contains("integrator=Heggie"), "production's own header does not name it: {prod}");
+    assert!(c.provenance().contains("integrator=Az"), "{}", c.provenance());
 }

@@ -13,7 +13,18 @@ fn default_is_production_and_says_so() {
     assert!(c.is_production());
     assert!(c.overrides_vs_production().is_empty());
     // Not an empty string. A blank field and an absent field look the same in a log.
-    assert_eq!(c.provenance(), "production");
+    assert!(c.provenance().starts_with("production ["), "{}", c.provenance());
+
+    // **And it must carry the ABSOLUTE kernel, which is the arm added 2026-09-06.** This assert
+    // read `== "production"` and failed when the stamp landed — correctly, because the word
+    // `production` alone was the whole defect: `max_steps` moved 30_000 -> 480_000 and every
+    // header saying `production` re-pointed at the new value with nothing to date it by. A diff
+    // is informative by being silent for the baseline; an absolute stamp by never being silent.
+    let k = c.kernel_stamp();
+    assert!(c.provenance().ends_with(&format!("[kernel: {k}]")), "{}", c.provenance());
+    for field in ["integrator=", "max_steps=", "step_limit=", "dtau=", "clamp="] {
+        assert!(k.contains(field), "the stamp omits {field}: {k}");
+    }
 }
 
 #[test]

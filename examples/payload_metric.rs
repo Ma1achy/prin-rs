@@ -588,6 +588,30 @@ fn build() {
     );
     logln!(log, "  built in {:.1}s, {} trajectories", t0.elapsed().as_secs_f64(), caches[0].trajectories);
 
+    // **The truncation counter, added 2026-09-06.** This header printed no footprint health at
+    // all, so a build at `max_steps = 30_000` and one at 480_000 were distinguishable only by the
+    // trees they later produced -- and 15 of the 26 gallery trees moved on that field alone.
+    //
+    // `budget` is the count the step budget stopped; `nonfin` is the count with any unusable copy,
+    // which is the superset. They are printed **separately** and not as a ratio: a budget stop is
+    // curable by `max_steps`, a non-finite copy from a triple collision is the instrument
+    // reporting, and pooling them would put the two in the column that exists to separate them.
+    // A build reading `budget 0` predicts bitwise reproduction under a budget change; one reading
+    // `budget > 0` predicts a move whose size tracks the count.
+    let (mut n_fp, mut n_budget, mut n_nonfin) = (0usize, 0usize, 0usize);
+    for v in px_of.values() {
+        for p in v {
+            n_fp += 1;
+            if p.budget_exhausted {
+                n_budget += 1;
+            }
+            if p.n_nonfinite > 0 {
+                n_nonfin += 1;
+            }
+        }
+    }
+    logln!(log, "  footprints {n_fp}: budget-stopped {n_budget}, any unusable copy {n_nonfin}");
+
     // The footprints (v2, with the event class) and the quad cache of the headline.
     if let Ok(f) = std::fs::File::create(format!("{stem}.fcache")) {
         let mut w = std::io::BufWriter::new(f);

@@ -192,17 +192,37 @@ fn the_shared_reference_policy_is_a_no_op_for_every_chartless_occupant() {
     }
 }
 
-/// Every occupant must name itself in the provenance line, and production must not name one at
-/// all. `output::provenance_sidecar` puts this beside every panel — the blind spot that hid
-/// `refine_flagged: false` for six days was PNGs carrying no settings.
+/// Every occupant must name itself in the provenance **diff**, and production must not appear
+/// there at all. `output::provenance_sidecar` puts this beside every panel — the blind spot that
+/// hid `refine_flagged: false` for six days was PNGs carrying no settings.
+///
+/// **Rebased 2026-09-06 from the whole line onto the diff, and the last arm is the reason.**
+/// `provenance` now appends an absolute `[kernel: ...]` stamp naming the integrator on every
+/// config, production included, so the old form failed here — correctly. The two halves are
+/// different instruments and both are asserted: a **diff** carries information by being silent
+/// for the baseline, and an **absolute** stamp by never being silent, because a baseline that
+/// moves takes a diff's meaning with it. That is not hypothetical here: `max_steps` moved
+/// 30_000 -> 480_000 and every header reading `production` silently re-pointed at the new value.
 #[test]
 fn every_occupant_appears_in_the_provenance() {
-    assert!(!EnsembleCfg::production().provenance().contains("integrator"));
+    let names_it = |c: &EnsembleCfg| {
+        c.overrides_vs_production().iter().any(|(k, _, _)| k.contains("integrator"))
+    };
+    assert!(!names_it(&EnsembleCfg::production()), "production appears in its own diff");
     for i in NEW {
         let c = cfg_at(i);
-        let p = c.provenance();
-        println!("  {:>10}: {p}", i.name());
-        assert!(p.contains("integrator"), "{}: integrator missing from provenance: {p}", i.name());
+        println!("  {:>10}: {}", i.name(), c.provenance());
+        assert!(names_it(&c), "{}: integrator missing from the diff", i.name());
         assert!(!c.is_production(), "{} reads as production", i.name());
+        // The stamp, which is the arm the diff cannot supply: it names the kernel that ran
+        // whether or not it departed from the baseline.
+        assert!(
+            c.provenance().contains(&format!("integrator={:?}", i)),
+            "{}: the absolute stamp does not name it: {}",
+            i.name(),
+            c.provenance()
+        );
     }
+    let prod = EnsembleCfg::production().provenance();
+    assert!(prod.contains("integrator="), "production's own header does not name its kernel: {prod}");
 }

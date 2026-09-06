@@ -62,11 +62,17 @@ fn main() {
     let tau: f64 = arg(3, 1e-4);
     let viewport: usize = arg(4, 64);
     let k_frac: f64 = arg(5, scheduler::K_FRAC_RANKED);
+    // Argument six, defaulting to `results`: an output root is an argument, not a constant.
+    let out_root: String = arg(6, "results".to_string());
     let ranked = k_frac < scheduler::K_FRAC_UNRANKED;
     // The old figures are the BEFORE and are not overwritten. `k_frac = 1` still lands in
     // `results/criterion`, which is where they were made.
-    let odir = if ranked { "results/criterion_ranked" } else { "results/criterion" };
-    let _ = std::fs::create_dir_all(odir);
+    let odir = if ranked {
+        format!("{out_root}/criterion_ranked")
+    } else {
+        format!("{out_root}/criterion")
+    };
+    let _ = std::fs::create_dir_all(&odir);
     let ts = [4.0f64, 6.0, 8.0, 10.0, 13.0, 16.0, 20.0];
     let base = EnsembleCfg::default();
 

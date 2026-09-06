@@ -227,19 +227,60 @@ impl EnsembleCfg {
         out
     }
 
-    /// One line naming every departure from production, for an output header.
+    /// The **absolute** integration kernel: the fields that decide which trajectory is computed,
+    /// written as values rather than as a diff.
     ///
-    /// Reads `production` when there are none — an explicit statement rather than an empty
-    /// string, because a blank field and an absent field look the same in a log and the whole
-    /// point is that the choice is recorded either way.
+    /// **A diff against a baseline is not a record, because the baseline moves.** Until
+    /// 2026-09-06 every header carried only [`provenance`], which emits departures from
+    /// `production()` and therefore emits *nothing at all* for a run that inherits it. When
+    /// `max_steps` moved `30_000 -> 480_000` (`297ae8e`) this line stayed byte-identical:
+    ///
+    /// ```text
+    /// config: production + 2 override(s): refine_flagged=false (production true), ...
+    /// ```
+    ///
+    /// — the same text for a 3 September artefact and a 6 September one, on two different kernels,
+    /// with no version column to tell them apart. That is *the corpus was mixed-version and a
+    /// corpus-wide statistic silently ran on a subset*, at the one place built to prevent it.
+    ///
+    /// These five are the fields [`crate::scheduler::assert_production_kernel`] refuses a
+    /// `results/` write over, and they are the same five for the same reason: each decides what
+    /// the integrator does, not how the result is reported. Everything else stays in the diff,
+    /// where a departure is the interesting thing and a match is not.
+    pub fn kernel_stamp(&self) -> String {
+        format!(
+            "integrator={:?} max_steps={} step_limit={:?} f={} dtau={:?} clamp={}",
+            self.integrator,
+            self.max_steps,
+            self.step_limit,
+            self.step_limit_f,
+            self.dtau_mode,
+            self.clamp_final_step
+        )
+    }
+
+    /// One line naming every departure from production, **and the absolute kernel**, for an
+    /// output header.
+    ///
+    /// Reads `production` when there are no departures — an explicit statement rather than an
+    /// empty string, because a blank field and an absent field look the same in a log and the
+    /// whole point is that the choice is recorded either way. The `[kernel: ...]` suffix is
+    /// [`kernel_stamp`] and is present unconditionally: see its note for why the diff alone was
+    /// not a record.
+    ///
+    /// Artefacts committed **before** 2026-09-06 carry the diff only, so date those by commit.
+    /// `tools/verify_prnq_regen.sh` strips this suffix for the same reason it strips
+    /// `wall_seconds`: it is header metadata, and a kernel that genuinely changed moves the
+    /// record block, which is what that check reads.
     pub fn provenance(&self) -> String {
         let ov = self.overrides_vs_production();
+        let k = self.kernel_stamp();
         if ov.is_empty() {
-            return "production".into();
+            return format!("production [kernel: {k}]");
         }
         let body: Vec<String> =
             ov.iter().map(|(k, a, b)| format!("{k}={a} (production {b})")).collect();
-        format!("production + {} override(s): {}", ov.len(), body.join(", "))
+        format!("production + {} override(s): {} [kernel: {k}]", ov.len(), body.join(", "))
     }
 
     /// Whether this config departs from production at all.

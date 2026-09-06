@@ -1,3 +1,0 @@
-image=results/animated/latent_oblique_b_levels.png
-config=production
-chart=latent animation=levels frames=7 adjacent_duplicates=0 scalar=ShapeSpread window=(1.1096e-4,1.3000e-1) res=1024 viewport=1024 budget=40000 tau_display=1e-2 alpha_hi=0.5 criterion=within k_frac=0.25 stop=floor:3 keep:556 max_rel_depth:330

@@ -1,3 +1,0 @@
-image=results/animated/latent_shape_h3_levels.png
-config=production
-chart=latent animation=levels frames=7 adjacent_duplicates=0 scalar=ShapeSpread window=(8.5508e-4,1.5312e-2) res=1024 viewport=1024 budget=40000 tau_display=1e-2 alpha_hi=0.5 criterion=within k_frac=0.25 stop=floor:8 keep:417 max_rel_depth:113

@@ -1,3 +1,0 @@
-image=results/animated/preset_prho_h1_levels_wire.png
-config=production
-chart=latent animation=levels_wire frames=7 adjacent_duplicates=0 scalar=ShapeSpread window=(3.3717e-5,3.7400e-1) res=1024 viewport=1024 budget=40000 tau_display=1e-2 alpha_hi=0.5 criterion=within k_frac=0.25 stop=floor:22 keep:591 max_rel_depth:453

@@ -1,3 +1,0 @@
-image=results/animated/shape_sphere_levels_wire.png
-config=production
-chart=shape animation=levels_wire frames=7 adjacent_duplicates=0 scalar=ShapeSpread window=(9.3491e-6,3.4577e-1) res=1024 viewport=1024 budget=40000 tau_display=1e-2 alpha_hi=0.5 criterion=within k_frac=0.25 stop=floor:103 keep:694 max_rel_depth:893

@@ -47,6 +47,99 @@ pub fn write(
     Ok(())
 }
 
+/// **The same file, written a frame at a time.**
+///
+/// [`write`] takes every frame at once, which at 1024² is 3 MB each: a thousand-frame animation
+/// is 3 GB of `Vec<u8>` held only so the encoder can be handed a slice. This owns the encoder
+/// instead and takes frames as they are painted, so the caller holds one frame.
+///
+/// **The saving is in the caller, not in the encoder.** The first cut reached for
+/// `into_stream_writer`, which is for a *single* image: it concatenated every frame into one and
+/// the file decoded to **zero** frames while still carrying plausible `fcTL`/`fdAT` chunks and
+/// being three times smaller — a corruption that reads as a compression win. `write_image_data`
+/// already takes one frame at a time; what had to change was the caller holding a `Vec` of them.
+///
+/// **It keeps the previous frame, and that is not an optimisation to remove.** The
+/// adjacent-duplicate count is the arm that says the playhead moved — *every animation this
+/// project produced before the truncation fix was one image repeated N times* — and a streaming
+/// writer that dropped the previous frame could not compute it. So the check survives the
+/// restructure at a cost of exactly one frame.
+///
+/// The frame count is declared to the encoder up front and asserted at [`Stream::finish`]: an
+/// APNG whose `acTL` count disagrees with the frames written is a corrupt file that most viewers
+/// show as a still, which is the same failure the duplicate count exists to catch wearing a
+/// different cause.
+pub struct Stream {
+    w: png::Writer<BufWriter<File>>,
+    frame_len: usize,
+    prev: Option<Vec<u8>>,
+    dup: usize,
+    written: usize,
+    declared: usize,
+}
+
+impl Stream {
+    pub fn begin(
+        path: &str,
+        w: usize,
+        h: usize,
+        n_frames: usize,
+        delay_num: u16,
+        delay_den: u16,
+    ) -> std::io::Result<Self> {
+        assert!(n_frames > 0, "an animation needs at least one frame");
+        if let Some(dir) = std::path::Path::new(path).parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        let file = File::create(path)?;
+        let mut enc = png::Encoder::new(BufWriter::new(file), w as u32, h as u32);
+        enc.set_color(png::ColorType::Rgb);
+        enc.set_depth(png::BitDepth::Eight);
+        enc.set_animated(n_frames as u32, 0)
+            .map_err(|e| std::io::Error::other(e.to_string()))?;
+        enc.set_frame_delay(delay_num, delay_den)
+            .map_err(|e| std::io::Error::other(e.to_string()))?;
+        Ok(Self {
+            w: enc.write_header()?,
+            frame_len: w * h * 3,
+            prev: None,
+            dup: 0,
+            written: 0,
+            declared: n_frames,
+        })
+    }
+
+    pub fn push(&mut self, f: &[u8]) -> std::io::Result<()> {
+        assert_eq!(f.len(), self.frame_len, "frame {} is the wrong size", self.written);
+        assert!(self.written < self.declared, "more frames than were declared");
+        if self.prev.as_deref() == Some(f) {
+            self.dup += 1;
+        }
+        self.w.write_image_data(f)?;
+        match &mut self.prev {
+            Some(p) => p.copy_from_slice(f),
+            None => self.prev = Some(f.to_vec()),
+        }
+        self.written += 1;
+        Ok(())
+    }
+
+    /// How many adjacent frame pairs written so far were byte-identical.
+    pub fn adjacent_duplicates(&self) -> usize {
+        self.dup
+    }
+
+    pub fn finish(self) -> std::io::Result<usize> {
+        assert_eq!(
+            self.written, self.declared,
+            "declared {} frames and wrote {}: the acTL count would be wrong",
+            self.declared, self.written
+        );
+        self.w.finish()?;
+        Ok(self.dup)
+    }
+}
+
 /// Lay two same-sized RGB8 images side by side into one frame.
 ///
 /// Used for before/after comparisons where the interesting thing is *which* quads each side

@@ -6,7 +6,7 @@
 
 # Committed results
 
-Raw output and images for every experiment. [`../RESULTS.md`](../RESULTS.md) is the findings
+Raw output and images for every experiment. [`../RESULTS.md`](../docs/RESULTS.md) is the findings
 document; this directory is the evidence behind it.
 
 Everything here is regenerable — `output/*.txt` is the captured stdout of the correspondingly
@@ -147,7 +147,7 @@ pixel can be and must not be shown as quiet.
 - `raw/<region>-64.raw` — 64×64, ~1.3 MB each, for reading and testing a parser against.
 
 Together they are about 155 MB, which is large for a repository and is a deliberate choice: the
-findings in [`../RESULTS.md`](../RESULTS.md) are re-derivable from these files without a
+findings in [`../RESULTS.md`](../docs/RESULTS.md) are re-derivable from these files without a
 re-run. If that ever needs undoing, `git lfs migrate` moves them out of the tree retroactively.
 
 The format is self-describing: magic `PRIN`, a version, a length-prefixed text header carrying

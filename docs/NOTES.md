@@ -282,7 +282,7 @@ tail from bulk *on this slice*, and nothing more.
 
 ## 2b. The Levi-Civita branch cut
 
-Found while porting AZ; written up in full in [`docs/lc-branch-cut.md`](docs/lc-branch-cut.md).
+Found while porting AZ; written up in full in [`docs/lc-branch-cut.md`](lc-branch-cut.md).
 
 The original inverse LC map computes `u0 = sqrt((|rho| + rho.x)/2)` first and derives `u1`
 from it. That sum cancels catastrophically when `rho` points along negative x, and the

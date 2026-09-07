@@ -15,7 +15,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 import cases  # noqa: E402
 
 ROOT = os.path.join(os.path.dirname(__file__), "..", "..")
-OUT = os.path.join(ROOT, "xcheck_out")
+OUT = os.path.join(ROOT, "results/xcheck")
 CARGO = os.path.expanduser("~/.cargo/bin/cargo")
 
 STATE_COLS = ["r0x", "r0y", "r1x", "r1y", "r2x", "r2y",

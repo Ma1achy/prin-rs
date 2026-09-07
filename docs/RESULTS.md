@@ -1,9 +1,9 @@
 # Results
 
 What the uniform kernel measured, written to be read cold. Raw output for every number is in
-[`results/output/`](results/output/); the mechanisms behind them are in
+[`results/output/`](../results/output/); the mechanisms behind them are in
 [`NOTES.md`](NOTES.md), and the working agreement they feed back into is
-[`CLAUDE.md`](CLAUDE.md).
+[`CLAUDE.md`](../CLAUDE.md).
 
 Everything below is Burrau (masses 3-4-5, released from rest), Aarseth–Zare with two-pair
 Levi-Civita regularisation, `E+1 = 8` copies per pixel, `t_max = 13`, f64 unless stated.
@@ -4180,9 +4180,9 @@ direction and it is stated rather than quietly absorbed: where the committed art
 Everywhere else the table now names the ranked run.
 
 Every table above comes from a committed example. Raw output for all of them is in
-[`results/output/`](results/output/), the acceptance-gate and cross-check output is in
-[`results/tests/`](results/tests/), and the images and 64×64 raw dumps are in
-[`results/`](results/). [`results/README.md`](results/README.md) indexes all of it.
+[`results/output/`](../results/output/), the acceptance-gate and cross-check output is in
+[`results/tests/`](../results/tests/), and the images and 64×64 raw dumps are in
+[`results/`](../results/). [`results/README.md`](../results/README.md) indexes all of it.
 
 | result | command |
 |---|---|

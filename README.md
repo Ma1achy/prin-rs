@@ -27,9 +27,9 @@ about nine months of measurements arguing with each other.
 | | |
 |---|---|
 | **[`FINDINGS.md`](FINDINGS.md)** | **start here** — the coherent account: what was measured, what it overturned, what the machinery settled into |
-| [`BRIEF.md`](BRIEF.md) | the authoritative spec — the system, the slice, the integrator, every per-pixel field and why it exists |
+| [`BRIEF.md`](docs/BRIEF.md) | the authoritative spec — the system, the slice, the integrator, every per-pixel field and why it exists |
 | [`CLAUDE.md`](CLAUDE.md) | the working agreement, and the findings record in discovery order |
-| [`RESULTS.md`](RESULTS.md) · [`NOTES.md`](NOTES.md) | per-experiment tables and the mechanisms behind them |
+| [`RESULTS.md`](docs/RESULTS.md) · [`NOTES.md`](docs/NOTES.md) | per-experiment tables and the mechanisms behind them |
 | [`results/README.md`](results/README.md) | every committed artefact, with the command that made it |
 
 ---

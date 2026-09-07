@@ -12,8 +12,8 @@ fn cargo() -> String {
 }
 
 fn run_case(name: &str, rel_tol: &str, abs_tol: &str) -> bool {
-    let refp = format!("xcheck_out/ref_{name}.tsv");
-    let rsp = format!("xcheck_out/rs_{name}.tsv");
+    let refp = format!("results/xcheck/ref_{name}.tsv");
+    let rsp = format!("results/xcheck/rs_{name}.tsv");
 
     let ok = Command::new("python3")
         .args(["tools/xcheck/dump_ref.py", "--case", name, "--out", &refp])

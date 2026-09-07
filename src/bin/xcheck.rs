@@ -1,6 +1,6 @@
 //! Rust side of the cross-check. Emits the same TSV as `tools/xcheck/dump_ref.py`.
 //!
-//!     cargo run --release --bin xcheck -- --case algebra --out xcheck_out/rs_algebra.tsv
+//!     cargo run --release --bin xcheck -- --case algebra --out results/xcheck/rs_algebra.tsv
 //!
 //! Case parameters are duplicated here rather than read from the Python side on purpose:
 //! `compare.py` asserts the emitted headers match, so a drift between the two definitions

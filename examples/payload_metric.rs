@@ -292,7 +292,7 @@ fn main() {
         _ => {
             eprintln!("usage: payload_metric build <target> [levels=6] [n=8] [eps=0.01] [t_max=13] [root=results]");
             eprintln!("       payload_metric replay <file.fcache> [eps=0.01] [root=results]");
-            eprintln!("       payload_metric live <file.fcache> [policy=tolerance|alpha] [eps=0.01] [k_frac=0.25] [root=results] [stationary=0] [tau=eps] [alpha_lo=0.2] [agreement=1] [dim_floor=1]");
+            eprintln!("       payload_metric live <file.fcache> [policy=tolerance|alpha] [eps=0.01] [k_frac=0.25] [root=results] [stationary=0] [tau=eps] [alpha_lo=0.2] [agreement=1] [dim_floor=1] [ttl=-1] [camera=1]");
             eprintln!("       payload_metric march <file.fcache> [eps=0.01] [k_frac=0.25] [root=results] [stationary=0] [live_stride=4] [alpha_lo=0.2] [merge=1] [agreement=1] [dim_floor=1] [no_gain_ttl=-1]");
             std::process::exit(2);
         }
@@ -464,13 +464,19 @@ fn live() {
     // on, because a memory must satisfy both to stand.
     let ttl_arg: i64 = arg(12, -1);
     let no_gain_ttl: Option<u32> = (ttl_arg >= 0).then(|| ttl_arg as u32);
+    // **The camera, as an arm rather than a constant.** With it on, a quad whose texels fall below
+    // display resolution is stopped by `ScreenFloor` -- a veto, not a criterion decision -- so a
+    // saving quoted in quads can be a fact about the viewport. Off, the descent runs to `max_level`
+    // and the stop breakdown is the criterion's alone. Neither is the honest number by itself: the
+    // veto is what a real frame does and the criterion is what is being measured. Run both.
+    let camera_on: bool = std::env::args().nth(13).map(|v| v != "0" && v != "false").unwrap_or(true);
     let fp = {
         let f = std::fs::File::open(&file).expect("open fcache");
         prin_rs::output::fcache::read(&mut std::io::BufReader::new(f)).expect("read fcache")
     };
     let t = target(&fp.region).unwrap_or_else(|| panic!("the file's region `{}` is not a known target", fp.region));
     let stem = std::path::Path::new(&file).file_stem().unwrap().to_string_lossy().to_string();
-    let tag = format!("{}{}{}{}", policy.name(),
+    let tag = format!("{}{}{}{}{}", if camera_on { "" } else { "nocam_" }, policy.name(),
         if policy == prin_rs::scheduler::Policy::Tolerance && !stationary { "_nostat" } else { "" },
         if tau != eps { format!("_tau{tau:e}") } else { String::new() },
         if alpha_lo != SchedCfg::default().alpha_lo { format!("_alo{alpha_lo}") } else { String::new() })
@@ -479,7 +485,7 @@ fn live() {
     let log = Log::tee(&format!("{root}/output/payload_live_{stem}_{tag}.txt"));
     let log = &log;
     let class = if fp.has_event_class() { ClassArm::EventClass } else { ClassArm::Outcome };
-    logln!(log, "payload_metric live: {file} -- PRQF v{}, region {}, levels {} N={} res {}, t_max {}; policy {} stationary {stationary} eps {eps:e} tau {tau:e} alpha_lo {alpha_lo} agreement {agreement} dim_floor {dim_floor} k_frac {k_frac}; class arm {}",
+    logln!(log, "payload_metric live: {file} -- PRQF v{}, region {}, levels {} N={} res {}, t_max {}; policy {} camera {camera_on} stationary {stationary} eps {eps:e} tau {tau:e} alpha_lo {alpha_lo} agreement {agreement} dim_floor {dim_floor} k_frac {k_frac}; class arm {}",
            fp.version, fp.region, fp.levels, fp.n, fp.res, fp.t_max, policy.name(), class.name());
 
     let base = EnsembleCfg::default();
@@ -503,7 +509,7 @@ fn live() {
         dim_floor,
         k_frac,
         budget: fp.quads.len() * 2,
-        camera: Some(Camera::framing(t.cx, t.cy, t.half, fp.res)),
+        camera: camera_on.then(|| Camera::framing(t.cx, t.cy, t.half, fp.res)),
         max_level: Some(fp.levels),
         chart: t.chart,
         keep_pixels: false,
@@ -534,6 +540,57 @@ fn live() {
         m.into_iter().map(|(l, n)| format!("{l}:{n}")).collect::<Vec<_>>().join(" ")
     };
     logln!(log, "  leaves by level: {by_level}");
+
+    // **The second budget line.** An `Undetermined` leaf wants finer `eta`, not finer cells, so it
+    // is not bought by subdivision at all -- a saving quoted in quads counts only the first kind of
+    // work. Printed as a fraction of leaves rather than a count, because the leaf count is exactly
+    // what the comparison varies.
+    let n_undet = leaves.iter().filter(|&&i| tree.nodes[i].decision == prin_rs::quad::Decision::Undetermined).count();
+    let n_collapsed = leaves.iter().filter(|&&i| tree.nodes[i].decision == prin_rs::quad::Decision::Collapsed).count();
+    logln!(log, "  undetermined {n_undet}/{} ({:.4}); collapsed {n_collapsed} ({:.4})",
+           leaves.len(), n_undet as f64 / leaves.len() as f64, n_collapsed as f64 / leaves.len() as f64);
+
+    // `alpha_area` at the quads the floor actually stopped. It is `2 - d` for a boundary of box
+    // dimension `d`, so this column is a **measured box dimension** and not only a threshold check.
+    // Reported as a spread, never a mean: the record's standing rule for this exponent is that its
+    // variance lives in the tails.
+    // **Read it off the PARENT, not off the floored leaf.** `alpha_area` is recorded on the quad
+    // whose split was judged; its children are what carry `Decision::Floor`. Two populations are
+    // printed, because they answer different questions: every judged quad is the measured box
+    // dimension of the field, and the subset with a floored child is what the threshold acted on.
+    // Requiring all four children to be `Floor` was the first cut and returned an empty set on
+    // every tree -- `near-field` has three floored leaves in total, so no parent qualifies, and an
+    // empty column reads as "the floor never fired".
+    {
+        let q = |a: &Vec<f64>, f: f64| a[((a.len() - 1) as f64 * f).round() as usize];
+        let mut all: Vec<f64> = Vec::new();
+        let mut acted: Vec<f64> = Vec::new();
+        for i in 0..tree.nodes.len() {
+            let Some(x) = tree.nodes[i].alpha_area else { continue };
+            if !x.is_finite() { continue }
+            all.push(x);
+            if tree.nodes[i].children.map_or(false, |ch| {
+                ch.iter().any(|&k| tree.nodes[k].decision == prin_rs::quad::Decision::Floor)
+            }) {
+                acted.push(x);
+            }
+        }
+        all.sort_by(|x, y| x.partial_cmp(y).unwrap());
+        acted.sort_by(|x, y| x.partial_cmp(y).unwrap());
+        if all.is_empty() {
+            logln!(log, "  alpha_area: -- (no quad recorded one: the exponent was never judged)");
+        } else {
+            logln!(log, "  alpha_area, all judged quads: n {} p10 {:+.4} p50 {:+.4} p90 {:+.4}  (box dim d = 2 - alpha, p50 d = {:.4})",
+                   all.len(), q(&all, 0.1), q(&all, 0.5), q(&all, 0.9), 2.0 - q(&all, 0.5));
+            if acted.is_empty() {
+                logln!(log, "  alpha_area, quads with a floored child: n 0 (the floor acted on nothing)");
+            } else {
+                logln!(log, "  alpha_area, quads with a floored child: n {} p10 {:+.4} p50 {:+.4} p90 {:+.4}  (p50 d = {:.4})",
+                       acted.len(), q(&acted, 0.1), q(&acted, 0.5), q(&acted, 0.9), 2.0 - q(&acted, 0.5));
+            }
+        }
+    }
+
     for c in &caches {
         let e = c.error_of(&keys);
         let dp = c.dp_optimal((c.quads.len() - 1) / 4);
@@ -547,6 +604,36 @@ fn live() {
                uni_need.map(|x| x.to_string()).unwrap_or("--".into()),
                uni_need.map(|x| format!("{:.2}x", st.quads_computed as f64 / x as f64)).unwrap_or("--".into()),
                c.sea_fraction(eps));
+    }
+    // **The panels, from the cache alone -- no integration enters here.** Written only when a
+    // panel root is given as argument 14, so every cell already computed stays valid and
+    // nothing has to be re-run. Three, always: the tolerance tree's wire, `Rank::Uniform` at
+    // the SAME quad count -- the equal-budget comparison the ratio columns are about -- and the
+    // full-depth reference the two are approximating. The wire says where the tree cut; the
+    // reference says what there was to cut around, and neither substitutes for the other.
+    if let Some(proot) = std::env::args().nth(14).filter(|s| !s.is_empty()) {
+        let c = &caches[0];
+        let full = (c.quads.len() - 1) / 4;
+        let deepest: Vec<metric::Key> = {
+            let w = 1u32 << c.levels;
+            (0..w).flat_map(|iy| (0..w).map(move |ix| (c.levels, ix, iy))).collect()
+        };
+        let uni_eq = c.leaves_at(Rank::Uniform, st.quads_computed.min(full));
+        let _ = std::fs::create_dir_all(&proot);
+        // A magenta count per panel rather than a silent render: `Cache::render` paints a
+        // non-finite shape `DEBUG_NAN`, and a reader has to be told how much of a figure is the
+        // instrument reporting rather than the field.
+        let magenta = |img: &[u8]| -> usize {
+            img.chunks_exact(3).filter(|p| *p == prin_rs::output::colour::DEBUG_NAN).count()
+        };
+        for (name, img) in [
+            ("tolerance_wire", c.render_wire(&keys)),
+            ("uniform_wire", c.render_wire(&uni_eq)),
+            ("reference", c.render(&deepest)),
+        ] {
+            logln!(log, "  panel {name}: {} magenta of {}", magenta(&img), c.res * c.res);
+            let _ = prin_rs::output::adaptive::save(&format!("{proot}/{stem}_eps{eps:e}_{name}.png"), c.res, &img);
+        }
     }
 }
 

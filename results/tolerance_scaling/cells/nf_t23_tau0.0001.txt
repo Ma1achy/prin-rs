@@ -1,0 +1,10 @@
+payload_metric live: /Volumes/X10 Pro/principia/tolscale/payload/near-field_t23_L6.fcache -- PRQF v2, region near-field, levels 6 N=8 res 512, t_max 23; policy tolerance camera true stationary false eps 1e-2 tau 1e-4 alpha_lo 0.005 agreement true dim_floor true k_frac 0.25; class arm event_class
+  config: production + 3 override(s): t_max=23.0 (production 13.0), n_sync=57 (production 32), refine_flagged=false (production true) [kernel: integrator=Heggie max_steps=480000 step_limit=Predictive f=0.02 dtau=PerStepInterval clamp=true]
+  descent: 1225 quads (919 leaves, depth 6) in 543.9s, 5.606e9 substeps, stop [keep:178 screen_floor:741]
+  mem_all = 1225 quads x 512 trajectories; mem_leaf = 919 quads
+  leaves by level: 2:10 3:6 4:11 5:28 6:864
+  undetermined 0/919 (0.0000); collapsed 0 (0.0000)
+  alpha_area, all judged quads: n 285 p10 +0.0000 p50 +0.0000 p90 +0.4694  (box dim d = 2 - alpha, p50 d = 2.0000)
+  alpha_area, quads with a floored child: n 0 (the floor acted on nothing)
+  payload/event_class/indicator/eps=1e-2: error 0.00000; dp needs B=341 (ratio 3.59x); uniform needs B=4941 (ratio 0.25x); sea_fraction 0.0017
+  payload/event_class/resolvable/eps=1e-2: error 0.00000; dp needs B=329 (ratio 3.72x); uniform needs B=4941 (ratio 0.25x); sea_fraction 0.0017

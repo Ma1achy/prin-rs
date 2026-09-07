@@ -1,0 +1,77 @@
+payload_metric replay: /Users/malachy/src/principia-rs-test/results/payload/near-field_t13_L6.fcache -- PRQF v2, region near-field, chart body_plane -, levels 6 N=8 res 512, t_max 13
+  ZERO trajectories. Reductions are absent from a footprint file, so only the floor (uniform), the reference (greedy), the random band and the ceiling (dp) are scored.
+=== metric payload/event_class/indicator/eps=1e-2 ===
+  error(root) = 0.02669   error(full) = 0.0e0   (full = matches this sampling, not correct)
+  sea_fraction(eps) -- the frame no depth resolves: 2e-3:0.0005  5e-3:0.0005  1e-2:0.0005  2e-2:0.0005  5e-2:0.0005
+  dp_optimal: 1365 splits in 0.03s, prefix-min binds at 0 budgets
+  dp bound holds over 5 rankings; worst margin +0.0e0
+  error(B)                          1        5       11       21       23       47       85       95      191      341      383      767     1365     1535     3071     5461
+  dp_optimal                  0.02669  0.00720  0.00339  0.00141  0.00141  0.00063  0.00019  0.00012  0.00000  0.00000  0.00000  0.00000  0.00000  0.00000  0.00000  0.00000   CEILING
+  uniform                     0.02669  0.00720  0.00720  0.00339  0.00339  0.00339  0.00172  0.00172  0.00172  0.00089  0.00089  0.00089  0.00048  0.00048  0.00048  0.00000
+  greedy_lookahead_1          0.02669  0.00720  0.00339  0.00141  0.00141  0.00063  0.00019  0.00012  0.00000  0.00000  0.00000  0.00000  0.00000  0.00000  0.00000  0.00000
+  random lo                   0.02669  0.00720  0.00339  0.00264  0.00264  0.00264  0.00146  0.00146  0.00146  0.00146  0.00146  0.00111  0.00051  0.00051  0.00012  0.00000   FLOOR band, 3 seeds
+  random hi                   0.02669  0.00720  0.00720  0.00720  0.00720  0.00720  0.00720  0.00720  0.00339  0.00339  0.00339  0.00339  0.00339  0.00339  0.00106  0.00000
+  headroom uni-dp               0.0e0    0.0e0   3.8e-3   2.0e-3   2.0e-3   2.8e-3   1.5e-3   1.6e-3   1.7e-3   8.9e-4   8.9e-4   8.9e-4   4.8e-4   4.8e-4   4.8e-4    0.0e0   the room
+  headroom/err                  0.0e0    0.0e0   5.3e-1   5.8e-1   5.8e-1   8.1e-1   8.9e-1   9.3e-1    1.0e0    1.0e0    1.0e0    1.0e0    1.0e0    1.0e0    1.0e0    0.0e0   the room as a share of uniform's error
+  captured greedy_lookahead_1       --       --   1.0000   1.0000   1.0000   1.0000   1.0000   1.0000   1.0000   1.0000   1.0000   1.0000   1.0000   1.0000   1.0000       --
+  B_needed (steps)                      <= 0.05            <= 0.02            <= 0.01           <= 0.005
+  dp_optimal                                  1                  5                  5                  9   CEILING
+  uniform                          1 (steps --)       5 (steps --)       5 (steps --)      21 (steps --)
+  greedy_lookahead_1               1 (steps --)       5 (steps --)       5 (steps --)       9 (steps --)
+
+=== metric payload/event_class/hinge/eps=1e-2 ===
+  error(root) = 0.01138   error(full) = 0.0e0   (full = matches this sampling, not correct)
+  sea_fraction(eps) -- the frame no depth resolves: 2e-3:0.0005  5e-3:0.0005  1e-2:0.0005  2e-2:0.0005  5e-2:0.0005
+  dp_optimal: 1365 splits in 0.03s, prefix-min binds at 0 budgets
+  dp bound holds over 5 rankings; worst margin -1.1e-19
+  error(B)                          1        5       11       21       23       47       85       95      191      341      383      767     1365     1535     3071     5461
+  dp_optimal                  0.01138  0.00713  0.00336  0.00140  0.00140  0.00062  0.00019  0.00012  0.00000  0.00000  0.00000  0.00000  0.00000  0.00000  0.00000  0.00000   CEILING
+  uniform                     0.01138  0.00713  0.00713  0.00336  0.00336  0.00336  0.00171  0.00171  0.00171  0.00088  0.00088  0.00088  0.00047  0.00047  0.00047  0.00000
+  greedy_lookahead_1          0.01138  0.00713  0.00336  0.00140  0.00140  0.00062  0.00019  0.00012  0.00000  0.00000  0.00000  0.00000  0.00000  0.00000  0.00000  0.00000
+  random lo                   0.01138  0.00713  0.00336  0.00262  0.00262  0.00262  0.00145  0.00145  0.00145  0.00145  0.00145  0.00110  0.00050  0.00050  0.00012  0.00000   FLOOR band, 3 seeds
+  random hi                   0.01138  0.00713  0.00713  0.00713  0.00713  0.00713  0.00713  0.00713  0.00336  0.00336  0.00336  0.00336  0.00336  0.00336  0.00105  0.00000
+  headroom uni-dp               0.0e0    0.0e0   3.8e-3   2.0e-3   2.0e-3   2.7e-3   1.5e-3   1.6e-3   1.7e-3   8.8e-4   8.8e-4   8.8e-4   4.7e-4   4.7e-4   4.7e-4    0.0e0   the room
+  headroom/err                  0.0e0    0.0e0   5.3e-1   5.8e-1   5.8e-1   8.1e-1   8.9e-1   9.3e-1    1.0e0    1.0e0    1.0e0    1.0e0    1.0e0    1.0e0    1.0e0    0.0e0   the room as a share of uniform's error
+  captured greedy_lookahead_1       --       --   1.0000   1.0000   1.0000   1.0000   1.0000   1.0000   1.0000   1.0000   1.0000   1.0000   1.0000   1.0000   1.0000       --
+  B_needed (steps)                      <= 0.05            <= 0.02            <= 0.01           <= 0.005
+  dp_optimal                                  1                  1                  5                  9   CEILING
+  uniform                          1 (steps --)       1 (steps --)       5 (steps --)      21 (steps --)
+  greedy_lookahead_1               1 (steps --)       1 (steps --)       5 (steps --)       9 (steps --)
+
+=== metric payload/event_class/resolvable/eps=1e-2 ===
+  error(root) = 0.02641   error(full) = 0.0e0   (full = matches this sampling, not correct)
+  sea_fraction(eps) -- the frame no depth resolves: 2e-3:0.0005  5e-3:0.0005  1e-2:0.0005  2e-2:0.0005  5e-2:0.0005
+  dp_optimal: 1365 splits in 0.04s, prefix-min binds at 0 budgets
+  dp bound holds over 5 rankings; worst margin +0.0e0
+  error(B)                          1        5       11       21       23       47       85       95      191      341      383      767     1365     1535     3071     5461
+  dp_optimal                  0.02641  0.00692  0.00315  0.00116  0.00116  0.00041  0.00011  0.00007  0.00000  0.00000  0.00000  0.00000  0.00000  0.00000  0.00000  0.00000   CEILING
+  uniform                     0.02641  0.00692  0.00692  0.00315  0.00315  0.00315  0.00147  0.00147  0.00147  0.00064  0.00064  0.00064  0.00029  0.00029  0.00029  0.00000
+  greedy_lookahead_1          0.02641  0.00692  0.00315  0.00116  0.00116  0.00041  0.00011  0.00007  0.00000  0.00000  0.00000  0.00000  0.00000  0.00000  0.00000  0.00000
+  random lo                   0.02641  0.00692  0.00315  0.00240  0.00240  0.00240  0.00122  0.00122  0.00122  0.00122  0.00122  0.00088  0.00032  0.00032  0.00007  0.00000   FLOOR band, 3 seeds
+  random hi                   0.02641  0.00692  0.00692  0.00692  0.00692  0.00692  0.00692  0.00692  0.00315  0.00315  0.00315  0.00315  0.00315  0.00315  0.00085  0.00000
+  headroom uni-dp               0.0e0    0.0e0   3.8e-3   2.0e-3   2.0e-3   2.7e-3   1.4e-3   1.4e-3   1.5e-3   6.4e-4   6.4e-4   6.4e-4   2.9e-4   2.9e-4   2.9e-4    0.0e0   the room
+  headroom/err                  0.0e0    0.0e0   5.5e-1   6.3e-1   6.3e-1   8.7e-1   9.2e-1   9.5e-1    1.0e0    1.0e0    1.0e0    1.0e0    1.0e0    1.0e0    1.0e0    0.0e0   the room as a share of uniform's error
+  captured greedy_lookahead_1       --       --   1.0000   1.0000   1.0000   1.0000   1.0000   1.0000   1.0000   1.0000   1.0000   1.0000   1.0000   1.0000   1.0000       --
+  B_needed (steps)                      <= 0.05            <= 0.02            <= 0.01           <= 0.005
+  dp_optimal                                  1                  5                  5                  9   CEILING
+  uniform                          1 (steps --)       5 (steps --)       5 (steps --)      21 (steps --)
+  greedy_lookahead_1               1 (steps --)       5 (steps --)       5 (steps --)       9 (steps --)
+
+=== metric colour/bivariate/spread_shape ===
+  error(root) = 0.30435   error(full) = 0.0e0   (full = matches this sampling, not correct)
+  dp_optimal: 1365 splits in 0.02s, prefix-min binds at 0 budgets
+  dp bound holds over 5 rankings; worst margin -6.9e-17
+  error(B)                          1        5       11       21       23       47       85       95      191      341      383      767     1365     1535     3071     5461
+  dp_optimal                  0.30435  0.30287  0.30104  0.29180  0.29180  0.28193  0.26616  0.26301  0.22950  0.20081  0.19686  0.15902  0.10028  0.09593  0.05808  0.00000   CEILING
+  uniform                     0.30435  0.30287  0.30288  0.30105  0.30105  0.29785  0.28285  0.28188  0.25249  0.20088  0.19695  0.15915  0.10028  0.09614  0.05833  0.00000
+  greedy_lookahead_1          0.30435  0.30287  0.30104  0.29180  0.29180  0.28230  0.26656  0.26462  0.25514  0.24030  0.23895  0.22947  0.21540  0.17528  0.11436  0.00000
+  random lo                   0.30435  0.30287  0.30104  0.29784  0.29784  0.29152  0.28235  0.28038  0.26122  0.24772  0.24461  0.21031  0.16433  0.15635  0.08537  0.00000   FLOOR band, 3 seeds
+  random hi                   0.30435  0.30287  0.30287  0.30170  0.30170  0.29579  0.28981  0.28823  0.27716  0.26145  0.25958  0.22601  0.18679  0.17792  0.10433  0.00000
+  headroom uni-dp               0.0e0    0.0e0   1.8e-3   9.2e-3   9.2e-3   1.6e-2   1.7e-2   1.9e-2   2.3e-2   7.1e-5   9.0e-5   1.3e-4 -6.9e-17   2.1e-4   2.5e-4    0.0e0   the room
+  headroom/err                  0.0e0    0.0e0   6.1e-3   3.1e-2   3.1e-2   5.3e-2   5.9e-2   6.7e-2   9.1e-2   3.6e-4   4.6e-4   8.0e-4 -6.9e-16   2.2e-3   4.3e-3    0.0e0   the room as a share of uniform's error
+  captured greedy_lookahead_1       --       --   1.0000   1.0000   1.0000   0.9770   0.9761   0.9148  -0.1156 -552.1492 -466.2427 -555.3818       -- -372.0241 -223.2225       --
+  B_needed (steps)                      <= 0.05            <= 0.02            <= 0.01           <= 0.005
+  dp_optimal                               3401               4617               5025               5229   CEILING
+  uniform                       3409 (steps --)    4625 (steps --)    5037 (steps --)    5249 (steps --)
+  greedy_lookahead_1            4317 (steps --)    4905 (steps --)    5169 (steps --)    5261 (steps --)
+

@@ -1,0 +1,10 @@
+payload_metric live: /Volumes/X10 Pro/principia/tolscale/payload/config_stability_t13_L6.fcache -- PRQF v2, region config_stability, levels 6 N=8 res 512, t_max 13; policy tolerance camera true stationary false eps 1e-3 tau 1e-3 alpha_lo 0.005 agreement true dim_floor true k_frac 0.25; class arm event_class
+  config: production + 1 override(s): refine_flagged=false (production true) [kernel: integrator=Heggie max_steps=480000 step_limit=Predictive f=0.02 dtau=PerStepInterval clamp=true]
+  descent: 4021 quads (3016 leaves, depth 6) in 3479.6s, 1.029e10 substeps, stop [floor:194 keep:148 screen_floor:2674]
+  mem_all = 4021 quads x 512 trajectories; mem_leaf = 3016 quads
+  leaves by level: 3:4 4:44 5:56 6:2912
+  undetermined 0/3016 (0.0000); collapsed 0 (0.0000)
+  alpha_area, all judged quads: n 995 p10 -0.2002 p50 +0.0000 p90 +0.3434  (box dim d = 2 - alpha, p50 d = 2.0000)
+  alpha_area, quads with a floored child: n 50 p10 -0.4521 p50 -0.0609 p90 +0.0000  (p50 d = 2.0609)
+  payload/event_class/indicator/eps=1e-3: error 0.24201; dp needs B=3505 (ratio 1.15x); uniform needs B=3885 (ratio 1.04x); sea_fraction 0.7840
+  payload/event_class/resolvable/eps=1e-3: error 0.02309; dp needs B=1521 (ratio 2.64x); uniform needs B=3953 (ratio 1.02x); sea_fraction 0.7840

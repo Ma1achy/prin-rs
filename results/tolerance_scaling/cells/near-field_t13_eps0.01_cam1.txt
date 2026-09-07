@@ -1,0 +1,10 @@
+payload_metric live: /Users/malachy/src/principia-rs-test/results/payload/near-field_t13_L6.fcache -- PRQF v2, region near-field, levels 6 N=8 res 512, t_max 13; policy tolerance camera true stationary false eps 1e-2 tau 1e-2 alpha_lo 0.005 agreement true dim_floor true k_frac 0.25; class arm event_class
+  config: production + 1 override(s): refine_flagged=false (production true) [kernel: integrator=Heggie max_steps=480000 step_limit=Predictive f=0.02 dtau=PerStepInterval clamp=true]
+  descent: 125 quads (94 leaves, depth 6) in 12.0s, 3.265e8 substeps, stop [floor:3 keep:68 screen_floor:23]
+  mem_all = 125 quads x 512 trajectories; mem_leaf = 94 quads
+  leaves by level: 2:14 3:3 4:13 5:16 6:48
+  undetermined 0/94 (0.0000); collapsed 0 (0.0000)
+  alpha_area, all judged quads: n 24 p10 +0.0000 p50 +0.0000 p90 +1.2075  (box dim d = 2 - alpha, p50 d = 2.0000)
+  alpha_area, quads with a floored child: n 1 p10 +0.0000 p50 +0.0000 p90 +0.0000  (p50 d = 2.0000)
+  payload/event_class/indicator/eps=1e-2: error 0.00028; dp needs B=77 (ratio 1.62x); uniform needs B=4689 (ratio 0.03x); sea_fraction 0.0005
+  payload/event_class/resolvable/eps=1e-2: error 0.00021; dp needs B=73 (ratio 1.71x); uniform needs B=4433 (ratio 0.03x); sea_fraction 0.0005

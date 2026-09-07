@@ -93,6 +93,33 @@ its reproduction command in its own README.
 the frame loop is the *precondition* for measuring them rather than the phase after it — the plan's
 own ordering had it backwards.
 
+## `tolerance_scaling/` — does `Policy::Tolerance`'s saving generalise?
+
+`FINDINGS.md` §5.2's headline savings (39.8x and 16.3x) are both Burrau, both `t = 13`. This asks
+whether they hold on a latent chart, a tilted slice, and at `t = 23` and `t = 50`, with the
+prediction recorded before the run.
+
+**They do not, for two unrelated reasons that a single ratio hides.** On `config_stability` and
+`tilt_plambda` the **exact optimum** is 1.08-1.44x over breadth-first in all 24 fixed-target cells
+— there is nothing for any scheduler to find, and `config_stability` is *below* uniform at every
+horizon. On the Burrau regions the headroom is real (2.3-58.8x) and the production defaults throw it
+away by `t = 50`: `near-field` stops at a 21-quad bootstrap tree with 93% of its frame resolvable,
+because **`alpha_area` returns exactly `0.0000` on a near-empty mask** and any positive `alpha_lo`
+floors on it. With `alpha_lo = 0` that cell reaches error 0.00000 at 1.03x of the optimum.
+
+`sea_fraction` — computable before any descent — separates the two regimes by orders of magnitude,
+though it does not order charts within one.
+
+| file | what it holds |
+|---|---|
+| `README.md` | the measurement: 40 cells, the prediction scored, and what it does not say |
+| `sheet_t13_eps1e-2.png` | tolerance tree / uniform at the same budget / full-depth reference, four regions |
+| `panels/` | the twelve panels the sheet is built from, zero `DEBUG_NAN` pixels in all of them |
+
+**Read `dp/u` before `tol/u`.** A low saving has two causes — a field with nothing to find and a
+policy failing to find it — and only the exact optimum separates them. Both occur here, on the same
+chart one decade of `eps` apart.
+
 ## `scope/` — what the integrator fixes did to the criterion's input, and the three prerequisites
 
 Four files, and they are the reason the scheduler corpus above is superseded rather than merely

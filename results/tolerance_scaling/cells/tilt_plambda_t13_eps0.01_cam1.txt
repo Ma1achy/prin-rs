@@ -1,0 +1,10 @@
+payload_metric live: /Volumes/X10 Pro/principia/tolscale/payload/tilt_plambda_t13_L6.fcache -- PRQF v2, region tilt_plambda, levels 6 N=8 res 512, t_max 13; policy tolerance camera true stationary false eps 1e-2 tau 1e-2 alpha_lo 0.005 agreement true dim_floor true k_frac 0.25; class arm event_class
+  config: production + 1 override(s): refine_flagged=false (production true) [kernel: integrator=Heggie max_steps=480000 step_limit=Predictive f=0.02 dtau=PerStepInterval clamp=true]
+  descent: 3545 quads (2659 leaves, depth 6) in 396.5s, 1.267e10 substeps, stop [floor:224 keep:1347 screen_floor:1088]
+  mem_all = 3545 quads x 512 trajectories; mem_leaf = 2659 quads
+  leaves by level: 3:9 4:33 5:125 6:2492
+  undetermined 0/2659 (0.0000); collapsed 0 (0.0000)
+  alpha_area, all judged quads: n 643 p10 -0.0883 p50 +0.1839 p90 +1.6032  (box dim d = 2 - alpha, p50 d = 1.8161)
+  alpha_area, quads with a floored child: n 70 p10 -0.1381 p50 +0.0000 p90 +0.0015  (p50 d = 2.0000)
+  payload/event_class/indicator/eps=1e-2: error 0.15773; dp needs B=2609 (ratio 1.36x); uniform needs B=4121 (ratio 0.86x); sea_fraction 0.2847
+  payload/event_class/resolvable/eps=1e-2: error 0.07205; dp needs B=1901 (ratio 1.86x); uniform needs B=3285 (ratio 1.08x); sea_fraction 0.2847

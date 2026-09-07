@@ -1,6 +1,6 @@
 //! **An APNG converted to GIF, a frame at a time, with one palette for the whole animation.**
 //!
-//! Run: `cargo run --release --example apng_to_gif <in.png> <out.gif> [delay_cs] [div] [stride]`
+//! Run: `cargo run --release --example apng_to_gif <in.png> <out.gif> [delay_cs] [div] [stride] [cap]`
 //!
 //! The APNG is the lossless record and is never touched. GIF exists because APNG does not animate
 //! in a lot of viewers, and a diagnostic nobody can see move is not a diagnostic.
@@ -19,6 +19,11 @@
 //! of a second, so 30 fps is not representable: `delay_cs = 3` is 33.3 fps and `4` is 25.
 //! `div` box-averages the raster down (never nearest — a downscale that drops pixels aliases the
 //! fine structure this field is full of), and `stride` keeps every `stride`th frame.
+//!
+//! `cap` stops after that many kept frames, which truncates the **horizon**: `stride` lowers the
+//! frame rate over the whole animation, `cap` shortens it. They are separate because a GIF small
+//! enough to sit in a README can be bought either way and they cost different things -- a coarser
+//! stride aliases the motion, a shorter cap simply shows less of it.
 
 use prin_rs::output::gifout;
 use rayon::prelude::*;
@@ -74,10 +79,12 @@ fn main() {
     let delay_cs: u16 = arg(3, 3);
     let div: usize = arg(4, 1);
     let stride: usize = arg(5, 1);
+    let cap: usize = arg(6, usize::MAX);
 
     println!("apng -> gif: {src}");
-    println!("  delay {delay_cs} cs ({:.1} fps), raster /{div}, every {stride} frame(s)",
-             100.0 / delay_cs as f64);
+    println!("  delay {delay_cs} cs ({:.1} fps), raster /{div}, every {stride} frame(s), cap {}",
+             100.0 / delay_cs as f64,
+             if cap == usize::MAX { "none".to_string() } else { cap.to_string() });
 
     // Pass one: the palette, sampled across every frame that will be written.
     let t0 = std::time::Instant::now();
@@ -88,7 +95,7 @@ fn main() {
     // depend on how the pixels are fed in. It needs the frame count, which needs a first decode;
     // rather than decode three times, sample generously here and let `build_palette` see more.
     let total = each_frame(&src, |i, f, w, h| {
-        if i % stride != 0 {
+        if i % stride != 0 || kept >= cap {
             return;
         }
         let (small, sw, sh) = shrink(f, w, h, div);
@@ -111,7 +118,7 @@ fn main() {
     let mut out = gifout::Stream::begin(&dst, w, h, nq, delay_cs).expect("cannot open the GIF");
     let mut written = 0usize;
     each_frame(&src, |i, f, fw, fh| {
-        if i % stride != 0 {
+        if i % stride != 0 || written >= kept {
             return;
         }
         let (small, sw, _) = shrink(f, fw, fh, div);

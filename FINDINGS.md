@@ -15,9 +15,24 @@ committed harness under `examples/`.
 
 ## 1. The object, and what a pixel is
 
-The planar three-body problem, released from rest, with the scale and orientation symmetries
+The planar three-body problem, with the translation, rotation, reflection and scale symmetries
 quotiented out. A **slice** is a 2-plane through the space of initial conditions; a **pixel** is one
 point on that plane; **one pixel is one full simulation** integrated to a playhead time `t`.
+
+**Positions, momenta and masses are all free.** What is fixed is the gauge, not the state. Every
+chart hands one decoder a triple `(m, r, p)` and one canonicaliser reduces it: COM at the origin,
+`ρ` rotated onto `+x`, mirrored if `λ_y < 0`, then `l = √I` with `r /= l` and `p *= √l` — the
+asymmetric powers being what makes the scale step canonical. The latent chart carries **four free
+Jacobi momentum coordinates** (`p_ρ`, `p_λ`, saturated at `Q_MAX = 2`) alongside two configuration
+angles and two mass logits, so the initial state generally has non-zero momentum and **non-zero
+angular momentum**; the `(L_z, K)` charts construct momenta to realise both axes exactly, and warp
+the unit square onto the feasible parabola `|L_z| ≤ √(2IK)` so no pixel is infeasible by
+construction.
+
+The rest starts are a property of *particular charts* — `BodyPlane`, `Plane`, `Shape`, and
+`BurrauFamily` at `v = 0` — not of the kernel. Where they hold, `L_z = 0` for every trajectory,
+which is why an `L_z` analogue of `error_ratio` is structurally undefined **there** (`σ_Lz(0) = 0`)
+and perfectly well defined on a chart that varies `L_z`.
 
 **Units.** `G = 1` and the scale symmetry is quotiented out, so `t` is in units of the system's own
 crossing time `τ = √(R³/GM)` and has no duration in seconds until a mass and a length are pinned.

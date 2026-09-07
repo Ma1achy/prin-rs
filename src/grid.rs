@@ -801,7 +801,9 @@ pub fn decode_state(chart: &Chart, body: usize, u: f64, v: f64) -> Ic<f64> {
             ];
             let n = shape::exp_map(n0, t);
             let r = shape::from_shape(n, inertia, phase, &m);
-            // Released from rest, like every configuration in this project.
+            // Released from rest. That is a property of THIS chart, not of the project: the
+            // latent decode carries four free Jacobi momentum coordinates, and the `(Lz, K)`
+            // charts construct momenta to realise both axes.
             Ic { m, s: Cart { r, v: [Vec2::zero(); 3] } }
         }
 

@@ -17,6 +17,27 @@ it reached. A 1024² frame is 1,048,576 simulations.
 The renderer does not draw a trajectory. It draws a **statistic over an ensemble of trajectories**,
 and the choice of statistic is what makes the image a measurement rather than a picture.
 
+### This is a vertical slice, not the product
+
+**`prin-rs` is a proof of concept.** It exists to answer two questions before a real application is
+built around them:
+
+1. **Which regularised integrator, and under what step control?** Whether a three-body kernel can be
+   marched at interactive cost without the numerics producing structure that is not physics.
+2. **Can a refinement criterion decide where to spend compute?** Whether the ensemble's own
+   disagreement is a usable signal for a quadtree, and what stops the descent on a field that is
+   fractal at every scale.
+
+Both are now answered, with the measurements in sections 5–7 and the alternatives that lost behind
+the folds. What is deliberately **not** here is the application: no GPU backend, no window, no
+interaction, no persistence, no eviction, no async. Where the design needs those, this repo measures
+the arithmetic underneath them and says so rather than pretending — the zoom-out assertion in
+section 7 is stated in the form the build can actually support, not the form the spec asked for.
+
+The full build is a separate project and will live in its own repository. This one is the bench:
+harnesses, committed artefacts with provenance sidecars, and a record of what was measured and what
+it overturned. Read it as evidence, not as a library.
+
 ---
 
 ## Contents
@@ -35,42 +56,106 @@ and the choice of statistic is what makes the image a measurement rather than a 
 
 ### The system
 
-Three point masses under Newtonian gravity in a plane, released **from rest**, with `G = 1`.
-Released from rest means zero initial angular momentum, so the dynamics stay planar and `L_z = 0`
-identically — a fact that matters later, because it rules out an entire class of diagnostic.
+Three point masses under Newtonian gravity in a plane, with `G = 1`. **Positions, momenta and
+masses are all free.** What is fixed is the *gauge*, not the state: the initial condition is an
+arbitrary point in phase space, reduced by the symmetries of the problem before it is integrated.
 
 The equations of motion are integrated in a **regularised** coordinate system rather than directly:
 close approaches make the `1/r²` force unbounded and a direct integrator either takes vanishing
 steps or produces nonsense. Section 5 covers which regularisations are implemented and how they
 compare.
 
-Two scale symmetries are quotiented out. The overall size of the configuration and the total mass
-can be absorbed into a rescaling of length and time, so a slice is not one system at one scale — it
-is an equivalence class of systems at every scale simultaneously. This is why `t` has no duration in
-seconds until a mass and a length are pinned (section 4), and why the collision radius `r_coll` and
-the softening `epsilon` are expressed as fractions of the initial hyperradius `R`, evaluated once at
-`t = 0` and **never co-moving**. A co-moving length makes the Hamiltonian time-dependent and
-destroys energy conservation; an absolute length breaks the scale invariance and gives the same
-physical system two different answers depending on an arbitrary choice of units — measured, a factor
-of 1.66.
+### The symmetry reduction
+
+Every chart hands the same decoder a triple `(m, r, p)` — three masses, three positions, three
+momenta — and the same canonicaliser reduces it. The integrator never learns which chart produced
+its input.
+
+| symmetry | how it is fixed |
+|---|---|
+| translation | the centre of mass is placed at the origin, by construction |
+| rotation | rotate so the Jacobi vector `ρ` lies along `+x` |
+| reflection | mirror if `λ_y < 0`. On the canonical decode this is a no-op away from the seam, because `β ∈ [0, π]` already fixes it; the charts that bypass that decode do need it |
+| scale | `l = √I`, then `r /= l` and `p *= √l` |
+
+The **asymmetric powers** in the scale step are what make it canonical. Equal powers would leave
+the Hamiltonian's scaling wrong while every configuration still looked right — a defect that is
+invisible in the picture.
+
+So a pixel is not one system: it is an equivalence class of systems, at every scale and in every
+orientation simultaneously. This is why `t` has no duration in seconds until a mass and a length are
+pinned (section 4), and why the collision radius `r_coll` and the softening `ε` are expressed as
+fractions of the initial hyperradius `R`, evaluated once at `t = 0` and **never co-moving**. A
+co-moving length makes the Hamiltonian time-dependent and destroys energy conservation; an absolute
+length breaks the scale invariance and gives the same physical system two different answers
+depending on an arbitrary choice of units — measured, a factor of 1.66.
+
+### Momenta are a coordinate, not a constant
+
+The latent chart carries **four free Jacobi momentum coordinates** — `p_ρ` and `p_λ`, two components
+each, saturated at `Q_MAX = 2` — alongside two configuration angles and two mass logits. So the
+initial state generally has non-zero momentum and **non-zero angular momentum**, and `L_z` is a
+chart *axis* on the invariant charts rather than a fixed zero.
+
+The momentum reconstruction is the named transcription hazard in this codebase. The `m₀`/`m₁`
+factors are **crossed** relative to the position reconstruction — positions take `−m₁/M₀₁` on `r₀`,
+momenta take `−m₀/M₀₁` on `p₀` — and the reference's suggested check for a swap, `Σp = 0`, **cannot
+fire**: both forms sum to zero identically (`7.9e-17` crossed, `5.6e-17` uncrossed). What catches it
+is the Jacobi round-trip (`1.1e-16` against `6.8e-2`) and the kinetic-energy identity (`4.4e-16`
+against `2.6e-1`), and both are empty at `m₀ = m₁`, where the two forms are the same expression.
+
+On the charts that carry `L_z` and `K` as axes the momenta are *constructed* to realise them
+exactly, in three steps: the minimal-energy rigid rotation that realises `L_z`, a direction field
+that adds energy without changing it, then a mix that hits `K*`. Three constraints — `Σp = 0`,
+`L_z(p) = l_z`, `K(p) = K*` — all satisfied exactly, over a seed family tried in order so that a
+badly conditioned direction is a *choice* rather than a failure.
+
+That construction also assumes a COM-centred input, and returns a drifting system without one: its
+rigid-rotation step is `v = ω J r`, whose total momentum is `ω J (M R_com)`. Every decoded
+configuration is centred, so it could never have fired in production — until a chart handed it
+something else. It centres internally now, and states which frame `L_z` is about.
+
+### Where rest starts do appear
+
+Some charts *do* release from rest, and they are the classical ones:
+
+| chart | masses | positions | momenta |
+|---|---|---|---|
+| `BodyPlane`, `Plane` | Burrau's 3, 4, 5 | one body swept, or an affine combination | **zero** — released from rest |
+| `Shape` | fixed | reconstructed from a point on the shape sphere | **zero** |
+| `BurrauFamily` | swept by a mass parameter `ν` | geometric | `L_z = 0` by construction; `K` is the second axis, so `v = 0` is the classical rest start and `v > 0` is not |
+| `Latent` | free (mass logits) | `(α, β)` at unit hyperradius | **four free coordinates** |
+| `Invariant` | fixed | fixed | constructed to realise `(L_z, K)`, both axes |
+| `MassSimplex` | swept over the simplex | `(α, β)` | free |
+
+Burrau's problem released from rest has `L_z = 0` for **every** trajectory, and that is a statement
+about those charts and not about the kernel. It is also why an `L_z` analogue of the trust statistic
+is structurally undefined *there* — `σ_Lz(0) = 0`, so the ratio is `0/0` — while on a chart that
+varies `L_z` the same quantity is perfectly well defined and simply measures something else.
+
+The `(L_z, K)` charts carry one more construction worth naming. `K ≥ 0` and `|L_z| ≤ √(2 I K)` bound
+the feasible set to the interior of a parabola whose apex is the rest start, so a rectangular slice
+through `(L_z, K)` would be mostly infeasible. The chart **warps** the unit square onto that
+interior, so no pixel is infeasible by construction — a warp rather than a clamp, and the difference
+is that a clamp would pile up a degenerate label along an edge instead of measuring anything.
 
 ### What a pixel is
 
-A **chart** is a 2-plane through a higher-dimensional space of initial conditions. Several are
+A **chart** is a 2-plane through that higher-dimensional space of initial conditions. Several are
 implemented:
 
 - `BodyPlane` — hold two bodies fixed, sweep the position of the third. The classical picture.
-- `Latent` — a 10-dimensional latent encoding in which the plane's two axes are chosen from
-  configuration coordinates (`alpha`, `beta`: the shape of the initial triangle), momentum
-  coordinates (`p_rho`, `p_lambda`), or mass logits. Ported from a GLSL reference implementation;
-  the decoder's index table is pinned against it.
-- `BurrauFamily`, `mass_simplex`, `invariant_lz_k` — families parameterised by a conserved quantity
-  or a mass ratio.
+- `Latent` — an 8-dimensional latent encoding whose plane axes are chosen from configuration
+  coordinates (`α`, `β`: the shape of the initial triangle), momentum coordinates (`p_ρ`, `p_λ`), or
+  mass logits. Ported from a GLSL reference implementation, which carries ten slots and never reads
+  two of them; the decoder's index table is pinned against it.
+- `BurrauFamily`, `MassSimplex`, `Invariant` — families parameterised by a mass ratio or by a
+  conserved quantity.
 
-A pixel's `(u, v)` position in the plane is decoded into a full initial condition: three positions,
-three masses, three momenta. **Which coordinates the chart varies matters more than where it is
-centred** — two charts sharing a base point exactly, one sweeping configuration and one sweeping
-momentum, differ 5.7× in the amount of structure they contain.
+A pixel's `(u, v)` position in the plane is decoded into a full initial condition. **Which
+coordinates the chart varies matters more than where it is centred** — two charts sharing a base
+point exactly, one sweeping configuration and one sweeping momentum, differ 5.7× in the amount of
+structure they contain.
 
 ### What is recorded
 
@@ -97,16 +182,16 @@ claims only that it separates tail from bulk on the slices measured.
 <summary><b>The charts, and why <i>which</i> coordinates a plane varies matters more than where it is centred</b></summary>
 
 <p align="center">
-  <img src="results/charts/latent_shape.png" width="24%" />
-  <img src="results/charts/latent_mixed.png" width="24%" />
-  <img src="results/charts/preset_shape_h1.png" width="24%" />
-  <img src="results/charts/body_plane.png" width="24%" />
+  <img src="results/charts/latent_shape_uniform.png" width="24%" />
+  <img src="results/charts/latent_mixed_uniform.png" width="24%" />
+  <img src="results/charts/preset_shape_h1_uniform.png" width="24%" />
+  <img src="results/charts/body_plane_uniform.png" width="24%" />
 </p>
 <p align="center">
-  <img src="results/charts/burrau_nu_k.png" width="24%" />
-  <img src="results/charts/mass_simplex.png" width="24%" />
-  <img src="results/charts/preset_prho.png" width="24%" />
-  <img src="results/charts/invariant_lz_k.png" width="24%" />
+  <img src="results/charts/burrau_nu_k_uniform.png" width="24%" />
+  <img src="results/charts/mass_simplex_uniform.png" width="24%" />
+  <img src="results/charts/preset_prho_uniform.png" width="24%" />
+  <img src="results/charts/invariant_lz_k_uniform.png" width="24%" />
 </p>
 
 <p align="center"><i>
@@ -228,9 +313,11 @@ coarse `N` **over**-refines — leaf count falls monotonically with `N` (106, 31
 within-footprint spread against the tolerance, so low `E` **under**-refines (742 → 2713 → 3463 leaves
 at `E+1 = 2, 4, 8`). Never trade one against the other as if they were one knob.
 
-**An `L_z` version of `error_ratio` was proposed and cannot exist.** Released from rest, `L_z = 0` for
-every copy, so `σ_Lz(0) = 0` and the ratio is `0/0` — structurally undefined for this entire
-configuration family.
+**An `L_z` version of `error_ratio` cannot exist on the rest-start charts.** Where the configuration
+is released from rest, `L_z = 0` for every copy, so `σ_Lz(0) = 0` and the ratio is `0/0` —
+structurally undefined for that whole family. It is perfectly well defined on a chart that varies
+`L_z`, which is exactly why the proposal was worth checking rather than assuming: the statistic is
+not wrong, its denominator is a chart property.
 
 **A control with no randomness in it cannot measure sampling noise.** `σ_E(0)` looks like the perfect
 control — true exponent exactly 1.0, no integration — and reads 0.003 while not moving with `N` or
@@ -250,7 +337,7 @@ quoting the tail.
 
 <p align="center">
   <img src="results/charts/preset_shape_h1_uniform.png" width="45%" />
-  <img src="results/charts/preset_shape_h1_outcome.png" width="45%" />
+  <img src="results/charts/preset_shape_h1_uniform_outcome.png" width="45%" />
 </p>
 
 <p align="center"><i>
@@ -930,6 +1017,33 @@ an outcome and the disagreement collapses. At large `t` a fixed threshold fires 
   cost. Depth variance peaks at 0.25 and the tree loses a whole level at 0.05, but the *displayed*
   error rises monotonically as `k` falls — the tree simply displays less. The selectivity is in the
   shape.
+</details>
+
+<details>
+<summary><b>What a vertical slice can and cannot assert — the zoom-out, and three stages that report <code>NaN</code></b></summary>
+
+The brief asks for an acceptance test: *"newly-computed quads after a zoom-out is ~0"*. That
+presupposes a tree persisting across frames, and the scope discipline here is **no eviction, no
+caching, no async, no promotion**. Written as stated, the test would be measuring a feature this
+build deliberately does not have.
+
+What *is* measurable is the arithmetic underneath it: a zoomed-out descent computes 537 quads
+against a zoomed-in 597, and **zero of its boxes are absent from the zoomed-in run** — so a
+persistent tree would compute none of them. That is the claim the build supports, and it is what
+the record says instead of the one it was asked for.
+
+The same discipline applies to the frame record. There is no GPU and no window here, so `upload_ms`
+and `present_ms` are **`NaN`, never `0.0`** — a zero reads as *instant* where the truth is *absent*.
+Likewise `frontier_agrees` is `NaN` on frames where the audit did not run, and the
+over-budget fraction is `NaN` when no frame moved: **a check that did not run must not report a
+pass.**
+
+And one measurement that only a frame loop can make, recorded because it inverts the plan's
+ordering: all three of the camera-side knobs act through the ranked frontier, and **the ranked
+frontier only matters where something truncates it.** Camera bias moves *zero* decisions at a
+non-binding budget on both charts at every margin — with a control arm proving it was live — and
+17 of 93 when the budget binds. So these are frame-budget mechanisms, and the frame loop is the
+*precondition* for measuring them rather than a later phase.
 </details>
 
 ---

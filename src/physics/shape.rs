@@ -146,8 +146,11 @@ pub fn inertia(r: &[Vec2<f64>; 3], m: &[f64; 3]) -> f64 {
 /// `rt x lt`. Writing `atan2(q, p)` reflects the configuration and the round-trip test
 /// fires on it.
 ///
-/// The centre of mass is placed at the origin, and the bodies are released from rest —
-/// every configuration in this project is.
+/// The centre of mass is placed at the origin, and the bodies are released from rest. **That is
+/// this reconstruction's own choice, not a project-wide one** — `shape_vec` discards momentum, so
+/// there is nothing to invert, and a rest start is the one canonical representative of the fibre.
+/// The latent decode carries four free Jacobi momentum coordinates and the `(Lz, K)` charts
+/// construct momenta to hit both axes; neither passes through here.
 pub fn from_shape(n: [f64; 3], inertia: f64, phase: f64, m: &[f64; 3]) -> [Vec2<f64>; 3] {
     let (m0, m1, m2) = (m[0], m[1], m[2]);
     let mtot = m0 + m1 + m2;

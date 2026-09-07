@@ -441,6 +441,9 @@ answer: `far` resolved at the root; `near-field` zero unresolved at **137 quads*
 It reaches zero unresolved on both `near-field` and `deep interior` within **1.12× of the exact
 optimum**, where the alpha policy stops at the bootstrap.
 
+**Both of those regions are Burrau at `t = 13`, and the saving does not survive either change.**
+See §5.10.
+
 ### 5.4 The area floor — the no-gain test the alpha policy was trying to be
 
 A tolerance policy alone descends forever on a *sea* — a region unresolvable at every level. The
@@ -612,6 +615,62 @@ unusable, monotone by construction.
 
 ---
 
+### 5.10 Does the saving generalise? Not on the charts that will ship
+
+Full record and reproduction in `results/tolerance_scaling/`. Four targets — the two Burrau regions,
+`config_stability`, and the tilted `tilt_plambda` — across `t ∈ {13, 23, 50}` and
+`eps ∈ {1e-1, 1e-2, 1e-3}`, 40 cells, prediction recorded first.
+
+**Read `dp/u` before `tol/u`.** A low saving has two causes — a field with nothing to find, and a
+policy failing to find it — and only the exact optimum separates them. Both occur, on the same
+chart one decade of `eps` apart: `config_stability` at `eps = 1e-2` has a ceiling of 1.22× and
+captures nearly all of it, while at `eps = 1e-1` the ceiling is 2.23× and the policy returns
+**0.75×**, worse than breadth-first.
+
+**On the sea charts there is nothing to find, for any scheduler.** `config_stability` and
+`tilt_plambda` have an exact-optimum ceiling of **1.08–1.44×** over breadth-first in all 24
+fixed-target cells, at every horizon. The policy sits at 1.10–1.45× of that optimum on most rows —
+it is not underperforming; **the optimum is breadth-first**. `config_stability` is *below* uniform
+at every horizon (1.00×, 0.96×, 0.82×). This is §5.7's *headroom rises with structure and collapses
+where structure is everywhere*, reproduced under the payload metric with the exact optimum as the
+ceiling rather than a greedy reference.
+
+**On Burrau the headroom is real (2.3–58.8×) and the production defaults throw it away by
+`t = 50`.** `near-field` stops at a **21-quad bootstrap tree** at error 0.103 while `sea_fraction`
+is 0.0745 — 93% of the frame resolvable and not resolved. With `alpha_lo = 0` the identical cell
+reaches **error 0.00000 at 1.03× of the exact optimum**. The cause is the `alpha_area` degeneracy
+in §8, not a tuning question.
+
+**`sea_fraction` separates the two regimes and is computable before any descent.** Under ~0.005 the
+ceiling is 15–60×; over ~0.05 it is 1.1–4.2×; nothing lands between. It does **not** order charts
+within a regime — `config_stability` at sea 0.0494 has less headroom than `tilt_plambda` at 0.1694
+— so it is a regime test, not a ranking. A cheap estimator that avoids needing a full cache is
+unbuilt.
+
+**`tau` is a second threshold and is not `eps` times a constant.** The working value ran `eps`,
+`eps/10`, `eps/100` across `t = 13, 23, 50` on `near-field`, while `eps/3.3` over-refines
+`deep interior` at `t = 13` by 2.4× for no error gain. *A fixed threshold fails on both sides*, at
+a new pair of quantities.
+
+**Three readings corrected mid-run, each by the next measurement**, which is why the arms exist:
+
+- *"the saving falls with horizon"* is true of `tol/u` and **false of the field**. Each cell is
+  scored at its own tree's error, so a worse tree earns a smaller ratio — `near-field` falls
+  37.51× → 2.89× while its error worsens 9×, `deep interior` **rises** 5.28× → 16.32× while its
+  error improves 5×. At a fixed target the ceiling does not fall with horizon and on Burrau it
+  rises. `payload_metric replay` integrates nothing and answers this cleanly.
+- *"the tolerance gate and the area floor form a closed door"* — said after four `tau` rungs gave a
+  bitwise identical tree. The fifth broke through. **Read the plateau, not one rung.**
+- *`dp/u` monotone in `sea_fraction`* — clean over four points and refuted by the fifth.
+
+**A leaf-level stop count understates a floor enormously.** Four leaves read `floor` at the
+production setting — at level 2, so each foreclosed a quarter of the frame and suppressed a descent
+that would have reached 829 quads at zero error. §5.6's rule needs a corollary: **weight the
+breakdown by the subtree each stop forecloses**, or a decisive stop reads as a rounding error.
+`n = 3` judged quads is the other tell.
+
+---
+
 ## 6. What the images are, and what they are not
 
 - **Draw the tree, not only the image — and never over a uniform base.** The adaptive render says
@@ -705,5 +764,14 @@ and a provenance sidecar beside every panel.
   Not repaired, because propagating the `NaN` moves every tree and every render.
 - **`error_ratio` never consults the driver's usability flag**, so a starved footprint reads its
   converged value. Recorded, not repaired: moving it moves every `error_ratio` in the corpus.
+- **`alpha_area` cannot tell an empty mask from a full one, and it costs `near-field` its `t = 50`
+  descent.** It is `log2(unresolved_area(coarse)/unresolved_area(children))`, so when almost nothing
+  is unresolved the same handful of footprints appears at both levels, the ratio is exactly 1, and
+  it returns **exactly `0.0000`** — the identical reading a genuinely space-filling sea gives. Any
+  positive `alpha_lo` floors on it. Measured: 21 quads at error 0.103 with `alpha_lo = 0.005`
+  against 829 quads at error **0.00000** with `alpha_lo = 0`, on a frame that is 93% resolvable.
+  This is a defect in the floor, not a threshold to retune — `alpha_lo = 0` is the *forbidden
+  degeneration* on the sea charts it was built for. The fix has to separate the two cases;
+  unbuilt.
 - **`far` is the only AZ win and the mechanism is a guess** — a conditioning story about `Γ*` being
   degree six in coordinates that run to 13 units. Unmeasured, and labelled as such.

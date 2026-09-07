@@ -74,10 +74,22 @@ use prin_rs::spatial::HotRule;
 /// | `land_iterate` | none | `true` | **`false`** |
 /// | `escape_rule` | reference, hardcoded | `Closure` | **`Reference`** |
 /// | `escape_confirm` | none | `true` | **`false`** |
+/// | `max_steps` | `30_000` | `480_000` | **`CORPUS_MAX_STEPS`** |
 /// | `escape_every`, `stop_on_escape`, `ref_hysteresis` | — | `0` / `false` / `0.0` | match already |
 /// | `step_limit_f`, `blend_p`, `step_blend`, `closure_k`, `land_max_iters` | — | — | inert under the above |
 /// | `keep_drift_hist`, `keep_ref_path` | — | `false` | instrumentation only |
 ///
+/// **`max_steps` was the eighteenth field, and it was missing from this audit until 2026-09-06.**
+/// The audit was done against `0114be4`, where the budget was already `30_000` and matched
+/// production -- so it read as one of the fields that *"match already"* and needed no override.
+/// Then production moved to `480_000` (`297ae8e`) and this arm moved with it, reconstructing the
+/// August kernel at a budget that did not exist in August, inside the harness whose whole job is
+/// to say how far that kernel is from today's. **A field that matches today is not a field that
+/// can be omitted**: an arm built as `production()` minus a diff silently inherits every field it
+/// does not name, from a baseline that is free to move. A historical kernel wants an absolute
+/// declaration; this constant is the beginning of one.
+const CORPUS_MAX_STEPS: usize = 30_000;
+
 /// **`escape_rule` is the one that was nearly missed.** The closure criterion landed at `71de13f`
 /// on 27 August, *after* the corpus, and `spread_event` reads the event class — so leaving it at
 /// `Closure` would have put a post-corpus terminal classifier inside the *pre* arm. It is silent
@@ -92,6 +104,13 @@ fn pre_kernel() -> EnsembleCfg {
         Override::EscapeRule(EscapeRule::Reference),
         Override::EscapeConfirm(false),
         Override::RefineFlagged(false),
+        // **`max_steps` is the eighth, and it was silently wrong from 2026-09-06.** This arm is
+        // built as `production()` minus a diff, so when the production baseline moved
+        // 30_000 -> 480_000 the *pre* arm moved with it -- reconstructing the 25-26 August kernel
+        // at a budget that did not exist then, inside the harness whose entire job is to say how
+        // far that kernel is from today's. A historical kernel must be an ABSOLUTE declaration;
+        // every field this arm does not name is a field it silently inherits from a moving target.
+        Override::MaxSteps(CORPUS_MAX_STEPS),
     ]);
     // No `Override` variant exists for this one; set directly. `overrides_vs_production` derives
     // its declaration by diffing the struct, so the sidecar still reports it either way.
@@ -113,6 +132,7 @@ fn pre_naive_kernel() -> EnsembleCfg {
         Override::ClampFinalStep(false),
         Override::StepLimit(StepLimit::None),
         Override::RefineFlagged(false),
+        Override::MaxSteps(CORPUS_MAX_STEPS),
     ]);
     c.land_iterate = false;
     c

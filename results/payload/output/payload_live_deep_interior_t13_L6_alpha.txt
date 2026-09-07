@@ -1,0 +1,7 @@
+payload_metric live: /private/tmp/claude-501/-Users-malachy-src-principia-rs-test/260ec0e2-d203-4f2d-85ff-f64a85497918/scratchpad/payload/payload/deep_interior_t13_L6.fcache -- PRQF v2, region deep interior, levels 6 N=8 res 512, t_max 13; policy alpha stationary true eps 1e-2 k_frac 0.25; class arm event_class
+  config: production + 1 override(s): refine_flagged=false (production true)
+  descent: 21 quads (16 leaves, depth 2) in 3.0s, 3.528e7 substeps, stop [keep:16]
+  mem_all = 21 quads x 512 trajectories; mem_leaf = 16 quads
+  leaves by level: 2:16
+  payload/event_class/indicator/eps=1e-2: error 0.01882; dp needs B=9 (ratio 2.33x); uniform needs B=17 (ratio 1.24x); sea_fraction 0.0025
+  payload/event_class/resolvable/eps=1e-2: error 0.01701; dp needs B=9 (ratio 2.33x); uniform needs B=17 (ratio 1.24x); sea_fraction 0.0025

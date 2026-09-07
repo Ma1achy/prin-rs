@@ -104,6 +104,21 @@ pub const DEBUG_NAN: [u8; 3] = [255, 0, 255];
 /// different statements and must be three different colours.
 pub const BACKGROUND: [u8; 3] = [18, 18, 22];
 
+/// The quiet stand-in for an undetermined footprint on a **categorical** panel.
+///
+/// [`Veto::Quiet`] on the palette path paints the nominal hue at the floor of the lightness ramp.
+/// A categorical panel has no ramp and no hue to fall back on, and the standing rule for those
+/// panels is that an undetermined pixel **must never take a colourmap entry** -- painting it as a
+/// class claims a classification the run does not have. So the quiet form is a neutral that is
+/// off every palette by construction: **zero chroma**, where every viridis entry and every
+/// `outcome_rgb` family colour carries chroma.
+/// `tests/outcome_encoding.rs` asserts the separation rather than assuming it.
+///
+/// It is deliberately *not* [`BACKGROUND`]: "nothing was drawn here" and "this was drawn and is
+/// undetermined" stay two statements. And it is deliberately not loud -- the count moves to the
+/// harness print and the sidecar, which is what makes hiding it honest.
+pub const UNDETERMINED_QUIET: [u8; 3] = [128, 128, 128];
+
 /// Maximum chroma carried by a site colour.
 pub const C_MAX: f64 = 0.13;
 /// Lightness range. Not `[0, 1]`: pure black and pure white carry no chroma, so hue would vanish
@@ -492,25 +507,103 @@ pub fn lightness(t: f64) -> f64 {
 /// `shape_vec` (triple collision), a non-finite scalar, any non-finite copy in the ensemble
 /// (`n_nonfinite > 0`), and the two failure states. Each of those was previously rendered as a
 /// valid colour, three of them as the *quietest* colour on the ramp.
-pub fn rgb(p: &PixelOut, s: Scalar, set: &SiteSet, lo: f64, hi: f64) -> [u8; 3] {
-    if p.n_nonfinite > 0 {
-        return DEBUG_NAN;
+/// **How a footprint with no value is painted.**
+///
+/// [`DEBUG_NAN`] is a *debug flag*: it exists so an undetermined pixel cannot be mistaken for a
+/// dark one, and every diagnostic render wants it. In a presentation render it is noise -- a
+/// screaming magenta speckle over a fraction of a percent of footprints, which the eye reads
+/// before anything else in the frame.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum Veto {
+    /// [`DEBUG_NAN`]. The default, and what `_drift`, the censuses and every diagnostic use.
+    #[default]
+    Debug,
+    /// In palette: the hue the nominal copy still has, at the floor of the lightness ramp, and a
+    /// neutral floor where even the hue is gone.
+    ///
+    /// **This makes an undetermined footprint indistinguishable from a resolved dark one**, which
+    /// is exactly what [`DEBUG_NAN`] exists to prevent -- so the information moves rather than
+    /// vanishing: a harness using this style prints the vetoed count and names the style in its
+    /// sidecar, and the diagnostic render of the same field keeps the flag. Measured on
+    /// `preset_shape_h1` at 64², the nominal `shape_vec` is finite on **100%** of vetoed
+    /// footprints, so the hue is real in every case this hits; the lightness is what is unknown.
+    ///
+    /// **It still paints the flagged set differently**, which is the whole complaint against it:
+    /// the ramp floor is a dark muddy patch exactly where `DEBUG_NAN` used to be a magenta one,
+    /// so the artefact moved colour and did not go away. Prefer [`Veto::None`] for a
+    /// presentation render.
+    Quiet,
+    /// **The flag is not consulted.** The footprint is coloured by the ordinary expression --
+    /// the nominal copy's hue and the scalar's own place on the ramp -- exactly as a footprint
+    /// with no flag would be.
+    ///
+    /// This is the right default for a presentation render and the reason is that the flag says
+    /// nothing about the two quantities being drawn. `n_nonfinite` counts copies the driver
+    /// could not use; the nominal `shape_vec` is finite on **100%** of the flagged set, and
+    /// `spread_shape` is a perfectly ordinary number over the copies that did run. Painting
+    /// those footprints a reserved colour, loud or quiet, draws the *driver's* bookkeeping into
+    /// an image of the *physics*.
+    ///
+    /// The scalar is the one thing that can genuinely be absent, and that is not what the flag
+    /// tracks -- a non-finite scalar takes the ramp floor, which is where the ordinary ramp puts
+    /// everything below `lo` anyway, and a non-finite hue takes the neutral. Neither is
+    /// conditioned on the flag.
+    ///
+    /// The count does not vanish with the colour: a harness prints it and the sidecar names the
+    /// style, and every diagnostic render keeps [`Veto::Debug`].
+    None,
+}
+
+/// Whether [`rgb`] has no value for this footprint -- the vetoed set, for a harness to count.
+pub fn vetoed(p: &PixelOut, s: Scalar, set: &SiteSet, lo: f64, hi: f64) -> bool {
+    rgb_veto(p, s, set, lo, hi, Veto::Debug) == DEBUG_NAN
+}
+
+/// [`rgb`] with the veto style named. `rgb` is this at [`Veto::Debug`].
+pub fn rgb_veto(p: &PixelOut, s: Scalar, set: &SiteSet, lo: f64, hi: f64, v: Veto) -> [u8; 3] {
+    let quiet = |ab: Option<(f64, f64)>| -> [u8; 3] {
+        match v {
+            Veto::Debug => DEBUG_NAN,
+            Veto::Quiet | Veto::None => {
+                let (a, b) = ab.unwrap_or((0.0, 0.0));
+                oklab::oklab_to_srgb([lightness(0.0), a, b])
+            }
+        }
+    };
+    // **Under `Veto::None` the flag is not consulted at all.** `n_nonfinite` and the two failure
+    // states are the *driver's* bookkeeping about copies it could not use; neither says the
+    // nominal hue or the scalar is missing, and both are present on the whole flagged set. So
+    // there is no early return here and the footprint falls through to the ordinary expression
+    // below, which is the entire point: it is drawn as what it is, not as what it is flagged.
+    if v != Veto::None {
+        if p.n_nonfinite > 0 {
+            return quiet(hue_ab(set, p.shape_vec));
+        }
+        match State::from_bits(p.state) {
+            Some(State::SimFailed) | Some(State::DecodeFailed) | None => {
+                return quiet(hue_ab(set, p.shape_vec))
+            }
+            _ => {}
+        }
     }
-    match State::from_bits(p.state) {
-        Some(State::SimFailed) | Some(State::DecodeFailed) | None => return DEBUG_NAN,
-        _ => {}
-    }
+    // Below this line nothing is conditioned on the flag under any style. A hue or a scalar that
+    // is genuinely absent still has to go somewhere, and it goes to the same place an ordinary
+    // footprint with those values would.
     let (a, b) = match hue_ab(set, p.shape_vec) {
         Some(x) => x,
-        None => return DEBUG_NAN,
+        None => return quiet(None),
     };
     let t = match range_norm(s, s.value(p), lo, hi) {
         Some(t) => t,
-        None => return DEBUG_NAN,
+        None => return quiet(Some((a, b))),
     };
+    oklab::oklab_to_srgb([lightness(t), a, b])
+}
+
+pub fn rgb(p: &PixelOut, s: Scalar, set: &SiteSet, lo: f64, hi: f64) -> [u8; 3] {
     // Replace-L: the sites' own lightness is discarded and the scalar's substituted, so the two
     // channels stay independent. Modulate-L would let a site's palette bleed into the scalar.
-    oklab::oklab_to_srgb([lightness(t), a, b])
+    rgb_veto(p, s, set, lo, hi, Veto::Debug)
 }
 
 /// [`rgb`] **resolved over the ensemble** -- supersampling, not anti-aliasing.
@@ -606,7 +699,14 @@ pub fn range(px: &[PixelOut], s: Scalar) -> (f64, f64) {
 /// Percentiles rather than min/max, for the same reason: one undetermined footprint at `1e12`
 /// would compress every other pixel into the bottom of the range.
 pub fn range_q(px: &[PixelOut], s: Scalar, lo_q: f64, hi_q: f64) -> (f64, f64) {
-    let mut v: Vec<f64> = px.iter().map(|p| s.value(p)).filter(|x| x.is_finite()).collect();
+    range_q_of(px.iter().map(|p| s.value(p)), lo_q, hi_q)
+}
+
+/// [`range_q`] over the values directly, so a grid too large to hold as `PixelOut` can be ranged
+/// from a [`crate::ensemble::pixel::PixelSlim`] pass. `range_q` delegates here, so there is one
+/// implementation and not two.
+pub fn range_q_of(vals: impl Iterator<Item = f64>, lo_q: f64, hi_q: f64) -> (f64, f64) {
+    let mut v: Vec<f64> = vals.filter(|x| x.is_finite()).collect();
     if v.is_empty() {
         return (0.0, 1.0);
     }
@@ -674,11 +774,15 @@ pub fn drift_rgb(p: &PixelOut, lo: f64, hi: f64) -> [u8; 3] {
 /// Values are compared by bit pattern, so this counts *exact* distinct values and never merges
 /// two that a tolerance would.
 pub fn quantisation(px: &[PixelOut], s: Scalar) -> (usize, usize, f64) {
+    quantisation_of(px.iter().map(|p| s.value(p)))
+}
+
+/// [`quantisation`] over the values directly. See [`range_q_of`].
+pub fn quantisation_of(vals: impl Iterator<Item = f64>) -> (usize, usize, f64) {
     use std::collections::HashMap;
     let mut counts: HashMap<u64, usize> = HashMap::new();
     let mut finite = 0usize;
-    for p in px {
-        let v = s.value(p);
+    for v in vals {
         if v.is_finite() {
             finite += 1;
             *counts.entry(v.to_bits()).or_insert(0) += 1;

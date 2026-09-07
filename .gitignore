@@ -2,7 +2,7 @@
 __pycache__/
 *.pyc
 /target
-xcheck_out/
+results/xcheck/
 
 # Footprint caches. At levels = 7 these are ~160 MB each and 940 MB for six -- 1.4M
 # footprints x 14 f64, which is irreducible at one sample per pixel at 1024^2. They exist

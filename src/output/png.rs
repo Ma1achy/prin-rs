@@ -17,8 +17,29 @@ use crate::outcome::State;
 /// `detail = 3` — the two "all three" outcomes — gets the brightest shade of its family, so a
 /// triple reads at a glance rather than blending into ordinary collisions or escapes.
 pub fn outcome_rgb(p: &PixelOut) -> [u8; 3] {
-    if p.n_nonfinite > 0 {
-        return crate::output::colour::DEBUG_NAN; // deliberately loud
+    outcome_rgb_veto(p, crate::output::colour::Veto::Debug)
+}
+
+/// [`outcome_rgb`] with the veto style named. `outcome_rgb` is this at
+/// [`crate::output::colour::Veto::Debug`].
+///
+/// **A debug flag is not a presentation colour.** Under [`crate::output::colour::Veto::Quiet`] an
+/// undetermined pixel takes [`crate::output::colour::UNDETERMINED_QUIET`] -- a zero-chroma neutral
+/// that is off this palette by construction, so it still is not plausibly a class. The count it
+/// stops shouting moves to the harness print and the sidecar.
+pub fn outcome_rgb_veto(p: &PixelOut, v: crate::output::colour::Veto) -> [u8; 3] {
+    let undet = match v {
+        crate::output::colour::Veto::Debug => crate::output::colour::DEBUG_NAN,
+        crate::output::colour::Veto::Quiet => crate::output::colour::UNDETERMINED_QUIET,
+        // **Not consulted.** Under `None` a flagged footprint takes the same catch-all any
+        // unrecognised state takes -- no reserved colour, loud or quiet.
+        crate::output::colour::Veto::None => [40, 40, 48],
+    };
+    // `n_nonfinite` is the driver's count of copies it could not use. It is not a statement about
+    // the nominal copy's terminal state, which is what this panel draws, so under `None` it is
+    // ignored and the footprint is classified on its own state like every other.
+    if p.n_nonfinite > 0 && v != crate::output::colour::Veto::None {
+        return undet; // deliberately loud under `Debug`
     }
     let base = match State::from_bits(p.state) {
         Some(State::Escape) => [220, 80, 60],
@@ -28,9 +49,7 @@ pub fn outcome_rgb(p: &PixelOut) -> [u8; 3] {
         // Both failure states are undetermined and take the reserved colour. `DecodeFailed`
         // previously fell to the catch-all grey, where it was indistinguishable from an
         // invalid state byte -- a pixel whose IC could not be formed read as ordinary data.
-        Some(State::SimFailed) | Some(State::DecodeFailed) => {
-            return crate::output::colour::DEBUG_NAN
-        }
+        Some(State::SimFailed) | Some(State::DecodeFailed) => return undet,
         _ => [40, 40, 48],
     };
     let k = 0.55 + 0.15 * p.detail as f64;
@@ -96,20 +115,31 @@ pub fn event_class_name(c: u8) -> String {
 /// legend and the per-class histogram are the instrument, not the image**. Both are printed
 /// beside every render.
 pub fn event_class_rgb(p: &PixelOut) -> [u8; 3] {
-    if p.n_nonfinite > 0 {
-        return crate::output::colour::DEBUG_NAN;
+    event_class_rgb_veto(p, crate::output::colour::Veto::Debug)
+}
+
+/// [`event_class_rgb`] with the veto style named. See [`outcome_rgb_veto`] for why the quiet form
+/// is a zero-chroma neutral rather than a colourmap entry.
+pub fn event_class_rgb_veto(p: &PixelOut, v: crate::output::colour::Veto) -> [u8; 3] {
+    let undet = match v {
+        crate::output::colour::Veto::Debug => crate::output::colour::DEBUG_NAN,
+        crate::output::colour::Veto::Quiet => crate::output::colour::UNDETERMINED_QUIET,
+        // See `outcome_rgb_veto`: not consulted, and the viridis low end is where an absent
+        // ordinal already sits.
+        crate::output::colour::Veto::None => crate::output::viridis::viridis(0.0),
+    };
+    if p.n_nonfinite > 0 && v != crate::output::colour::Veto::None {
+        return undet;
     }
     match State::from_bits(p.state) {
-        Some(State::SimFailed) | Some(State::DecodeFailed) | None => {
-            return crate::output::colour::DEBUG_NAN
-        }
+        Some(State::SimFailed) | Some(State::DecodeFailed) | None => return undet,
         _ => {}
     }
     match event_class_ordinal(p.event_class) {
         Some(k) => {
             crate::output::viridis::viridis(k as f64 / (N_EVENT_CLASSES - 1) as f64)
         }
-        None => crate::output::colour::DEBUG_NAN,
+        None => undet,
     }
 }
 
@@ -119,15 +149,24 @@ pub fn event_class_rgb(p: &PixelOut) -> [u8; 3] {
 /// and reads as a zero here; without the histogram an image with three colours in it and one
 /// with twenty are indistinguishable at a glance.
 pub fn event_class_histogram(px: &[PixelOut]) -> (Vec<(u8, usize)>, usize) {
+    event_class_histogram_of(px.iter().map(|p| (p.n_nonfinite, p.state, p.event_class)))
+}
+
+/// [`event_class_histogram`] over `(n_nonfinite, state, event_class)` triples, so a grid held as
+/// [`crate::ensemble::pixel::PixelSlim`] can be counted without being widened. The slice form
+/// delegates here.
+pub fn event_class_histogram_of(
+    px: impl Iterator<Item = (u8, u8, u8)>,
+) -> (Vec<(u8, usize)>, usize) {
     let mut counts = vec![0usize; N_EVENT_CLASSES];
     let mut undetermined = 0usize;
-    for p in px {
-        let bad = p.n_nonfinite > 0
+    for (n_nonfinite, state, event_class) in px {
+        let bad = n_nonfinite > 0
             || matches!(
-                State::from_bits(p.state),
+                State::from_bits(state),
                 Some(State::SimFailed) | Some(State::DecodeFailed) | None
             );
-        match (bad, event_class_ordinal(p.event_class)) {
+        match (bad, event_class_ordinal(event_class)) {
             (false, Some(k)) => counts[k] += 1,
             _ => undetermined += 1,
         }

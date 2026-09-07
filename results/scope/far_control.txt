@@ -1,0 +1,63 @@
+IS `far` STILL THE CONTROL?  128^2 field, budget 2000 quads
+
+  pre config: production + 8 override(s): escape_rule=Reference (production Closure(0.001)), escape_confirm=false (production true), dtau_mode=FixedPerInterval (production PerStepInterval), clamp_final_step=false (production true), step_limit=None (production Predictive), land_iterate=false (production true), integrator=Az (production Heggie), refine_flagged=false (production true)
+  now config: production + 1 override(s): refine_flagged=false (production true)
+
+1. THE LADDER. The bulk is the standing description; the tail is what is new.
+
+    arm        p01        p50        p90        p99       p999        max    p99/p01
+    pre   9.267e-9   9.387e-9   9.466e-9   9.509e-9   9.522e-9   9.528e-9    1.026e0
+    now   7.442e-9   7.499e-9   7.546e-9   7.583e-9   4.131e-6   4.407e-6    1.019e0
+
+2. WHERE IT IS. The cut is the PRE arm's own maximum (9.528e-9) -- everything the
+   old kernel could not produce at all, so the threshold is not fitted to the new field.
+
+   tail pixels 82/16384 = 0.0050
+   components 11  largest [9, 8, 8, 8, 8, 8]
+   lag-1 coherence of log10(spread):  pre 1.0000   now 0.4420
+   -> MIXED -- read the component list rather than this line
+
+3. WHAT IT IS MADE OF. `ensemble_spread = max(spread_shape, spread_event)`, and the
+   event arm has five distinct values -- a tail that is all event arm is a staircase.
+
+   population       n  spread p50   drift p50   t_end p50   d_min p50   ev doms      term
+         tail      82    3.305e-6    7.933e-8     1.922e0    6.120e-3     0.000     1.000
+         bulk   16302    7.498e-9    7.958e-8     1.922e0    6.118e-3     0.000     1.000
+
+4. THE OPERATIVE QUESTION: do the criteria still produce the IDENTICAL leaf set?
+   `tau` must sit below the bulk or every criterion ties for want of ever running --
+   `far`'s median is ~4e-8, so the ladder reaches 1e-8.
+
+   tau=1e-4  leaves    16  DISTINCT LEAF SETS: 2
+      [10] within between maxboth frac_hot_w frac_hot_b layout grad_rms running_max first_div term_grad
+      [1] layout_rel
+   tau=1e-6  leaves    19  DISTINCT LEAF SETS: 6
+      [3] frac_hot_w layout grad_rms
+      [3] within running_max first_div
+      [2] between maxboth
+      [1] frac_hot_b
+      [1] term_grad
+      [1] layout_rel
+   tau=1e-8  leaves    64  DISTINCT LEAF SETS: 7
+      [2] frac_hot_b layout_rel
+      [2] running_max first_div
+      [2] between maxboth
+      [2] frac_hot_w layout
+      [1] grad_rms
+      [1] term_grad
+      [1] within
+   tau=1e-9  leaves    64  DISTINCT LEAF SETS: 6
+      [4] frac_hot_w frac_hot_b layout layout_rel
+      [2] between maxboth
+      [2] running_max first_div
+      [1] within
+      [1] term_grad
+      [1] grad_rms
+
+HOW TO READ IT
+  ONE distinct leaf set at a tau below the bulk = the standing result survives, `far`
+  is still the control, and the tail does not reach the descent. MORE than one = the
+  tail is doing work, `far` orders criteria differently now, and every result leaning
+  on "thirteen criteria give the identical leaf set" needs re-reading.
+  At tau=1e-4 the answer is one set FOR THE WRONG REASON -- 16 leaves, all `keep`,
+  nothing ever ranked. That row is the degeneracy control, not a result.

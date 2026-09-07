@@ -50,8 +50,9 @@ fn leaves_after(t: &QuadTree, order: &[usize], n: usize) -> Vec<usize> {
 
 fn main() {
     let budget: usize = arg(1, 40000);
-    let tau: f64 = arg(2, 1e-4);
-    let alpha_hi: f64 = arg(3, 0.2);
+    // The struct's default is the one default (see `chart_gallery`).
+    let tau: f64 = arg(2, SchedCfg::default().tau_display);
+    let alpha_hi: f64 = arg(3, SchedCfg::default().alpha_hi);
     let res: usize = arg(4, 1024);
     let frames_wanted: usize = arg(5, 72);
     // **The configuration the sweep found, not the defaults.** `k_frac` is what makes the
@@ -69,8 +70,12 @@ fn main() {
     };
 
     let ens = EnsembleCfg { refine_flagged: false, ..Default::default() };
-    let dir = "results/glsl";
+    let root: String = std::env::args().nth(8).unwrap_or_else(|| "results".into());
+    let dir = format!("{root}/glsl");
+    let dir = dir.as_str();
     let _ = std::fs::create_dir_all(dir);
+    scheduler::assert_production_kernel(&ens, dir);
+    println!("  config: {}", ens.provenance());
 
     let half = Chart::preset_shape().default_half();
     let cases: [(&str, Chart); 4] = [
@@ -127,23 +132,17 @@ fn main() {
         let sites = colour::landmarks(&grid::decode_state(&chart, 0, 0.0, 0.0).m);
         let rgb = |p: &PixelOut| colour::rgb(p, Scalar::ShapeSpread, &sites, lo, hi);
 
-        // **Mask the pixels, do not only truncate the tree.**
-        //
-        // `adaptive::render` draws *every node that has samples*, coarsest first -- that is the
-        // coarse-ancestor fill, and it is right for a finished render. It makes a shadow tree
-        // useless for truncation: the non-revealed deep quads still carry their samples and
-        // paint last, so every frame comes out as the finished image. Measured before this fix:
-        // frame 0 and frame 1 of `shape.png` were **byte-identical**, and so was every other
-        // pair -- 49 copies of one picture.
-        //
-        // Emptying the sample list for a node that has not been revealed is what actually
-        // restricts the frame, and it keeps the fill working for the ancestors that HAVE been.
-        let mask_px = |n: usize| -> Vec<Vec<PixelOut>> {
-            let live: HashSet<usize> = order.iter().take(n).cloned().collect();
-            (0..st.pixels.len())
-                .map(|i| if live.contains(&i) { st.pixels[i].clone() } else { Vec::new() })
-                .collect()
-        };
+        // **The revealed leaf set is the argument to the render.** The first version of this
+        // harness emptied the samples of every node not yet revealed, because the render keyed
+        // painting on "has samples" and would otherwise paint the finished tree in every frame
+        // -- measured, frame 0 and frame 1 of `shape.png` were byte-identical, 49 copies of one
+        // picture. But that key was also the coarse-ancestor fill, so the mask disabled the
+        // fill in the same stroke. `adaptive::render_leaves` takes the set and paints it and
+        // its ancestors, nothing else.
+        let leaves_final: Vec<usize> = t.leaves().collect();
+        // The finished tree's depth grades the wire in every frame; a literal `1` here clamped
+        // every level to full brightness and deleted the grading.
+        let depth = leaves_final.iter().map(|&i| t.nodes[i].level).max().unwrap_or(0);
 
         let step = (order.len() / frames_wanted).max(1);
         let mut frames = Vec::new();
@@ -152,23 +151,15 @@ fn main() {
         loop {
             let m = n.min(order.len());
             let lv = leaves_after(&t, &order, m);
-            let px = mask_px(m);
-            let mut shadow = t.clone();
-            let keep: HashSet<usize> = lv.iter().cloned().collect();
-            for i in 0..shadow.nodes.len() {
-                if keep.contains(&i) {
-                    shadow.nodes[i].children = None;
-                }
-            }
-            let f = adaptive::render(
-                &shadow, &px, &cam, res, adaptive::TexelMode::Adaptive, &rgb,
+            let f = adaptive::render_leaves(
+                &t, &st.pixels, &cam, res, adaptive::TexelMode::Adaptive, &rgb, &lv,
             )
             .0;
             let mut wf = f.clone();
             // The revealed leaf set, named. `boxes_from_tree` would include every deep quad that
             // was already a leaf in the finished tree, so the wire would show the final tree in
             // every frame -- the same fault the colour frames had.
-            wire::draw(&mut wf, res, res, &wire::boxes_from_leaves(&t, &cam, res, &lv), 1);
+            wire::draw(&mut wf, res, res, &wire::boxes_from_leaves(&t, &cam, res, &lv), depth);
             frames.push(f);
             wframes.push(wf);
             if n >= order.len() {
@@ -195,6 +186,19 @@ fn main() {
 
         let _ = apng::write(&format!("{dir}/{name}.png"), res, res, &frames, 1, 12);
         let _ = apng::write(&format!("{dir}/{name}_wire.png"), res, res, &wframes, 1, 12);
+        for (suffix, d) in [("", dup), ("_wire", wdup)] {
+            let _ = prin_rs::output::provenance_sidecar(
+                &format!("{dir}/{name}{suffix}.png"),
+                &ens,
+                &format!(
+                    "chart={} animation=quads_in_computed_order frames={} deliberate_hold=8 \
+                     adjacent_duplicates={d} scalar=ShapeSpread window=({lo:.4e},{hi:.4e}) \
+                     res={res} viewport={res} budget={budget} tau_display={tau:e} \
+                     alpha_hi={alpha_hi} criterion={} k_frac={k_frac} stop={}\n",
+                    chart.name(), frames.len(), crit.name(), t.stop_breakdown()
+                ),
+            );
+        }
         // GIF beside the APNG: the APNG is the lossless record, the GIF is the one that
         // animates in a browser and on GitHub.
         let _ = gifout::write(&format!("{dir}/{name}.gif"), res, res, &frames, 8);

@@ -74,6 +74,11 @@ fn main() {
     // The copies are needed for `within_pooled` — the within arm at the between arm's sample
     // count, which is what separates a scale effect from small-sample bias.
     let ens = EnsembleCfg { keep_copy_shapes: true, refine_flagged: false, ..Default::default() };
+    // **The column, not the instance.** Nine harnesses feeding the refinement work printed no
+    // provenance at all -- the `refine_flagged` failure exactly: *the failure was never the
+    // choice, it is that nothing recorded the choice.*
+    println!("  config: {}", ens.provenance());
+
 
     println!(
         "{:>14} {:>6} {:>5} {:>5} {:>9} {:>9} {:>9} {:>7} {:>7} {:>8} {:>6} {:>6}",
@@ -132,6 +137,7 @@ fn main() {
         // The full v2 quad dump, so every column in this table can be recomputed offline and
         // every column NOT in it is still available.
         let stem = format!("results/criterion/between_{}.prnq", region.replace(' ', "_"));
+        prin_rs::scheduler::assert_production_kernel(&ens, &stem);
         if let Ok(f) = std::fs::File::create(&stem) {
             let mut w = std::io::BufWriter::new(f);
             let _ = prin_rs::output::tree::write(&mut w, &t, &cfg, &ens, &st, region, "f64");

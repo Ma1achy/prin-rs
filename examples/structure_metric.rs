@@ -59,6 +59,11 @@ fn main() {
     let base = EnsembleCfg::default();
     let n_sync = ((base.n_sync as f64) * t_max / base.t_max).round().max(2.0) as usize;
     let ens = EnsembleCfg { refine_flagged: false, t_max, n_sync, ..Default::default() };
+    // **The column, not the instance.** Nine harnesses feeding the refinement work printed no
+    // provenance at all -- the `refine_flagged` failure exactly: *the failure was never the
+    // choice, it is that nothing recorded the choice.*
+    println!("  config: {}", ens.provenance());
+
     let full = ((1usize << (2 * (levels + 1))) - 1) / 3;
 
     let budgets: Vec<usize> = {

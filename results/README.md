@@ -1,6 +1,12 @@
+> **2026-09-03, the refinement rebuild.** The measurement that supersedes every `error(B)` curve
+> below is `results/payload/` (its README first): the physics-space metric, the tolerance policy
+> against the exact ceiling, and the live descent. **`results/charts/` is fully regenerated as of
+> 2026-09-06, `_uniform*` panels included, at the new production `max_steps = 480_000`** — see the
+> dated block in the `charts/` section for the ten-hour run and the account of which trees moved.
+
 # Committed results
 
-Raw output and images for every experiment. [`../RESULTS.md`](../RESULTS.md) is the findings
+Raw output and images for every experiment. [`../RESULTS.md`](../docs/RESULTS.md) is the findings
 document; this directory is the evidence behind it.
 
 Everything here is regenerable — `output/*.txt` is the captured stdout of the correspondingly
@@ -10,8 +16,14 @@ than a record.
 
 ## THE SCHEDULER CORPUS IS SUPERSEDED, AND REPLACING IT IS A RE-MEASUREMENT
 
-**Read this before quoting any number from `charts/`, `criterion/`, `vertical/`,
-`charts_ranked/`, `criterion_ranked/`, `sweep/`, `refinement/`, `animated/` or
+> **2026-09-05/06: `charts/` and `animated/` are REGENERATED** on the current kernel under
+> `Policy::Tolerance`, and are no longer part of the list below — see the dated block in the
+> `charts/` section. **The `_uniform*.png` panels are no longer the exception**: they were
+> regenerated 2026-09-06 in the same pass, once `PixelSlim` and a strip loop made a 1024² uniform
+> grid a 50 MB job rather than a 688 MB one. Everything else here stands.
+
+**Read this before quoting any number from `criterion/`, `vertical/`,
+`charts_ranked/`, `criterion_ranked/`, `sweep/`, `refinement/` or
 `animated_ranked/`.** They are 1009 files and **188 `.prnq` dumps**, and every one of them was
 written on **25-26 August**. Every change to the integrator landed on **27 August or later**:
 
@@ -61,6 +73,55 @@ saturation fractions. Those are all field-conditional and the field moved.
 The dumps are **kept, not deleted** — they are the *before*, the same standing `charts_ranked/`
 gave the unranked runs, and a re-measurement wants something to diff against.
 
+## The camera, wired in — `balance/`, `frontier/`, `camera/`, `session/`
+
+Four directories from the slippy-map work, 4–5 September. They are **not** covered by the banner
+above: every one was measured on the current kernel under `Policy::Tolerance`, and each carries
+its reproduction command in its own README.
+
+| directory | what it settles |
+|---|---|
+| [`balance/`](balance/) | what the 2:1 constraint costs. **`balance_forced/split` is not a quantity** — 0.113 or 0.007 on the *identical* tree depending only on `k_frac`, and spearman(0.25, 1.0) = +0.771, so it cannot even rank six charts. Quote `quad x` (1.03–1.76), which is throttle-invariant. All six charts violate 2:1 under Tolerance at gap 2–3, overturning the `Policy::Alpha`-era "gap 1 everywhere" |
+| [`frontier/`](frontier/) | whether the priority bucketing earns its place. `top_k` flattened every bucket and sorted, so the `O(n log n)` it exists to remove was still paid. `top_k_bounded` saves **83–94% at `k/n = 0.01`** against 0–67% at `k_frac = 0.25` — a frame budget is the small-`k` regime and `descend_with` is not |
+| [`camera/`](camera/) | `camera_bias` moves **0 decisions** at a non-binding budget, with `rel span` 0.49–1.00 proving the arm live, and 17 of 93 / 29 of 185 when the budget binds. The margin is a weak knob and only the **shared** count reveals it |
+| [`session/`](session/) | §9's acceptance test — playhead and camera marching together, one `PRNF` record per frame. Balanced **0.8789** depth variance against uniform's **0.0000**, which is the control that says the test discriminates. Also `output/frame_rank.txt`: the frame frontier's physics arm moves **0 boxes** and only the camera term moves a tree |
+| [`cursor/`](cursor/) | §18 foveation, measured against its own off-state and **dropped from the default**. Inert on a field with localised structure; 8 frames of 40 saved at the cursor on a field unresolved everywhere, at a cap demoting the periphery 16x. The swapped-cursor arm is what makes the 8 attributable — the two probes' baselines differ by the tie-break's scan order |
+| [`uv/`](uv/) | §12. The exactness claim is true in UV and false in chart space, asserted side by side; a grown root leaves the absolute lattice in **three directions of four**; and `SampleSpace::QuadLocal` buys **nothing at any depth**, because `linearise`'s own secant at `cu ± half` is the same global sum one level up and reads exactly `0.000e0` two rungs before the samples collapse |
+
+**One conclusion, arrived at three times.** All three Phase A knobs act through `order_queue`, and
+`order_queue` only matters where something truncates it. They are **frame-budget mechanisms**, so
+the frame loop is the *precondition* for measuring them rather than the phase after it — the plan's
+own ordering had it backwards.
+
+## `scope/` — what the integrator fixes did to the criterion's input, and the three prerequisites
+
+Four files, and they are the reason the scheduler corpus above is superseded rather than merely
+old. `PREDICTION.md` was written before any of it ran and carries its own outcomes; `README.md`
+is the record for `corpus_scope`; `PREREQS.md` is the record for the three checks that had to
+pass before rebuilding.
+
+| file | from | what it answers |
+|---|---|---|
+| `corpus_scope.txt` | `examples/corpus_scope.rs` | how far the criterion's **input field** moved: `rho` 0.59-0.84, so the ordering was re-made and no criterion comparison survives |
+| `far_control.txt` | `examples/far_control.rs` | is `far` still the control — bulk yes, tail no, criteria no |
+| `floor_justify.txt` | `examples/floor_justify.rs` | does `Decision::Floor` still fire — not on Burrau, unchanged on `preset_shape` |
+| `PREREQS.md` | — | all three, with the escape-pair comparison that gated them |
+
+**Three things in there change how a number above should be read.**
+
+The `error(B)` machinery was **not running production**: `criterion_metric`, `oracle_audit` and
+`signal_audit` pinned `escape_rule: Reference` with `stop_on_escape: true`. `near-field` and `far`
+are unaffected by that at `t = 13`; `deep interior` carries **202 quads with escapes under the old
+pair and zero under production**. So every `deep interior` `error(B)` number here predates the
+closure criterion.
+
+`far`'s bulk is still featureless — flat to 1.9-2.6% under both kernels — but it gains a tail
+above **p99**: 82 pixels of 16384, in 11 components, with drift, `t_end`, `d_min` and termination
+**indistinguishable from the bulk**. Unexplained, and recorded as unexplained.
+
+`Decision::Floor` goes 17 -> 0, 16 -> 1, 9 -> 1 on Burrau and is **bitwise unmoved at 8 of 16 on
+`preset_shape`**. Any `Floor` count quoted from a Burrau region here is void; the chart ones stand.
+
 ## Images
 
 `<region>_outcome.png` and `<region>_spread.png`, 256×256, f64, `t = 13`, `E+1 = 8`,
@@ -86,7 +147,7 @@ pixel can be and must not be shown as quiet.
 - `raw/<region>-64.raw` — 64×64, ~1.3 MB each, for reading and testing a parser against.
 
 Together they are about 155 MB, which is large for a repository and is a deliberate choice: the
-findings in [`../RESULTS.md`](../RESULTS.md) are re-derivable from these files without a
+findings in [`../RESULTS.md`](../docs/RESULTS.md) are re-derivable from these files without a
 re-run. If that ever needs undoing, `git lfs migrate` moves them out of the tree retroactively.
 
 The format is self-describing: magic `PRIN`, a version, a length-prefixed text header carrying
@@ -154,6 +215,52 @@ rows = [struct.unpack_from(f"<{nf}d", d, off + i*nf*8) for i in range(n)]
 | `output/structure_metric.txt` | **§2.2 settled**: `error(B)` for `off` / `multiply` / `replace` on three targets, with `structure_only` and the threshold-free `grad_rms` as controls. Read the oracle-to-random separation first, then `off` against `multiply` on the *same arm* |
 | `output/balanced_march.txt` | **§3.2's acceptance test**: depth variance and per-quad churn against `t`, balanced against the uniform control. Carries the median leaf spread per row, which is what shows the treadmill premise to be wrong in sign |
 | `output/hot_rule_sweep.txt` | the hot rule swept per region — mask saturation and component counts under `abs` against `q[0.50/0.75/0.90]`, with a constant leaf count asserted as the control |
+| `output/deep_zoom.txt` | **§3.4 in situ**: the four decode paths inside a real descent, at eight zoom depths. `distinct` first, then the tree. Carries the **stop-reason breakdown** and a `budget?` column, added 2026-09-06 — see below |
+| `output/err_ratio_residual.txt` | **`burrau_nu_k`'s `error_ratio` residual, diagnosed**: the repair pass, the two arms of the ratio, outcome disagreement, the mass seam at `t = 0`, and the `stop_on_event` arm that collapses it. Write-up in `results/step_budget/README.md` |
+
+### `output/deep_zoom.txt` — regenerated 2026-09-06
+
+```
+cargo run --release --example deep_zoom 400 results        # ~2m50s, writes the file itself
+```
+
+**The command was not written down anywhere.** The committed file was redirected stdout — it still
+carried its own `cargo` build lines — so the reproduction lived only in shell history. *A documented
+reproduction command can be wrong, and only running it finds out*; one that is not written down
+cannot even be run. The harness now takes an output root and writes the file through `Log::tee`,
+with the absolute kernel stamp and the command in its own header.
+
+**The `distinct` column is unmoved on all 32 rows, and that is an identity rather than a result.**
+It is computed from `Slice::body_plane -> decode::linearise -> decode::sample -> decode::distinct`,
+a bitwise comparison, **before `EnsembleCfg` is constructed** — no integration enters it, so no
+integrator, budget or step-control change can move it. The three sites that cite this file
+(`src/quad.rs:811`, `src/scheduler.rs:1823`, `tests/decode_switchover.rs:5-7`) quote only that
+column and both quoted figures reproduce exactly: `direct_f32` at **18/64 by depth 18**,
+`lin_split_f32` holding **64/64 through depth 40**. None of them moved.
+
+**What did move, and the new column is why it is legible.** Depth 0 is **budget-bound** —
+`budget_exhausted:119 deferred:179` — where the file was being read as a criterion-driven tree.
+The plan for this re-run predicted three quads of headroom against the budget of 400; there is
+none. And at a bound budget the `quads` and `leaves` columns are **arithmetic in the split count,
+not evidence**: 99 splits give `1 + 4*99 = 397` computed and `397 - 99 = 298` leaves, which is why
+they are identical across a change that moved the tree. The max depth fell **6 -> 5**: the same
+budget, the same counts, one level shallower. Only `depth` and the stop reasons carry information
+in that row.
+
+**And 28 of the 32 rows are inert as a live arm.** Every block from depth 14 down reads 21 quads /
+16 leaves / depth 2 for all four paths, camera-vetoed. Quoting a 32-row diff as "reproduces" would
+be the standing `nf w/ hot nbr` failure — 1.0000 in every cell.
+
+The `spread(collap)` column moved as a file predating the `dtau` fix, the landing clamp, the
+predictive step limit and the Heggie default must: `1.811e-7 -> 8.565e-8` at depth 14, a real
+ensemble spread halving. The `~1e-17` entries below it shuffled (`5.551e-17 -> 2.776e-17`,
+`6.206e-17 -> 5.594e-17`) and are the module note's own point — eight identical `shape_vec`s summed
+and divided by eight do not return the value bitwise. **They are ulp residue and no threshold can
+read them**, which is why collapse is detected by `decode::distinct` and never by a spread
+comparison.
+
+Run twice, to a scratch root and then to `results/`: **bitwise identical** apart from the header
+line naming the root.
 
 ## The scheduler
 
@@ -425,6 +532,220 @@ not, which is why the version moved.
 ---
 
 ## `charts/` — every chart family, from `examples/chart_gallery.rs`
+
+> **Regenerated 2026-09-06, `_uniform*` panels included, at `max_steps = 480_000`.**
+> `cargo run --release --example chart_gallery -- 40000 1e-2 0.5 1024 0.25 within results 1 1 all 0.005`
+> — 26 charts, **about ten and a half hours** (02:36 to 12:51 plus a 50-minute pair re-run),
+> `refine_flagged` **on** (production), `uniform` **ON** — argument nine, and that single digit is
+> the whole ~45x cost difference. `output/chart_gallery.txt` is the stitched stdout.
+>
+> **Run it one chart at a time and stitch, because `Log::tee` is `File::create`.** Every
+> invocation TRUNCATES `output/chart_gallery.txt`, so a batched regeneration ends holding only its
+> last batch — and a single-chart probe run mid-session destroyed a table that had just been
+> committed. Capture each chart's stdout separately and stitch at the end.
+>
+> **But `body_plane` and `plane_00deg` must run in ONE process.** The control asserts they are
+> bitwise the same chart on **initial conditions** — `max |dIC| = 0e0`, exact, where an image
+> comparison would conflate *same chart* with *the rasteriser rounds the same way at O(1) and O(0)
+> coordinate magnitudes* — and it holds `body_plane`'s ICs in a variable from its own iteration.
+> Splitting the run by chart removes that control silently. It panicked with
+> `body_plane must run first` instead, which is the behaviour worth having.
+>
+> **The uniform pass is no longer memory-bound, and it never was time-bound.** The note that used
+> to sit here said these panels *could not be regenerated on this machine*. The reason was not the
+> ten minutes a chart: a `PixelOut` is **656 bytes**, so a 1024² grid is **688 MB in one `Vec`**
+> and over a gigabyte through rayon's per-thread collect, against about a gigabyte of headroom.
+> `PixelSlim` (48 bytes) plus a 64-row strip loop puts the peak at one strip — the probe ran at
+> **24 MB resident**. `body_plane_uniform.png` came back **bitwise identical** to the whole-grid
+> render committed before it, same 133,841 bytes and the same ramp window to the digit, which is a
+> better guard on the refactor than any unit test: one million pixels, through `range_q_of` as well
+> as the colouring.
+>
+> **The adaptive panels move when the uniform arm runs, by design.** With `upx` present the ramp
+> window comes from the uniform grid rather than the tree leaves — `window_from=uniform_grid`
+> against `tree_leaves` — which is the whole reason the two are rendered in one pass, so the pair
+> is comparable pixel for pixel.
+>
+> **Nothing in these artefacts records the production step budget, and that is not a gap in the
+> provenance.** A *departure* from production is recorded — `overrides_vs_production` derives the
+> declaration by diffing, so a run at the old `30_000` says `max_steps=30000` in its sidecar. Only
+> the **baseline** moving is invisible, and the baseline is the code. Date these files by commit:
+>
+> ```sh
+> git log --format='%ad %h' --date=short -1 -- results/charts/<case>_uniform.png
+> ```
+>
+> **A file's mtime is not its content's age** — the standing rule, and it applies to the obvious
+> `find -newermt` form of this check, which is right only while these files are uncommitted and
+> becomes a fact about the last checkout the moment they are not. The commit date is the honest
+> discriminator. (An mtime scan is still the right tool for watching the *live* run, and that is a
+> different question from dating a committed artefact.)
+>
+> #### The budget move is the cause of every tree that moved, and the match is one-directional
+>
+> `tools/verify_prnq_regen.sh results/charts` reads `identical=0  differ only in wall_seconds=11
+> MOVED=15`, and it refuses the commit until that is understood. It is understood:
+>
+> **Sixteen charts carried budget-truncated footprints under `max_steps = 30_000`. Fifteen of them
+> moved their tree. Not one chart moved without one.** The gallery total runs **14,970 vetoed
+> footprints to 9**:
+>
+> ```
+>   burrau_nu_k        8456/61120 ->    0/48256      preset_plambda        2/37696 -> 0/37696
+>   latent_mixed_h3    4362/43648 ->    0/36160      preset_plambda_h1    25/64576 -> 0/64576
+>   latent_oblique_a    633/44416 ->    0/43648      preset_prho           3/45568 -> 0/45568
+>   latent_oblique_b    457/56512 ->    0/55552      preset_prho_h1       24/67072 -> 0/67072
+>   preset_shape_h1     446/91648 ->    5/91648      latent_mass          33/30784 -> 0/30208
+>   preset_shape        349/72640 ->    2/72640      latent_mass_h3       14/31744 -> 0/30784
+>   mass_simplex        150/34432 ->    0/32896      latent_shape_h3       4/35968 -> 0/35968
+>   preset_shape_pl_h1   10/48448 ->    2/48448      preset_shape_pl       2/37312 -> 0/37312
+> ```
+>
+> **`preset_shape_pl` is the one that changed its veto count without moving its tree** — 2 to 0,
+> and no quad decision flipped. A footprint count is not a quad count, and under a tolerance a
+> quad splits if *any* footprint is unresolved, so clearing two footprints in already-unresolved
+> quads changes nothing. That row is the reason the match is stated as one-directional rather than
+> as an equivalence.
+>
+> **And the trees SHRANK.** `burrau_nu_k` 1217 quads to 1101, `latent_mixed_h3` 529 to 333. A
+> truncated footprint reads undetermined, a quad holding one can never resolve, and it splits — so
+> the old budget was *manufacturing* work, which is the sweep's finding at production resolution.
+>
+> **The 48² sweep under-predicted which charts would move, and the direction is the standing
+> lesson.** It named eleven gallery charts; fifteen moved. The four extras — `latent_mass`,
+> `preset_prho`, `preset_prho_h1`, `preset_plambda` — read **0 of 1,048,576** flagged on their
+> uniform panels, so it is not the pixels: the tree's footprints are Halton-jittered ensemble
+> copies at different sample points from the pixel centres, and a quad footprint can be
+> budget-bound where no uniform pixel is. *Read it at the resolution that ships.*
+>
+> **What remains flagged is the sea-chart family and it is an `eta` question, not a budget one.**
+> `preset_shape_h1` 13 of 1,048,576 on its uniform panel (0.0012%), `preset_shape` 10,
+> `preset_shape_pl_h1` 1 — 24 pixels out of 25 million across the whole set, and **zero magenta in
+> any of the 191 regenerated PNGs**, because the flag is not consulted in a presentation render.
+> The sweep already recorded that `error_ratio` p99 stays high on the worst charts at every rung
+> including 480_000.
+>
+> The adaptive artefacts are **not** affected: re-running the gallery reproduces `.prnq` bitwise
+> except for `wall_seconds`, checked on `plane_00deg` — 4 differing bytes, all inside that field,
+> with the tree, the decisions and the whole record block identical. So
+> `output/gallery_table.txt`, which is derived from those dumps, does not move either.
+>
+> **The pass is resumable, and this is the command.** Argument ten is a chart list (`all` runs
+> every case), so an interrupted pass restarts on what it has not reached rather than from the
+> beginning:
+>
+> ```sh
+> cargo run --release --example chart_gallery -- >   40000 1e-2 0.5 1024 0.25 within results 1 1 "<remaining,charts>" 0.005
+> ```
+>
+> Argument nine is the `uniform` flag — **1** here, **0** in the adaptive-only line above, and that
+> single digit is the whole ~45× cost difference.
+>
+> **And the regeneration is checked over the whole corpus by `tools/verify_prnq_regen.sh`**, which
+> walks every `.prnq` in a directory against `HEAD` and passes a difference only if it is confined
+> to `wall_seconds`. §13 of this file already reported "reproduces bitwise" from **eleven** dumps
+> while **nineteen** had moved, and the thing that moved was the `decision` column on an unchanged
+> tree — a same-size binary difference, which is why file size is not the test. Mid-pass it reads
+> `identical=18  differ only in wall_seconds=8  MOVED=0`.
+
+#### And those panels are not merely stale — they are SPECKLE, and the file size says so first
+
+`body_plane_uniform.png` regenerated is **133,841 bytes against the committed 2,335,554**, a 17×
+fall at **identical 1024×1024 dimensions** — so it is not the raster-size failure this record
+already carries four times, and the dimensions are the first thing to check. What shrank is
+entropy. Measured on the two panels:
+
+| | distinct colours | magenta | L sd | **lag-1 coherence** | **local contrast** |
+|---|---|---|---|---|---|
+| committed, 25 Aug | 9314 | 1 px | 46.38 | 0.8296 | **14.628** |
+| regenerated | 1437 | **0** | 27.77 | **0.9927** | **0.200** |
+
+**Local contrast falls 73× while coherence rises to 0.9927.** Mean adjacent-pixel difference of
+14.6 levels across a whole 1024² frame is a speckle field, not a physics image; 0.20 is a coherent
+one. That is the standing *amplitude cannot tell a small real signal from noise; coherence can* —
+and the same signature as the bleaching investigation, where a texture that vanished while what
+remained became more coherent **was noise**. The old panels were showing the unrepaired kernel's
+diverged copies at pixel scale.
+
+**One chart, and `plane_00deg` is not a second one** — the gallery's own control asserts
+`max |dIC| = 0e0` between them, so they are the same chart under two names. The claim was one
+measurement until the pass finished.
+
+#### The pass finished, and the FILE SIZE reading does not survive it — coherence does
+
+Across all 26 regenerated panels: **19 smaller, 6 larger, 1 identical.** `burrau_nu_k` grew
+**1.67x** (852,285 to 1,426,548) and `invariant_lz_k` **1.55x**. A size heuristic read off one
+chart would have called those a regression.
+
+The discriminator this record already names reads the same way on **every** panel measured,
+whichever way its size went:
+
+```
+                       distinct    L sd   coherence   contrast
+  plane_00deg      cm      9314   45.11      0.8256     24.785
+                   re      1437   25.77      0.9914      0.308
+  shape_sphere     cm    139312   46.60      0.9281     11.080
+                   re     16000   47.01      0.9876      2.239
+  burrau_nu_k      cm     35924   23.09      0.8481      2.865
+                   re     20771   50.73      0.9904      2.059
+  invariant_lz_k   cm     13338   29.21      0.8224      4.226
+                   re      5987   35.84      0.9748      0.579
+  latent_mixed_h3  cm     74515   35.10      0.8246      5.895
+                   re     34806   41.33      0.9853      1.999
+```
+
+**Lag-1 coherence rises on all five, 0.82-0.93 to 0.97-0.99, and local contrast falls on all
+five.** What separates the panels that grew from the panels that shrank is `L sd` — the two that
+grew are the two whose *large-scale* dynamic range went **up** (23.09 to 50.73, 29.21 to 35.84)
+while their pixel-scale noise went down. So the file size is set by large-scale structure and the
+pixel-scale noise is what the fix removed; the two move independently and only one of them is the
+question being asked. *Amplitude cannot tell a small real signal from noise; coherence can* — and
+here amplitude does not even point consistently.
+
+### Three standing results move, and one is the reason the corpus needed replacing
+
+**The criterion decides 27–100% of leaves, against "under 1%".** The record's
+*"`Decision::MaxRelDepth` stops 95%+ of leaves on 23 of 26 charts, and 100% on three"* was a
+`Policy::Alpha` measurement. Under the tolerance policy `veto%` runs **0.0% to 73.0%** with a median
+near 36%; `latent_shape` is **100% `keep`, 0% veto** — a tree that is entirely its own decisions.
+The two most veto-bound rows are `preset_shape` (71.3%) and `preset_shape_h1` (73.0%), and they also
+carry the highest `floor%` (12.2%, 12.5%), which is the area floor doing its work.
+
+**`preset_shape` is no longer the 16-leaf failure.** The record has it at *"16 leaves, depth 2,
+against a complete 4096 — the only case in the set whose tree is entirely its own decisions"* and
+names it as where the criterion fails outright. Under the tolerance policy it reads **1378 leaves
+over 5 distinct depths**; `preset_shape_h1` reads **1627**. The `alpha` interdecile still separates
+it — **6.35** against 0.11 for `latent_mass` — so the *ordering* the old finding rests on survives
+while its mechanism does not.
+
+**And the mechanism test is readable on 24 of 26 charts, up from 2 — with no consistent sign.**
+`depth ~ terminated_fraction` was *"readable on 2, and the two disagree"*. Now there are **zero**
+x-constant and **zero** y-constant charts and two y-saturated ones. The pooled Spearman runs
+**−0.33 to +0.46**, 14 positive and 10 negative, mostly under 0.15 — so on a population that can
+finally answer, the anti-correlation the mechanism predicts is **not** what the pooled number says.
+
+**Read the per-depth medians, as the record insists, and they say something the Spearman cannot.**
+
+| case | L2 | L3 | L4 | L5 | L6 | spearman |
+|---|---|---|---|---|---|---|
+| `preset_shape` | 1.000 | 1.000 | 1.000 | 1.000 | **0.438** | −0.3318 |
+| `preset_shape_h1` | — | 1.000 | 0.750 | 0.844 | **0.156** | −0.2872 |
+| `body_plane` | 0.000 | 0.000 | 0.000 | 0.000 | **0.344** | +0.4564 |
+| `shape_sphere` | — | 0.000 | 0.000 | 0.000 | 0.000 | −0.1121 |
+
+The mechanism is visible on the **sea** charts, where termination saturates and the deepest level
+falls sharply away from it, and it runs the other way on `body_plane`, where almost nothing has
+terminated until the finest leaves. Both are coherent; neither generalises.
+
+**And `shape_sphere` exposes a gap in the readability verdict itself.** It passes as READABLE on 65
+distinct values with a 64.6% modal share, and its per-depth median is **0.000 at every depth** —
+there is nothing for a correlation to be about. The verdict tests the distribution over *all*
+leaves; a chart whose per-depth medians are all identical is a **fourth** way to be uninformative
+that the three named modes do not catch.
+
+**`Decision::Undetermined` fires in production for the first time**, on 22 quads of `burrau_nu_k`
+and 23 of `latent_mixed_h3` — 45 of 21,000. The record has it as *"inert where the integration
+succeeds"*, measured on three Burrau regions; these two charts are where it is not.
 
 Twenty-six chart instances, all at **1024²**, budget 40000 so every descent stops on the
 criterion rather than the cap. Thirteen across the reference's five families, the four `preset_*`
@@ -920,6 +1241,180 @@ auto-ranged montage would undo all three.
 cargo run --release --example logh_arms -- 256 results all 400000 all
 python3 tools/contact_sheet.py --root results far deep_interior near-field
 ```
+
+## `tilt/` — `tilt_plambda`, the first slice with a non-zero tilt
+
+```
+cargo run --release --example tilt_slice_render results 1024 13 1    # stills + uniform-over-time
+cargo run --release --example live_animation results tilt_plambda 256   # refinement over time
+```
+
+Supplied as a reference-UI config and transcribed rather than derived. `Chart::tilt_plambda`
+carries the literal; `Chart::latent_ui_slice` is the general constructor, taking the ten-slot
+`z0`, basis dims, tilts, `gammaDeg`, `zoom` and `pan`.
+
+| control | value |
+|---|---|
+| preset | `plambda`, `q1 = e4`, `q2 = e5` (live-8D) |
+| `z0` | `[2.23, -0.56, 0.05, -0.04, -0.02, 0.12, -0.1, 0.02]` (live-8D) |
+| `gammaDeg` | **2.0** (supplied at 4.5, reduced on request 2026-09-06) |
+| tilt | basis 0 -> dim 5, amt −1.04 rad |
+| `zoom` | 0.16779844723178242 |
+| pan | (0.5169659939566047, 0.5383226703503323) |
+
+Window: **`pan` is the window centre** — `cx = 2·pan − 1 = 0.03393`, `cy = 0.07665`,
+`half = zoom = 0.16780`.
+
+**The first cut used `config_slice`'s `2·pan − 1 + zoom`, which places the lower-left corner at
+`pan` — half a window out in each axis.** Two independently supplied figures refuse it and both
+are now asserted, because they are properties of the picture where the bare arithmetic is a
+constant typed in twice:
+
+| convention | camera uv offset from `z0` | gamma sweep at 1024 |
+|---|---|---|
+| `pan` = centre | **0.0419** | **20.1 px** |
+| `pan` = corner (`+ zoom`) | 0.1585 | 75.9 px |
+
+The supplied figures are 0.0419 and 20 px. Half a window is large and does not look like an error;
+a 20-pixel sweep is small enough to look correct and wrong enough not to match.
+
+**`config_slice` is deliberately not changed.** `config_stability` and `config_basin` are measured
+across a large committed corpus under its `+ zoom`, and whether that is a second UI convention or
+the same defect at an older site is a question wanting its own measurement, not a silent edit made
+while transcribing a different slice. **Open, and recorded rather than resolved.**
+
+**It is not in `gallery_cases()`.** That list is the corpus `results/charts` is measured over, and
+adding to it would make the committed 26-chart set silently incomplete. It resolves through
+`grid::named_slice`, which is now the one table the seven harness `target()` functions read —
+each had open-coded `if name == "config_stability"`, so a new named slice needed seven edits and
+was reachable from whichever had been remembered.
+
+### Three things checkable without integrating anything, and all three are asserted
+
+`tests/tilt_slice.rs`, each with the arm that says the test could have failed.
+
+**Two of the ten slots are dead.** `z2`/`z3` are consumed by the canonical frame and `decodeIC`
+never reads them: perturbing either by `+0.7` moves the IC by **exactly `0.000e+00`**. The control
+is the other eight, every one of which must move it — without that arm, a decoder ignoring its
+input would pass.
+
+**The masses are unequal: `0.35333, 0.27523, 0.37144`**, against `1/3` each for every `z0 = 0`
+preset, which is asserted beside it so "unequal" is a claim about something. That is the supplied
+guard: a run reporting equal masses here is not decoding this chart.
+
+**The tilt is IN-PLANE, and this is measured rather than assumed.** `dim 5` is `q2` itself, so the
+rotation never leaves `span{e4, e5}` — the component outside it is **exactly `0.000e0`**. So this
+slice spans the *same 2-plane* as `preset_plambda` with the frame turned by **−57.5876°** at the shipped
+`gamma = 2.0` (−55.0876° at the supplied 4.5); it is a different **slice**, not a different
+**plane**. The opposite mistake is on this project's record:
+`shape_pl`'s crossed basis looked like a reorientation and was a genuinely different 2-plane, told
+apart by `max |dIC|`. Two negative controls hold this one — a tilt into a genuinely hidden live
+dimension (`z_mu2`) must leave the span, or the constructor is ignoring `tilts` and the zero is
+vacuous; and the rotated frame must map a given pixel to a *different* IC, or the tilt changes
+nothing observable.
+
+### Two things the transcription had to decide, both measured rather than chosen
+
+**`amt` is radians, and the dropped tilt is what says so.** The supplied config carried a second
+tilt, `dim2 = 2, amt2 = 1.00`, aimed at a **dead** dimension. Under the rotation form
+`q <- cos(amt)·q + sin(amt)·e_dim` that leaves `q2` with only `cos(1.00) = 0.5403` of its live
+component — a **46% shrink of the v axis wearing the name of a tilt**. Dropped on the supplier's
+instruction and not reintroduced: a rotation toward a coordinate nothing reads is an extent change
+in disguise, and the two want different spellings.
+
+**Gamma is a rotation about the NORMAL through `z0`, not a re-framing.** An axis perpendicular to
+the slice, through the slice origin: the plane spins in place about a pin through its own centre,
+so gamma never changes *which* slice is seen — only which direction is "right" on screen. That is a
+different operation from a tilt, which rotates a basis vector *out* of the plane and does change
+the slice. `tests/tilt_slice.rs` sweeps gamma over six angles including 90 and 180 deg and asserts
+the plane is untouched at every one, against a hidden tilt that leaves it at every non-zero amount.
+
+It pivots about `z0` and **not** about the camera. `decode_state` is `z = z0 + u·q1 + v·q2` with
+`u, v` the absolute window coordinates, so `z0` sits at signed `(0,0)` and rotating the basis while
+holding the window sweeps an off-centre camera — by **20 px at the supplied 4.5°**, which is the
+figure that decided the convention, and about **8.9 px at the shipped 2.0°**. The sweep is linear
+in `sin(gamma/2)`, so the shipped value is pinned at its own number rather than scaled off the
+other: **reducing the shipped gamma must not retire the arithmetic the convention was checked by**,
+and `tests/tilt_slice.rs` holds both. The two conventions coincide only
+for a perfectly centred camera, which is presumably why this had not bitten before.
+
+**Gamma is applied *after* orthonormalisation, because otherwise it is not degrees.** Mixing a
+non-orthonormal pair by a rotation matrix is not a rotation: applied before Gram–Schmidt, this
+slice's `gamma = 4.5°` turns the frame by **2.45°** — basis angle −57.140° against the −55.088°
+that `amt + gamma` predicts — because after the tilt `q1` and `q2` are no longer orthogonal and the
+normalisation absorbs part of the mix. A parameter named `gammaDeg` that produces a different
+number of degrees is a parameter that does not mean what it says. Rotating the orthonormal pair is
+exact and needs no second Gram–Schmidt. The wrong order is carried in the test as a negative
+control, asserted to be measurably different rather than merely described.
+
+`Chart::latent_ui_slice` takes **no `mag`**, unlike `config_slice`, which does not orthonormalise
+and so lets a basis scale survive into the window. Here any scale is divided straight back out, so
+a `mag` argument would be a knob that cannot move.
+
+### The panels
+
+One colour window for the whole ladder, the p1–p99 of the **1024²** pass, printed and in every
+sidecar. A ramp re-ranged per panel would stretch each raster's own quantiles to full scale, which
+on a question about what changes with resolution manufactures the answer. The animation carries
+its own fixed window computed over **every** frame for the same reason. All panels are
+`Veto::None`: a presentation render does not colour a pixel by a debug flag, and the flagged count
+is printed and named in the sidecars instead.
+
+The ladder is 1024, 512, 256 and 64, run in **one invocation** so every rung takes the finest
+pass's window; a window argument would only be a way to skip the expensive rung, and it would put a
+second reproduction command in the header.
+
+`tilt_plambda_uniform_time.png` is 1024², one frame per recorded sync boundary, each a **full
+uniform render** of the grid at that playhead — no tree anywhere. It is the control the live refinement
+animation is read against: same physics, same playhead, no scheduler. The adjacent-duplicate count
+is asserted below the frame count, because *a frozen playhead and a converged field are the same
+picture* and only that number separates them.
+
+**The animation is streamed, and the rewrite carries its own control.** It held a
+`Vec<PixelOut>` for the whole grid with the live series attached — about 2.3 KB a footprint
+against `PixelSlim`'s 48 bytes, which is **2.4 GB at 1024²**, and is why it was capped at 256. It
+now projects strip by strip into a `PixelSlim` store and drops the fat records as it goes. The
+store is `PixelSlim` and **not** the two fields the colouring reads: the panel is
+`Scalar::ShapeSpread` under `Veto::None`, which needs only `shape_vec` and `spread_shape`, but the
+flagged count is taken at `Veto::Debug`, which reads `n_nonfinite` and `state` — a narrower record
+would have made that count **silently zero**. At `anim_res <= 64` the harness also evaluates the
+whole grid the direct way and asserts the frames are **bitwise identical**, so a restructure
+justified by memory has to show it changed nothing else, on every smoke pass rather than in a
+commit message.
+
+## Eighteen directories that were never indexed
+
+Every one of these carries a finding already in the record, and none of them was reachable from
+this file — the same hole the camera table closed for the slippy-map work, at the directories that
+predate it. Listed with what each settles, so the index is a way in rather than a file listing.
+Seven carry their own README (`circled/`, `osc/`, `step_control/`, `saturation/`, `live/`,
+`moire/`, and `closure/REPRODUCTION.md`); the rest are output plus panels.
+
+**And the first pass at this table found twelve of the eighteen, because the check was substring
+matching**: `grep -q ttl` is satisfied by `logh_ttl`, `grep -q aa` by almost anything. *A test that
+cannot fail is indistinguishable from a test that passes*, at the verification of an index. The
+check that works anchors the name — `(\`|/)<dir>(/|\`)` — and it is what found the remaining six.
+
+| directory | what it settles |
+|---|---|
+| [`circled/`](circled/) | what the circled ICs on `config_stability` have in common. Hierarchical, with the **heaviest and lightest bodies as the wide pair** — `tightest == (1,2)` on 0.07% of the magenta against 28.9% of the frame, a 413x depletion. And the near-degeneracy hypothesis is **refuted by the sign**: tie statistics are *depleted* ~2.5x where the argmax-coin-flip story needs them enriched |
+| `dither/` | whether a per-pixel step-phase dither removes the deep-zoom fringe. It does not: `Scheme::Pcg` **decoheres** the fringe without reducing it, which is the record's *a remedy that only changes the spatial correlation of an error is cosmetic* — live-playhead-compatible and still not a fix |
+| `dither2/` | **nothing — `out.txt` is 0 bytes.** An empty artefact committed by accident in `e717626`; a run that printed nothing measured nothing. Left in place rather than deleted, and flagged here so it is not read as a null |
+| `escgate/` | `EscapeRule::Distance` at `r_esc` 0 against 5 on four slices, outcome and uniform panels. `config_stability`'s persistence at +1/+2/+4/+8 goes `0.784/0.769/0.753/0.734` to `0.968/0.958/0.944/0.923`; `near-field` is flat at 0.0000 at every rung — the gate's sensitivity is regional |
+| [`moire/`](moire/) | the ribbon banding, six mechanisms excluded each by an arm that could have confirmed it — sync cadence, stepper, 8-bit quantisation, sub-pixel aliasing, substep count, and the sampler. The sharpest beat in the table (substep count, prominence 152858) is **not** the cause. **And `config_basin`, predicted to show no banding, bands at 3.9×** the reference at matched raster: the premise compared `zoom` across two charts with different `mag`, so 70× is really 3.15× against the window measured |
+| [`osc/`](osc/) | and what it *is*: the bound pair's **orbital phase winding through IC space**, best-lag correlation 0.9999–1.0000 with the lag growing linearly. A frequency beat between two slightly different pair periods, not a divergence — and the window is a **regular island inside a mostly-chaotic slice** |
+| `osc_z1/` | the supersampling pair at `z1`. `colour::rgb_resolved` moves **1878 pixels (5.09%)** here against **1 of 36864** at `z4` — the mechanism is healthy and the depth is what has nothing left to average |
+| `overnight/` | the batch whose `PREDICTIONS.md` was written **before any stage ran**, with `RUNLOG.txt` timestamped per stage and the IAS15 reference for `near-field`. The prediction-first shape is the point |
+| `postfix/` | `escape_every` 0 against 4 on five slices after the confirmation guard, uniform and outcome. The labels are stride-invariant where the guard holds and the `t_end` resolution improves — which is what makes the stride a **cost** knob and not a correctness one |
+| `refine_bug/` | the `refine_flagged` discovery: 62 harnesses under `examples/` set it `false`, including every render harness, while `results/README.md` asserted the opposite. One field: `error_ratio` p99 **1.039e10 → 35.6**, drift max **1.97e12 → 6.74e-2**, non-finite **30109 → 0** |
+| [`step_control/`](step_control/) | the four step-control candidates as numbers. **B wins** — a predictive, branch-free `dtau <= f*d_min/(\|v_rel\|*A*B)` fixes the defect for **+1.9% of the steps**, where the dumb global control leaves 153 overshoots at four times the cost |
+| `wedge/` | the wedge census and the one-at-a-time ablation. **`limit_only` reproduces `all` on every column** — the wedges are the predictive step limit alone — while the `dtau` fix removes the *magenta* and leaves the wedges untouched. Two artefacts, never one defect |
+| `aa/` | the antialiasing check: one march, two colourings, 8 samples per pixel already computed. `colour::rgb_resolved` supersamples **hue** and holds `l` fixed, because `spread_shape` is a footprint statistic with no per-copy analogue — so it moves 5.09% of pixels at `z1` and cannot reach the deep-zoom fringe at all |
+| `artefact/` | the spatial artefact census at 256² on `log10(energy_drift_max)`, in **decades**. Diagnostic pass: termination off, `r_coll = 0`, `refine_flagged` off — the repair pass removes the population the census is about, which is the standing reason a comparison render and a science render want opposite settings |
+| [`closure/`](closure/REPRODUCTION.md) | the closure-criterion renders, `stop_on_escape` 0 against 1 on four slices. **Closure does not certify that the displayed quantity has settled** — the criterion fires at a median `t = 11.8` of 13 with persistence 1.0000 and the shape still moves by up to 0.6 afterwards, so `stop_on_escape` stays off. Carries `..._AT_220d928.png`, the panel that named its own commit after a pre-fix render was found committed into a post-fix tree |
+| [`live/`](live/) | 125 files: the live-march panels and wireframes under `colour::Veto::Quiet`, where a vetoed footprint takes the nominal copy's hue at the floor of the ramp instead of `DEBUG_NAN` magenta. A **colouring and not a computation** — the probe tree is identical quad for quad — so the harness prints `vetoed N/M` and the sidecar carries it, because the information moves rather than vanishing |
+| [`saturation/`](saturation/) | what stops the march, and whether it draws the artefact. All three forms refuted: `ab_floored` **0.000000**, `budget_exhausted` **0.000000**, and `n_cap_hits > 0` on **every pixel of 262144** — the third is saturated, so its lift is exactly 1.000 *by arithmetic*, which is why the frame base rate is printed above the lift table |
+| `ttl/` | **`Integrator::Ttl` — time-transformed leapfrog, not the no-gain merge memory's `no_gain_ttl`**, which lives in `payload/`. A mass-ratio ladder at 48², with the prediction (TTL beats logH at high ratio, ties at `q = 1`) recorded in the file before the run |
 
 ## A note on the default integrator
 

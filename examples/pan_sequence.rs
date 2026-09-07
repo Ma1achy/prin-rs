@@ -120,6 +120,7 @@ fn main() {
         }
         let _ = prin_rs::output::adaptive::save(&format!("{stem}_wire.png"), frame_res, &wimg);
         wire_frames.push(wimg);
+        prin_rs::scheduler::assert_production_kernel(&ens, &stem);
         if let Ok(f) = std::fs::File::create(format!("{stem}.prnq")) {
             let mut w = std::io::BufWriter::new(f);
             let _ = prin_rs::output::tree::write(&mut w, &t, &cfg, &ens, &st, &region, "f64");

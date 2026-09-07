@@ -1011,15 +1011,16 @@ fn uniform_mode_degenerates_to_one_depth_and_balanced_does_not() {
     // the failure mode this pair exists to catch, so the configuration is pinned: `t = 13`, and a
     // viewport small enough that the uniform arm is stopped by the VETO rather than the budget.
     // A budget-bound uniform arm has nonzero depth variance and is no control at all.
+    // **And the tolerance matters for the same reason `t_max` does.** Under the tolerance policy
+    // a `tau` of `1e-4` sits below every footprint of near-field at `t = 13`, so the balanced arm
+    // splits everything to the veto too and reads exactly like the control -- the same failure
+    // as `t = 2`, from the other side. The shipped `tau` sits inside the distribution.
     let ens = EnsembleCfg { t_max: 13.0, refine_flagged: false, ..Default::default() };
     let cam = Camera::framing(1.0, 3.0, 0.05, 64);
     let run = |mode| {
         let cfg = SchedCfg {
             n: 4,
             budget: 800,
-            tau_display: 1e-4,
-            alpha_hi: 0.2,
-            alpha_lo: 0.2,
             mode,
             camera: Some(cam),
             ..Default::default()
@@ -1041,12 +1042,17 @@ fn uniform_mode_degenerates_to_one_depth_and_balanced_does_not() {
 }
 
 /// `k_frac` defers rather than refuses, and `1.0` changes nothing.
+///
+/// **Pinned to `Policy::Alpha`**: under it an outranked quad is labelled `Keep`, which is the
+/// semantics this test names. Under `Policy::Tolerance` it is `Deferred` and re-decided --
+/// `tests/live_decision.rs::deferred_is_never_resolved_and_keep_is_never_unresolved` is that
+/// test.
 #[test]
 fn k_frac_defers_as_keep_and_one_reproduces_the_unranked_descent() {
     use prin_rs::ensemble::pixel::EnsembleCfg;
     use prin_rs::quad::Decision;
     use prin_rs::render::Precision;
-    use prin_rs::scheduler::{self, SchedCfg};
+    use prin_rs::scheduler::{self, Policy, SchedCfg};
 
     let ens = EnsembleCfg { t_max: 2.0, n_sync: 8, refine_flagged: false, ..Default::default() };
     let run = |k: f64| {
@@ -1056,6 +1062,7 @@ fn k_frac_defers_as_keep_and_one_reproduces_the_unranked_descent() {
             tau_display: 1e-4,
             alpha_hi: 0.2,
             alpha_lo: 0.2,
+            policy: Policy::Alpha,
             k_frac: k,
             ..Default::default()
         };
@@ -1144,24 +1151,29 @@ fn the_default_is_the_ranked_frontier_and_it_reaches_the_tree() {
     assert!(scheduler::K_FRAC_RANKED < scheduler::K_FRAC_UNRANKED,
             "the default is the uniform-mode control");
 
+    // **Under the tolerance policy the wiring check is the ROUND COUNT, and the final tree is an
+    // invariant.** An outranked quad is `Deferred` and re-decided until it splits or resolves,
+    // so at the horizon the static tree does not depend on `k_frac` at all; what `k_frac`
+    // changes is how many rounds it took and in what order the budget landed. Asserting the
+    // trees differ, as this test did under `Policy::Alpha`, would now be asserting a defect.
     let ens = EnsembleCfg { t_max: 13.0, refine_flagged: false, ..Default::default() };
     let base = SchedCfg {
-        n: 4, budget: 600, tau_display: 1e-4, alpha_hi: 0.2, alpha_lo: 0.2,
-        camera: Some(Camera::framing(1.0, 3.0, 0.05, 64)), ..Default::default()
+        n: 4, budget: 600, camera: Some(Camera::framing(1.0, 3.0, 0.05, 64)), ..Default::default()
     };
     let run = |k: f64| {
         let cfg = SchedCfg { k_frac: k, ..base };
-        let (t, _) = scheduler::descend(1.0, 3.0, 0.05, 0, &cfg, &ens, Precision::F64);
-        let lv: Vec<f64> = t.leaves().map(|i| t.nodes[i].level as f64).collect();
-        let m = lv.iter().sum::<f64>() / lv.len() as f64;
-        (lv.len(), lv.iter().map(|x| (x - m) * (x - m)).sum::<f64>() / lv.len() as f64)
+        let (t, st) = scheduler::descend(1.0, 3.0, 0.05, 0, &cfg, &ens, Precision::F64);
+        let mut lv: Vec<(u32, u64, u64)> =
+            t.leaves().map(|i| (t.nodes[i].level, t.nodes[i].cx.to_bits(), t.nodes[i].cy.to_bits())).collect();
+        lv.sort_unstable();
+        (lv, st.iterations)
     };
-    let (ln, vn) = run(scheduler::K_FRAC_RANKED);
-    let (lu, vu) = run(scheduler::K_FRAC_UNRANKED);
-    println!("ranked  k={:.2}: {ln:>4} leaves, depth variance {vn:.4}", scheduler::K_FRAC_RANKED);
-    println!("control k={:.2}: {lu:>4} leaves, depth variance {vu:.4}", scheduler::K_FRAC_UNRANKED);
-    assert_ne!((ln, vn.to_bits()), (lu, vu.to_bits()),
-               "the two settings gave the same tree, so k_frac is not reaching the descent");
+    let (tn, rn) = run(scheduler::K_FRAC_RANKED);
+    let (tu, ru) = run(scheduler::K_FRAC_UNRANKED);
+    println!("ranked  k={:.2}: {:>4} leaves in {rn} rounds", scheduler::K_FRAC_RANKED, tn.len());
+    println!("control k={:.2}: {:>4} leaves in {ru} rounds", scheduler::K_FRAC_UNRANKED, tu.len());
+    assert!(rn > ru, "the ranked descent took no more rounds than the unranked one, so k_frac is not reaching the descent");
+    assert_eq!(tn, tu, "under the tolerance policy the final static tree must not depend on k_frac");
 }
 
 /// **The guard, with the control that says it is not always-on.**
@@ -1210,10 +1222,13 @@ fn uniform_mode_ignores_k_frac_and_balanced_does_not() {
     use prin_rs::render::Precision;
     use prin_rs::scheduler::{self, Mode, SchedCfg};
 
+    // Under the tolerance policy the balanced arm's FINAL tree is the same at every `k_frac`
+    // (deferred quads are re-decided until they split or resolve), so the second arm reads the
+    // round count: the ranked descent must take more rounds, or `k_frac` reached nothing.
     let ens = EnsembleCfg { t_max: 13.0, refine_flagged: false, ..Default::default() };
     let shape = |mode: Mode, k: f64| {
         let cfg = SchedCfg {
-            n: 4, budget: 800, tau_display: 1e-4, alpha_hi: 0.2, alpha_lo: 0.2, mode, k_frac: k,
+            n: 4, budget: 800, mode, k_frac: k,
             camera: Some(Camera::framing(1.0, 3.0, 0.05, 64)), ..Default::default()
         };
         let (t, st) = scheduler::descend(1.0, 3.0, 0.05, 0, &cfg, &ens, Precision::F64);
@@ -1226,14 +1241,16 @@ fn uniform_mode_ignores_k_frac_and_balanced_does_not() {
             })
             .collect();
         v.sort_unstable();
-        v
+        (v, st.iterations)
     };
-    let (uu, ur) = (shape(Mode::Uniform, 1.0), shape(Mode::Uniform, 0.25));
-    let (bu, br) = (shape(Mode::Balanced, 1.0), shape(Mode::Balanced, 0.25));
-    println!("uniform : {:>4} leaves at k=1, {:>4} at k=0.25", uu.len(), ur.len());
-    println!("balanced: {:>4} leaves at k=1, {:>4} at k=0.25", bu.len(), br.len());
+    let ((uu, iu1), (ur, iu2)) = (shape(Mode::Uniform, 1.0), shape(Mode::Uniform, 0.25));
+    let ((bu, ib1), (br, ib2)) = (shape(Mode::Balanced, 1.0), shape(Mode::Balanced, 0.25));
+    println!("uniform : {:>4} leaves at k=1 ({iu1} rounds), {:>4} at k=0.25 ({iu2} rounds)", uu.len(), ur.len());
+    println!("balanced: {:>4} leaves at k=1 ({ib1} rounds), {:>4} at k=0.25 ({ib2} rounds)", bu.len(), br.len());
     assert_eq!(uu, ur, "k_frac truncated the uniform arm, so it is not a control");
-    assert_ne!(bu, br, "k_frac reached nothing at all, so the first assertion is vacuous");
+    assert_eq!(iu1, iu2, "k_frac changed the uniform arm's rounds, so it is not a control");
+    assert_eq!(bu, br, "under the tolerance policy the balanced final tree must not depend on k_frac");
+    assert!(ib2 > ib1, "k_frac reached nothing at all: the ranked descent took no more rounds");
 }
 
 /// **The bound the table was pretending to have.** `greedy_lookahead_1` is greedy on immediate

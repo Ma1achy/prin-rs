@@ -80,6 +80,26 @@ pub struct Frontier {
     at: std::collections::HashMap<usize, usize>,
 }
 
+/// **The one ordering, and it is TOTAL.** Descending priority, `NaN` last, and **ties broken by
+/// id ascending**.
+///
+/// The tie-break is the load-bearing part and it was missing. `top_k` flattens buckets top-down
+/// and `rebuild` reads an id-sorted list, so with a merely *stable* sort two entries of equal
+/// priority in different bands come out in opposite orders — measured: priorities `0.2 * 6/7` and
+/// `0.4 * 3/7` are bitwise equal, and the two paths disagreed on which came first. That makes
+/// [`Frontier::agrees_with_rebuild`] — the staleness check with teeth — report a **false**
+/// disagreement on any tied data, which is the check firing on the wrong thing rather than
+/// failing to fire. A total order removes the dependence on input order entirely, so a
+/// disagreement between the paths can only be real.
+fn by_priority(a: &(usize, f64), b: &(usize, f64)) -> std::cmp::Ordering {
+    match (a.1.is_nan(), b.1.is_nan()) {
+        (true, true) => a.0.cmp(&b.0),
+        (true, false) => std::cmp::Ordering::Greater,
+        (false, true) => std::cmp::Ordering::Less,
+        _ => b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal).then(a.0.cmp(&b.0)),
+    }
+}
+
 impl Frontier {
     pub fn new() -> Self {
         Frontier { buckets: vec![Vec::new(); BANDS], at: Default::default() }
@@ -134,13 +154,70 @@ impl Frontier {
             .flatten()
             .map(|e| (e.id, e.stored * derive(e.id)))
             .collect();
-        scored.sort_by(|a, b| match (a.1.is_nan(), b.1.is_nan()) {
-            (true, true) => a.0.cmp(&b.0),
-            (true, false) => std::cmp::Ordering::Greater,
-            (false, true) => std::cmp::Ordering::Less,
-            _ => b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal),
-        });
+        scored.sort_by(by_priority);
         scored.into_iter().take(k).map(|(i, _)| i).collect()
+    }
+
+    /// Can any entry in band `b` or below still beat a `k`-th score of `kth`?
+    ///
+    /// **Expressed through [`band_of`] rather than by inverting it.** The obvious form computes
+    /// band `b`'s upper bound analytically and compares — and the log round-trip does not land on
+    /// the boundary: `exp(ln LO + 1/23 * d)` for band 0 returns `4.0616e-12`, which `band_of`
+    /// places back in **band 0**. A bound that is too small stops the walk early with a contender
+    /// unseen, which is unsound in the silent direction. Every entry of band `b` has
+    /// `stored < hi_b` and `derive <= 1`, so its priority is below `hi_b` too and therefore lands
+    /// in band `b` or lower; so `band_of(kth) > b` is exactly the condition, with no inverse.
+    ///
+    /// `NaN` maps to band 0 and so never stops the walk — conservative, and the right direction
+    /// for a frontier that could not be scored.
+    fn nothing_below_can_contend(kth: f64, b: usize) -> bool {
+        band_of(kth) > b
+    }
+
+    /// The top `k`, walking bands from the top and stopping once no lower band can contend.
+    ///
+    /// **Exact**, on [`Self::top_k`]'s own argument taken one step further: the derived factor is
+    /// in `[0, 1]`, so `stored * derive <= stored`, and every entry of band `b` has
+    /// `stored < band_upper(b)`. Once `k` candidates are held whose `k`-th score is at least
+    /// `band_upper(b)`, nothing in band `b` or below can enter, and the walk stops.
+    ///
+    /// **Returns the number of entries scored alongside the ids**, and that is the point. Whether
+    /// bucketing buys anything over `top_k`'s full sort is an *empirical* question about band
+    /// occupancy — if the signal piles into two or three bands the walk degenerates to the full
+    /// scan and the frontier is a `HashMap` with extra steps. A version that could not report its
+    /// own scan count could not settle that, and this project has shipped two mechanisms that
+    /// computed, sorted and changed nothing.
+    ///
+    /// `NaN` scores never satisfy the stopping test, so a frontier of undetermined quads walks to
+    /// the bottom — conservative, and the right direction.
+    pub fn top_k_bounded<F: Fn(usize) -> f64>(&self, k: usize, derive: F) -> (Vec<usize>, usize) {
+        if k == 0 {
+            return (Vec::new(), 0);
+        }
+        let mut best: Vec<(usize, f64)> = Vec::with_capacity(k + 1);
+        let mut scanned = 0usize;
+        for b in (0..BANDS).rev() {
+            if best.len() >= k && Self::nothing_below_can_contend(best[k - 1].1, b) {
+                break;
+            }
+            if self.buckets[b].is_empty() {
+                continue;
+            }
+            for e in &self.buckets[b] {
+                scanned += 1;
+                best.push((e.id, e.stored * derive(e.id)));
+            }
+            // Stable, so a tie keeps the entry from the higher band — which is the order
+            // `top_k`'s single full sort produces, since it flattens bands top-down.
+            best.sort_by(by_priority);
+            best.truncate(k);
+        }
+        (best.into_iter().map(|(i, _)| i).collect(), scanned)
+    }
+
+    /// Band occupancy, for the measurement that decides whether the buckets earn their place.
+    pub fn band_histogram(&self) -> Vec<usize> {
+        self.buckets.iter().map(|b| b.len()).collect()
     }
 
     /// **The reference implementation. Kept permanently.**
@@ -150,12 +227,7 @@ impl Frontier {
     /// point: [`Self::agrees_with_rebuild`] compares the two.
     pub fn rebuild<F: Fn(usize) -> f64>(items: &[(usize, f64)], k: usize, derive: F) -> Vec<usize> {
         let mut v: Vec<(usize, f64)> = items.iter().map(|&(i, s)| (i, s * derive(i))).collect();
-        v.sort_by(|a, b| match (a.1.is_nan(), b.1.is_nan()) {
-            (true, true) => a.0.cmp(&b.0),
-            (true, false) => std::cmp::Ordering::Greater,
-            (false, true) => std::cmp::Ordering::Less,
-            _ => b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal),
-        });
+        v.sort_by(by_priority);
         v.into_iter().take(k).map(|(i, _)| i).collect()
     }
 

@@ -56,16 +56,23 @@ fn key(cx: f64, cy: f64, half: f64) -> (i64, i64, i64) {
 }
 
 fn main() {
+    let mut first_cell = true;
     let budget: usize = arg(1, 800);
     let n: usize = arg(2, 4);
     let tau: f64 = arg(3, 1e-4);
     let viewport: usize = arg(4, 64);
     let k_frac: f64 = arg(5, scheduler::K_FRAC_RANKED);
+    // Argument six, defaulting to `results`: an output root is an argument, not a constant.
+    let out_root: String = arg(6, "results".to_string());
     let ranked = k_frac < scheduler::K_FRAC_UNRANKED;
     // The old figures are the BEFORE and are not overwritten. `k_frac = 1` still lands in
     // `results/criterion`, which is where they were made.
-    let odir = if ranked { "results/criterion_ranked" } else { "results/criterion" };
-    let _ = std::fs::create_dir_all(odir);
+    let odir = if ranked {
+        format!("{out_root}/criterion_ranked")
+    } else {
+        format!("{out_root}/criterion")
+    };
+    let _ = std::fs::create_dir_all(&odir);
     let ts = [4.0f64, 6.0, 8.0, 10.0, 13.0, 16.0, 20.0];
     let base = EnsembleCfg::default();
 
@@ -101,6 +108,12 @@ fn main() {
                     n_sync,
                     ..Default::default()
                 };
+                // **The column, not the instance.** Printed once, on the first cell, because
+                // this harness builds a config per row and a line per row would be noise.
+                if first_cell {
+                    first_cell = false;
+                    println!("  config: {}", ens.provenance());
+                }
                 let cam = Camera::framing(root.cx, root.cy, 0.05, viewport);
                 let cfg = SchedCfg {
                     n,

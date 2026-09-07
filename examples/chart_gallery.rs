@@ -33,34 +33,20 @@
 //! picture of anything. Every dump's `chart_params` records the chart it was built from.
 
 use prin_rs::camera::Camera;
-use prin_rs::ensemble::pixel::{EnsembleCfg, PixelOut};
+use prin_rs::ensemble::pixel::{EnsembleCfg, PixelOut, PixelSlim};
 use prin_rs::grid::{self, Domain};
 use prin_rs::output::colour::{self, Scalar};
 use prin_rs::output::{adaptive, apng, png, wire};
 use prin_rs::quad::{Agg, Criterion, Decision, QuadTree};
 use prin_rs::render::Precision;
 use prin_rs::scheduler::{self, SchedCfg};
-use prin_rs::{decode, stats};
+use prin_rs::{decode, logln, stats};
 use rayon::prelude::*;
 
 fn arg<T: std::str::FromStr>(i: usize, d: T) -> T {
     std::env::args().nth(i).and_then(|s| s.parse().ok()).unwrap_or(d)
 }
 
-/// The leaf set of the same tree **truncated at `cap`**: nodes at or above `cap` that are either
-/// leaves already or sit exactly at the cap.
-///
-/// One descent, six pictures. A budget ladder would need a fresh descent per frame, which is a
-/// different tree each time and would make the animation a sequence of unrelated runs rather
-/// than one refinement seen at several depths.
-fn leaves_capped(t: &QuadTree, cap: u32) -> Vec<usize> {
-    (0..t.nodes.len())
-        .filter(|&i| {
-            let q = &t.nodes[i];
-            q.level <= cap && (q.children.is_none() || q.level == cap)
-        })
-        .collect()
-}
 
 fn render_leaves(
     t: &QuadTree,
@@ -70,28 +56,11 @@ fn render_leaves(
     leaves: &[usize],
     rgb: &dyn Fn(&PixelOut) -> [u8; 3],
 ) -> Vec<u8> {
-    // A shadow tree whose leaf set is the truncated one keeps the endpoint-inclusive overhang
-    // rule in `adaptive::render` rather than duplicating the rasteriser here.
-    //
-    // **But the shadow tree is not enough, and for a while it was all this did.**
-    // `adaptive::render` draws every node that has samples, coarsest first -- the
-    // coarse-ancestor fill -- so the quads *outside* the truncated set still carried their
-    // samples and painted last. Every frame of every ladder came out as the finished image:
-    // measured, frame 0 and frame 1 of a 49-frame animation were **byte-identical**.
-    //
-    // Emptying the sample list for a node outside the set is what restricts the frame, and it
-    // leaves the fill working for the ancestors that are inside it.
-    let keep: std::collections::HashSet<usize> = leaves.iter().cloned().collect();
-    let masked: Vec<Vec<PixelOut>> = (0..pixels.len())
-        .map(|i| if keep.contains(&i) { pixels[i].clone() } else { Vec::new() })
-        .collect();
-    let mut shadow = t.clone();
-    for i in 0..shadow.nodes.len() {
-        if keep.contains(&i) {
-            shadow.nodes[i].children = None;
-        }
-    }
-    adaptive::render(&shadow, &masked, cam, res, adaptive::TexelMode::Adaptive, |p| rgb(p)).0
+    // The leaf set is the argument. This used to build a shadow tree AND empty the samples of
+    // every node outside the set, because the render keyed painting on "has samples" -- and
+    // that key was also the coarse-ancestor fill, so no truncated frame could show one. Both
+    // live in `adaptive::render_leaves` now: the set and its ancestors, nothing else.
+    adaptive::render_leaves(t, pixels, cam, res, adaptive::TexelMode::Adaptive, |p| rgb(p), leaves).0
 }
 
 fn main() {
@@ -101,26 +70,110 @@ fn main() {
     // leaf is drawn as one flat tile, because the render never interpolates. That reads as blur
     // and is not: it is an honest picture of an unrefined tree.
     let budget: usize = arg(1, 40000);
-    let tau: f64 = arg(2, 1e-4);
-    let alpha_hi: f64 = arg(3, 0.2);
+    // **The struct's default is the one default.** These read `1e-4` and `0.2` here while
+    // `SchedCfg::default()` said `1e-2` and `0.5` -- two defaults for one knob, and every
+    // committed tree was cut at the argument's value. The committed corpus names its arguments
+    // in `results/charts/README.md`; a bare run now means the shipped configuration.
+    let tau: f64 = arg(2, SchedCfg::default().tau_display);
+    let alpha_hi: f64 = arg(3, SchedCfg::default().alpha_hi);
+    // **`alpha_lo` was TIED to `alpha_hi` here, which is a `Policy::Alpha`-era coupling.**
+    //
+    // Under that policy they were the two ends of one band -- split above `alpha_hi`, floor below
+    // `alpha_lo`, keep between -- and setting them equal collapsed the band to a single threshold,
+    // which is what the corpus was measured at. Under `Policy::Tolerance` they are **different
+    // mechanisms**: `alpha_hi` is inert (the split test is the tolerance, not an exponent) and
+    // `alpha_lo` is the **area floor's dimension threshold**, `alpha_area = 2 - d`. Carrying the
+    // coupling into a tolerance run silently sets that floor to `alpha_hi` -- the documented
+    // command's `0.2`, or the argument default's **0.5** -- against its own measured default of
+    // `0.005`, where `0.2` alone costs 11% of `config_stability`'s resolvable pixels and puts its
+    // tree ABOVE uniform at its own error.
+    //
+    // So it is argument 11, defaulting to the struct's value. The `Policy::Alpha` reproduction
+    // passes it explicitly, exactly as `k_frac = 1.0` does for the unranked control.
+    let alpha_lo: f64 = arg(11, SchedCfg::default().alpha_lo);
     let res: usize = arg(4, 1024);
     // **The knob that made the whole committed gallery a uniform-mode render.** `k_frac = 1`
     // takes the top 100% of the frontier, so the ranking runs and changes nothing. It was the
-    // silent default when `results/charts` was made; it is now an argument with the swept value
-    // as its default, and passing `1.0` reproduces the old corpus bitwise and writes to the old
-    // directory. Nothing is overwritten in either direction.
+    // silent default when the first `results/charts` was made; it is now an argument with the
+    // shipped value as its default, and passing `1.0` writes to `charts_unranked` instead --
+    // so the control cannot land on top of the corpus.
     let k_frac: f64 = arg(5, scheduler::K_FRAC_RANKED);
     let crit = std::env::args()
         .nth(6)
         .map(|c| Criterion::parse(&c).expect("criterion"))
         .unwrap_or(Criterion::Within);
+    // **The naming is inverted from what it was, because the split it encoded is gone.**
+    // `charts_ranked` was the *after* of the `k_frac` change; `k_frac = 0.25` has been the
+    // shipped default since PR #21, so the after IS the corpus and the canonical name should
+    // hold the canonical run. The unranked arm keeps a name that says what it is.
+    //
+    // The old `results/charts` and `results/charts_ranked` were both written 25-26 August and
+    // are superseded by every integrator fix from 27 August on; they are recoverable at
+    // `9d48510` and are not preserved under a third name here. `results/README.md` says so.
     let ranked = k_frac < scheduler::K_FRAC_UNRANKED;
-    let dir = if ranked { "results/charts_ranked" } else { "results/charts" };
-    let adir = if ranked { "results/animated_ranked" } else { "results/animated" };
+    // **An output root is an argument, not a constant.** `criterion_metric` was fixed for exactly
+    // this and `chart_gallery` was not: with the root hardcoded, a reduced-`res` validation pass
+    // -- the only way to check whether a flag is inert before spending hours on the real run --
+    // overwrites the committed 1024^2 corpus with a small raster, and *softness in an image is a
+    // raster size* reads it back as a rendering fault rather than a stale file. Third site.
+    let root: String = std::env::args().nth(7).unwrap_or_else(|| "results".into());
+    let dir = if ranked { format!("{root}/charts") } else { format!("{root}/charts_unranked") };
+    let adir = if ranked { format!("{root}/animated") } else { format!("{root}/animated_unranked") };
+    let dir = dir.as_str();
+    let adir = adir.as_str();
     let _ = std::fs::create_dir_all(dir);
     let _ = std::fs::create_dir_all(adir);
 
-    let ens = EnsembleCfg { refine_flagged: false, ..Default::default() };
+    // **`refine_flagged` is argument 8, and its default is production's.** The hardcoded `false`
+    // that stood here is the line the record names as spread-by-copy out of the experiment
+    // harnesses it was correct in, into render harnesses it was never argued for -- while
+    // `results/README.md` asserted renders had it on. It is a real choice with two defensible
+    // readings (the repair pass has no live-playhead analogue, so a scheduler corpus arguably
+    // wants it off; the standing invariant says renders have it on), so it is a *named argument*
+    // that the provenance sidecar records, not a constant nothing prints.
+    let refine: bool = std::env::args()
+        .nth(8)
+        .map(|v| v == "1" || v == "true")
+        .unwrap_or(EnsembleCfg::production().refine_flagged);
+    // **`max_steps` is argument 12, and it exists because the render harnesses and the
+    // integrator harnesses were never running the same kernel.** `integrator_gallery` raises it
+    // to 400_000 for both arms and says why in its own header -- *"at the production
+    // max_steps = 30_000 Heggie exhausts the budget on 8.6% of config_stability and its drift
+    // panel comes back dominated by the magenta veto set"*. 27 diagnostic harnesses raise it;
+    // every render and scheduler harness takes production's 30_000. So a footprint that is
+    // undetermined here is determined there, and the difference was invisible because nothing
+    // took it as an argument. *A setting correct where it was born, silent where it was not* --
+    // and the remedy for that class is never the instance, it is the column.
+    let max_steps: usize =
+        std::env::args().nth(12).and_then(|v| v.parse().ok()).unwrap_or(EnsembleCfg::production().max_steps);
+    let ens =
+        EnsembleCfg { refine_flagged: refine, max_steps, ..EnsembleCfg::production() };
+    // **The uniform panels are argument 9, default off.** `<case>_uniform*.png` is the chart at
+    // one sample per pixel -- 8.4M trajectories per chart at 1024^2, about 95% of a run -- and
+    // it used to be skipped whenever the tree was ranked, on the argument that a scheduler
+    // change cannot move it. True, and the PHYSICS moved: the committed `_uniform*` panels were
+    // 25 August beside adaptive twins from 3 September, mirror-imaged and on a different colour
+    // window. When asked for, the grid is evaluated FIRST and its window colours both panels.
+    let uniform: bool =
+        std::env::args().nth(9).map(|v| v == "1" || v == "true").unwrap_or(false);
+    // **Argument 10: which charts, comma-separated; `all` or absent runs the gallery.** So a
+    // regeneration can be staged a chart at a time -- under the tolerance policy a chart can
+    // cost minutes to hours -- rather than committed to as twenty-six at once.
+    let only: Option<Vec<String>> = std::env::args()
+        .nth(10)
+        .filter(|s| s != "all")
+        .map(|s| s.split(',').map(|x| x.trim().to_string()).collect());
+    // A tree under `results/` on any kernel but production's is the superseded corpus again.
+    scheduler::assert_production_kernel(&ens, dir);
+    let log = prin_rs::output::Log::tee(&format!("{root}/output/chart_gallery.txt"));
+    let log = &log;
+    // **The column, not the instance.** Nine harnesses feeding the refinement work printed no
+    // provenance at all -- the `refine_flagged` failure exactly: *the failure was never the
+    // choice, it is that nothing recorded the choice.*
+    logln!(log, "  config: {}", ens.provenance());
+    logln!(log, "  uniform panels: {}", if uniform { "ON (8.4M trajectories per chart at 1024^2)" }
+                                          else { "off -- pass 1 as argument 9 to regenerate them" });
+
 
     // A base latent point. Deliberately not the origin: at z = 0 every sigmoid sits at 0.5 and
     // several coordinates would be at a symmetry point, which is exactly where a sign error
@@ -128,7 +181,7 @@ fn main() {
     let cases = grid::gallery_cases();
 
 
-    println!(
+    logln!(log, 
         "budget {budget}, tau={tau:e}, alpha_hi={alpha_hi}, N=8, E+1={}, t={}, f64, {res}^2, \
          screen floor ON.\n\
          Colouring: hue = shape sphere by vMF site-blend, lightness = spread_shape on a log ramp\n\
@@ -137,7 +190,7 @@ fn main() {
         ens.n_extra + 1,
         ens.t_max
     );
-    println!(
+    logln!(log, 
         "{:>18} {:>14} {:>6} {:>7} {:>7} {:>6} {:>7} {:>9} {:>10} {:>10} {:>9} {:>9}",
         "case", "chart", "domain", "quads", "leaves", "depth", "screen", "distinct", "alpha med",
         "alpha idec", "ramp span", "bound"
@@ -149,8 +202,13 @@ fn main() {
 
     for (name, chart, cx, cy, half) in &cases {
         let (cx, cy, half) = (*cx, *cy, *half);
+        if let Some(list) = &only {
+            if !list.iter().any(|n| n == name) {
+                continue;
+            }
+        }
         if let Err(e) = chart.validate(0.0, cx, cy, half) {
-            println!("{name:>18}  REFUSED: {e}");
+            logln!(log, "{name:>18}  REFUSED: {e}");
             continue;
         }
 
@@ -159,7 +217,7 @@ fn main() {
             budget,
             tau_display: tau,
             alpha_hi,
-            alpha_lo: alpha_hi,
+            alpha_lo,
             agg: Agg::Median,
             chart: *chart,
             camera: Some(cam),
@@ -188,13 +246,64 @@ fn main() {
         // on which quads happen to be leaves.
         let all_px: Vec<PixelOut> =
             leaves.iter().flat_map(|&i| st.pixels[i].iter().cloned()).collect();
-        let (lo, hi) = colour::range(&all_px, Scalar::ShapeSpread);
+        // The uniform grid, when asked for, is evaluated here so that ONE window colours the
+        // adaptive panel and the uniform panel beside it. Two auto-ranges made the pair
+        // incomparable pixel for pixel.
+        //
+        // **In STRIPS, and holding [`PixelSlim`], because the whole-grid form is what kept these
+        // panels at 25 August.** A `PixelOut` is 656 bytes, so `1024^2` is 688 MB in one `Vec`
+        // and over a gigabyte through rayon's per-thread collect -- on a machine with ~1 GB of
+        // headroom that is not a slow run, it is an impossible one, and the note beside the stale
+        // panels said so. A strip's `PixelOut`s are dropped as soon as they are thinned, so the
+        // peak is one strip (43 MB at `STRIP = 64`) plus 50 MB of slims. The physics is
+        // untouched: `evaluate` is called with the same slice index and the same config.
+        let upx: Option<Vec<PixelSlim>> = if uniform {
+            const STRIP: usize = 64;
+            let usl = grid::Slice::body_plane(res, res, cx, cy, half, 0).with_chart(*chart);
+            let mut acc: Vec<PixelSlim> = Vec::with_capacity(usl.npix());
+            let mut row = 0usize;
+            while row < res {
+                let hi_row = (row + STRIP).min(res);
+                let mut band: Vec<PixelSlim> = (row * res..hi_row * res)
+                    .into_par_iter()
+                    .map(|k| PixelSlim::thin(&prin_rs::ensemble::pixel::evaluate::<f64>(&usl, k, &ens)))
+                    .collect();
+                acc.append(&mut band);
+                row = hi_row;
+            }
+            Some(acc)
+        } else {
+            None
+        };
+        let (lo, hi) = match &upx {
+            Some(u) => colour::range_q_of(u.iter().map(|p| p.spread_shape), 0.01, 0.99),
+            None => colour::range(&all_px, Scalar::ShapeSpread),
+        };
         let (distinct, _, _) = colour::quantisation(&all_px, Scalar::ShapeSpread);
         let m_here = grid::decode_state(chart, 0, cx, cy).m;
         let sites = colour::landmarks(&m_here);
-        let rgb = move |p: &PixelOut| colour::rgb(p, Scalar::ShapeSpread, &sites, lo, hi);
+        // **THE FLAG IS NOT CONSULTED. A footprint is drawn as what it is, not as what it is
+        // flagged.** `colour::rgb` is `Veto::Debug` and paints an undetermined footprint
+        // `DEBUG_NAN` magenta -- right for `_drift` and every census, wrong in a presentation
+        // render. `Veto::Quiet` was the first attempt and is not the answer either: painting the
+        // same set at the ramp floor moved the artefact from a magenta speckle to a dark muddy
+        // one in exactly the same pixels. It was still a reserved colour for a debug flag.
+        //
+        // `Veto::None` consults nothing. `n_nonfinite` counts copies the DRIVER could not use; it
+        // is not a statement about either quantity this image draws. The nominal `shape_vec` is
+        // finite on 100% of the flagged set and `spread_shape` is an ordinary number over the
+        // copies that did run, so both channels have real values and the footprint takes its
+        // ordinary place on the ramp.
+        //
+        // The count still does not vanish -- it is printed per chart below and named in every
+        // sidecar, and every diagnostic render keeps `Veto::Debug`.
+        let vetoed_a =
+            all_px.iter().filter(|p| colour::vetoed(p, Scalar::ShapeSpread, &sites, lo, hi)).count();
+        let rgb = move |p: &PixelOut| {
+            colour::rgb_veto(p, Scalar::ShapeSpread, &sites, lo, hi, colour::Veto::None)
+        };
 
-        println!(
+        logln!(log, 
             "{:>18} {:>14} {:>6} {:>7} {:>7} {:>6} {:>7} {:>9} {:>10.4} {:>10.4} {:>9.3} {:>9}",
             name,
             chart.name(),
@@ -278,7 +387,7 @@ fn main() {
                 .map(|&i| t.nodes[i].red.escape_fraction)
                 .sum::<f64>()
                 / leaves.len().max(1) as f64;
-            println!(
+            logln!(log, 
                 "{:>18}  depth~terminated_fraction: spearman = {rho:+.4}, mean escape_fraction = \
                  {esc:.4}\n{:>20}{}",
                 "",
@@ -316,6 +425,27 @@ fn main() {
         wire::draw(&mut wimg, res, res, &boxes, deepest.max(1));
         let _ = adaptive::save(&format!("{stem}.png"), res, &img);
         let _ = adaptive::save(&format!("{stem}_wire.png"), res, &wimg);
+        // **The PNGs were the blind spot.** The `.prnq` carries a settings header; the panels
+        // carried nothing, so a picture could not say which integrator drew it. One sidecar per
+        // chart rather than per frame: the frames of a chart share a config by construction, and
+        // 208 near-identical files would be noise rather than provenance.
+        let _ = prin_rs::output::provenance_sidecar(
+            &format!("{stem}.png"),
+            &ens,
+            &format!(
+                "chart={} leaves={} depth={} stop={} scalar=ShapeSpread window=({lo:.4e},{hi:.4e}) \
+                 window_from={} res={res} viewport={res} budget={budget} tau_display={tau:e} \
+                 alpha_hi={alpha_hi} criterion={} k_frac={k_frac} \
+                 veto=none flagged_footprints={vetoed_a} of={}\n",
+                chart.name(),
+                leaves.len(),
+                depth,
+                t.stop_breakdown(),
+                if upx.is_some() { "uniform_grid" } else { "tree_leaves" },
+                crit.name(),
+                all_px.len(),
+            ),
+        );
 
         // **The chart itself, at one sample per pixel on a uniform grid.**
         //
@@ -331,31 +461,54 @@ fn main() {
         //
         // **And it is the one block that CANNOT depend on `k_frac`.** It builds its own
         // `res x res` slice and evaluates it directly; no quad, no tree, no decision enters it.
-        // So a ranked run reproduces `results/charts/*_uniform*.png` bit for bit -- while
-        // costing `res^2 * (E+1)` trajectories, which at 1024 is 8.4M per chart and about 95% of
-        // the run. Regenerating them under a scheduler change is paying an hour a chart to
-        // rewrite identical bytes. Skipped when the tree is ranked, and the reason is the point:
-        // if this block's output moved with `k_frac`, something would be very wrong.
-        if !ranked {
+        // So a scheduler change cannot move `results/charts/*_uniform*.png` -- but a PHYSICS
+        // change does, and this block was skipped whenever the tree was ranked on the strength
+        // of the first fact alone. It costs `res^2 * (E+1)` trajectories, 8.4M per chart at
+        // 1024, so it is argument 9 and off by default; the grid itself was evaluated above,
+        // before the adaptive render, so the two panels share a window.
+        if let Some(upx) = upx.as_deref() {
             // Full resolution: this is the sharpest artefact and the only one that shows the
             // chart rather than the tree, so it is the one worth paying for. One sample per
             // pixel, no interpolation anywhere.
             let ures = res;
-            let usl = grid::Slice::body_plane(ures, ures, cx, cy, half, 0).with_chart(*chart);
-            let upx: Vec<PixelOut> = (0..usl.npix())
-                .into_par_iter()
-                .map(|k| prin_rs::ensemble::pixel::evaluate::<f64>(&usl, k, &ens))
-                .collect();
-            let (ulo, uhi) = colour::range(&upx, Scalar::ShapeSpread);
             let usites = colour::landmarks(&m_here);
+            let vetoed_u = upx
+                .iter()
+                .filter(|p| colour::vetoed(&p.fat(), Scalar::ShapeSpread, &usites, lo, hi))
+                .count();
             let mut buf = Vec::with_capacity(upx.len() * 3);
-            for p in &upx {
-                buf.extend_from_slice(&colour::rgb(p, Scalar::ShapeSpread, &usites, ulo, uhi));
+            for p in upx.iter().map(|p| p.fat()) {
+                buf.extend_from_slice(&colour::rgb_veto(
+                    &p,
+                    Scalar::ShapeSpread,
+                    &usites,
+                    lo,
+                    hi,
+                    colour::Veto::None,
+                ));
             }
+            let _ = prin_rs::output::provenance_sidecar(
+                &format!("{stem}_uniform.png"),
+                &ens,
+                &format!(
+                    "chart={} panel=uniform scalar=ShapeSpread window=({lo:.4e},{hi:.4e}) \
+                     window_from=uniform_grid res={ures} one_sample_per_pixel=true \
+                     veto=none flagged_footprints={vetoed_u} of={}\n",
+                    chart.name(),
+                    upx.len()
+                ),
+            );
+            logln!(
+                log,
+                "{:>18}                uniform panel: {vetoed_u}/{} ({:.4}%) flagged undetermined by the driver, drawn normally",
+                name,
+                upx.len(),
+                100.0 * vetoed_u as f64 / upx.len().max(1) as f64
+            );
             let _ = adaptive::save_rect(&format!("{stem}_uniform.png"), ures, ures, &buf);
             let mut obuf = Vec::with_capacity(upx.len() * 3);
-            for p in &upx {
-                obuf.extend_from_slice(&png::outcome_rgb(p));
+            for p in upx.iter().map(|p| p.fat()) {
+                obuf.extend_from_slice(&png::outcome_rgb_veto(&p, colour::Veto::None));
             }
             let _ =
                 adaptive::save_rect(&format!("{stem}_uniform_outcome.png"), ures, ures, &obuf);
@@ -372,21 +525,23 @@ fn main() {
             // event class is the currently-tightest pair joined with the terminal outcome and
             // is defined at every playhead, where the outcome label at t = 13 is saturated.
             let mut ebuf = Vec::with_capacity(upx.len() * 3);
-            for p in &upx {
-                ebuf.extend_from_slice(&png::event_class_rgb(p));
+            for p in upx.iter().map(|p| p.fat()) {
+                ebuf.extend_from_slice(&png::event_class_rgb_veto(&p, colour::Veto::None));
             }
             let _ = adaptive::save_rect(&format!("{stem}_uniform_event.png"), ures, ures, &ebuf);
 
             // The histogram, before the image. 27 slots on one ramp means adjacent classes are
             // close in colour by construction, so the legend and the counts are the instrument.
             // A class that never fires is a fact about the slice and reads as a zero here.
-            let (rows, undet) = png::event_class_histogram(&upx);
+            let (rows, undet) = png::event_class_histogram_of(
+                upx.iter().map(|p| (p.n_nonfinite, p.state, p.event_class)),
+            );
             let live: Vec<String> = rows
                 .iter()
                 .filter(|&&(_, n)| n > 0)
                 .map(|&(c, n)| format!("{}={n}", png::event_class_name(c)))
                 .collect();
-            println!(
+            logln!(log, 
                 "{:>18}  event classes ({} of {} fire, {undet} undetermined): {}",
                 "",
                 live.len(),
@@ -395,17 +550,27 @@ fn main() {
             );
         }
 
+        // **Freed before the live descent, and the reason is a measurement.** `upx` holds
+        // `res^2 * (E+1)` footprints -- 8.4M at 1024^2 -- and its last use is the event-class
+        // histogram just above. The live march below allocates a second pixel store plus a
+        // per-boundary series, so holding both is a peak neither pass needs. This gallery has
+        // been killed by swap exhaustion twice; a peak that is avoidable by a `drop` is not a
+        // reason to lose a fifteen-hour run.
+        drop(upx);
+
         // The outcome control on the ADAPTIVE tree, so the pair says whether a feature is in the
         // physics or in the colouring. At t = 13 the outcome label is saturated, which is the
         // point.
         let (oimg, _) = adaptive::render(
-            &t, &st.pixels, &cam, res, adaptive::TexelMode::Adaptive, png::outcome_rgb,
+            &t, &st.pixels, &cam, res, adaptive::TexelMode::Adaptive,
+            |p| png::outcome_rgb_veto(p, colour::Veto::None),
         );
         let _ = adaptive::save(&format!("{stem}_outcome.png"), res, &oimg);
 
         // The same matched-mode panel on the adaptive tree.
         let (eimg, _) = adaptive::render(
-            &t, &st.pixels, &cam, res, adaptive::TexelMode::Adaptive, png::event_class_rgb,
+            &t, &st.pixels, &cam, res, adaptive::TexelMode::Adaptive,
+            |p| png::event_class_rgb_veto(p, colour::Veto::None),
         );
         let _ = adaptive::save(&format!("{stem}_event.png"), res, &eimg);
 
@@ -414,34 +579,160 @@ fn main() {
             let _ = prin_rs::output::tree::write(&mut w, &t, &cfg, &ens, &st, name, "f64");
         }
 
-        // The level ladder: ONE descent, truncated at each depth.
+        // **THE ANIMATION IS THE LIVE MARCH, NOT A DEPTH SLICE OF A FINISHED TREE.**
         //
-        // Rendered at the same resolution as the stills. Re-rasterised rather than
-        // re-integrated, so it costs nothing but the raster.
+        // What was here was a level ladder: `for cap in 0..=depth { leaves_capped(&t, cap) }` --
+        // the *static* tree built to completion and then truncated at each depth. Every frame sat
+        // at `t = t_max`, so its axis was depth and nothing in the gallery moved over time. It
+        // also showed a tree the scheduler never passes through: the static descent has **zero**
+        // `project_at` and **zero** `merge` sites, so a depth slice of its result is not a stage
+        // the mechanism was ever in. It read as "how the tree got there" and was not.
+        //
+        // The frame axis is now the **playhead**: one frame per sync boundary and per
+        // post-horizon round, each rendered on the footprints **as they stood at that boundary**
+        // (`scheduler::project_at`), from `scheduler::descend_live`'s own recorded leaf sets. That
+        // is the mechanism -- catch-up, per-boundary re-reduction and the no-gain merges included.
+        // Same construction `live_animation` uses for `results/live`.
+        //
+        // **The stills and the table stay on the static descent**, deliberately. They are the
+        // statement about what the criterion settles on, they are what the committed gallery table
+        // is comparable against, and the live tree is a *different* tree once merging is on -- so
+        // folding the two would move every leaf count in the table for a reason that has nothing
+        // to do with the chart. The two leaf counts are printed side by side instead, because the
+        // gap between them is itself a measurement and the record carries it for three charts
+        // only.
+        //
+        // It costs a second descent per chart, and that descent is the expensive one: catch-up is
+        // 84-91% of a live march's substeps. The cost ratio is printed per chart rather than
+        // asserted.
         let ares = res;
         let acam = Camera::framing(cx, cy, half, ares);
+        let lt0 = std::time::Instant::now();
+        // `project_at` needs the per-boundary series, which production does not keep.
+        let lens = EnsembleCfg { keep_live_series: true, ..ens.clone() };
+        let (lt, lst) =
+            scheduler::descend_live(cx, cy, half, 0, &cfg, &lens, Precision::F64);
+        let lleaves: Vec<usize> = lt.leaves().collect();
+        let ldepth = lleaves.iter().map(|&i| lt.nodes[i].level).max().unwrap_or(0);
+        let lsteps: u64 = lt.nodes.iter().map(|q| q.red.total_substeps as u64).sum();
+        let ssteps: u64 = t.nodes.iter().map(|q| q.red.total_substeps as u64).sum();
+        // **One window for the whole animation, from the live tree's own terminal footprints.**
+        // Not the stills' window: that one is the uniform grid's, and a ramp fitted to a
+        // different population would move the apparent brightness of every frame for a reason
+        // that is not the march. And never per frame -- an auto-ranged ramp per frame stretches
+        // each boundary's own p1-p99 to full scale, which on a question about how a field
+        // develops manufactures the development.
+        let lall: Vec<PixelOut> =
+            lleaves.iter().flat_map(|&i| lst.pixels.get(i).cloned().unwrap_or_default()).collect();
+        let (llo, lhi) = colour::range(&lall, Scalar::ShapeSpread);
+        let lsites = colour::landmarks(&m_here);
+        let lrgb =
+            |p: &PixelOut| colour::rgb_veto(p, Scalar::ShapeSpread, &lsites, llo, lhi, colour::Veto::None);
+        let lvetoed =
+            lall.iter().filter(|p| colour::vetoed(p, Scalar::ShapeSpread, &lsites, llo, lhi)).count();
 
-        let mut ladder: Vec<Vec<u8>> = Vec::new();
-        let mut wladder: Vec<Vec<u8>> = Vec::new();
-        for cap in 0..=depth {
-            let lv = leaves_capped(&t, cap);
-            let f = render_leaves(&t, &st.pixels, &acam, ares, &lv, &rgb);
+        let n_b = lst.pixels.get(0).and_then(|p| p.first()).map(|p| p.live_t.len()).unwrap_or(0);
+        let mut ladder: Vec<Vec<u8>> = Vec::with_capacity(lst.live_leaves.len());
+        let mut wladder: Vec<Vec<u8>> = Vec::with_capacity(lst.live_leaves.len());
+        for (k, lv) in lst.live_leaves.iter().enumerate() {
+            // The recorded boundary while the playhead moved; the last one during the
+            // post-horizon rounds, which are frames at `t = t_max`.
+            let j = k.min(n_b.saturating_sub(1));
+            // **Projected over the frame's leaves AND THEIR ANCESTORS, which is exactly what is
+            // drawn.** Projecting the whole store clones footprints no frame reads -- a second
+            // full copy of the live pixel store, per frame, on a gallery already killed twice by
+            // swap. But the leaf set alone is WRONG: `adaptive::paint_order` paints the set *and
+            // every ancestor*, coarsest first, and emptying an ancestor's samples is precisely
+            // what used to disable the coarse-ancestor fill -- an unresolved leaf would come back
+            // a hole, reading as "nothing here" rather than "not yet resolved". Descendants are
+            // not painted, so they stay empty. Asserted bitwise against the full-store form.
+            let mut want: Vec<bool> = vec![false; lst.pixels.len()];
+            for &i in lv {
+                let mut k = Some(i);
+                while let Some(n) = k {
+                    if want.get(n).copied().unwrap_or(true) {
+                        break;
+                    }
+                    want[n] = true;
+                    k = lt.nodes[n].parent;
+                }
+            }
+            let mut projected: Vec<Vec<PixelOut>> = vec![Vec::new(); lst.pixels.len()];
+            for (i, w) in want.iter().enumerate() {
+                if *w {
+                    if let Some(src) = lst.pixels.get(i) {
+                        projected[i] = src.iter().map(|q| scheduler::project_at(q, j)).collect();
+                    }
+                }
+            }
+            let f = render_leaves(&lt, &projected, &acam, ares, lv, &lrgb);
             let mut wf = f.clone();
-            // From the capped leaf set, not from a level filter over the finished tree's boxes.
-            // Filtering by level keeps every deep quad whose level happens to be <= cap while
-            // dropping nothing that the cap actually removed, so the wire drifted out of step
-            // with the colour frame beside it.
-            let b = wire::boxes_from_leaves(&t, &acam, ares, &lv);
-            wire::draw(&mut wf, ares, ares, &b, cap.max(1));
+            // Graded by the FINISHED live tree's depth, held across every frame: regrading per
+            // frame moves the ramp rather than the tree, which is the fault the colour frames
+            // avoid by holding one window.
+            wire::draw(&mut wf, ares, ares, &wire::boxes_from_leaves(&lt, &acam, ares, lv), ldepth.max(1));
             ladder.push(f);
             wladder.push(wf);
         }
-        // **Animations live in `results/animated/`, not beside the stills.** They are the only
-        // artefacts here that show *how the tree got there* rather than what it settled on, and
-        // 72 of them scattered through three directories were effectively unfindable.
+        // Hold the finished frame so the loop reads as an ending rather than a snap back.
+        for _ in 0..6 {
+            if let (Some(a), Some(b)) = (ladder.last().cloned(), wladder.last().cloned()) {
+                ladder.push(a);
+                wladder.push(b);
+            }
+        }
+        let lsecs = lt0.elapsed().as_secs_f64();
+        logln!(
+            log,
+            "{:>18}                live march: {} leaves (static {}), depth {ldepth}, {} frames, \
+             vetoed {lvetoed}/{}, substeps x{:.2} static, {lsecs:.1}s",
+            name,
+            lleaves.len(),
+            leaves.len(),
+            lst.live_leaves.len(),
+            lall.len(),
+            if ssteps > 0 { lsteps as f64 / ssteps as f64 } else { f64::NAN }
+        );
+
         let anim = format!("{adir}/{name}");
-        let _ = apng::write(&format!("{anim}_levels.png"), ares, ares, &ladder, 1, 2);
-        let _ = apng::write(&format!("{anim}_levels_wire.png"), ares, ares, &wladder, 1, 2);
+        let _ = apng::write(&format!("{anim}_live.png"), ares, ares, &ladder, 1, 3);
+        let _ = apng::write(&format!("{anim}_live_wire.png"), ares, ares, &wladder, 1, 3);
+        let (dup, wdup) =
+            (apng::adjacent_duplicates(&ladder), apng::adjacent_duplicates(&wladder));
+        for (suffix, d) in [("live", dup), ("live_wire", wdup)] {
+            let _ = prin_rs::output::provenance_sidecar(
+                &format!("{anim}_{suffix}.png"),
+                &lens,
+                &format!(
+                    "chart={} animation={suffix} axis=playhead frames={} boundaries={n_b} \
+                     live_stride={} \
+                     adjacent_duplicates={d} scalar=ShapeSpread window=({llo:.4e},{lhi:.4e}) \
+                     window_from=live_tree_terminal res={ares} viewport={ares} budget={budget} \
+                     tau_display={tau:e} alpha_hi={alpha_hi} criterion={} k_frac={k_frac} \
+                     stop={} live_leaves={} static_leaves={} \
+                     veto=none flagged_footprints={lvetoed} of={}\n",
+                    chart.name(),
+                    ladder.len(),
+                    lens.live_stride,
+                    crit.name(),
+                    lt.stop_breakdown(),
+                    lleaves.len(),
+                    leaves.len(),
+                    lall.len(),
+                ),
+            );
+        }
+        // **A ladder whose frames repeat is a still.** Printed, kept, and it is the arm that says
+        // the animation is animated at all -- six of the frames are the deliberate end hold.
+        if dup > 6 || wdup > 6 {
+            logln!(
+                log,
+                "{:>18}                live animation: {dup}/{wdup} identical adjacent pairs of {} \
+                 (colour/wire), 6 of them the end hold",
+                "",
+                ladder.len() - 1
+            );
+        }
 
         // The control: `plane_00deg` is `body_plane` written a second way. Compared on INITIAL
         // CONDITIONS, which is exact -- comparing images conflates "same chart" with "the
@@ -463,7 +754,7 @@ fn main() {
                 "CONTROL FAILED: plane_00deg is not bitwise body_plane (max |dIC| = {d:e}). \
                  The bases are wrong and every other row compares different physics."
             );
-            println!(
+            logln!(log, 
                 "{:>18}  [control] plane_00deg vs body_plane: max |dIC| = {d:e} -- the same \
                  chart, asserted",
                 ""
@@ -476,13 +767,25 @@ fn main() {
 
     let _ = apng::write(&format!("{adir}/gallery.png"), res, res, &frames, 1, 1);
     let _ = apng::write(&format!("{adir}/gallery_wire.png"), res, res, &wire_frames, 1, 1);
-    println!(
+    for (suffix, fr) in [("gallery", &frames), ("gallery_wire", &wire_frames)] {
+        let _ = prin_rs::output::provenance_sidecar(
+            &format!("{adir}/{suffix}.png"),
+            &ens,
+            &format!(
+                "animation={suffix} one_frame_per_chart frames={} adjacent_duplicates={} \
+                 res={res} budget={budget} tau_display={tau:e} alpha_hi={alpha_hi} \
+                 criterion={} k_frac={k_frac}\n",
+                fr.len(), apng::adjacent_duplicates(fr), crit.name()
+            ),
+        );
+    }
+    logln!(log, 
         "\n{} charts: still + wire twin + outcome control + level ladder (both) + .prnq each,\n\
          plus the two gallery APNGs. Everything at {res}^2.",
         frames.len(),
     );
 
-    println!(
+    logln!(log, 
         "\n\
          `distinct` is how many distinct values the lightness field takes over the chart. Read it\n\
          before the picture: a field with few distinct values has that many colours in it, and no\n\
@@ -506,10 +809,14 @@ fn main() {
          `crit` row's tree shape is a statement about the chart.\n\
          \n\
          And the substantive finding this table carries: the reference's chart families, centred\n\
-         where they are centred here, are TAME. `alpha med` sits at 0.99-1.01 on every latent,\n\
-         Burrau and simplex row against 0.14 for `body_plane` and 0.19 for the shape sphere.\n\
+         where they are centred here, are TAME in `alpha` -- but the numbers this paragraph\n\
+         used to quote were measured on the PRE-FIX kernel and no longer describe the table\n\
+         above it. `body_plane` read 0.14 and the shape sphere 0.19; they now read 1.02 and\n\
+         1.26, and no row runs to the budget at all. Read the printed columns, not this text.\n\
          alpha near 1 means splitting halves the spread -- refinement pays, so the scheduler\n\
-         refines everywhere and runs to the budget. That is correct behaviour on a tame region,\n\
+         refines everywhere. On the fixed kernel it does NOT run to the budget: the spread fell\n\
+         with the integration failure that inflated it, so at a fixed `tau` the quads now read\n\
+         resolved and stop as `Keep`. That is correct behaviour on a tame region,\n\
          not a scheduler fault.\n\
          \n\
          But it means these charts are not exercising the criterion where it is hard. Tameness is\n\

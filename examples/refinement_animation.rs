@@ -1,4 +1,4 @@
-//! **The new refinement mechanism, animated — three views, every chart.**
+//! **The refinement mechanism, animated — three views, every chart.**
 //!
 //! `<case>_levels.png` in `results/animated/` truncates one descent **by depth**. That was the
 //! right picture for a criterion that was a *stop condition*: the tree grows level by level and
@@ -42,15 +42,23 @@
 //! one level shallower and the trees are *not* the committed ones. The measurements are
 //! `results/output/structure_metric.txt` and the `error(B)` curves; these say what a tree looks
 //! like while it is being built. **Do not read a leaf count off a frame.**
-
-use std::collections::HashSet;
+//!
+//! # How a frame is made, and what it used to get wrong
+//!
+//! A frame is `adaptive::render_leaves` on the leaf set of that round: the set and its ancestors
+//! are painted, coarsest first, and nothing outside it. The first version of this harness emptied
+//! the samples of every node outside the set to stop the render painting them, because the render
+//! keyed painting on "has samples" — and that same key was the coarse-ancestor fill, so no frame
+//! could show an uncomputed quad as its parent's texels. The wire's grading was passed a literal
+//! `1`, which clamps every level to full brightness. Both are fixed at the source; every
+//! animation here now carries a `.cfg.txt` sidecar and prints its duplicate-frame count.
 
 use prin_rs::camera::Camera;
 use prin_rs::ensemble::pixel::{EnsembleCfg, PixelOut};
 use prin_rs::grid::{self, Chart};
 use prin_rs::output::colour::{self, Scalar};
 use prin_rs::output::{adaptive, apng, wire};
-use prin_rs::quad::{Agg, Criterion, Decision, QuadTree};
+use prin_rs::quad::{Criterion, Decision, QuadTree};
 use prin_rs::render::Precision;
 use prin_rs::scheduler::{self, Mode, SchedCfg, SchedStats};
 
@@ -78,35 +86,6 @@ fn leaves_at_round(t: &QuadTree, cap: u32) -> Vec<usize> {
         .collect()
 }
 
-/// A tree whose leaf set is exactly `leaves`.
-///
-/// Built rather than filtered because `wire::Box2` carries only geometry and a level, not the
-/// node it came from — so a truncated wireframe has to come from a truncated *tree*. Which is
-/// also the honest way round: the wire must describe the same tree the colour frame does, and
-/// deriving both from one shadow makes that structural rather than a thing to remember.
-fn shadow_of(t: &QuadTree, leaves: &[usize]) -> QuadTree {
-    let mut shadow = t.clone();
-    let keep: HashSet<usize> = leaves.iter().cloned().collect();
-    for i in 0..shadow.nodes.len() {
-        if keep.contains(&i) {
-            shadow.nodes[i].children = None;
-        }
-    }
-    shadow
-}
-
-/// Samples for the revealed set only.
-///
-/// **The shadow tree alone does not truncate the render.** `adaptive::render` draws every node
-/// that has samples, coarsest first, so quads outside the set paint last and win -- which made
-/// every frame of every animation here the finished image, byte-identical.
-fn mask(pixels: &[Vec<PixelOut>], leaves: &[usize]) -> Vec<Vec<PixelOut>> {
-    let keep: HashSet<usize> = leaves.iter().cloned().collect();
-    (0..pixels.len())
-        .map(|i| if keep.contains(&i) { pixels[i].clone() } else { Vec::new() })
-        .collect()
-}
-
 fn render_leaves(
     t: &QuadTree,
     pixels: &[Vec<PixelOut>],
@@ -115,9 +94,7 @@ fn render_leaves(
     leaves: &[usize],
     rgb: &dyn Fn(&PixelOut) -> [u8; 3],
 ) -> Vec<u8> {
-    let shadow = shadow_of(t, leaves);
-    let masked = mask(pixels, leaves);
-    adaptive::render(&shadow, &masked, cam, res, adaptive::TexelMode::Adaptive, |p| rgb(p)).0
+    adaptive::render_leaves(t, pixels, cam, res, adaptive::TexelMode::Adaptive, |p| rgb(p), leaves).0
 }
 
 /// Two panels side by side with a one-pixel divider, so a frame is one image.
@@ -138,6 +115,7 @@ struct Run {
     st: SchedStats,
 }
 
+#[allow(clippy::too_many_arguments)]
 fn descend(
     chart: &Chart,
     cx: f64,
@@ -168,18 +146,52 @@ fn descend(
     Run { tree, st }
 }
 
+/// Write one animation with its sidecar, and print its duplicate-frame count.
+///
+/// `hold` is the number of deliberately repeated tail frames; anything past it is a still.
+#[allow(clippy::too_many_arguments)]
+fn write_anim(
+    path: &str,
+    w: usize,
+    h: usize,
+    frames: &[Vec<u8>],
+    delay: (u16, u16),
+    hold: usize,
+    ens: &EnsembleCfg,
+    extra: &str,
+) -> usize {
+    let dup = apng::adjacent_duplicates(frames);
+    let _ = apng::write(path, w, h, frames, delay.0, delay.1);
+    let _ = prin_rs::output::provenance_sidecar(
+        path,
+        ens,
+        &format!("{extra}\nframes={} adjacent_duplicates={dup} deliberate_hold={hold}\n", frames.len()),
+    );
+    if dup > hold {
+        println!("  WARNING {path}: {dup} identical adjacent frame pairs of {} ({hold} deliberate)",
+                 frames.len().saturating_sub(1));
+    }
+    dup
+}
+
 fn main() {
     let budget: usize = arg(1, 40000);
-    let tau: f64 = arg(2, 1e-4);
-    let alpha_hi: f64 = arg(3, 0.2);
+    // **The struct's default is the one default.** These used to be `1e-4` and `0.2` here and
+    // `1e-2` / `0.5` in `SchedCfg::default()` -- two defaults for one knob, and every committed
+    // tree was cut at the argument's value.
+    let tau: f64 = arg(2, SchedCfg::default().tau_display);
+    let alpha_hi: f64 = arg(3, SchedCfg::default().alpha_hi);
     // **512, not the stills' 1024, and the module header says why.** The descent cost is set by
     // the quad count, which the screen floor sets, which the viewport sets: halving it is a 4x
     // saving per descent and this example runs five of them per chart.
     let res: usize = arg(4, 512);
+    let root: String = std::env::args().nth(5).unwrap_or_else(|| "results".into());
 
     let ens = EnsembleCfg { refine_flagged: false, ..Default::default() };
-    let dir = "results/refinement";
+    let dir = format!("{root}/refinement");
+    let dir = dir.as_str();
     let _ = std::fs::create_dir_all(dir);
+    scheduler::assert_production_kernel(&ens, dir);
 
     // The measured-best criterion (§16) and the shipped one, so the pair is the real comparison
     // rather than two arbitrary settings.
@@ -191,6 +203,7 @@ fn main() {
     println!("refinement animations. budget {budget}, tau={tau:.0e}, alpha_hi={alpha_hi}, \
               N=8, E+1={}, t={}, f64, {res}^2",
              ens.n_extra + 1, ens.t_max);
+    println!("  config: {}", ens.provenance());
     println!("new = {}/median, old = {}/median, both Mode::Balanced. k_frac main {K_MAIN}, \
               sweep {K_STEPS:?}", NEW.name(), OLD.name());
     // **Print the raster, do not name it.** A hardcoded "512" in this line would survive a run
@@ -201,7 +214,7 @@ fn main() {
     println!("so the screen floor bites {} level(s) shallower and these are NOT the committed trees.",
              ((stills as f64 / res as f64).log2().max(0.0)).round() as i32);
     println!();
-    println!("{:>20} {:>7} {:>7} {:>6} {:>7} {:>8} {:>9} {:>9}",
+    println!("{:>20} {:>7} {:>7} {:>6} {:>7} {:>8} {:>9} {:>9}  stop",
              "case", "rounds", "leaves", "depth", "veto%", "old lvs", "new lvs", "wall s");
 
     for (name, chart, cx, cy, half) in grid::gallery_cases() {
@@ -211,18 +224,27 @@ fn main() {
         // The main run: the new mechanism at the main k_frac. Every frame of animation 1 comes
         // out of this one descent.
         let new = descend(&chart, cx, cy, half, res, budget, tau, alpha_hi, NEW, K_MAIN, &ens);
+        let lv_final: Vec<usize> = new.tree.leaves().collect();
+        // The finished tree's depth grades the wire in EVERY frame. Passing the frame's own cap
+        // regrades every frame, and passing `1` deletes the grading.
+        let depth = lv_final.iter().map(|&i| new.tree.nodes[i].level).max().unwrap_or(0);
 
         // One ramp and one site set per chart, from the pixels this tree produced. Per-frame
         // normalisation would make a quad's colour depend on which round it is being drawn in,
         // and the animation would show the ramp moving rather than the tree.
-        let all_px: Vec<PixelOut> = new
-            .tree
-            .leaves()
-            .flat_map(|i| new.st.pixels.get(i).cloned().unwrap_or_default())
+        let all_px: Vec<PixelOut> = lv_final
+            .iter()
+            .flat_map(|&i| new.st.pixels.get(i).cloned().unwrap_or_default())
             .collect();
         let (lo, hi) = colour::range(&all_px, Scalar::ShapeSpread);
         let sites = colour::landmarks(&grid::decode_state(&chart, 0, cx, cy).m);
         let rgb = move |p: &PixelOut| colour::rgb(p, Scalar::ShapeSpread, &sites, lo, hi);
+        let side = format!(
+            "case={name} chart={} scalar=ShapeSpread window=({lo:.4e},{hi:.4e}) res={res} \
+             viewport={res} budget={budget} tau_display={tau:e} alpha_hi={alpha_hi} \
+             criterion={} k_frac={K_MAIN} stop={}",
+            chart.name(), NEW.name(), new.tree.stop_breakdown()
+        );
 
         // ---- 1. the frontier being spent, one frame per round ---------------------------
         let rounds = new.st.iterations;
@@ -230,19 +252,16 @@ fn main() {
         let mut budget_wire = Vec::new();
         for k in 0..=rounds {
             let lv = leaves_at_round(&new.tree, k);
-            let shadow = shadow_of(&new.tree, &lv);
-            let masked = mask(&new.st.pixels, &lv);
-            let f = adaptive::render(
-                &shadow, &masked, &cam, res, adaptive::TexelMode::Adaptive, |p| rgb(p),
-            )
-            .0;
+            let f = render_leaves(&new.tree, &new.st.pixels, &cam, res, &lv, &rgb);
             let mut wf = f.clone();
-            wire::draw(&mut wf, res, res, &wire::boxes_from_leaves(&new.tree, &cam, res, &lv), 1);
+            wire::draw(&mut wf, res, res, &wire::boxes_from_leaves(&new.tree, &cam, res, &lv), depth);
             budget_frames.push(f);
             budget_wire.push(wf);
         }
-        let _ = apng::write(&format!("{dir}/{name}_budget.png"), res, res, &budget_frames, 1, 2);
-        let _ = apng::write(&format!("{dir}/{name}_budget_wire.png"), res, res, &budget_wire, 1, 2);
+        let d1 = write_anim(&format!("{dir}/{name}_budget.png"), res, res, &budget_frames, (1, 2), 0,
+                            &ens, &format!("animation=budget {side}"));
+        let _ = write_anim(&format!("{dir}/{name}_budget_wire.png"), res, res, &budget_wire, (1, 2), 0,
+                           &ens, &format!("animation=budget_wire {side}"));
 
         // ---- 2. the shipped criterion against the measured-best one ----------------------
         let old = descend(&chart, cx, cy, half, res, budget, tau, alpha_hi, OLD, K_MAIN, &ens);
@@ -255,8 +274,13 @@ fn main() {
             let fb = render_leaves(&new.tree, &new.st.pixels, &cam, res, &lb, &rgb);
             pair_frames.push(side_by_side(&fa, &fb, res));
         }
-        let _ = apng::write(
-            &format!("{dir}/{name}_oldnew.png"), res * 2 + 1, res, &pair_frames, 1, 2,
+        // Whichever side finishes first holds its last frame while the other catches up; those
+        // duplicates are the hold, and the count is printed against it.
+        let hold2 = (rounds2 - rounds.min(old.st.iterations)) as usize;
+        let _ = write_anim(
+            &format!("{dir}/{name}_oldnew.png"), res * 2 + 1, res, &pair_frames, (1, 2), hold2,
+            &ens, &format!("animation=oldnew left={}/median right={}/median {side} old_stop={}",
+                           OLD.name(), NEW.name(), old.tree.stop_breakdown()),
         );
 
         // ---- 3. the demotion mechanism: k_frac 0.25 -> 1.0 -------------------------------
@@ -276,12 +300,11 @@ fn main() {
             k_leaves.push(lv.len());
             k_frames.push(render_leaves(&run.tree, &run.st.pixels, &cam, res, &lv, &rgb));
         }
-        let _ = apng::write(&format!("{dir}/{name}_kfrac.png"), res, res, &k_frames, 1, 1);
+        let _ = write_anim(&format!("{dir}/{name}_kfrac.png"), res, res, &k_frames, (1, 1), 0, &ens,
+                           &format!("animation=kfrac k_steps={K_STEPS:?} leaves={k_leaves:?} {side}"));
 
         // ---- the row ---------------------------------------------------------------------
-        let lv: Vec<usize> = new.tree.leaves().collect();
-        let depth = lv.iter().map(|&i| new.tree.nodes[i].level).max().unwrap_or(0);
-        let veto = lv
+        let veto = lv_final
             .iter()
             .filter(|&&i| {
                 matches!(
@@ -290,16 +313,16 @@ fn main() {
                 )
             })
             .count() as f64
-            / lv.len().max(1) as f64;
-        println!("{name:>20} {rounds:>7} {:>7} {depth:>6} {:>6.0}% {:>8} {:>9} {:>9.1}",
-                 lv.len(), 100.0 * veto, old.tree.leaves().count(), lv.len(),
-                 t0.elapsed().as_secs_f64());
-        println!("{:>20}   k_frac {K_STEPS:?} -> leaves {k_leaves:?}", "");
-        let _ = Agg::Median;
+            / lv_final.len().max(1) as f64;
+        println!("{name:>20} {rounds:>7} {:>7} {depth:>6} {:>6.0}% {:>8} {:>9} {:>9.1}  {}",
+                 lv_final.len(), 100.0 * veto, old.tree.leaves().count(), lv_final.len(),
+                 t0.elapsed().as_secs_f64(), new.tree.stop_breakdown());
+        println!("{:>20}   k_frac {K_STEPS:?} -> leaves {k_leaves:?}; budget frames {} with {d1} \
+                  duplicate pairs", "", budget_frames.len());
     }
 
     println!();
-    println!("Three animations per chart, in {dir}/:");
+    println!("Three animations per chart, in {dir}/, each with a .cfg.txt sidecar:");
     println!("  _budget.png / _budget_wire.png  one frame per descent round -- the frontier being");
     println!("                                  spent. What the depth ladder cannot show.");
     println!("  _oldnew.png                     two panels, {}/median | {}/median.",

@@ -2084,7 +2084,12 @@ the quantiles that feed `signal()`. `quantile` returns `NaN` on empty and `decid
 reports *refinement does not pay*. `Decision::Collapsed` exists for undetermined quads, but
 `between_collapsed()` tests `n_distinct_ic < n_footprints`, a **decode** collapse; a quad with
 distinct ICs whose every footprint diverged never reaches it. **Two ways to be undetermined and one
-`Decision`.** Corpus-invalidating, so it wants its own measurement first.
+`Decision`.** Corpus-invalidating, so it wants its own measurement first. **[CLOSED by
+`Decision::Undetermined` and `scheduler::footprint_undetermined` -- and the measurement said the
+stated mechanism was the SMALLER half: at the shipped step control the `NaN`-to-`Keep` path is
+essentially never taken, because a truncated state is a perfectly good number. See that block
+below; a predicate written on the mechanism as stated here would have been a guard that cannot
+fire.]**
 
 **AND THE RULE EXISTED WHILE THE INSTRUMENTATION DID NOT ENFORCE IT.** *Read `steps`, not `secs`*
 is on this record, and the landing's cost was still quoted as +13% wall clock -- because the
@@ -2366,7 +2371,10 @@ by WHICH COORDINATES it varies* was measured through `alpha` interdecile and lea
 `preset_shape` is chaotic at **every** probe and `preset_prho` regular at every probe, measured on
 the trajectories. `config_basin` has **no beat at all** (lag exactly 0 on a live signal) because
 its window is **70x tighter**, so the pair period does not vary across it -- predicting no ribbon
-banding there, untested. So `spread_shape` is a **phase beat** in the regular patches and
+banding there, untested. **[Tested 2026-09-05 and REFUTED: it bands at 3.9x the reference, and the
+"70x" ignores `mag`, which is 4.0 there against 1.0 -- really 3.15x against the window measured.
+See the `config_basin` block at the end of this file.]** So `spread_shape` is a **phase beat** in
+the regular patches and
 **divergence** everywhere else; the criterion cannot tell them apart and two trajectories plus a
 correlation can.
 
@@ -2503,3 +2511,719 @@ a gap in the same PR's own guard -- `footprint_undetermined` caught all 11, but 
 reaches the same state with every copy usable. The predicate now tests `spread_shape` directly. The
 `f64::max` swallowing is a `pixel.rs` defect and is **not repaired**, because propagating the `NaN`
 changes `ensemble_spread` itself and moves every tree and every render.
+
+**THE REFINEMENT CRITERION WAS INVERTED, AND THE METRIC IT WAS SCORED UNDER COULD NOT SEE IT.**
+`decide` split a quad only where `alpha >= alpha_hi` — where halving the cell had *already*
+halved the spread, i.e. smooth, converging regions — and floored or kept exactly the quads whose
+spread does not fall: discontinuities and fractal mixing at every scale coarser than their
+filaments. `preset_shape_h1` under it refined the smooth regular island and floored the fractal
+core at level 2, Spearman(depth, terminated) −0.68. Every `error(B)` curve that graded it scored
+OKLab distance under the shipping colouring, whose lightness is auto-ranged to each region's own
+p1–p99, so a smooth region's `1e-8` residual counted as error at every depth and breadth-first
+came out near-optimal **by construction of the metric**. Scored on the payload — the nominal
+`shape_vec` and event class against a fixed `eps = 0.01` in `spread_shape`'s own units — the
+same footprints give `far` resolved at the root, `near-field` zero unresolved at 137 quads
+against uniform's 5449, `deep interior` at 329 against 5377. `Policy::Tolerance` (split iff any
+footprint is unresolved; no exponent) reaches zero on both within 1.12× of the exact optimum;
+`Policy::Alpha` stops at the bootstrap on both. Kept as the named legacy, pinned bitwise.
+
+**`deep interior` IS NOT "STRUCTURE EVERYWHERE".** `sea_fraction(0.01) = 0.0025`: a quarter of a
+percent of its pixels are unresolvable at the deepest level. The standing reading was the OKLab
+metric's, which reads 0.379 at the root there because it stretches the spread field's texture to
+full contrast. `preset_shape_h1` is the sea — 34% at `eps = 0.01`, 15% at 0.05 — and there the
+tolerance tree costs 1.21× the optimum and 0.67× uniform; the lever is `eps`, not the policy.
+
+**A RESOLVED OR STATIONARY QUAD IS DECIDED AHEAD OF THE CAPS.** The camera floor and the depth
+cap are stops for a quad that *wanted* to split. Reporting a resolved quad at the cap as
+`MaxLevel` attributes the stop to the cap when the criterion had decided, and the stop-reason
+breakdown exists to say which fired. Measured on the analytic step: 128 `max_level` leaves
+became `keep:84 max_level:64`, the two straddling columns and nothing else.
+
+**THE STATIONARITY ARMS AT `N = 8`: A MEAN, A CLASS-CONDITIONAL COHERENCE, AND A NAMED BLIND SPOT.**
+The quadrant mixture arm is a mean over four quadrants — the max of four 16-footprint multinomial
+deviations reaches 0.33 by sampling alone on three classes, and a pure synthetic sea split on its
+own noise. The class coherence is class-conditional, the max over classes present: a global
+agreement-above-chance statistic moves a few percent for one coherent column of eight, while that
+column's own class clusters at 0.6 against a base rate of an eighth. A filament in a quad's
+**edge column** has the same mixture as its parent (an eighth of both), so the two-scale arm is
+blind to it and only class-conditional coherence catches it, and only when the classes differ.
+And on the real sea chart the stop fires on **34 of 2064** floor leaves, and where it fires it
+is wrong: with it off the tolerance tree reaches 0.02% unresolved at 3585 quads, 1.03× the exact
+optimum, where with it on 3397 quads leave 2.7% — 0.94% of them pixels a finer grid resolves.
+The mixing region is a coherent sponge at the footprint scale, not white noise, and coherence
+reads it as structure, which it is. **`stationary` defaults to off, by that measurement**, and
+the arms stay computed and dumped for the sweep. A stop calibrated on white noise is a stop for
+white noise.
+
+**THE LIVE TREE GAINS ONE LEVEL PER BOUNDARY, AND CATCH-UP IS 84–91% OF THE WORK.** Children
+requested at a boundary can first be decided at the next one, because they have to catch up to
+the playhead; at the horizon the tree continues in post-horizon rounds or stops with leaves
+pending (measured: eight, before the rounds existed). `near-field` splits nothing until
+`t = 9.75`, reaches 37 quads at the horizon and the same 153-quad tree as the static descent
+seventeen rounds later, with 84% of its substeps as catch-up; `deep interior` grows from the
+first boundary, ends 15% larger than the static tree at the same zero error, catch-up 91%. The
+`k_frac` quarter-per-round throttle is what makes the post-horizon convergence slow, and it has
+no purpose once the playhead has stopped: a knob to add.
+
+**A QUAD OUTRANKED BY THE FRONTIER IS `Deferred`, NEVER `Keep`, AND THE TWO DEFAULTS FOR `tau`
+WERE ONE KNOB.** Under `Policy::Alpha` "Keep" meant "between thresholds"; under a tolerance it
+means "resolved", and a dropped unresolved quad wearing that label was the conflation the
+stop-reason column exists to prevent. `SchedCfg::default().tau_display` was `1e-2` while
+`chart_gallery`, `criterion_metric` and `refinement_animation` overrode it to `1e-4` through their
+argument defaults, so every committed tree was cut at the argument's value; the struct's default
+is now the one default.
+
+**THE ADAPTIVE RENDER WAS A VERTICAL MIRROR OF THE UNIFORM PANEL BESIDE IT, AND THE TRUNCATION
+LEVER WAS THE FILL'S KEY.** `adaptive::render`, the wire and `tree::overlay` flipped `y`; every
+uniform panel and `metric::Cache::render` wrote `Slice` order. Slice order (row 0 = minimum `y`)
+is the one convention now, through `Camera::to_px`, pinned by a bitwise test against a `Slice`
+buffer with the mirrored image asserted NOT to match. Tiles are clipped to the quad box with
+every edge computed once (`adaptive::coverage` reads 0 gaps, 0 overlaps); a frame's leaf set is
+an argument (`render_leaves`), so a truncated frame keeps the coarse-ancestor fill that emptying a
+node's samples used to disable. And the 26 `results/charts/*_uniform*.png` are still 25 August:
+the uniform block was skipped when ranked, on the argument that a scheduler change cannot move it
+— true, and the physics moved.
+
+**THE AREA FLOOR IS THE NO-GAIN TEST THE ALPHA POLICY WAS TRYING TO BE, ON THE QUANTITY THE
+TOLERANCE POLICY OPTIMISES.** `alpha_area = log2(unresolved_area(coarse)/unresolved_area(children))`
+per level, with the edge footprints weighed by the share of their cell inside the box so the
+cells tile. A line reads 1, a sea 0, a boundary of box dimension `d` reads `2 - d`, so
+`alpha_lo` is a dimension threshold: 0.2 refines where the unresolved set is thinner than
+`d = 1.8` and floors where it is fatter. It is judged on the children once computed, never
+predicted, and floors only when the **spread** exponent is flat too -- a smooth field under a
+tolerance below its cell spread gains no area at any level, being unresolved everywhere until
+the level at which it resolves everywhere at once, and its spread halving per level is the gain.
+`alpha_lo = 0` is the opt-in that allows full depth on a sea; it disables the noise stop with it.
+
+**A PER-PARENT EXPONENT OF A THIN STRUCTURE IS OFF BY A FACTOR OF TWO AT A QUAD BOUNDARY, IN
+BOTH DIRECTIONS, AND ONLY THE SUM OVER THE TWO PARENTS IS RIGHT.** A footprint cell on a quad
+boundary is shared by both quads at half weight; the finer grid below locates the same
+structure on one side at full weight. So a shore in a level-1 edge cell read no gain on the
+side it was on and infinite gain on the other, and its level-2 children floored. The exponent
+is judged over **two levels**, from the grandparent's quadrant -- whose cells split cleanly at
+the midlines, so it skips the parent's own straddle -- to the children; and where more than
+half of a sibling set's structure sits on the parent's outer edges it **declines**, because
+within a quarter-cell of the boundary the fine grid catches the structure on both sides and the
+coarse grid assigns it wholly to one. Measured on the synthetic step: min 1.00, max 1.05 over
+15 splits under the final form, against 0 at exactly one level under the one-level form.
+
+**NOISE IS TOLD FROM STRUCTURE BY NEIGHBOUR AGREEMENT PER FOOTPRINT, NOT BY A COHERENCE
+STATISTIC WITH A BASE RATE IN IT.** An unresolved footprint is structure iff at least two of its
+eight neighbours share its class and a nominal shape within `STRUCTURE_AGREE = 0.1` (chord/2,
+about 11 degrees). A sea footprint's neighbours are independent draws on the sphere, so two
+agreeing by chance is a few in ten thousand; a filament's neighbours along it agree exactly.
+Class-conditional coherence failed both ways first: a one-column filament between sea and
+resolved basin read **0.27 against a bar of 0.3** once its resolved neighbours were excluded,
+and a sea class confined to the unresolved third of a mixed quad read **0.3-0.5** against the
+whole quad's base rate and was counted as structure. One-of-four agreement let a few percent
+of a sea through, and those diluted the edge share to exactly one half. A sea is
+"uninteresting" and a filament through it "interesting" only under this arm
+(`SchedCfg::agreement`, default on): by unresolved area alone a filament with sea on both sides
+is **invisible** -- no split buys less area anywhere -- while a **shore** is a line the area
+floor follows by itself. `testing::filament_through_sea` and `filament_in_sea` are the two
+fields, and the first cut of the test had them the wrong way round: 32 cap leaves said so.
+
+**MERGING IS THE SPLIT RULE READ BACKWARDS AT A LATER BOUNDARY, AND A NO-GAIN MEMORY MUST
+EXPIRE.** A parent whose four children are leaves that did not split this boundary merges back
+when it has become resolved (`Keep`) or its split shows no gain (`Floor`); the children are
+`Decision::Merged` (code 14), not leaves, and `QuadTree::resident` is what a live design holds
+against `quads_computed`. On the pulse the band at its widest is uniformly hot on both levels
+-- a correct no-gain merge, 48 children at one boundary -- and later collapses to a step
+column those same quads must re-split to follow; with a permanent memory the live tree ended on
+the bootstrap with the step floored. The memory holds while the quad's own unresolved weight
+stays within a factor of two of where it was judged. Measured: resident 37 -> 85 -> 37 -> 69,
+the final tree bitwise the static tree at the horizon, 181 quads computed for 69 resident.
+`merge = false` is the running-union control.
+
+**THE LIVE PARENT WAS STALE.** The live descent projected a parent at the boundary to compute
+its children's `alpha` and did not store it, so the first exponents compared a parent at an
+earlier boundary with children at this one and merged a widening band as no gain. Parents and
+grandparents are projected and stored every boundary they are read.
+
+**THE AREA FLOOR IS RIGHT ON A SEA AND WRONG ON A FAT FRACTAL, AND NO THRESHOLD SEPARATES THEM.**
+Six charts, static, against the clean full-depth tree: the floor at `alpha_lo = 0.2` saves 18-44%
+of the quads and floors resolvable structure on every one, from 0.02% of the frame to **11% on
+`config_stability`**, where the floored tree is bigger than a uniform tree at its own error (1.15x).
+The ladder `0.05-0.3` is flat: the seas give the same trade at every rung and `config_stability`
+floors 208-256 boxes at every rung. Those boxes have an exponent under 0.05 -- structured fill
+falling under 7% per level, box dimension **~1.94** -- and 16% of their area resolves at level 6.
+`alpha_area = 2 - d` calls that noise; the brief calls it the structure the mechanism is for. The
+saturation account (the four-by-four coarse end saturates, so the exponent reads the children's
+fill and 0.2 floors any box over three quarters unresolved) is correct arithmetic and **was refuted
+as the cause**: the same boxes floor at 0.05. **And the floor off is the forbidden degeneration**
+-- `preset_shape_h1` 3353 of 3585 quads, `config_stability` 5045 of 5089 -- so it stays on, the 11%
+is the recorded price, and `SchedCfg::dim_floor` / `alpha_lo = 0` are the opt-ins.
+
+**REAL SEAS ARE COHERENT; THE NOISE STOP FLOORS 2-37 QUADS WHERE THE DIMENSION FLOOR FLOORS
+262-334.** The agreement arm was calibrated on `testing::sea`, white at the footprint scale, and it
+decided every synthetic test. On the six real charts footprints whose copies diverge still agree
+with their neighbours on class and nominal shape, so the noise stop is nearly inert -- the
+stationarity arm's coherent-sponge finding, at a second arm. Where the arm works it works through
+the exponent's weights, not the stop: `preset_shape` 0.51x -> **0.44x** uniform with the resolvable
+loss 3% -> 1%, because dropping the sea from both ends lets the exponent read the structure's own
+scaling. On `near-field` and `deep interior` every floor was the noise stop firing on structure
+(with it off, neither floors at all), and on `preset_prho` it costs 2% of the resolvable pixels.
+Right on one chart, wrong on three, along the curve on two.
+
+**THE LIVE MARCH TRAILS THE STATIC TREE THROUGH THE NO-GAIN MERGES, AND WITH THEM OFF IT IS THE
+STATIC TREE.** Dimension floor off: the march reproduces the static tree quad for quad on all three
+charts, zero merges, resident equal to computed, catch-up 91-96%. Dimension floor on: the sea
+chart's march computes more quads than its static tree (2105 against 2005), holds a fifth fewer
+resident (1621) and displays worse (0.2351 against 0.1894) -- a no-gain merge judged on early
+footprints survives the structure's appearance. The structured-weight expiry (`61ff00c`) is
+**inert** on `near-field` and `config_stability`, rows identical to the old pin, and moves the sea
+chart 0.2686 -> 0.2351. Unbuilt, both live-compatible: a time-to-live on the memory, or an expiry
+keyed on the exponent's own inputs. **[The TTL is now BUILT and MEASURED, and it loses at every
+rung -- see the `no_gain_ttl` block below. The exponent-keyed expiry is still unbuilt.]**
+
+**STATIONARITY IS WORSE ON EVERY CHART WHERE IT FIRES.** Six charts: never on `near-field` or
+`deep interior`; `preset_prho` two coarse stops, full-depth error 0.3% -> 6.4% and 3x uniform on
+the resolvable arm; `config_stability` 51 stops, error doubled; `preset_shape_h1` ten stops,
+0.01% -> 1.2%. The verdict recorded on one chart holds on six.
+
+**A BUILD THAT PRINTS NOTHING BUILT NOTHING.** `cargo` dropped off the shell's PATH mid-session.
+Two builds silently did not run; a bitwise check of a pin against `target/` read "identical" because
+both were stale; a batch ran the old binary under a new name for two minutes. Caught by a filtered
+build log that was empty where a `Finished` line belonged. Print the build's `Finished` line
+unfiltered and check the binary for a string the change adds, every time a pin is cut.
+
+**EXACT SATURATION DOES NOT SEPARATE A SEA FROM A SPONGE, AND THAT IS WHY NO FLOOR CAN.**
+`alpha_lo = 0.001` floors only boxes whose children resolve under 0.14% of their structured area --
+saturated to the sampling. On `config_stability` **206 boxes** floor there (229 at 0.2) and 2.6% of
+the frame's resolvable pixels sit inside them; on `preset_shape_h1` 207 (334 at 0.2) with 3.5%. A
+sponge that thins only below the coarse sampling scale is exactly saturated seen from above, and no
+statistic of the levels computed can see the levels not computed: the floor is a bet on the depth it
+has declined to buy, by construction, and the ladder's flatness from 0.001 to 0.1 is that fact as a
+number. What the fine rung changes is the trade, not the mechanism: `config_stability` 1.15x ->
+**1.00x** uniform with the cost 11% -> 2.6%, while the sea chart keeps a 39% saving against 44%.
+
+**THE DEFAULT FLOOR IS "NO GAIN" AT A NOISE MARGIN OF 0.005, NOT A DIMENSION THRESHOLD OF 0.2.**
+`alpha_lo` is unchanged in meaning -- `alpha_area = 2 - d`, so 0.2 floors sets fatter than
+`d = 1.8` -- and its default moves to **0.005**: a split is floored only where its children resolved
+nothing to within a noise margin. Six charts, static: the sea chart keeps 39% of its saving against
+44% (cost 3.5% against 4.3%); `preset_shape` 17% against 26% (0.7% against 1.0%); `preset_prho` 8%
+against 28% (0.9% against 2.3%); `config_stability` 7% against 33%, and from **1.15x uniform to
+1.00x** (cost 2.6% against 12.4%); `near-field` and `deep interior` identical, their floors being the
+noise stop's. The marches at 0.005 merge less (sea chart 300 against 484) and trail their static
+trees less (0.1936 against 0.2351). No chart is above uniform at 0.005; one was at 0.2. The legacy
+`Policy::Alpha` pins carry `alpha_lo: 0.2` explicitly and do not move.
+
+**A CAPPED LEAF WAS TERMINAL IN THE LIVE FRONTIER, SO A RESOLVED PARENT COULD NEVER MERGE IT --
+AND THE DIMENSION RUNG HID IT.** Under `alpha_lo = 0.005` the pulse's live tree ended at **149
+quads against the static 69**, finer, not coarser: 24 parents read zero unresolved footprints at the
+horizon and still held 96 `MaxLevel` children. A leaf stopped by a cap left the frontier for good,
+so it was never re-decided and kept its cap label after its region resolved, and the merge pass
+took only `Keep`/`Floor`/`Stationary`/`Deferred` children as settled. At 0.2 the same parents had
+merged for no gain while the band was wide, which is why T16 passed for a year of session and
+failed the hour the margin tightened. The caps (`MaxLevel`, `ScreenFloor`, `MaxRelDepth`) are now
+re-tested every boundary -- a resolved quad is decided ahead of the caps, so they read `Keep` once
+the region resolves -- and any leaf that did not split this round is settled. The pulse reads
+69 == 69 with 128 merged. **Merging is the split rule read backwards** now includes the caps. On the
+three real charts at `t = 13` the route gives back little -- 16 to 28 more children merged, error
+within half a point -- because their screen-floored regions have not resolved by the horizon; a
+correctness property measured where it fires, nearly inert where it does not, both stated.
+
+**A LIVE VIEW INHERITED A VERDICT ON THE WHOLE MARCH, AND IT PAINTED THE FUTURE INTO THE PAST.**
+`PixelOut::n_nonfinite` counts the copies the driver flagged over the march to `t_max`;
+`project_at` cloned it, so a footprint whose copy diverges at `t = 12` rendered undetermined in the
+frame at `t = 0.8`. Measured on `preset_shape_h1` at 64^2: **19 footprints magenta at every one of
+16 boundaries**, with **zero** non-finite at any boundary in the live series. The count *fell*
+across the animation, which is why it read as scattered noise -- a fact about the texel size as the
+tree refines, the standing raster lesson at a fifth site. **The series could not have shown it
+either**: a copy that blows up stops recording boundaries and the ragged rule carries its last
+*finite* shape forward -- right for a copy that terminated, wrong for one that diverged, so
+divergence is invisible in the series and has to be counted where `outs` is still in scope.
+`PixelOut::live_nonfinite` records the first boundary at which each copy became unusable, monotone
+by construction; `preset_shape_h1` now reads **0 -> 19** and `config_stability` 0 -> 8 with nothing
+before `t = 11.4`. **`footprint_undetermined` reads the same field**, so the leak reached the
+decision and not only the render, and the fallback when the series is absent is the run's count and
+not zero -- zero would read as *nothing is wrong here*.
+
+**AND THE MAGENTA WAS NOT A TRIPLE COLLISION: IT IS `max_steps`.** The census against the healthy
+population: **`budget_exhausted` 100% of flagged footprints against 0% of healthy**, substeps 6-8x
+the median, `n_cap_hits` and `ab_floored` zero on both. `heggie/driver.rs`'s budget branch sets
+`finite = false`, which is what `n_nonfinite` counts. A genuine triple collision has a different
+signature -- a **non-finite `shape_vec`**, which the `preset_shape` census recorded and which is
+**0%** here. The population *is* enriched in near-triples (4 of 19 carry nominal `detail = 3`),
+because a near-triple is what the predictive step limit spends unbounded steps on: triples are the
+reason the budget runs out, not a second route to the flag. **What changed since the regularisation
+work is the reporting, not the physics** -- the no-discard fix made a truncated run report as
+undetermined instead of contributing a finite, healthy-looking value (`deep interior` under Heggie,
+0 -> 199 against a budget count of 199). And **`refine_flagged` would not have caught them**:
+`error_ratio` reads 0.99998 and 1.0001 on the flagged set, its *converged* value, because every copy
+stopped at the same early point and so agrees perfectly -- the standing "a starved footprint reads
+exactly 1.0000" finding, at a third site.
+
+**AND THE TREES SURVIVED THE LEAK UNCHANGED -- WITH THE THREE-LEVEL GUARD THAT SAYS THE ARM WAS
+LIVE.** The three marches re-run under the fix are **identical to five digits in every column** --
+computed, resident, merged, error. A null, and this project's standing failure is reading one off a
+dead arm, so it is measured at three levels. The **leak window**, footprint-boundaries where the
+run-wide verdict fired and the live count had not: **174 / 112 / 118** on `preset_shape_h1`,
+`config_stability`, `preset_shape` -- the flag was live. Of those, the ones **not already
+unresolved** by spread or event, the only ones that could move a decision: **37 (21.3%) / 96
+(85.7%) / 0**. But the decision is per **quad**, and under a tolerance a quad splits if *any*
+footprint is unresolved, so a falsely-unresolved footprint tips only a quad whose every other
+footprint is resolved: **3 of 1024 / 2 of 928 / 0 of 640** quad-boundaries. Real, decision-capable,
+two to three parts in a thousand, and it lands on nothing at the marches' settings. **A footprint
+count is not a quad count**, and the arm that answers "could this have moved anything" is the one at
+the grain the decision is made on.
+
+**A DEBUG FLAG IS NOT A PRESENTATION COLOUR, AND THE INFORMATION MOVES RATHER THAN VANISHING.**
+`colour::Veto::Quiet` paints a vetoed footprint in the nominal copy's own hue at the floor of the
+lightness ramp; `colour::rgb` is `Veto::Debug` and unchanged, so every diagnostic keeps `DEBUG_NAN`.
+It is a **colouring and not a computation** -- the probe tree is identical quad for quad, 833 and
+439. The cost is precisely what the flag exists to prevent: an undetermined footprint becomes
+indistinguishable from a resolved dark one. So the harness prints `vetoed N/M` per slice and the
+sidecar carries `veto=quiet vetoed_footprints=N of=M`, and zero magenta pixels survive in the 62
+files of `results/live`.
+
+**A METRIC A BRIEF ASKS FOR CAN FAIL TO BE A QUANTITY, AND ONLY A CONTROL ARM SAYS SO.** §4.4 asks
+to *"report what fraction of splits are balance-forced rather than criterion-driven"*. Measured on
+six charts at `k_frac` 0.25 and 1.0, **every tree is identical and only the attribution moves --
+by 21-93%**: `config_stability` reads 0.113 or 0.007, a factor of fifteen, for the same tree. At
+`k_frac = 1.0` the criterion splits its whole want-list each round and reaches those quads first;
+throttled, the balance pass gets there first and takes the credit. The ordering does not survive
+either -- **spearman(fr at 0.25, fr at 1.0) = +0.771**, the same statistic on the same six trees
+disagreeing with itself, so it cannot even rank charts. `quad x` (1.03-1.76) is identical under
+both arms and is what to quote. *A ranking is invariant to a monotone rescaling* -- this is not one;
+the contamination varies threefold between charts.
+
+**AND THE CONTROL'S OWN LIMIT MUST BE STATED OR IT OVERCLAIMS.** The trees are identical *because
+the budget was non-binding* (20000 against a largest tree of 4869): `k_frac` truncates per round,
+deferred quads are re-decided next round, so everything the criterion wants eventually happens and
+only the order changes. The record's `k_frac` effects (near-field depth variance 1.015 -> 2.053)
+were measured at a **binding** budget. So throttle-invariance of `quad x` holds only where the
+budget does not bind -- and under a **frame** budget, which is the whole point of the slippy map,
+it binds. Unmeasured. **[Now measured, and `quad x` is throttle-DEPENDENT there -- 1.3520 against
+1.4480 on `near-field`, 1.0226 against 1.0000 on a fully-bound `deep interior`. See the block
+below.]**
+
+**THE GEOMETRY TAX IS COST-NEUTRAL IN TRAJECTORIES; THE CRITERION'S IS NOT.** `steps/quad` runs
+**0.94-1.03** for balance-forced splits against the cost ledger's **0.94-2.10** for the criterion.
+Structural, not coincidence: the criterion selects on physics, which correlates with trajectory
+cost, and balance selects on geometry, which does not. So the geometry tax may be quoted in quads;
+the criterion's may not.
+
+**2:1 BALANCE IS A RENDERING REQUIREMENT BEING PAID FOR IN PHYSICS, AND THIS RENDERER CANNOT SHOW
+IT.** Every forced split integrates `N^2 (E+1) = 512` trajectories, 1.03-1.76x the tree. But texels
+are nearest-neighbour clipped to the quad box and **quadtree leaves tile the root exactly at any
+depth difference** (`adaptive::coverage`: zero gaps, zero overlaps), so an unbalanced tree produces
+a resolution *step*, not a hole -- and §4.5 already accepts resolution steps as honest (*"big texels
+during motion are a deliberate choice"*). It becomes load-bearing under interpolation across leaves
+or when quads are drawn as GPU geometry, where the remedy is render-side stitching: geometry, no
+integration. `balance` stays a flag; the default is a judgement about which renderer ships.
+
+**AND THE `Policy::Alpha` FINDING THAT THE PASS IS INERT DOES NOT SURVIVE THE POLICY CHANGE.**
+`tests/slippy.rs` records near-field at gap 1 in all twenty-four swept cells and has to drop to
+`n = 4` on `deep interior` to violate 2:1 at all. Under `Policy::Tolerance` **all six charts violate
+it**, at gap 2 or 3 -- a fixture measured once, measured again when the physics moved, for the fifth
+time on this project.
+
+**A SIGN THAT FLIPS IS NOT NOISE AROUND ZERO -- THE CRITERION RESPONDS TO A FORCED SPLIT IN BOTH
+DIRECTIONS.** A balance-forced split changes what its descendants and its parent subsequently
+decide, so the criterion's own split count moves: **+2, +14, -44, -56, -103, +65** across six
+charts. So `forced` is **not additive** and does not predict tree growth, and `quad x` -- which is
+growth -- is confounded by an effect of unknown sign. That is why depth contrast reads **+0.943**
+against the split share and only **+0.771** against growth (n = 6, 5% bar 0.886): the share isolates
+the mechanism, growth mixes it with the response. **Suggestive, not established** -- the better
+correlation is on the throttle-contaminated column, and three mechanisms were proposed before this
+one held anywhere (tree size, refuted by `preset_shape_h1` at 2169 quads / 1.45x against
+`config_stability` at 4729 / 1.03x).
+
+**`SchedStats::balance_forced` COUNTS NODES CREATED, NOT QUADS SPLIT.** `balance_pass` returns
+`made`, four children per split, so comparing it against a count of split parents is a
+factor-of-four error in the direction that flatters the finding. `1 + 4*(forced + splits) == nodes`
+catches it. And the first cut of that assert was `debug_assert!` in a harness that only ever runs
+in release -- **a guard that cannot fire, written in the same edit that added the guard**.
+
+**THE `.prnq` DECISION DECODERS HAND-MAINTAINED A TABLE AND WENT STALE, ONE OF THEM SILENTLY.**
+Both stopped at code 9, so `balance`, `undetermined`, `stationary`, `deferred` and `merged` read as
+`"?"` in `gallery_table` -- and `threshold_diagnosis`'s `[usize; 11]` histogram **dropped them
+entirely**, summing to less than the leaf count with nothing saying so. `Decision::ALL` and
+`from_code` are the table now; `a_new_decision_variant_reaches_the_table` fires because a new
+variant takes the next code and `from_code(ALL.len())` must be `None`. **The fix for that class is
+never the instance; it is the table.**
+
+**ALL THREE PHASE-A KNOBS ACT THROUGH `order_queue`, AND `order_queue` ONLY MATTERS WHERE SOMETHING
+TRUNCATES IT.** One conclusion reached three times. `camera_bias` moves **0 decisions** at a
+non-binding budget on both charts at every margin — with `rel span` 0.49-1.00 proving the arm live
+— and 17 of 93 and 29 of 185 when the budget binds. The frontier's bucketing saves **nothing** at
+`k_frac = 0.25` and **83-94%** at frame-budget `k`. The balance-forced share moves 21-93% with the
+throttle on **identical trees**. So these are frame-budget mechanisms, and the frame loop is the
+**precondition** for measuring them rather than the phase after — the plan's ordering had it
+backwards.
+
+**AND THE MARGIN IS A WEAK KNOB, WHICH ONLY THE SHARED COUNT REVEALS.** 17 -> 16 -> 12 across
+margins 0.0, 0.5, 2.0 — but the shared set falls 93 -> 81 at margin 2.0, so the tree diverged
+*more* while the common quads agree slightly better. `moved` alone reports that backwards.
+
+**A FIXTURE CONSTANT NEEDS DERIVING, NOT CHOOSING — AND A DERIVED ONE NEEDS ITS OWN GUARD.** The
+camera probe's binding budget was first the constant 400, picked against a remembered 125-quad
+tree; the zoomed camera makes that tree 389, so it did not bind and the "binding" arm reproduced
+the non-binding one exactly — the same regime measured twice. Derived per chart (40% of the
+unconstrained tree) it then failed on `preset_shape_h1`, whose unconstrained arm read **19997
+against the 20000 cap**: `free` was a floor, not a measurement, and the derived budget inherited
+it. Under a real frame quota the whole class disappears, because the quota binds by construction.
+
+**THE PRIORITY-BUCKET FRONTIER DID NOT DO ITS OWN JOB, AND WHETHER THE FIX BITES IS REGIONAL.**
+`top_k` flattened every bucket and sorted, so the per-frame `O(n log n)` the structure exists to
+remove was still paid. `top_k_bounded` is the exact early-out — the derived factor is in `[0,1]`
+and can only demote, so `band_of(kth) > b` stops the walk. Band occupancy is **4-10 bands of 24**
+with modal shares **93.8% (`far`), 83.8% (`near-field`), 42.6%, 23.7%**. `scan/n` on the visible
+frontier: **0.061-0.168 at `k/n = 0.01`** against **0.329-1.000 at 0.25**.
+
+**AND ITS STALENESS CHECK DISAGREED WITH ITSELF ON TIED DATA.** `agrees_with_rebuild` compares
+`top_k`, which flattens buckets top-down, against `rebuild`, which reads an id-sorted list — so
+under a merely *stable* sort two entries of equal priority in different bands come out in opposite
+orders. Measured: `0.2 * 6/7` and `0.4 * 3/7` are bitwise equal and land in bands 18 and 19. The
+check with teeth would have reported a **false** disagreement on any tied field. The ordering is
+total now — descending, `NaN` last, ties by id — shared by all three paths.
+
+**AND THE ANALYTIC BAND BOUND WAS UNSOUND IN THE SILENT DIRECTION.** Inverting `band_of`
+analytically gives `band_upper(0) = 4.0616e-12`, which `band_of` places back in **band 0**: a bound
+too small stops the walk with a contender unseen. The stopping test goes through `band_of` itself,
+with no inverse.
+
+**A GOLDEN MATRIX CAN BE BLIND FOUR WAYS, AND ONLY A PER-AXIS ARM FINDS THEM.** `step(0.0)` on a
+root spanning `[-1,1]` puts the discontinuity exactly on the quad midline at **every** level, so no
+quad straddles it and the field is featureless. `N = 4`, chosen for speed, is below where the
+analytic fields and the agreement arm were calibrated: every structured field floored at the
+bootstrap, no tree carried depth contrast, `balance` moved **0 of 160 cells**, and
+`filament_through_sea` hashed **bitwise equal to `sea`** — the filament invisible to the instrument
+meant to find it. And a bare `distinct > cells/4` arm fired at 18 of 160 on **correct** code, because
+many cells legitimately coincide. The arm that works asks **per axis** whether each knob moves a
+cell: *"balance moves 0 of 160"* is a statement, *"18 distinct"* is not.
+
+**A FRAME QUOTA THAT TRUNCATES MUST HOLD THE OVERFLOW, NOT DROP IT.** The first `Stop::Frame`
+truncated `pending` and counted the overflow, which discarded those children: the session drained
+early at **58 leaves against the one-shot's 100**. Held quads are carried to the next round and keep
+`Decision::Pending` throughout — which is the whole reason a held quad is not `BudgetExhausted`.
+Run to exhaustion the frame loop now reaches the one-shot tree exactly, and that is the strongest
+available check that the extraction and the quota compose.
+
+**§14's SWITCHOVER KEY IS WRONG FOR THIS BUILD, AND THE CORRECTION IS THE LADDER.** The spec keys
+the response on *full vs linearised*: full collapses -> switch, linearised collapses -> stop. Right
+for an f32 consumer and **wrong for `DirectF64`**, which is full AND at the ceiling — f64 is the top
+of the ladder here, `LinSplitF32` tracks it rung for rung, and the linearisation buys ~24 levels
+over f32 and **none over f64**. Under the spec's key a collapse at `DirectF64` would be handed to a
+path that cannot help. `Path::has_more_precise_path()` is the key: `DirectF32` and `LinNaiveF32`
+switch, the rest stop.
+
+**AND `AT_F32_FLOOR` IS `Collapsed`, NOT A NEW VARIANT.** The first cut added `Decision::AtF32Floor`
+and returned it at the ceiling, moving code 9 to code 16 on every regenerated dump while the commit
+message said nothing moves — caught immediately by `tests/no_discard.rs`. It was also a **synonym**:
+`Collapsed` already is the terminal decode floor, and nothing in this build measures distinctness
+through a linearised path, so the new code could never fire. `decode_can_switch` is `false` at every
+production site and that is the **truthful** value, not a placeholder: `n_distinct_ic` is measured on
+`Slice::nominal::<f64>`, so a collapse detected here has nothing above it.
+
+**`|det J_D|` IS NOT DEFINED FOR THIS JACOBIAN.** `J_D` maps a 2-plane into a **12-dimensional**
+state, so it is `12 x 2` and has no determinant. The area scale factor of a 2-form is the square
+root of the Gram determinant, `sqrt(|ju|^2 |jv|^2 - (ju.jv)^2)`, which reduces to `|det J|` exactly
+when the target is 2-D — the case the spec's phrase is written for. It exists because **refinement
+density is not probability density**: leaf density must never feed a quantitative claim.
+
+**A STAGE A BUILD DOES NOT HAVE IS `NaN`, NEVER `0.0`.** There is no GPU and no window here, so
+`upload_ms` and `present_ms` are unmeasured — and a zero reads as *instant* where the truth is
+*absent*. Same conflation as an empty mask reading "no structure found", or `Residency::Absent`
+pooled with `Evicted`. Likewise `frontier_agrees` is `NaN` on frames where the audit did not run,
+and `frac_over_floor_moving` is `NaN` when no frame moved: a check that did not run must not report
+a pass, and a harness reporting `0.0` there would claim one it never earned.
+
+**AND THE HEADLINE IS MEASURED DURING MOTION.** `frac_frames_over_41.7ms` with `camera_delta > 0`
+as the free discriminator: a static frame may take longer without anyone minding, a dropped frame
+mid-pan is immediately visible. Percentiles, never means — 99 frames at 10 ms and one at 1000 puts
+the **mean inside budget** while the max is what says a frame was dropped.
+
+**A FROZEN PLAYHEAD AND A BALANCED TREE ARE THE SAME CHURN COLUMN, AND `reproj` IS WHAT SEPARATES
+THEM.** The first frame harness logged `playhead_dt` while the sampler ran to `t_max` on every
+frame, so the field never changed, the tree converged once and sat, and churn read **0.0000 for
+nine consecutive frames** — which is exactly what a perfectly stable balanced tree reads. §3.2 says
+to put churn beside depth variance for this reason and it is not sufficient: both statistics are
+flat under frozenness *and* under stability. `Session::set_playhead` re-reduces every resident quad
+from `project_at(p, j)` and **returns the count**, so `reproj` is the liveness arm: **45 quads
+re-read on every frame from 3 onward with churn still 0.0000** is a steady state, and a zero there
+would have been a dead playhead. Same shape as `rel span` in the camera probe and `moved` in the
+integrator seam — *the arm that says the thing under test was exercised* is the part that keeps
+working.
+
+**AND `set_playhead` BROKE AN INVARIANT THE TYPE SYSTEM DOES NOT CARRY: `deferred` MUST NEVER
+OVERLAP `pending`.** Re-reducing at a new boundary makes every leaf a candidate again, so the first
+cut pushed all of them into `deferred` — including the ones already queued — and the next round
+split quad 26 twice. The fix is three lines and the lesson is the shape: two `Vec<usize>` frontiers
+with a disjointness invariant maintained by convention, in a struct that is now mutated from a
+second entry point. `DescentState`'s extraction is what made a second entry point possible.
+
+**RE-ROOTING COPIES THE OLD BOXES VERBATIM AND THE CONSTRUCTOR ASSERTS THE REPRODUCTION.**
+Re-deriving a child box from the new root shifts the whole tree by an ulp — `old_cx + old_half -
+old_half` is not `old_cx` at f64 — which is the half-cell class of defect `Cache::key_of` already
+carries a paragraph about. `grow_root` pushes the new root at the **end** so no index moves, never
+touches the old subtree's geometry, and asserts `child_boxes()[quadrant]` reproduces the old root's
+box bitwise before committing. `Camera::veto` is invariant under it because `q.level` and
+`floor(camera_depth)` rise together; `bootstrap_levels` shifts, which is a real semantic change and
+is recorded rather than absorbed. **The veto-invariance test caught itself**: at a 512 viewport
+nothing is vetoed at all, so the invariance held over an empty set — pinned at 32, with the
+`any(is_some)` control that says so.
+
+**AND "`descend_live_with` CARRIES A DUPLICATE ROUND" WAS MY OWN OVERSTATEMENT.** Of its 296 lines,
+38 do things `round` has no notion of — projection, merging, residency, catch-up accounting,
+post-horizon rounds — and both loops already call the same pure helpers. The live block **projects
+and re-reduces at boundary `j`** where the batch block reads stored reductions: different code, not
+duplicated code. `round` advances a **frontier**; `descend_live_with` advances a **playhead**.
+Unifying them would grow `round` live-only branches for the batch path's benefit, which is the
+opposite of the extraction it had just had. The genuinely repeated block was **four lines**, now
+`scheduler::set_alpha_against`, taking the parent reduction as an *argument* so each loop passes
+the one it means. A refactor proposed from a line count is a guess; read what the lines do.
+
+**THE FRAME'S PHYSICS RANKING IS A TOTAL TIE, AND THE TIE-BREAK IS WHAT IT REPLACED.** The frame
+quota truncates `pending` -- the quads about to be *computed* -- and truncated them by **position**,
+which is split order. Wiring the persistent frontier there looks like an obvious improvement and is
+half of one: children of a single split all inherit their parent's stored term (they have no
+reduction of their own -- ranking on that would score every child of every parent at exactly zero,
+which is *no* ordering rather than a weak one), ties break by id ascending, and **id order IS split
+order**. Measured on two analytic fields at a binding quota: the physics arm moves **0 boxes** on
+both. Only `physics x camera` moves anything, and only where the quota has a choice --
+`filament_through_sea` (`floor:96`, everything wants to split, 47 boxes in and 47 out) against
+`step` (`keep:96`, few want to split, nothing moves). **Read the stop column** or the identical
+`145/189/1.6323` rows read as one field measured twice. And the drained arm is the correctness
+property, asserted rather than printed: all three arms reach the identical 196-leaf tree in 34
+frames, because a ranking that changed the *destination* would be changing the criterion.
+
+**A HEADLINE MEASURED ON ONE POPULATION DOES NOT TRANSFER TO ANOTHER, AND THE ARITHMETIC SAYS SO
+IN ADVANCE.** `results/frontier/` reads 83-94% saved at `k/n = 0.01` on the **visible frontier**.
+At the frame quota `pending` is about `4s` times the previous round's quota, so `k/n` sits in
+`[0.25, 1]` **by construction** -- measured **0.66-0.74**, inside that same measurement's own
+0-67% band for large `k`. Quoting the 83-94% for the frame loop would have been quoting a number
+about a different set. It reaches **0.165-0.211** in the `uniform` arm, where the criterion wants
+everything and the frontier holds 232 entries against a quota of 24, then returns to 0.96 two
+frames later -- so the regime is a property of *how much the criterion wants*, and both ends are in
+one committed run.
+
+**§12'S ROUND-TRIP IS REAL AND COSTS NOTHING, BECAUSE A DIFFERENT GLOBAL SUM COLLAPSES FIRST.**
+`jitter` recovered `du` as `(u - cx)/half` from a `u` the linespace had just built -- precision
+spent on the offset and then the offset subtracted back off. `SampleSpace::QuadLocal` forms `du`
+directly and never builds the sum. At production settings it is a last-ulp reordering: `near-field`
+moves **0 of 64**, bitwise, and `config_stability` 8 of 64 at `6.1e-16` of a **cell width**. At
+depth, all four f64 cells of `{Global, QuadLocal} x {Direct, Lin}` fail at **exactly rung 48**, and
+`|ju|` is why: `decode::linearise` differences the chart at `cu +/- half`, the **same global sum one
+level up**, tracking `half` to depth 44, quantising to the ulp of `cx` at 48 and reading **exactly
+`0.000e0` at 52**. A linearisation whose secant has collapsed carries no information for a carried
+`du` to preserve. The fix §12 needs is a Jacobian not built by a secant at the cell width.
+
+**AND THE CONTROL STOPPED IT BEING CREDITED WITH SOMEONE ELSE'S RESULT.** `QuadLocal + LinSplitF32`
+holds 64 distinct through depth 44 against plain f32's collapse at 16 -- **28 levels**, which reads
+as the change buying them. `Global + LinSplitF32` is **identical at every rung**: they are
+`LinSplitF32`'s own, the standing *"the linearised decoder buys ~24 levels over f32 and none over
+f64"*, measured under `Global` long before this flag existed. The origin ladder is the second
+control -- at `cx = cy = 0` **nothing collapses in any cell at any rung** with `|ju|` tracking
+`half` to `4.3e-20`, reproducing *the deep-zoom floor is a property of where you zoom* on a
+different construction.
+
+**A GROWN ROOT LEAVES THE ABSOLUTE LATTICE IN THREE DIRECTIONS OF FOUR.** `src/uv.rs` is the space
+the deep-zoom spec's *"`h` is an exact power of two at every depth"* was always about -- the claim
+is exact in UV, where the root half is `1/2`, and false in chart space, where `0.05` halves exactly
+forever and never becomes a power of two. Both are asserted side by side. The frame is **fixed**,
+because an address relative to the tree root would renumber the whole store on a zoom-out, which is
+the cost re-rooting exists to avoid -- and a cell has exactly **one** parent, so only growth toward
+it stays addressable. `id_of` returns `None` for the other three rather than a plausible wrong
+answer, the same refusal the half-cell guard makes. That is the seam between this **rooted** tree
+and the caching contract's **flat** store, as a measurement rather than a paragraph.
+
+**A POLICY CHANGE LEAVES ITS OLD PARAMETER COUPLINGS BEHIND, AND THEY GO ON MEANING THE OLD THING.**
+`chart_gallery` set `alpha_lo: alpha_hi`. Under `Policy::Alpha` that is coherent -- they are the two
+ends of one band and collapsing it to a single threshold is what the corpus was measured at. Under
+`Policy::Tolerance` they are **different mechanisms**: `alpha_hi` is inert, because the split test
+is the tolerance and not an exponent, while `alpha_lo` is the **area floor's dimension threshold**.
+So the coupling silently set that floor to `0.5` -- against its own measured default of `0.005`,
+where even `0.2` costs 11% of `config_stability`'s resolvable pixels and puts its tree *above*
+uniform at its own error. Same family as `refine_flagged` spreading by copy and `k_frac = 1.0`
+shipping as the default: **a setting correct where it was born, silent where it was not.** It is
+argument 11 now, defaulting to the struct's value, and the `Policy::Alpha` reproduction passes it
+explicitly exactly as `k_frac = 1.0` does.
+
+**THE TWO ORIENTATION SEAMS THAT DO NOT GO THROUGH `Camera::to_px` ARE NOW PINNED, AND THE FIXTURE
+FAILED FIRST FOR THE RIGHT REASON.** `adaptive::render` and `wire` project through the one
+projection and were already pinned with a mirror control; `tree::overlay` carries its **own**
+`to_px` closure (it projects against the root box, not a camera) and `metric::Cache::render` indexes
+tiles directly. Either could have been flipped with nothing noticing, and *a wrong flip is silent
+and reads as physics* -- it already produced a vertically mirrored adaptive panel beside a correct
+uniform one for a whole build. `overlay` is split into `overlay_buffer` + the writer so the pixels
+are testable at all. **And the metric arm's first probe used the root centre, which at level 2 is a
+cell CORNER**: `key_of` refused it, correctly, by the half-cell guard that exists for exactly that
+-- so the fixture's failure was the guard working, not the seam being wrong. Cell centres are
+`cx - half + (2i+1)h`, and the test carries a transposition arm because an index assertion alone
+passes on a swap of `x` and `y`.
+
+**THE CHART GALLERY UNDER `Policy::Tolerance` OVERTURNS THREE STANDING RESULTS, AND THE ONE THAT
+MATTERS IS THAT THE CRITERION NOW DECIDES ANYTHING AT ALL.** 26 charts at 1024², budget 40000,
+`tau = 1e-2`, `alpha_hi = 0.5`, `alpha_lo = 0.005`, `refine_flagged` on, ~50 minutes.
+
+**The criterion decides 27-100% of leaves, against "under 1%".** *"`Decision::MaxRelDepth` stops
+95%+ of leaves on 23 of 26 charts, and 100% on three"* was a `Policy::Alpha` measurement. `veto%`
+now runs **0.0% to 73.0%**, median near 36%, and `latent_shape` reads **100% `keep`, 0% veto** -- a
+tree that is entirely its own decisions. The most veto-bound rows, `preset_shape` (71.3%) and
+`preset_shape_h1` (73.0%), carry the highest `floor%` (12.2%, 12.5%), which is the area floor
+working rather than a cap.
+
+**`preset_shape` is no longer the 16-leaf failure.** The record has it at *"16 leaves, depth 2,
+against a complete 4096"* and names it as where the criterion fails outright. It reads **1378
+leaves over 5 depths**; `preset_shape_h1` **1627**. Its `alpha` interdecile still separates it --
+**6.35** against 0.11 for `latent_mass` -- so the *ordering* that finding rests on survives while
+its mechanism does not.
+
+**THE MECHANISM TEST IS READABLE ON 24 OF 26, UP FROM 2, AND THE POOLED NUMBER STILL CANNOT ANSWER
+IT.** `depth ~ terminated_fraction` had **zero** readable charts to spare: ten y-constant, twelve
+y-saturated. Now there are **zero** x-constant, **zero** y-constant and two y-saturated. And the
+answer is not the one the mechanism predicts: spearman runs **-0.33 to +0.46**, 14 positive and 10
+negative, mostly under 0.15. **The per-depth medians say what the correlation cannot** --
+`preset_shape` runs 1.000, 1.000, 1.000, 1.000, **0.438** and `preset_shape_h1` 1.000, 0.750, 0.844,
+**0.156**, a sharp fall at the deepest level exactly as the absorbing-state mechanism predicts;
+`body_plane` runs 0.000, 0.000, 0.000, 0.000, **0.344**, the other way, because almost nothing there
+has terminated until the finest leaves. The mechanism holds on the **sea** charts and reverses where
+termination is rare. Both coherent, neither general.
+
+**AND THE READABILITY VERDICT HAS A FOURTH BLIND SPOT IT DOES NOT NAME.** `shape_sphere` passes as
+READABLE on 65 distinct values with a 64.6% modal share, and its per-depth median is **0.000 at
+every depth** -- there is nothing for a correlation to be about. The verdict tests the distribution
+over *all* leaves; per-depth medians that are all identical are a fourth way to be uninformative,
+and the three named modes do not catch it. Same shape as the three they do catch, one aggregation
+level down.
+
+**`Decision::Undetermined` FIRES IN PRODUCTION FOR THE FIRST TIME** -- 22 quads of `burrau_nu_k`,
+23 of `latent_mixed_h3`, 45 of ~21,000. The record has it as *"inert where the integration
+succeeds"*, measured on three Burrau regions; these two charts are where it is not.
+
+**AND THE EXPENSIVE HALF IS NOT REGENERATED, WHICH IS SAID RATHER THAN LEFT TO BE FOUND.** One
+chart's `_uniform` panel at 1024² exceeds **ten minutes** against **13 seconds** for its adaptive
+tree -- over 45x, so the 26-chart set is a multi-hour job by itself. Those panels remain 25 August.
+That is the same staleness the record already carries once for this directory, and the only thing
+that makes it different is that the number is now printed beside it.
+
+**`pgrep -f <name>` MATCHES THE WAITER'S OWN COMMAND LINE.** Four `until ! pgrep -qf cg_tol...`
+loops each contained the string they were searching for, so every one of them waited on itself
+forever while the job had long finished -- and the log's own last line was the evidence. Match on
+the process name (`ps -eo comm`) or exclude the shell, and read the artefact rather than the
+process table when the artefact can say.
+
+**§18 FOVEATION IS MEASURED AND STAYS OFF: INERT WHERE STRUCTURE IS LOCALISED, 8 FRAMES OF 40 WHERE
+IT IS NOT.** `Camera::foveation` modulates camera relevance -- not a third factor, never in the
+veto, no cursor field on a `Quad` -- and with no cursor or `dwell = 0` it returns exactly `1.0`, so
+the fallback IS the default path. Measured against its own off-state: **`step` is inert in every
+arm** (only quads straddling the discontinuity want to split, so the quota never has to choose
+between distant ones and there is no ranking for the fovea to change). On `filament_through_sea`
+`fovea x4` saves 2 frames at the cursor and **loses 2 at the edge** -- the same budget moved, which
+is what the edge probe exists to catch -- and `fovea x16` saves 8 and loses 2. One field of two, at
+a cap demoting the periphery sixteenfold. Not a clear margin; `SchedCfg::cursor` stays `None`.
+
+**AND THE TWO PROBES' BASELINES DIFFER BY THE TIE-BREAK'S SCAN ORDER, SO THE GAIN NEEDED A SWAPPED
+ARM.** The probes are geometrically symmetric; the tie-break is lexicographic on `(level, ix, iy)`,
+so the lower-`y` one resolves **two frames sooner** in the `off` arm and a gain measured at one
+probe could be the scan order. Moving the fovea onto the other probe takes it **14 -> 8** while the
+first holds at 16: the advantage follows the **cursor**. Without that arm the 8 frames were not
+attributable. The `centre` arm is the named vacuous cell and is inert as named, and the final tree
+is bitwise identical in every arm -- foveation changes *when* a region resolves, never *what* the
+tree becomes.
+
+**AND THE FIRST CUT OF THAT HARNESS READ BOTH KNOBS BACKWARDS BECAUSE THE PROBES WERE OFF THE
+STRUCTURE.** With both discs in smooth regions `step` resolved at the bootstrap at mean depth
+2.000 -- the cost side had no subject, so a foveation that starved the edge would have looked free
+-- and x4 and x16 read *identical*, which was written up as `fovea_cap` saturating. On the
+structure they read 2 frames against 8. `dwell` is separately **continuous in the priority and
+discrete in the outcome**: 0.5 gives a peripheral factor of 0.625 against 1.0's 0.25, a different
+number and the same tree, because a ranking only moves when the demotion crosses another quad's
+priority.
+
+**EXPIRING A MEMORY BY DELETING IT IS THE OPPOSITE OF EXPIRING IT.** The no-gain merge memory's
+second live-compatible expiry -- a time-to-live, against the shipped structured-weight rule -- was
+first implemented by clearing `no_gain_weight`. But `decide` reads `map_or(true, ...)`: **no memory
+means never merged for no gain**, and the floor then stands on its own merits. So clearing it
+reverts to first-time behaviour and floors MORE: measured on the pulse, **421 quads against 645**, a
+third fewer. `Quad::no_gain_expired` is a separate flag that short-circuits the state rule, and the
+corrected form reads **741 against 645**. **An `assert_ne!` could not tell the two apart** -- it
+passed on the inversion exactly as it passes now -- and the arm with teeth asserts the *direction*:
+a lapsed memory releases a split, so the work can only go up.
+
+**AND THE TTL IS A BUDGET-QUALITY TRADE THAT LOSES, WITH A CLOCK THAT FIRES ONCE PER QUAD.** On the
+sea chart: error **0.19609** (shipped) against 0.20300 (`ttl` 1 and 4) and 0.21920 (`ttl` 0), on
+2225 / 2093 / 1977 quads -- every rung displays worse while computing less, the same shape as the
+`k_frac` result. `ttl = 1` is marginally *better* against uniform (0.66x against 0.67x) and
+absolutely worse, so a ratio-only table would have read as a win. **`ttl = 1` and `ttl = 4` are
+bitwise identical** because a lapsed memory splits, the split still shows no gain, the merge pass
+re-merges and records a **fresh** memory: the clock resets, so beyond one boundary the knob is
+inert. And the sign of the cost is not fixed -- the pulse computes *more* under a TTL and the sea
+chart *fewer*. `no_gain_ttl` defaults to `None`.
+
+**`quad x` IS NOT THROTTLE-INVARIANT UNDER A BINDING FRAME QUOTA, WHICH IS THE REGIME THAT
+MATTERS.** The balance census recorded `balance_forced/split` as *not a quantity* (0.113 or 0.007
+on the identical tree) and `quad x` as the throttle-invariant column to quote instead -- with its
+own caveat that the trees were identical *because the budget was non-binding*, and that under a
+frame budget it binds. Measured there: **`near-field` 1.3520 at `k = 0.25` against 1.4480 at
+`k = 1.0`**, and `deep interior` 1.0226 against 1.0000 on a row where the quota bound on **all
+twelve** frames. So in the slippy map's own regime there is no throttle-invariant summary of the
+balance tax at all -- the cost column moves too, because work the throttle defers may never be
+reached rather than merely reordered. **Print `bound` per row**: `near-field`'s off arm drained on
+3-4 of 12 frames, so its 7% is the weaker of the two numbers and the fully-bound 2.3% is the one to
+quote.
+
+**A STALE RENDER'S FILE SIZE IS THE FIRST DIAGNOSTIC, AND HERE IT SAID SPECKLE.**
+`body_plane_uniform.png` regenerated on the current kernel is **133,841 bytes against the committed
+2,335,554** -- a **17x** fall at **identical 1024x1024** dimensions, so it is not the raster-size
+failure this record already carries four times and the dimensions are what rules that out. What
+fell is entropy: distinct colours **9314 -> 1437**, magenta **1 -> 0**, and the pair that decides
+it, **lag-1 coherence 0.8296 -> 0.9927 with local contrast 14.628 -> 0.200, a 73x collapse.** A
+mean adjacent-pixel difference of 14.6 levels across a whole 1024^2 frame is a speckle field and
+not a physics image. *Amplitude cannot tell a small real signal from noise; coherence can*, at a
+fourth site -- and the same signature as the bleaching investigation, where **what left was the
+incoherent component**. So the 25-August `_uniform*` panels are not cosmetically old; they are the
+unrepaired kernel's diverged copies at pixel scale, and regenerating them is worth the multi-hour
+cost rather than merely tidy. **One chart, and `plane_00deg` is not a second** -- the gallery's own
+control asserts `max |dIC| = 0e0` between them, so they are one chart under two names.
+
+**AND A RENDER LANDED IN A COMMIT WHOSE CODE DID NOT MAKE IT.** `55795a8`, the no-gain TTL commit,
+carries **twelve `results/charts` and `results/animated` files for `body_plane`** -- swept in
+because a 26-chart gallery was writing into `results/` while an unrelated commit was staged. The
+standing rule is *commit renders in the same commit as the code that made them, or name the commit
+in the filename*; this is its mirror, and it is worse in one way: a reader of `55795a8` would
+attribute that panel's 17x shrink to a merge-memory time-to-live. Corrected here and in the
+gallery's own completion commit rather than by rewriting history, which is this project's
+precedent for a wrong commit message. **The scan that found it is one line** -- `git show --stat`
+per commit, counting files under a directory a batch is writing to -- and it should be run before
+staging anything while a batch is live, which is the only real remedy: eleven of the twelve would
+have been caught by looking.
+
+**`config_basin` BANDS AT 3.9x THE REFERENCE, AND THE PREDICTION FAILED ON A MAGNIFICATION FACTOR
+RATHER THAN ON PHYSICS.** The standing note was *"its window is `zoom = 0.009095`, 70x tighter than
+`config_stability`'s 0.63763, so the pair period does not vary measurably across it -- prediction,
+untested: `config_basin` should show no ribbon banding."* Measured at matched raster on the FLOAT
+field with both ramp-guard arms passing: `prom` **8.14** at 192^2 and **8.20** at 64^2 against the
+reference's **2.11** and **1.60**, and the basin value is raster-stable across a 3x change where the
+control is still converging. **`Chart::config_slice` scales both basis vectors by `mag`, which is
+4.0 for `config_basin` and 1.0 for `config_stability`** -- so in latent units the basin view is
+**17.5x** tighter, and against the 0.18 sub-window the banding was actually measured in, only
+**3.15x**. The standing *a default that spans two coordinate systems silently means two different
+things*, at `zoom` compared across two magnifications.
+
+**AND THE PREMISE HOLDS WHILE THE CONCLUSION DOES NOT -- REGULARITY CLEANS THE BEAT RATHER THAN
+REMOVING IT.** `t_end dst = 1` at `on bnd = 1.0000` at both rasters: nothing terminates, the
+regular-island claim as a direct measurement. And the two cases clear the stepper by **opposite
+routes**, which is where the regularity actually shows: at 192^2 a 4x `eta` refinement moves
+**0 of 36864** basin pixels and **1496 of 36864 (4.06%, worst 3/255)** of the control's, with `prom`
+unmoved in both. *Never conclude "no effect" from an aggregate without the per-pixel distribution*
+is satisfied rather than assumed -- the control's pixels DO move, so the instrument can see a
+stepper change, and the basin's zero is about the basin. On the chaotic slice the beat is buried
+under divergence, which is why `osc/` needed a high-pass and a 2D transform to see one at all.
+
+**AND I QUOTED A 938x FROM A QUANTISED PANEL.** A first pass ran a 2D detrended spectrum on the
+**8-bit PNGs** and read `prom = 80,459` for the basin against `85.78` -- reported, then withdrawn.
+8-bit quantisation of a smooth ramp draws exactly periodic contour bands, which is the fourth of the
+six mechanisms `osc/` excluded and which nothing here excluded. **The tell was in the same output:
+the harness's float column read `lam = 57` where the quantised-panel tool read `lam = 34`. Two
+instruments disagreeing about the wavelength of one field means one of them is measuring the
+display.** Read the `lam:f64` column; `lam:8bit` is the control for exactly this.
+
+**A LOW SPECTRAL PROMINENCE HAS TWO CAUSES AND THE SPECTRUM CANNOT SEPARATE THEM.** A prediction of
+*no banding* is a null, so `moire.rs` now prints `l dst` and `l sd` -- the distinct 8-bit luminance
+levels the render paints and their spread -- and the ramp guard's two arms. Basin reads
+`l dst = 184`, window span x9.5 with its **floor 1.44e6 above** the region's median energy drift;
+the control x6730 with a floor at 2.18e1. Both are physics, and a span test alone would not have
+said so -- the record's `far` failure cleared a span of x8.

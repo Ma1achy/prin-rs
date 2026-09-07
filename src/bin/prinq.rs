@@ -178,6 +178,7 @@ fn main() {
     println!();
 
     let dump = format!("{out}.tree");
+    prin_rs::scheduler::assert_production_kernel(&ens, &dump);
     let mut f = BufWriter::new(File::create(&dump).expect("create dump"));
     treeout::write(&mut f, &tree, &cfg, &ens, &st, &region, precision.name()).expect("write dump");
     println!();

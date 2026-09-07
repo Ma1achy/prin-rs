@@ -102,6 +102,10 @@ fn main() {
     let tau: f64 = arg(3, 1e-4);
     let t_max: f64 = arg(4, 13.0);
     let only: String = std::env::args().nth(5).unwrap_or_else(|| "all".into());
+    // **Argument 6: the escape pair, `production` (default) or `legacy`.** A named control, so
+    // the pre-rebuild numbers stay reachable and stop being what runs when nobody chose.
+    let legacy_escape = std::env::args().nth(6).map(|s| s == "legacy").unwrap_or(false);
+
     let res = (1usize << levels) * n;
 
     let base = EnsembleCfg::default();
@@ -110,16 +114,34 @@ fn main() {
         refine_flagged: false,
         t_max,
         n_sync,
-        // The numpy reference's ungated escape test, with escape terminal: every result in
-        // this diagnostic predates both the distance gate and the closure criterion, and is
-        // quoted against that form.
-        escape_rule: prin_rs::outcome::EscapeRule::Reference,
+        // **The escape settings are now an argument, and production is the default.** They used
+        // to be pinned to the numpy reference's ungated test with escape terminal, justified as
+        // *"every result in this diagnostic predates both the distance gate and the closure
+        // criterion, and is quoted against that form"*. That justification expired the moment
+        // those results were superseded, and one half of it contradicts a standing decision:
+        // `stop_on_escape` is **off** in production, because closure certifies what escaped and
+        // is silent on whether the displayed shape has settled — measured, the shape still moves
+        // by up to 0.6 of the sphere's diameter after the criterion fires.
+        //
+        // `legacy_escape` keeps the old pair reachable as a **named control**, never as a
+        // default. Every committed number from this harness before the rebuild was taken under
+        // it, so it must not vanish; it must stop being what runs when nobody chose.
+        escape_rule: if legacy_escape {
+            prin_rs::outcome::EscapeRule::Reference
+        } else {
+            EnsembleCfg::production().escape_rule
+        },
         closure_k: 1,
-        stop_on_escape: true,
+        stop_on_escape: legacy_escape,
+        // Instrumentation the temporal accumulators need; it changes no trajectory.
         keep_boundary_shapes: true,
         keep_drift_hist: false,
         ..Default::default()
     };
+    // **The column, not the instance.** Nine harnesses feeding the refinement work printed no
+    // provenance at all, which is the `refine_flagged` failure exactly: *the failure was never
+    // the choice, it is that nothing recorded the choice.*
+    println!("  config: {}", ens.provenance());
     let full = ((1usize << (2 * (levels + 1))) - 1) / 3;
     let max_splits = (full - 1) / 4;
 

@@ -93,8 +93,37 @@ impl Path {
             Path::LinSplitF64 => "lin_split_f64",
         }
     }
+    /// Whether this path forms an IC by **linearising about the quad centre** rather than running
+    /// the full nonlinear decode per sample.
+    ///
+    /// **It is the key the switchover turns on.** §14: sample-collapse on a *full* decoder means
+    /// the f32 pipeline is out of precision — hand off to the linear path, and refinement
+    /// **continues**. Sample-collapse on a *linearised* decoder is the true terminal floor. Same
+    /// visible symptom, opposite response, and the only thing distinguishing them is which decoder
+    /// produced the samples.
     pub fn is_linearised(self) -> bool {
         matches!(self, Path::LinNaiveF32 | Path::LinSplitF32 | Path::LinSplitF64)
+    }
+
+    /// **Is there a more precise path to hand off to when this one's samples collapse?**
+    ///
+    /// This — not `is_linearised` — is the key §14's switchover actually turns on, and the
+    /// difference matters. The spec frames it as *full decoder collapses → switch; linearised
+    /// decoder collapses → stop*, which is right for an f32 consumer where the linear path exists
+    /// above the full one. It is **wrong for [`Path::DirectF64`]**: f64 is the ceiling in this
+    /// build, `LinSplitF32` is measured tracking `DirectF64` rung for rung, and the linearisation
+    /// buys ~24 levels over f32 and **none over f64** — so a collapse there is the floor, and
+    /// labelling it a switch would send the descent to a path that cannot help.
+    ///
+    /// So the predicate is about the *ladder*, not the form: a path with something above it
+    /// switches, a path at the top stops.
+    pub fn has_more_precise_path(self) -> bool {
+        match self {
+            // f32 pipelines, full or naively linearised: `LinSplitF32` is above them.
+            Path::DirectF32 | Path::LinNaiveF32 => true,
+            // At the ceiling. `LinSplitF32` reaches f64's own floor and stops there.
+            Path::DirectF64 | Path::LinSplitF32 | Path::LinSplitF64 => false,
+        }
     }
 }
 
@@ -105,6 +134,47 @@ pub struct Lin {
     /// d(state)/d(delta_u) — already carries the quad half-width, so `delta` is in `[-1, 1]`.
     pub ju: Cart<f64>,
     pub jv: Cart<f64>,
+}
+
+impl Lin {
+    /// **The local sampling-measure weight — `|det J_D|`'s honest general form.**
+    ///
+    /// The deep-zoom contract calls this `|det J_D|` and says it is free, because the CPU already
+    /// computes `J_D` per deep quad: one Jacobian, two uses. Both halves are right, and the name
+    /// needs correcting. `J_D` here maps a 2-plane `(u, v)` into a **12-dimensional** state — three
+    /// bodies times position and velocity times two components — so it is `12 x 2` and has no
+    /// determinant at all. What the measure wants is the **area scale factor** of that 2-form,
+    /// which is the square root of the Gram determinant:
+    ///
+    /// ```text
+    ///     sqrt( |ju|^2 |jv|^2 - (ju . jv)^2 )
+    /// ```
+    ///
+    /// It reduces to `|det J|` exactly when the target is 2-D, which is the case the spec's phrase
+    /// is written for. Taking a literal determinant of a non-square matrix is not a subtlety to
+    /// note in passing — it is undefined.
+    ///
+    /// **Why it exists at all: refinement density is NOT probability density.** The quadtree
+    /// concentrates compute at boundaries because they are *interesting*, not because those ICs are
+    /// more probable, so leaf density must never be read as a measure. Quantitative claims —
+    /// basin fractions, island prevalence — use this weight, or a uniform re-sampling. That is the
+    /// scheduler contract's Part 2, and this is the quantity it requires to travel with the map.
+    ///
+    /// Zero where the map is degenerate: the two columns are parallel and the plane collapses to a
+    /// curve, which carries no area. Reported, not floored — a zero weight is a real statement
+    /// about the chart.
+    pub fn measure_weight(&self) -> f64 {
+        let dot = |a: &Cart<f64>, b: &Cart<f64>| {
+            let mut s = 0.0;
+            for k in 0..3 {
+                s += a.r[k].x * b.r[k].x + a.r[k].y * b.r[k].y;
+                s += a.v[k].x * b.v[k].x + a.v[k].y * b.v[k].y;
+            }
+            s
+        };
+        let (uu, vv, uv) = (dot(&self.ju, &self.ju), dot(&self.jv, &self.jv), dot(&self.ju, &self.jv));
+        (uu * vv - uv * uv).max(0.0).sqrt()
+    }
 }
 
 /// **Jacobian cost: four f64 decodes per quad**, two per axis, plus one for the centre.

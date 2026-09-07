@@ -2,7 +2,7 @@
 """Python side of the cross-check: emits a TSV the Rust side must reproduce.
 
 Run from the repo root:
-    python3 tools/xcheck/dump_ref.py --case algebra --out xcheck_out/ref_algebra.tsv
+    python3 tools/xcheck/dump_ref.py --case algebra --out results/xcheck/ref_algebra.tsv
 """
 import argparse
 import os

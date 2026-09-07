@@ -31,6 +31,7 @@
 
 use crate::decode::{self, Path};
 use crate::grid::Slice;
+use crate::uv::SampleSpace;
 use crate::physics::Ic;
 use crate::rng::SplitMix64;
 use crate::Real;
@@ -136,10 +137,34 @@ pub fn copies_with_path<T: Real>(
     scheme: Scheme,
     path: Path,
 ) -> Vec<Ic<T>> {
+    copies_in_space(slice, idx, n_extra, jitter_frac, seed, scheme, path, SampleSpace::Global)
+}
+
+/// **The same construction, in a chosen sample space** — §12.
+///
+/// `SampleSpace::Global` is `copies_with_path` verbatim and is every committed number.
+/// `SampleSpace::QuadLocal` forms `du, dv` directly from [`Slice::local_pos`], adds the jitter in
+/// **cell-relative** units, and only builds a global chart coordinate where a decode needs one.
+/// The difference is invisible at f64 on an O(1) chart coordinate and total at f32 or at depth,
+/// which is why it is a flag with a measurement behind it rather than a switch.
+#[allow(clippy::too_many_arguments)]
+pub fn copies_in_space<T: Real>(
+    slice: &Slice,
+    idx: usize,
+    n_extra: usize,
+    jitter_frac: f64,
+    seed: u64,
+    scheme: Scheme,
+    path: Path,
+    space: SampleSpace,
+) -> Vec<Ic<T>> {
     let (hx, hy) = slice.cell_widths();
     let jx = jitter_frac * hx;
     let jy = jitter_frac * hy;
     let (x, y) = slice.decode_pos(idx);
+    // Jitter in cell-relative units, so the offset never passes through the global coordinate.
+    let (lx, ly) = slice.local_pos(idx);
+    let (jlx, jly) = (jx / slice.half, jy / slice.half);
 
     // Only built when a non-default path asks for it: five extra f64 decodes per footprint.
     let lin = (path != Path::DirectF64)
@@ -189,8 +214,40 @@ pub fn copies_with_path<T: Real>(
         }
     };
 
+    // The local twin. It still needs a global coordinate for the chart decode and for the fold --
+    // the fold is a reflection about the unit square and has no cell-relative form -- but the
+    // `du` handed to `decode::sample` is the carried one, never a subtraction.
+    //
+    // **Where the fold fires, `du` IS re-derived**, because the reflected point is a different
+    // point and the carried value no longer describes it. Silently keeping the pre-fold `du`
+    // would put the linearisation at one place and the mass decode at another, which is the
+    // crossed-plane defect `shape_pl` already carries a paragraph about.
+    let make_local = |du: f64, dv: f64| -> Ic<f64> {
+        let (u0, v0) = (slice.cx + du * slice.half, slice.cy + dv * slice.half);
+        let (u, v) = (fold(u0), fold(v0));
+        let du = if u == u0 { du } else { (u - slice.cx) / slice.half };
+        let dv = if v == v0 { dv } else { (v - slice.cy) / slice.half };
+        match &lin {
+            None => slice.decode_state(u, v),
+            Some(l) => Ic {
+                m: slice.decode_state(u, v).m,
+                s: decode::sample(
+                    path, &slice.chart, slice.body, slice.cx, slice.cy, slice.half, du, dv, l,
+                ),
+            },
+        }
+    };
+
+    // One dispatcher, so the two arms cannot drift: every call site below is written once.
+    let at = |gu: f64, gv: f64, du: f64, dv: f64| -> Ic<f64> {
+        match space {
+            SampleSpace::Global => make(gu, gv),
+            SampleSpace::QuadLocal => make_local(du, dv),
+        }
+    };
+
     let mut out = Vec::with_capacity(n_extra + 1);
-    out.push(make(x, y).cast::<T>());
+    out.push(at(x, y, lx, ly).cast::<T>());
 
     match scheme {
         // No RNG, no per-pixel seed, no ordering. Copy k is at the same place in every
@@ -199,7 +256,7 @@ pub fn copies_with_path<T: Real>(
         Scheme::Halton => {
             for k in 0..n_extra {
                 let (u, v) = halton_offset(k);
-                out.push(make(x + u * jx, y + v * jy).cast::<T>());
+                out.push(at(x + u * jx, y + v * jy, lx + u * jlx, ly + v * jly).cast::<T>());
             }
         }
         Scheme::Pcg => {

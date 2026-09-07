@@ -89,6 +89,136 @@ impl Colouring {
     }
 }
 
+/// Which class a [`Metric::Payload`] compares.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ClassArm {
+    /// `state << 2 | detail`, the terminal outcome. **Saturated at `t = 13`** (near-field is 97.7%
+    /// one value) and known only once it happens, so it is a control arm, never the live one.
+    Outcome,
+    /// The event class: the currently tightest pair, joined with the terminal outcome once a copy
+    /// has terminated. Defined at every playhead, which is what the live criterion reads.
+    EventClass,
+}
+
+impl ClassArm {
+    pub fn name(self) -> &'static str {
+        match self {
+            ClassArm::Outcome => "outcome",
+            ClassArm::EventClass => "event_class",
+        }
+    }
+}
+
+/// How a per-pixel payload distance becomes error.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PayloadForm {
+    /// `[d > eps]` — the fraction of the image unresolved. **The headline.**
+    Indicator,
+    /// `max(0, d - eps)` — how far past the tolerance, for the tables that want a magnitude.
+    Hinge,
+    /// `[d > eps]` counted only on pixels a finer grid **could** resolve: those whose
+    /// deepest-level footprint has `ensemble_spread <= eps`. The gap between this and
+    /// [`PayloadForm::Indicator`] is the **sea cost** — the unresolvable fraction that no depth
+    /// buys off — and it is the number the stationarity stop is measured against. Neither is
+    /// quoted without the other.
+    Resolvable,
+}
+
+impl PayloadForm {
+    pub fn name(self) -> &'static str {
+        match self {
+            PayloadForm::Indicator => "indicator",
+            PayloadForm::Hinge => "hinge",
+            PayloadForm::Resolvable => "resolvable",
+        }
+    }
+}
+
+/// What `err_sum` measures.
+///
+/// [`Colouring`] is a picture; scoring a tree by OKLab distance under one scores the tree under
+/// *that* picture, and the shipping colouring auto-ranges its lightness to each region's own
+/// p1–p99, so a smooth region's `1e-8` residual is stretched to full contrast and counts as
+/// error at every depth. That is why breadth-first came out near-optimal in every table: the
+/// metric, not only the criteria. `Payload` scores the **physics** the pictures are drawn from —
+/// the nominal copy's point on the shape sphere and its class — against a fixed-scale
+/// tolerance, and is the same number under every colouring anyone might choose.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Metric {
+    /// Per-pixel OKLab distance between 8-bit colours under a colouring. The comparison arm.
+    Colour(Colouring),
+    /// Per-pixel `d = max(chord(shape_tree, shape_ref)/2, [class_tree != class_ref])` on the
+    /// nominal copy; `+1.0` when exactly one side is unusable, `0` when both are (the deepest
+    /// quad's texel IS the reference pixel, so `error(full)` stays exactly zero). `eps` is in the
+    /// units of `spread_shape`: chord/2 on the unit sphere, attainable maximum 1.0 antipodal.
+    Payload { eps: f64, class: ClassArm, form: PayloadForm },
+}
+
+impl Metric {
+    pub fn name(self) -> String {
+        match self {
+            Metric::Colour(c) => format!("colour/{}", c.name()),
+            Metric::Payload { eps, class, form } => {
+                format!("payload/{}/{}/eps={eps:e}", class.name(), form.name())
+            }
+        }
+    }
+
+    /// The colouring the cache's **images** are drawn in. For a payload metric that is the
+    /// shipping colouring — the metric decides `err_sum`, not what a render looks like.
+    pub fn image_colouring(self) -> Colouring {
+        match self {
+            Metric::Colour(c) => c,
+            Metric::Payload { .. } => {
+                Colouring::Bivariate(crate::output::colour::Scalar::ShapeSpread)
+            }
+        }
+    }
+
+    pub fn is_payload(self) -> bool {
+        matches!(self, Metric::Payload { .. })
+    }
+}
+
+/// The physics a pixel is scored on under [`Metric::Payload`].
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Payload {
+    pub shape: [f64; 3],
+    pub class: u8,
+    /// Finite shape, no non-finite copy, and a state that is not `SimFailed`/`DecodeFailed` —
+    /// the same veto set `colour::rgb` paints magenta.
+    pub usable: bool,
+}
+
+impl Payload {
+    pub fn of(p: &PixelOut, arm: ClassArm) -> Payload {
+        use crate::outcome::State;
+        let failed = matches!(
+            State::from_bits(p.state),
+            Some(State::SimFailed) | Some(State::DecodeFailed) | None
+        );
+        let usable = p.n_nonfinite == 0 && !failed && p.shape_vec.iter().all(|v| v.is_finite());
+        let class = match arm {
+            ClassArm::Outcome => (p.state << 2) | (p.detail & 0b11),
+            ClassArm::EventClass => p.event_class,
+        };
+        Payload { shape: p.shape_vec, class, usable }
+    }
+
+    /// `max(chord/2, [class differs])`; `1.0` if exactly one side is unusable; `0.0` if both.
+    pub fn distance(a: Payload, b: Payload) -> f64 {
+        match (a.usable, b.usable) {
+            (false, false) => 0.0,
+            (true, true) => {
+                let d = [a.shape[0] - b.shape[0], a.shape[1] - b.shape[1], a.shape[2] - b.shape[2]];
+                let chord = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt() / 2.0;
+                if a.class != b.class { chord.max(1.0) } else { chord }
+            }
+            _ => 1.0,
+        }
+    }
+}
+
 /// A quad's address in the complete tree: level and integer position within it.
 pub type Key = (u32, u32, u32);
 
@@ -104,6 +234,8 @@ pub struct CachedQuad {
     /// were it drawn as a leaf. A constant of the quad, which is what makes the greedy replay
     /// a static priority queue.
     pub err_sum: f64,
+    /// The `N x N` payloads, in the grid's own order — empty under [`Metric::Colour`].
+    pub payload: Vec<Payload>,
 }
 
 #[derive(Clone)]
@@ -134,6 +266,13 @@ pub struct Cache {
     /// different masses would be read against different palettes and the image would not be a
     /// picture of anything. Built from the chart's nominal masses.
     pub sites: crate::output::colour::SiteSet,
+    /// What `err_sum` measures. `colouring` stays the colouring the images are drawn in.
+    pub metric: Metric,
+    /// The reference payload, one per pixel, under a payload metric; empty otherwise.
+    pub reference_payload: Vec<Payload>,
+    /// The deepest-level footprint's `ensemble_spread` per pixel — what says whether a pixel is
+    /// resolvable at this sampling at all. Empty under a colour metric.
+    pub reference_spread: Vec<f64>,
 }
 
 impl Cache {
@@ -228,9 +367,10 @@ impl Cache {
             let tile = span / self.n;
             let (px0, py0) = (ix as usize * span, iy as usize * span);
             let q = self.get(k);
+            let _ = tile;
             for dy in 0..span {
                 for dx in 0..span {
-                    let c = q.rgb[(dy / tile) * self.n + (dx / tile)];
+                    let c = q.rgb[nearest_sample(dy, span, self.n) * self.n + nearest_sample(dx, span, self.n)];
                     let o = ((py0 + dy) * self.res + px0 + dx) * 3;
                     img[o] = c[0];
                     img[o + 1] = c[1];
@@ -270,6 +410,20 @@ impl Cache {
         let pts = replay_with_leaves(self, rank, budget);
         pts.1
     }
+}
+
+/// The sample a screen pixel is nearest to, along one axis of a quad `span` pixels wide with
+/// `n` samples at its corners and spaced evenly between (`Slice::axis` is endpoint-inclusive).
+///
+/// **The metric and the render must tile alike, and until this they did not.** `err_sum` used
+/// `dx / tile`, which hands sample `j` the pixels to its **right**, up to a full cell away, while
+/// the render paints the cell centred on each sample. So a footprint reading `spread <= tau` was
+/// scored against pixels a full cell from its sample, and the near-field tree cut at `tau =
+/// 0.001` still read 2% unresolved at `eps = 0.003`. At the deepest level `span == n` and this
+/// is the identity, so `error(full)` is still exactly zero.
+fn nearest_sample(d: usize, span: usize, n: usize) -> usize {
+    let j = ((d as f64 + 0.5) * (n as f64 - 1.0) / span as f64).round() as usize;
+    j.min(n - 1)
 }
 
 /// Quad geometry from a key.
@@ -346,7 +500,27 @@ pub fn build_multi_with_footprints(
     ens: &EnsembleCfg,
     colourings: &[Colouring],
 ) -> (Vec<Cache>, HashMap<Key, Vec<PixelOut>>) {
-    assert!(!colourings.is_empty());
+    let metrics: Vec<Metric> = colourings.iter().map(|&c| Metric::Colour(c)).collect();
+    build_metrics_with_footprints(region, cx, cy, half, body, chart, levels, n, res, tau, ens, &metrics)
+}
+
+/// As [`build_multi_with_footprints`], for any mix of [`Metric`]s over **one** integration pass.
+#[allow(clippy::too_many_arguments)]
+pub fn build_metrics_with_footprints(
+    region: &str,
+    cx: f64,
+    cy: f64,
+    half: f64,
+    body: usize,
+    chart: Chart,
+    levels: u32,
+    n: usize,
+    res: usize,
+    tau: f64,
+    ens: &EnsembleCfg,
+    metrics: &[Metric],
+) -> (Vec<Cache>, HashMap<Key, Vec<PixelOut>>) {
+    assert!(!metrics.is_empty());
     assert_eq!(
         (1usize << levels) * n,
         res,
@@ -371,9 +545,12 @@ pub fn build_multi_with_footprints(
             .take(res * res * 3)
             .collect(),
         trajectories: 0,
-        colouring: colourings[0],
+        colouring: metrics[0].image_colouring(),
         ramp: (0.0, 1.0),
         sites: crate::output::colour::landmarks(&crate::physics::burrau::MASSES),
+        metric: metrics[0],
+        reference_payload: Vec::new(),
+        reference_spread: Vec::new(),
     };
 
     // ---- integrate every quad at every level ----
@@ -409,11 +586,19 @@ pub fn build_multi_with_footprints(
     let px_of: HashMap<Key, Vec<PixelOut>> =
         computed.iter().map(|(k, _, px)| (*k, px.clone())).collect();
 
-    let mut out: Vec<Cache> = Vec::with_capacity(colourings.len());
-    for &colouring in colourings {
-        let mut c = Cache { colouring, trajectories: base_trajectories, ..c.clone() };
+    let mut out: Vec<Cache> = Vec::with_capacity(metrics.len());
+    for &metric in metrics {
+        let mut c = Cache {
+            metric,
+            colouring: metric.image_colouring(),
+            trajectories: base_trajectories,
+            ..c.clone()
+        };
         for (k, red, _px) in &computed {
-            c.quads.insert(*k, CachedQuad { key: *k, red: *red, rgb: Vec::new(), err_sum: 0.0 });
+            c.quads.insert(
+                *k,
+                CachedQuad { key: *k, red: *red, rgb: Vec::new(), err_sum: 0.0, payload: Vec::new() },
+            );
         }
         repaint(&mut c, &px_of);
         out.push(c);
@@ -422,12 +607,13 @@ pub fn build_multi_with_footprints(
     (out, px_of)
 }
 
-/// Colour every quad, build the reference image, and compute each quad's `err_sum`.
+/// Colour every quad, build the reference image, and compute each quad's `err_sum` under the
+/// cache's [`Metric`].
 ///
-/// Shared by [`build_multi`] and [`Cache::recolour`] so the two cannot drift: a replay that
-/// coloured by a slightly different path would produce an `error(B)` curve that looked like a
-/// measurement and was an artefact of the replay. `c.quads` must already hold every key with
-/// its `red`; only `rgb`, `reference` and `err_sum` are written.
+/// Shared by [`build_metrics_with_footprints`] and [`Cache::remeasure`] so the two cannot drift: a
+/// replay that coloured by a slightly different path would produce an `error(B)` curve that
+/// looked like a measurement and was an artefact of the replay. `c.quads` must already hold every
+/// key with its `red`; only `rgb`, `payload`, the references and `err_sum` are written.
 fn repaint(c: &mut Cache, px_of: &HashMap<Key, Vec<PixelOut>>) {
     // **The ramp is normalised over the whole region, once.** Per-quad normalisation would make
     // a quad's colour depend on which quads happen to be leaves, so refining one quad would
@@ -443,6 +629,11 @@ fn repaint(c: &mut Cache, px_of: &HashMap<Key, Vec<PixelOut>>) {
     c.ramp = ramp;
     let sites = c.sites.clone();
     let colouring = c.colouring;
+    let metric = c.metric;
+    let arm = match metric {
+        Metric::Payload { class, .. } => Some(class),
+        Metric::Colour(_) => None,
+    };
     for (k, px) in px_of {
         let rgb: Vec<[u8; 3]> = match colouring {
             Colouring::Outcome => px.iter().map(outcome_rgb).collect(),
@@ -454,17 +645,30 @@ fn repaint(c: &mut Cache, px_of: &HashMap<Key, Vec<PixelOut>>) {
                 .map(|p| crate::output::colour::rgb(p, sc, &sites, ramp.0, ramp.1))
                 .collect(),
         };
+        let payload: Vec<Payload> = match arm {
+            Some(a) => px.iter().map(|p| Payload::of(p, a)).collect(),
+            None => Vec::new(),
+        };
         if let Some(q) = c.quads.get_mut(k) {
             q.rgb = rgb;
+            q.payload = payload;
         }
     }
 
-    // ---- the reference image, from the deepest level ----
+    // ---- the references, from the deepest level ----
     let (levels, n, res) = (c.levels, c.n, c.res);
     let w = 1u32 << levels;
+    if arm.is_some() {
+        c.reference_payload = vec![Payload::default(); res * res];
+        c.reference_spread = vec![f64::NAN; res * res];
+    } else {
+        c.reference_payload = Vec::new();
+        c.reference_spread = Vec::new();
+    }
     for iy in 0..w {
         for ix in 0..w {
-            let q = &c.quads[&(levels, ix, iy)];
+            let key = (levels, ix, iy);
+            let q = &c.quads[&key];
             for sy in 0..n {
                 for sx in 0..n {
                     let px = ix as usize * n + sx;
@@ -474,6 +678,10 @@ fn repaint(c: &mut Cache, px_of: &HashMap<Key, Vec<PixelOut>>) {
                     c.reference[o] = rgb[0];
                     c.reference[o + 1] = rgb[1];
                     c.reference[o + 2] = rgb[2];
+                    if arm.is_some() {
+                        c.reference_payload[py * res + px] = q.payload[sy * n + sx];
+                        c.reference_spread[py * res + px] = px_of[&key][sy * n + sx].ensemble_spread;
+                    }
                 }
             }
         }
@@ -489,12 +697,31 @@ fn repaint(c: &mut Cache, px_of: &HashMap<Key, Vec<PixelOut>>) {
             let tile = span / n; // pixels per sample
             let (px0, py0) = (ix as usize * span, iy as usize * span);
             let q = &c.quads[&k];
+            let _ = tile;
             let mut acc = 0.0;
             for dy in 0..span {
                 for dx in 0..span {
-                    let s = q.rgb[(dy / tile) * n + (dx / tile)];
-                    let o = ((py0 + dy) * res + px0 + dx) * 3;
-                    acc += oklab::delta(s, [c.reference[o], c.reference[o + 1], c.reference[o + 2]]);
+                    let s = nearest_sample(dy, span, n) * n + nearest_sample(dx, span, n);
+                    let p = (py0 + dy) * res + px0 + dx;
+                    acc += match metric {
+                        Metric::Colour(_) => {
+                            let o = p * 3;
+                            oklab::delta(
+                                q.rgb[s],
+                                [c.reference[o], c.reference[o + 1], c.reference[o + 2]],
+                            )
+                        }
+                        Metric::Payload { eps, form, .. } => {
+                            let d = Payload::distance(q.payload[s], c.reference_payload[p]);
+                            match form {
+                                PayloadForm::Indicator => (d > eps) as u8 as f64,
+                                PayloadForm::Hinge => (d - eps).max(0.0),
+                                PayloadForm::Resolvable => {
+                                    (d > eps && c.reference_spread[p] <= eps) as u8 as f64
+                                }
+                            }
+                        }
+                    };
                 }
             }
             (k, acc)
@@ -502,6 +729,120 @@ fn repaint(c: &mut Cache, px_of: &HashMap<Key, Vec<PixelOut>>) {
         .collect();
     for (k, s) in sums {
         c.quads.get_mut(&k).unwrap().err_sum = s;
+    }
+}
+
+impl Cache {
+    /// The fraction of the frame no depth can resolve at `eps`: pixels whose deepest-level
+    /// footprint still has `ensemble_spread > eps` (a `NaN` spread counts as unresolvable).
+    /// **Print it before any curve.** `NaN` under a colour metric, which stores no spread.
+    pub fn sea_fraction(&self, eps: f64) -> f64 {
+        if self.reference_spread.is_empty() {
+            return f64::NAN;
+        }
+        let n = self.reference_spread.iter().filter(|&&s| !(s <= eps)).count();
+        n as f64 / self.reference_spread.len() as f64
+    }
+
+    /// The first budget on a replay at which the error is at or below `target`, if any.
+    pub fn budget_needed(points: &[Point], target: f64) -> Option<Point> {
+        points.iter().find(|p| p.error <= target).cloned()
+    }
+
+    /// Map a live quad's box onto this cache's `(level, ix, iy)` index.
+    ///
+    /// The two trees are built by different code paths, so this is the one joint where they meet
+    /// and it is checked rather than assumed. **The half-cell:** a cell centre sits at `(2i+1)h`
+    /// from the low edge, so dividing by the cell width `2h` gives `i + 0.5` and `.round()` of
+    /// that lands on `i + 1` -- every quad mapped to its right/upper neighbour. Subtract the half
+    /// before rounding, and check the reconstruction back: without it this scored a perfectly
+    /// coherent leaf set belonging to a shifted tree.
+    pub fn key_of(&self, cx: f64, cy: f64, level: u32) -> Option<Key> {
+        let h = self.half / (1u64 << level) as f64;
+        let ix = ((cx - (self.cx - self.half)) / (2.0 * h) - 0.5).round() as i64;
+        let iy = ((cy - (self.cy - self.half)) / (2.0 * h) - 0.5).round() as i64;
+        let lim = 1i64 << level;
+        let (bx, by) = (
+            self.cx - self.half + (2 * ix + 1) as f64 * h,
+            self.cy - self.half + (2 * iy + 1) as f64 * h,
+        );
+        if ix < 0 || iy < 0 || ix >= lim || iy >= lim || (bx - cx).abs() > h * 1e-6 || (by - cy).abs() > h * 1e-6 {
+            return None;
+        }
+        Some((level, ix as u32, iy as u32))
+    }
+
+    /// A cache built from a footprint file alone, for the floor, the reference and the ceiling.
+    ///
+    /// **The reductions are absent** — every `red` is `Default` — so [`Rank::Signal`],
+    /// [`Rank::Contrast`] and [`Rank::Structured`] rank on nothing here. What it can score is
+    /// `Rank::Uniform`, `Rank::GreedyLookahead1`, `Rank::Random` and [`Cache::dp_optimal`], which
+    /// read only `err_sum`: the whole `headroom = (uniform - dp) / uniform` question, at zero
+    /// trajectories from a committed file. The chart is recorded as its name string only.
+    pub fn from_footprints(
+        fp: &crate::output::fcache::Footprints,
+        metric: Metric,
+    ) -> Result<Cache, String> {
+        if let Metric::Payload { class: ClassArm::EventClass, .. } = metric {
+            if !fp.has_event_class() {
+                return Err(format!(
+                    "footprint file for `{}` is PRQF v{} and stores no event class; replay it \
+                     under ClassArm::Outcome or rebuild it",
+                    fp.region, fp.version
+                ));
+            }
+        }
+        if (1usize << fp.levels) * fp.n != fp.res {
+            return Err(format!(
+                "footprint file geometry is inconsistent: 2^{} * {} != {}",
+                fp.levels, fp.n, fp.res
+            ));
+        }
+        let res = fp.res;
+        let mut c = Cache {
+            region: fp.region.clone(),
+            cx: fp.cx,
+            cy: fp.cy,
+            half: fp.half,
+            body: fp.body,
+            chart: Chart::BodyPlane,
+            levels: fp.levels,
+            n: fp.n,
+            res,
+            quads: HashMap::new(),
+            reference: crate::output::colour::BACKGROUND
+                .iter()
+                .cloned()
+                .cycle()
+                .take(res * res * 3)
+                .collect(),
+            trajectories: 0,
+            colouring: metric.image_colouring(),
+            ramp: (0.0, 1.0),
+            sites: crate::output::colour::landmarks(&crate::physics::burrau::MASSES),
+            metric,
+            reference_payload: Vec::new(),
+            reference_spread: Vec::new(),
+        };
+        let px_of: HashMap<Key, Vec<PixelOut>> = fp
+            .quads
+            .iter()
+            .map(|(k, rows)| (*k, rows.iter().map(|r| r.to_pixel()).collect()))
+            .collect();
+        for k in px_of.keys() {
+            c.quads.insert(
+                *k,
+                CachedQuad {
+                    key: *k,
+                    red: QuadReduction::default(),
+                    rgb: Vec::new(),
+                    err_sum: 0.0,
+                    payload: Vec::new(),
+                },
+            );
+        }
+        repaint(&mut c, &px_of);
+        Ok(c)
     }
 }
 
@@ -519,8 +860,28 @@ impl Cache {
         fp: &crate::output::fcache::Footprints,
         colouring: Colouring,
     ) -> Result<Cache, String> {
+        self.remeasure(fp, Metric::Colour(colouring))
+    }
+
+    /// Rebuild this cache under a different [`Metric`], from a footprint file. The reductions
+    /// carry over; only what `err_sum` measures changes. Refuses, by name, to score the event
+    /// class from a v1 file that never stored one.
+    pub fn remeasure(
+        &self,
+        fp: &crate::output::fcache::Footprints,
+        metric: Metric,
+    ) -> Result<Cache, String> {
         fp.agrees_with(self)?;
-        let mut c = Cache { colouring, ..self.clone() };
+        if let Metric::Payload { class: ClassArm::EventClass, .. } = metric {
+            if !fp.has_event_class() {
+                return Err(format!(
+                    "footprint file for `{}` is PRQF v{} and stores no event class; remeasure \
+                     under ClassArm::Outcome or rebuild it",
+                    fp.region, fp.version
+                ));
+            }
+        }
+        let mut c = Cache { metric, colouring: metric.image_colouring(), ..self.clone() };
         let px_of: HashMap<Key, Vec<PixelOut>> = fp
             .quads
             .iter()
@@ -555,6 +916,7 @@ impl Cache {
             n: self.n,
             res: self.res,
             t_max,
+            version: crate::output::fcache::VERSION,
             quads: px_of
                 .iter()
                 .map(|(k, px)| {
@@ -653,6 +1015,19 @@ pub struct Point {
     pub budget: usize,
     pub leaves: usize,
     pub error: f64,
+    /// **Substeps computed so far, root included** — the machine-independent cost.
+    ///
+    /// A quad budget is only a cost when quads cost the same, and they do not: `total_substeps`
+    /// varies by orders across a region, because a footprint at a close encounter takes far more
+    /// steps than one in the smooth surroundings. So a curve plotted against `budget` scores
+    /// every strategy as though a chaotic quad were as cheap as a smooth one.
+    ///
+    /// That is not a refinement of the quad axis, it is a different question, and it matters most
+    /// for exactly the ranking built to exploit it: [`Rank::GreedyLookahead1PerCost`] optimises
+    /// `Δerror / substeps` and has only ever been plotted against `budget` — **scored in units it
+    /// does not optimise**. Both axes are carried; neither replaces the other. *Read `steps`, not
+    /// `secs`* is the same rule one level up, and it failed once already for want of a column.
+    pub cost: u64,
 }
 
 /// Replay a ranking over the cache, recording `error(B)` after every split.
@@ -701,7 +1076,10 @@ fn replay_ordered(cache: &Cache, order: Order, budget: usize) -> (Vec<Point>, Ve
         _ => None,
     };
     let mut spent = 1usize;
-    let mut out = vec![Point { budget: spent, leaves: 1, error: cache.error_of(&leaves) }];
+    // The root is computed before anything is ranked, so its own substeps are the cost floor.
+    let mut cost: u64 = cache.get((0, 0, 0)).red.total_substeps;
+    let mut out =
+        vec![Point { budget: spent, leaves: 1, error: cache.error_of(&leaves), cost }];
 
     loop {
         // Only leaves that can still be refined.
@@ -748,9 +1126,15 @@ fn replay_ordered(cache: &Cache, order: Order, budget: usize) -> (Vec<Point>, Ve
         };
 
         let k = leaves.swap_remove(pick);
-        leaves.extend_from_slice(&Cache::children(k));
+        let kids = Cache::children(k);
+        // The four children are what this split actually computes, so their substeps are what it
+        // costs. Read from the cache rather than estimated from the parent: that is the whole
+        // point -- a parent's cost does not predict its children's when one of them holds an
+        // encounter and three do not.
+        cost += kids.iter().map(|c| cache.get(*c).red.total_substeps).sum::<u64>();
+        leaves.extend_from_slice(&kids);
         spent += 4;
-        out.push(Point { budget: spent, leaves: leaves.len(), error: cache.error_of(&leaves) });
+        out.push(Point { budget: spent, leaves: leaves.len(), error: cache.error_of(&leaves), cost });
     }
     (out, leaves)
 }
@@ -793,6 +1177,42 @@ pub fn curve_at(points: &[Point], budgets: &[usize]) -> Vec<f64> {
                 .last()
                 .map(|p| p.error)
                 .unwrap_or(f64::NAN)
+        })
+        .collect()
+}
+
+/// The same curve read against a **substep** ladder rather than a quad ladder.
+///
+/// Separate from [`curve_at`] rather than a parameter on it, because the two answer different
+/// questions and a caller that plots one has to say which. See [`Point::cost`].
+///
+/// `NaN` before the first point, never the root's error: a budget below the cost of computing the
+/// root has bought nothing, and reporting the root's value there would claim an image was rendered
+/// for less than it costs.
+pub fn curve_at_cost(points: &[Point], costs: &[u64]) -> Vec<f64> {
+    costs
+        .iter()
+        .map(|&c| {
+            points.iter().take_while(|p| p.cost <= c).last().map(|p| p.error).unwrap_or(f64::NAN)
+        })
+        .collect()
+}
+
+/// A geometric substep ladder spanning what a replay actually spent, so the rungs are comparable
+/// across rankings that reach very different totals.
+///
+/// Taken from the **union** of the runs being compared, never from one of them: a ladder fitted to
+/// the cheapest run would stop before the others start, and one fitted to the dearest would put
+/// every rung past where the cheapest finished. Both are the *span quoted between two named rungs*
+/// defect, at a third site.
+pub fn cost_ladder(runs: &[Vec<Point>], rungs: usize) -> Vec<u64> {
+    let lo = runs.iter().filter_map(|r| r.first()).map(|p| p.cost).min().unwrap_or(1).max(1);
+    let hi = runs.iter().filter_map(|r| r.last()).map(|p| p.cost).max().unwrap_or(lo).max(lo + 1);
+    let (l, h) = ((lo as f64).ln(), (hi as f64).ln());
+    (0..rungs)
+        .map(|i| {
+            let t = i as f64 / (rungs - 1).max(1) as f64;
+            (l + t * (h - l)).exp().round() as u64
         })
         .collect()
 }
@@ -1026,5 +1446,11 @@ impl Dp {
     /// Total pixels, so a caller can check a leaf set tiles the root without reaching for `Cache`.
     pub fn res(&self) -> usize {
         self.res
+    }
+
+    /// The smallest budget `1 + 4s` at which the ceiling is at or below `target`, if it ever is.
+    /// **The memory number**: what the best possible tree needs to reach a quality.
+    pub fn budget_needed(&self, target: f64) -> Option<usize> {
+        self.curve.iter().position(|&e| e <= target).map(|s| 1 + 4 * s)
     }
 }

@@ -9,7 +9,12 @@
 //! Also produced: the resolved (SSAA) adaptive render, so §3.3's effect is visible in the same
 //! frame rather than described.
 //!
-//! Run: `cargo run --release --example adaptive_render [region] [budget] [tau] [alpha_hi]`
+//! Run: `cargo run --release --example adaptive_render [region] [budget] [tau] [alpha_hi] [root]`
+//!
+//! `root` is argument five and defaults to `results`. *An output root is an argument, not a
+//! constant* -- until 2026-09-06 the stem here was a literal `results/vertical`, so a
+//! reduced-resolution validation pass overwrote the committed corpus in place. That failure is
+//! already on this project's record twice, at `criterion_metric` and at `prin --size`.
 
 use prin_rs::camera::Camera;
 use prin_rs::ensemble::pixel::EnsembleCfg;
@@ -52,6 +57,7 @@ fn main() -> std::io::Result<()> {
     let budget: usize = arg(2, 6000);
     let tau: f64 = arg(3, 1e-4);
     let alpha_hi: f64 = arg(4, 0.2);
+    let out_root: String = arg(5, "results".to_string());
     const RES: usize = 512;
 
     let root = grid::region(&region, 2, 2, 0.05).expect("unknown region");
@@ -71,7 +77,8 @@ fn main() -> std::io::Result<()> {
              st.quads_computed, leaves.len(), t.depth_histogram().len() - 1,
              c(D::Floor), c(D::Keep), c(D::ScreenFloor), st.wall_seconds);
 
-    let stem = format!("results/vertical/{}", region.replace(' ', "_"));
+    let _ = std::fs::create_dir_all(format!("{out_root}/vertical"));
+    let stem = format!("{out_root}/vertical/{}", region.replace(' ', "_"));
     let report = |suffix: &str, mode: TexelMode, f: &dyn Fn(&prin_rs::ensemble::pixel::PixelOut) -> [u8; 3]| -> std::io::Result<Option<f64>> {
         let (img, info) = adaptive::render(&t, &st.pixels, &cam, RES, mode, f);
         adaptive::save(&format!("{stem}_{suffix}.png"), RES, &img)?;

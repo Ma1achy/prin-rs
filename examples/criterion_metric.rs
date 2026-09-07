@@ -60,6 +60,10 @@ fn main() {
     // small raster, and a small raster reads as a rendering fault rather than a stale file. That
     // has cost this project two round trips. Point it at a scratch directory instead.
     let root: String = std::env::args().nth(5).unwrap_or_else(|| "results".into());
+    // **Argument 6: the escape pair, `production` (default) or `legacy`.** A named control, so
+    // the pre-rebuild numbers stay reachable and stop being what runs when nobody chose.
+    let legacy_escape = std::env::args().nth(6).map(|s| s == "legacy").unwrap_or(false);
+
     let res = (1usize << levels) * n;
 
     // **`n_sync` scales with `t_max`.** `dtau = eta*dt_left/(A0*B0)`, so holding `n_sync` fixed
@@ -74,16 +78,34 @@ fn main() {
         refine_flagged: false,
         t_max,
         n_sync,
-        // The numpy reference's ungated escape test, with escape terminal: every result in
-        // this diagnostic predates both the distance gate and the closure criterion, and is
-        // quoted against that form.
-        escape_rule: prin_rs::outcome::EscapeRule::Reference,
+        // **The escape settings are now an argument, and production is the default.** They used
+        // to be pinned to the numpy reference's ungated test with escape terminal, justified as
+        // *"every result in this diagnostic predates both the distance gate and the closure
+        // criterion, and is quoted against that form"*. That justification expired the moment
+        // those results were superseded, and one half of it contradicts a standing decision:
+        // `stop_on_escape` is **off** in production, because closure certifies what escaped and
+        // is silent on whether the displayed shape has settled — measured, the shape still moves
+        // by up to 0.6 of the sphere's diameter after the criterion fires.
+        //
+        // `legacy_escape` keeps the old pair reachable as a **named control**, never as a
+        // default. Every committed number from this harness before the rebuild was taken under
+        // it, so it must not vanish; it must stop being what runs when nobody chose.
+        escape_rule: if legacy_escape {
+            prin_rs::outcome::EscapeRule::Reference
+        } else {
+            EnsembleCfg::production().escape_rule
+        },
         closure_k: 1,
-        stop_on_escape: true,
+        stop_on_escape: legacy_escape,
+        // Instrumentation the temporal accumulators need; it changes no trajectory.
         keep_boundary_shapes: true,
         keep_drift_hist: false,
         ..Default::default()
     };
+    // **The column, not the instance.** Nine harnesses feeding the refinement work printed no
+    // provenance at all, which is the `refine_flagged` failure exactly: *the failure was never
+    // the choice, it is that nothing recorded the choice.*
+    println!("  config: {}", ens.provenance());
     let full = ((1usize << (2 * (levels + 1))) - 1) / 3;
 
     println!(
@@ -94,12 +116,37 @@ fn main() {
         full * n * n * (ens.n_extra + 1)
     );
 
+    // **The ladder, plus the COMPLETE-LEVEL counts it used to skip.**
+    //
+    // `5, 11, 23, 47, ...` is `4k+1`, which lands one split past a complete tree every time and
+    // never *on* one: a complete tree to level `L` holds `(4^(L+1)-1)/3` quads -- 21, 85, 341,
+    // 1365, 5461 -- and none of those is a rung. That mattered the moment `headroom/err` showed
+    // all three regions taking their minimum at `B = 383`, the first rung past the complete
+    // level-4 tree of **341**. Whether the dip sits *at* a complete level or merely near one is
+    // the difference between "uniform is optimal when its frontier is flat" and a coincidence,
+    // and the old ladder could not tell them apart because it never sampled the point.
+    //
+    // Cheaper and sharper than the obvious alternative: re-running at `levels = 7` tests whether
+    // the cliff is the tree running out, costs 4x, and needs 8.9 GB for the boundary shapes --
+    // measured, it OOMs on an 18 GB machine. This tests the mechanism directly for nothing.
     let budgets: Vec<usize> = {
         let mut b = vec![5usize];
         while *b.last().unwrap() * 2 < full {
             b.push(b.last().unwrap() * 2 + 1);
         }
         b.push(full);
+        // The complete-level counts, merged in and de-duplicated so the ladder stays sorted and
+        // every prior rung keeps its place -- a reader comparing against an older table must see
+        // the same columns plus new ones, not a shifted set.
+        let mut lvl = 1usize;
+        let mut acc = 1usize;
+        while acc < full {
+            b.push(acc);
+            lvl *= 4;
+            acc += lvl;
+        }
+        b.sort_unstable();
+        b.dedup();
         b
     };
 
@@ -299,6 +346,10 @@ fn main() {
             (Criterion::TerminationGradient, Agg::Median),
             (Criterion::RunningMax, Agg::Median),
             (Criterion::FirstDivergence, Agg::Median),
+            (Criterion::LayoutRel, Agg::Median),
+            (Criterion::GradRms, Agg::Median),
+            (Criterion::PerimeterWithin, Agg::Median),
+            (Criterion::PerimeterBetween, Agg::Median),
         ] {
             let vals: Vec<f64> = cache.quads.values().map(|q| q.red.signal(c, a)).collect();
             let nanf = vals.iter().filter(|x| !x.is_finite()).count() as f64 / vals.len() as f64;
@@ -344,6 +395,15 @@ fn main() {
             Rank::Signal(Criterion::TerminationGradient, Agg::Median),
             Rank::Signal(Criterion::RunningMax, Agg::Median),
             Rank::Signal(Criterion::FirstDivergence, Agg::Median),
+            // **Four that were in `Criterion` and never in the `Rank` list**, so they have never
+            // been through the one measurement that decides a criterion here. `lay_w_perimeter`
+            // has been scored by `signal_audit` since the audit was written -- 0.07605 against
+            // uniform 0.08480 and dp 0.07025 at `B = 6143`, 60% of achievable improvement -- and
+            // could not be plotted, because `perimeter_ratio` alone was not a `Criterion`.
+            Rank::Signal(Criterion::LayoutRel, Agg::Median),
+            Rank::Signal(Criterion::GradRms, Agg::Median),
+            Rank::Signal(Criterion::PerimeterWithin, Agg::Median),
+            Rank::Signal(Criterion::PerimeterBetween, Agg::Median),
             Rank::Contrast(Criterion::Within, Agg::Median),
             Rank::Contrast(Criterion::Between, Agg::Median),
             Rank::GreedyLookahead1PerCost,
@@ -353,9 +413,11 @@ fn main() {
             Rank::Random(4),
             Rank::Random(5),
         ];
+        let mut traces: Vec<(String, Vec<metric::Point>)> = Vec::new();
         for r in runs {
             let pts = metric::replay(&cache, r, full);
             rows.push((r.name(), metric::curve_at(&pts, &budgets)));
+            traces.push((r.name(), pts));
         }
 
         // ---- the ceiling ----
@@ -425,6 +487,97 @@ fn main() {
             }
             println!();
         }
+        // ---- B: the share of achievable improvement captured ----
+        //
+        // **`error` is a level, `captured` is the number with a denominator.** "Beats random" was
+        // never the bar: random is a floor no strategy should sit below, and the alternative a
+        // criterion has to beat is **breadth-first**, which on a degenerate region IS the optimum.
+        // So the quantity is `(uniform - row) / (uniform - dp)` -- 1.0 is the optimum, 0.0 is
+        // uniform, negative is worse than raster order.
+        //
+        // **A degenerate denominator is the finding, not a ratio.** Where uniform already IS the
+        // optimum, `uniform - dp` is a rounding epsilon of either sign and the quotient is noise
+        // amplified without bound -- it printed `-0.6786` on `far` once, from a denominator of
+        // `-1.55e-15`, and read as "the criterion is 68% worse" when it means "the two are
+        // identical to machine precision". Printed as an identity instead.
+        {
+            let uni = rows.iter().find(|(n, _)| n == "uniform").map(|(_, c)| c.clone());
+            if let Some(uni) = uni {
+                println!("\n  CAPTURED = (uniform - row)/(uniform - dp). 1.0 = optimum, 0.0 = breadth-first,");
+                println!("  negative = worse than raster order. `--` where the denominator is degenerate.");
+                println!("  **READ `headroom/err` FIRST.** Where it is small, uniform is already nearly");
+                println!("  optimal, there is almost nothing to capture, and `captured` is a MAGNIFIED view");
+                println!("  of a small absolute gap rather than a percentage -- it printed -11940 once from");
+                println!("  a headroom of 1.15e-5. The standing rule covers a ZERO denominator; this is the");
+                println!("  finer case of a SMALL one, and the honest fix is to print the scale, not hide it.");
+                print!("{:>22}", "headroom uni-dp");
+                let mut denom = Vec::new();
+                for (j, &b) in budgets.iter().enumerate() {
+                    let d = uni[j] - dp.at_budget(b);
+                    denom.push(d);
+                    print!(" {d:>9.2e}");
+                }
+                println!();
+                print!("{:>22}", "headroom/err");
+                for (j, _) in budgets.iter().enumerate() {
+                    let r = denom[j] / uni[j].abs().max(1e-300);
+                    if uni[j].abs() > 0.0 { print!(" {r:>9.2e}") } else { print!("        --") }
+                }
+                println!("   <- the scale `captured` is normalised by");
+                for (name, curve) in &rows {
+                    if name.starts_with("random") || name == "uniform" {
+                        continue;
+                    }
+                    print!("{name:>22}");
+                    for (j, e) in curve.iter().enumerate() {
+                        // The bar scales with the region's own error, not with an absolute
+                        // epsilon: `far`'s errors are 1e-8 and `near-field`'s 1e-1, so a fixed
+                        // floor would call one degenerate and not the other for no reason but
+                        // scale.
+                        if denom[j].abs() <= 1e-6 * uni[j].abs().max(1e-30) {
+                            print!("        --");
+                        } else {
+                            print!(" {:>9.4}", (uni[j] - e) / denom[j]);
+                        }
+                    }
+                    println!();
+                }
+            }
+        }
+
+        // ---- D: the same curves against a SUBSTEP budget ----
+        //
+        // **A quad budget is only a cost when quads cost the same, and they do not.**
+        // `total_substeps` varies by orders within a region, so the quad axis scores a chaotic
+        // quad as costing what a smooth one costs. It matters most for the one ranking built to
+        // exploit that: `greedy_lookahead_1/cost` optimises `Δerror / substeps` and has only ever
+        // been plotted against `budget` -- scored in units it does not optimise. Both axes are
+        // printed; neither replaces the other.
+        {
+            let all: Vec<Vec<metric::Point>> = traces.iter().map(|(_, p)| p.clone()).collect();
+            let ladder = metric::cost_ladder(&all, budgets.len());
+            println!("\n  THE SAME CURVES AGAINST SUBSTEPS, the machine-independent cost.");
+            print!("{:>22}", "substeps =");
+            for c in &ladder {
+                print!(" {c:>9.2e}");
+            }
+            println!();
+            for (name, pts) in &traces {
+                if name.starts_with("random") {
+                    continue;
+                }
+                print!("{name:>22}");
+                for e in metric::curve_at_cost(pts, &ladder) {
+                    if e.is_finite() {
+                        print!(" {e:>9.5}");
+                    } else {
+                        print!("        --");
+                    }
+                }
+                println!("   (spent {:.2e})", pts.last().map(|p| p.cost).unwrap_or(0));
+            }
+        }
+
         // ---- the raw dump ----
         //
         // Without this the complete tree lives only in RAM for one process, and reproducing any

@@ -1,0 +1,78 @@
+err_ratio_residual — the burrau_nu_k residual, diagnosed.
+reproduce: cargo run --release --example err_ratio_residual all 48 results {1,0}
+arg 4 is stop_on_event: 1 = production, 0 = the arm.
+
+################ ARM A: stop_on_event = true (production) ################
+err_ratio_residual: 48^2 per case, f64.
+  config: production [kernel: integrator=Heggie max_steps=480000 step_limit=Predictive f=0.02 dtau=PerStepInterval clamp=true]
+  refine_flagged=true threshold=10 eta_factor=0.25 max_passes=3
+
+=== burrau_nu_k (burrau, half 0.45) ===
+  terminated before the horizon: 1424 of 2304 (61.8%)
+  2304 footprints, 2304 with a finite ratio, 1385 re-integrated (60.1%)
+    ratio p50   after repair   3.1888e1   before   3.2053e1   x  0.9949
+    ratio p90   after repair   6.6195e1   before   6.6618e1   x  0.9937
+    ratio p99   after repair   1.2435e2   before   1.2445e2   x  0.9992
+    paired: 1385 of 2304 pixels moved at all; |ln ratio| p50 1.787e-3 p99 1.713e-2
+    sigma_e_0  n  2304  p10   7.955e-3  p50   1.565e-2  p90   2.529e-2
+    sigma_e_t  n  2304  p10   8.752e-3  p50   6.381e-1  p90   7.449e-1
+    sigma_e_0 exactly zero on 0 pixels (ratio is 0/0 there)
+    copies AGREE on outcome       2144 px   ratio p50    3.218e1  p99    1.195e2
+    copies DISAGREE on outcome     160 px   ratio p50    1.241e0  p99    1.800e2
+    mass spread across copies  p50   3.231e-3  max   5.422e-3
+    |E| at t=0                 p50   3.060e-1  p99    1.414e0   (drift is RELATIVE)
+    t=0 ratio, nominal masses over own  p50  8.5734e-1  p90   1.0769e0  p99   1.2417e0
+
+=== near-field (body_plane, half 0.05) ===
+  terminated before the horizon: 64 of 2304 (2.8%)
+  2304 footprints, 2304 with a finite ratio, 0 re-integrated (0.0%)
+    ratio p50   after repair   1.0000e0   before   1.0000e0   x  1.0000
+    ratio p90   after repair   1.0000e0   before   1.0000e0   x  1.0000
+    ratio p99   after repair   1.0019e0   before   1.0019e0   x  1.0000
+    paired: 0 of 2304 pixels moved at all; |ln ratio| p50 0.000e0 p99 0.000e0
+    sigma_e_0  n  2304  p10   1.032e-3  p50   1.050e-3  p90   1.069e-3
+    sigma_e_t  n  2304  p10   1.032e-3  p50   1.050e-3  p90   1.069e-3
+    sigma_e_0 exactly zero on 0 pixels (ratio is 0/0 there)
+    copies AGREE on outcome       2292 px   ratio p50    1.000e0  p99    1.002e0
+    copies DISAGREE on outcome      12 px   ratio p50   9.857e-1  p99    1.002e0
+    mass spread across copies  p50    0.000e0  max    0.000e0
+    |E| at t=0                 p50    1.282e1  p99    1.289e1   (drift is RELATIVE)
+    t=0 ratio, nominal masses over own  p50   1.0000e0  p90   1.0000e0  p99   1.0000e0
+
+################ ARM B: stop_on_event = false ################
+err_ratio_residual: 48^2 per case, f64.
+  config: production + 1 override(s): stop_on_event=false (production true) [kernel: integrator=Heggie max_steps=480000 step_limit=Predictive f=0.02 dtau=PerStepInterval clamp=true]
+  refine_flagged=true threshold=10 eta_factor=0.25 max_passes=3
+
+=== burrau_nu_k (burrau, half 0.45) ===
+  terminated before the horizon: 1424 of 2304 (61.8%)
+  2304 footprints, 2304 with a finite ratio, 0 re-integrated (0.0%)
+    ratio p50   after repair  8.7151e-1   before  8.7151e-1   x  1.0000
+    ratio p90   after repair   1.1324e0   before   1.1324e0   x  1.0000
+    ratio p99   after repair   1.5659e0   before   1.5659e0   x  1.0000
+    paired: 0 of 2304 pixels moved at all; |ln ratio| p50 0.000e0 p99 0.000e0
+    sigma_e_0  n  2304  p10   7.955e-3  p50   1.565e-2  p90   2.529e-2
+    sigma_e_t  n  2304  p10   6.907e-3  p50   1.270e-2  p90   1.948e-2
+    sigma_e_0 exactly zero on 0 pixels (ratio is 0/0 there)
+    copies AGREE on outcome       2144 px   ratio p50   8.537e-1  p99    1.561e0
+    copies DISAGREE on outcome     160 px   ratio p50    1.077e0  p99    1.748e0
+    mass spread across copies  p50   3.231e-3  max   5.422e-3
+    |E| at t=0                 p50   3.060e-1  p99    1.414e0   (drift is RELATIVE)
+    t=0 ratio, nominal masses over own  p50  8.5734e-1  p90   1.0769e0  p99   1.2417e0
+
+=== near-field (body_plane, half 0.05) ===
+  terminated before the horizon: 64 of 2304 (2.8%)
+  2304 footprints, 2304 with a finite ratio, 0 re-integrated (0.0%)
+    ratio p50   after repair   1.0000e0   before   1.0000e0   x  1.0000
+    ratio p90   after repair   1.0000e0   before   1.0000e0   x  1.0000
+    ratio p99   after repair   1.0000e0   before   1.0000e0   x  1.0000
+    paired: 0 of 2304 pixels moved at all; |ln ratio| p50 0.000e0 p99 0.000e0
+    sigma_e_0  n  2304  p10   1.032e-3  p50   1.050e-3  p90   1.069e-3
+    sigma_e_t  n  2304  p10   1.032e-3  p50   1.050e-3  p90   1.069e-3
+    sigma_e_0 exactly zero on 0 pixels (ratio is 0/0 there)
+    copies AGREE on outcome       2292 px   ratio p50    1.000e0  p99    1.000e0
+    copies DISAGREE on outcome      12 px   ratio p50    1.000e0  p99    1.000e0
+    mass spread across copies  p50    0.000e0  max    0.000e0
+    |E| at t=0                 p50    1.282e1  p99    1.289e1   (drift is RELATIVE)
+    t=0 ratio, nominal masses over own  p50   1.0000e0  p90   1.0000e0  p99   1.0000e0
+

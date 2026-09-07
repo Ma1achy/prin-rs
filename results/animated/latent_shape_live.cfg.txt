@@ -1,0 +1,3 @@
+image=results/animated/latent_shape_live.png
+config=production + 1 override(s): keep_live_series=true (production false)
+chart=latent animation=live axis=playhead frames=17 boundaries=8 live_stride=4 adjacent_duplicates=7 scalar=ShapeSpread window=(8.6116e-4,8.5313e-3) window_from=live_tree_terminal res=1024 viewport=1024 budget=40000 tau_display=1e-2 alpha_hi=0.5 criterion=within k_frac=0.25 stop=keep:175 live_leaves=175 static_leaves=175 veto=none flagged_footprints=0 of=11200

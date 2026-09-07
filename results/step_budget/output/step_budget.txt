@@ -1,0 +1,114 @@
+step budget sweep: 3 targets x 5 rungs, a FIXED 48^2 grid per rung (2304 footprints), f64, production kernel otherwise.
+  integrator: Heggie   ladder: [30000, 60000, 120000, 240000, 480000]
+  `flagged` is n_nonfinite>0 -- what the render used to paint magenta. `budget` is budget_exhausted.
+  `steps` is total_substeps, the machine-independent cost: read steps, not secs.
+
+              case max_steps  flagged   budget      flag%  drift p50  drift p99    err p99   steps p50  steps TOTAL   x base
+      latent_shape     30000        0        0     0.000%  9.794e-15  1.084e-12    1.000e0       26400     61526900   1.000x
+      latent_shape     60000        0        0     0.000%  9.794e-15  1.084e-12    1.000e0       26400     61526900   1.000x
+      latent_shape    120000        0        0     0.000%  9.794e-15  1.084e-12    1.000e0       26400     61526900   1.000x
+      latent_shape    240000        0        0     0.000%  9.794e-15  1.084e-12    1.000e0       26400     61526900   1.000x
+      latent_shape    480000        0        0     0.000%  9.794e-15  1.084e-12    1.000e0       26400     61526900   1.000x
+       burrau_nu_k     30000      521      521    22.613%   1.358e-9   3.993e-7    1.127e2      104471    282293253   1.000x
+       burrau_nu_k     60000       65       65     2.821%   3.831e-9   5.917e-7    1.170e2      104471    319702465   1.133x
+       burrau_nu_k    120000       65       65     2.821%   3.831e-9   5.917e-7    1.170e2      104471    341069163   1.208x
+       burrau_nu_k    240000       57       57     2.474%   3.840e-9   6.724e-7    1.242e2      104471    379124903   1.343x
+       burrau_nu_k    480000        0        0     0.000%   4.065e-9   5.917e-7    1.244e2      104471    381320834   1.351x
+   latent_mixed_h3     30000      195      195     8.464%  1.014e-14   1.226e-7    1.000e0       27277    140941042   1.000x
+   latent_mixed_h3     60000       16       16     0.694%  1.152e-14   1.203e-7    1.000e0       27277    160049909   1.136x
+   latent_mixed_h3    120000        0        0     0.000%  1.166e-14   1.203e-7    1.000e0       27277    160294117   1.137x
+   latent_mixed_h3    240000        0        0     0.000%  1.166e-14   1.203e-7    1.000e0       27277    160294117   1.137x
+   latent_mixed_h3    480000        0        0     0.000%  1.166e-14   1.203e-7    1.000e0       27277    160294117   1.137x
+
+  control latent_shape: CONSTANT across the ladder -- flagged/budget/steps (0, 0, 61526900)
+
+
+              case max_steps  flagged   budget      flag%  drift p50  drift p99    err p99   steps p50  steps TOTAL   x base
+        near-field     30000        0        0     0.000%  1.164e-11   2.328e-6    1.002e0       43643    100097809   1.000x
+        near-field    480000        0        0     0.000%  1.164e-11   2.328e-6    1.002e0       43643    100097809   1.000x
+         mid-field     30000        0        0     0.000%   2.042e-7   2.073e-7    1.000e0        6176     14229504   1.000x
+         mid-field    480000        0        0     0.000%   2.042e-7   2.073e-7    1.000e0        6176     14229504   1.000x
+               far     30000        0        0     0.000%   7.958e-8   8.052e-8    1.000e0        5992     13804576   1.000x
+               far    480000        0        0     0.000%   7.958e-8   8.052e-8    1.000e0        5992     13804576   1.000x
+        body2 core     30000        0        0     0.000%  1.379e-11   2.817e-6    1.000e0       42926     94935953   1.000x
+        body2 core    480000        0        0     0.000%  1.379e-11   2.817e-6    1.000e0       42926     94935953   1.000x
+         body2 mid     30000        0        0     0.000%  6.143e-13  7.883e-12    1.000e0       33507     77225877   1.000x
+         body2 mid    480000        0        0     0.000%  6.143e-13  7.883e-12    1.000e0       33507     77225877   1.000x
+       body1 slice     30000        0        0     0.000%  1.064e-11   2.799e-6    1.000e0       43303     97329467   1.000x
+       body1 slice    480000        0        0     0.000%  1.064e-11   2.799e-6    1.000e0       43303     97329467   1.000x
+         body1 far     30000        0        0     0.000%   6.464e-8   7.052e-8    1.000e0        9420     31217859   1.000x
+         body1 far    480000        0        0     0.000%   6.464e-8   7.052e-8    1.000e0        9420     31217859   1.000x
+     deep interior     30000        0        0     0.000%   1.259e-5   7.162e-5    1.094e0       23214     60539311   1.000x
+     deep interior    480000        0        0     0.000%   1.259e-5   7.162e-5    1.094e0       23214     60539311   1.000x
+  config_stability     30000        5        5     0.217%  4.913e-10   1.502e-5    1.003e0       36850     96715541   1.000x
+  config_stability    480000        0        0     0.000%  4.980e-10   1.502e-5    1.003e0       36850     96730880   1.000x
+
+  control near-field: CONSTANT across the ladder -- flagged/budget/steps (0, 0, 100097809)
+
+              case max_steps  flagged   budget      flag%  drift p50  drift p99    err p99   steps p50  steps TOTAL   x base
+        body_plane     30000        0        0     0.000%  1.164e-11   2.328e-6    1.002e0       43643    100097809   1.000x
+        body_plane    480000        0        0     0.000%  1.164e-11   2.328e-6    1.002e0       43643    100097809   1.000x
+       plane_00deg     30000        0        0     0.000%  1.164e-11   2.328e-6    1.002e0       43643    100097809   1.000x
+       plane_00deg    480000        0        0     0.000%  1.164e-11   2.328e-6    1.002e0       43643    100097809   1.000x
+      shape_sphere     30000        0        0     0.000%  2.565e-11   3.981e-6    1.012e0       42485     94674271   1.000x
+      shape_sphere    480000        0        0     0.000%  2.565e-11   3.981e-6    1.012e0       42485     94674271   1.000x
+      latent_shape     30000        0        0     0.000%  9.794e-15  1.084e-12    1.000e0       26400     61526900   1.000x
+      latent_shape    480000        0        0     0.000%  9.794e-15  1.084e-12    1.000e0       26400     61526900   1.000x
+    latent_inner_p     30000        0        0     0.000%  9.389e-15   3.372e-8    1.000e0       26414     61546165   1.000x
+    latent_inner_p    480000        0        0     0.000%  9.389e-15   3.372e-8    1.000e0       26414     61546165   1.000x
+    latent_outer_p     30000        0        0     0.000%  6.103e-15  4.114e-13    1.000e0       26689     61969601   1.000x
+    latent_outer_p    480000        0        0     0.000%  6.103e-15  4.114e-13    1.000e0       26689     61969601   1.000x
+       latent_mass     30000        0        0     0.000%  5.830e-15  1.255e-14    2.510e0       26408     66974389   1.000x
+       latent_mass    480000        0        0     0.000%  5.830e-15  1.255e-14    2.510e0       26408     66974389   1.000x
+
+  control body_plane: CONSTANT across the ladder -- flagged/budget/steps (0, 0, 100097809)
+
+              case max_steps  flagged   budget      flag%  drift p50  drift p99    err p99   steps p50  steps TOTAL   x base
+      latent_mixed     30000        0        0     0.000%  9.093e-15   2.182e-8    1.000e0       26444     63148201   1.000x
+      latent_mixed    480000        0        0     0.000%  9.093e-15   2.182e-8    1.000e0       26444     63148201   1.000x
+  latent_oblique_a     30000       19       19     0.825%  8.172e-15  2.282e-13    2.829e0       26496     66063811   1.000x
+  latent_oblique_a    480000        0        0     0.000%  8.242e-15  2.894e-12    3.607e0       26496     84090482   1.273x
+  latent_oblique_b     30000       10       10     0.434%  9.633e-15  2.613e-10    1.623e0       26416     66572771   1.000x
+  latent_oblique_b    480000        0        0     0.000%  9.660e-15   1.051e-9    1.977e0       26416     76071174   1.143x
+       burrau_nu_k     30000      521      521    22.613%   1.358e-9   3.993e-7    1.127e2      104471    282293253   1.000x
+       burrau_nu_k    480000        0        0     0.000%   4.065e-9   5.917e-7    1.244e2      104471    381320834   1.351x
+    invariant_lz_k     30000        0        0     0.000%  1.176e-14   2.109e-7    1.000e0       26451     69497567   1.000x
+    invariant_lz_k    480000        0        0     0.000%  1.176e-14   2.109e-7    1.000e0       26451     69497567   1.000x
+      mass_simplex     30000        1        1     0.043%  6.606e-15  1.310e-14    3.146e0       26400     61037236   1.000x
+      mass_simplex    480000        0        0     0.000%  6.608e-15  1.313e-14    3.146e0       26400     62435972   1.023x
+
+  control latent_mixed: CONSTANT across the ladder -- flagged/budget/steps (0, 0, 63148201)
+
+              case max_steps  flagged   budget      flag%  drift p50  drift p99    err p99   steps p50  steps TOTAL   x base
+      preset_shape     30000        3        3     0.130%   1.089e-6   1.426e-5    1.001e0        4449     36754430   1.000x
+      preset_shape    480000        0        0     0.000%   1.089e-6   1.426e-5    1.001e0        4449     36782596   1.001x
+       preset_prho     30000        0        0     0.000%  6.527e-15   3.012e-7    1.000e0       27031     63502819   1.000x
+       preset_prho    480000        0        0     0.000%  6.527e-15   3.012e-7    1.000e0       27031     63502819   1.000x
+    preset_plambda     30000        0        0     0.000%  5.925e-13   4.353e-7    1.000e0       32452     77444872   1.000x
+    preset_plambda    480000        0        0     0.000%  5.925e-13   4.353e-7    1.000e0       32452     77444872   1.000x
+   preset_shape_pl     30000        0        0     0.000%  4.620e-10   4.630e-7    1.000e0       27918     57588050   1.000x
+   preset_shape_pl    480000        0        0     0.000%  4.620e-10   4.630e-7    1.000e0       27918     57588050   1.000x
+   preset_shape_h1     30000       10       10     0.434%   4.851e-7   1.245e-5    1.004e0       21953     66156271   1.000x
+   preset_shape_h1    480000        0        0     0.000%   4.787e-7   1.245e-5    1.004e0       21953     66876210   1.011x
+    preset_prho_h1     30000        0        0     0.000%  1.186e-14   2.010e-6    1.000e0       26480     62530376   1.000x
+    preset_prho_h1    480000        0        0     0.000%  1.186e-14   2.010e-6    1.000e0       26480     62530376   1.000x
+
+  control preset_prho: CONSTANT across the ladder -- flagged/budget/steps (0, 0, 63502819)
+
+              case max_steps  flagged   budget      flag%  drift p50  drift p99    err p99   steps p50  steps TOTAL   x base
+ preset_plambda_h1     30000        1        1     0.043%  3.513e-13   3.368e-6    1.000e0       32066     64663807   1.000x
+ preset_plambda_h1    480000        0        0     0.000%  3.515e-13   3.368e-6    1.000e0       32066     64676584   1.000x
+preset_shape_pl_h1     30000        1        1     0.043%  3.191e-11   3.272e-6    1.000e0       27802     48389033   1.000x
+preset_shape_pl_h1    480000        0        0     0.000%  3.292e-11   3.501e-6    1.000e0       27802     48407779   1.000x
+   latent_shape_h3     30000        1        1     0.043%  3.827e-14   2.087e-7    1.000e0       26528     96216859   1.000x
+   latent_shape_h3    480000        0        0     0.000%  3.827e-14   2.087e-7    1.000e0       26528     96249001   1.000x
+ latent_inner_p_h3     30000        0        0     0.000%  8.084e-15   6.524e-8    1.000e0       26579     64580803   1.000x
+ latent_inner_p_h3    480000        0        0     0.000%  8.084e-15   6.524e-8    1.000e0       26579     64580803   1.000x
+ latent_outer_p_h3     30000        0        0     0.000%  4.682e-15  7.449e-14    1.000e0       27667     64209898   1.000x
+ latent_outer_p_h3    480000        0        0     0.000%  4.682e-15  7.449e-14    1.000e0       27667     64209898   1.000x
+    latent_mass_h3     30000        3        3     0.130%  5.620e-15  1.239e-14    2.357e0       28248    107805418   1.000x
+    latent_mass_h3    480000        0        0     0.000%  5.623e-15  1.239e-14    2.357e0       28248    107807562   1.000x
+   latent_mixed_h3     30000      195      195     8.464%  1.014e-14   1.226e-7    1.000e0       27277    140941042   1.000x
+   latent_mixed_h3    480000        0        0     0.000%  1.166e-14   1.203e-7    1.000e0       27277    160294117   1.137x
+
+  control latent_inner_p_h3: CONSTANT across the ladder -- flagged/budget/steps (0, 0, 64580803)

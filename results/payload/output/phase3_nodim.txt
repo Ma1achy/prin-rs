@@ -1,0 +1,40 @@
+=== live near-field stationary=0 alpha_lo=0.2 dim_floor=0  04:14:11
+  descent: 153 quads (115 leaves, depth 6) in 11.9s, 3.938e8 substeps, stop [floor:2 keep:81 screen_floor:32]
+  payload/event_class/indicator/eps=1e-2: error 0.00000; dp needs B=125 (ratio 1.22x); uniform needs B=5449 (ratio 0.03x); sea_fraction 0.0005
+  payload/event_class/resolvable/eps=1e-2: error 0.00000; dp needs B=121 (ratio 1.26x); uniform needs B=5449 (ratio 0.03x); sea_fraction 0.0005
+=== live deep_interior stationary=0 alpha_lo=0.2 dim_floor=0  04:14:23
+  descent: 349 quads (262 leaves, depth 6) in 38.8s, 1.303e9 substeps, stop [floor:3 keep:144 screen_floor:115]
+  payload/event_class/indicator/eps=1e-2: error 0.00000; dp needs B=325 (ratio 1.07x); uniform needs B=5377 (ratio 0.06x); sea_fraction 0.0025
+  payload/event_class/resolvable/eps=1e-2: error 0.00000; dp needs B=297 (ratio 1.18x); uniform needs B=5377 (ratio 0.06x); sea_fraction 0.0025
+=== live preset_prho stationary=0 alpha_lo=0.2 dim_floor=0  04:15:03
+  descent: 1045 quads (784 leaves, depth 6) in 54.7s, 1.880e9 substeps, stop [floor:11 keep:413 screen_floor:360]
+  payload/event_class/indicator/eps=1e-2: error 0.00299; dp needs B=849 (ratio 1.23x); uniform needs B=3485 (ratio 0.30x); sea_fraction 0.0415
+  payload/event_class/resolvable/eps=1e-2: error 0.00295; dp needs B=745 (ratio 1.40x); uniform needs B=3469 (ratio 0.30x); sea_fraction 0.0415
+=== live preset_shape stationary=0 alpha_lo=0.2 dim_floor=0  04:15:58
+  descent: 2181 quads (1636 leaves, depth 6) in 208.4s, 4.845e9 substeps, stop [floor:13 keep:297 screen_floor:1326]
+  payload/event_class/indicator/eps=1e-2: error 0.00041; dp needs B=2053 (ratio 1.06x); uniform needs B=4285 (ratio 0.51x); sea_fraction 0.1934
+  payload/event_class/resolvable/eps=1e-2: error 0.00005; dp needs B=1981 (ratio 1.10x); uniform needs B=4281 (ratio 0.51x); sea_fraction 0.1934
+=== live config_stability stationary=0 alpha_lo=0.2 dim_floor=0  04:19:27
+  descent: 5045 quads (3784 leaves, depth 6) in 613.1s, 1.317e10 substeps, stop [floor:37 keep:1098 screen_floor:2649]
+  payload/event_class/indicator/eps=1e-2: error 0.01485; dp needs B=4673 (ratio 1.08x); uniform needs B=5245 (ratio 0.96x); sea_fraction 0.2379
+  payload/event_class/resolvable/eps=1e-2: error 0.01140; dp needs B=4345 (ratio 1.16x); uniform needs B=5213 (ratio 0.97x); sea_fraction 0.2379
+=== live preset_shape_h1 stationary=0 alpha_lo=0.2 dim_floor=0  04:29:42
+  descent: 3353 quads (2515 leaves, depth 6) in 244.0s, 8.333e9 substeps, stop [floor:9 keep:420 screen_floor:2086]
+  payload/event_class/indicator/eps=1e-2: error 0.03004; dp needs B=2713 (ratio 1.24x); uniform needs B=4973 (ratio 0.67x); sea_fraction 0.3415
+  payload/event_class/resolvable/eps=1e-2: error 0.00671; dp needs B=2229 (ratio 1.50x); uniform needs B=5209 (ratio 0.64x); sea_fraction 0.3415
+=== march preset_shape_h1 dim_floor=0  04:33:46
+  live descent: 3353 quads (2515 leaves, depth 6) in 244.3s, 8.260e9 substeps, catch-up 7.731e9 substeps (93.6% of the total), stop [floor:9 keep:420 screen_floor:2086]
+  memory: 3353 quads ever computed (mem_all), resident peak 3353 and final 3353 (mem_resident), 0 children merged
+  payload/event_class/indicator/eps=1e-2: final error 0.03004; dp needs B=2713 (ratio 1.24x); uniform needs B=4973 (ratio 0.67x); sea_fraction 0.3415
+  payload/event_class/resolvable/eps=1e-2: final error 0.00671; dp needs B=2229 (ratio 1.50x); uniform needs B=5209 (ratio 0.64x); sea_fraction 0.3415
+=== march config_stability dim_floor=0  04:37:51
+  live descent: 5065 quads (3799 leaves, depth 6) in 387.8s, 1.312e10 substeps, catch-up 1.262e10 substeps (96.2% of the total), stop [floor:36 keep:1098 screen_floor:2665]
+  memory: 5065 quads ever computed (mem_all), resident peak 5065 and final 5065 (mem_resident), 0 children merged
+  payload/event_class/indicator/eps=1e-2: final error 0.01135; dp needs B=4765 (ratio 1.06x); uniform needs B=5297 (ratio 0.96x); sea_fraction 0.2379
+  payload/event_class/resolvable/eps=1e-2: final error 0.01133; dp needs B=4349 (ratio 1.16x); uniform needs B=5213 (ratio 0.97x); sea_fraction 0.2379
+=== march preset_shape dim_floor=0  04:44:19
+  live descent: 2181 quads (1636 leaves, depth 6) in 143.7s, 4.782e9 substeps, catch-up 4.373e9 substeps (91.4% of the total), stop [floor:13 keep:297 screen_floor:1326]
+  memory: 2181 quads ever computed (mem_all), resident peak 2181 and final 2181 (mem_resident), 0 children merged
+  payload/event_class/indicator/eps=1e-2: final error 0.00041; dp needs B=2053 (ratio 1.06x); uniform needs B=4285 (ratio 0.51x); sea_fraction 0.1934
+  payload/event_class/resolvable/eps=1e-2: final error 0.00005; dp needs B=1981 (ratio 1.10x); uniform needs B=4281 (ratio 0.51x); sea_fraction 0.1934
+phase3_nodim done 04:46:43

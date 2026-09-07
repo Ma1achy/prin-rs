@@ -1,0 +1,53 @@
+payload_metric march: /private/tmp/claude-501/-Users-malachy-src-principia-rs-test/260ec0e2-d203-4f2d-85ff-f64a85497918/scratchpad/payload/payload/preset_shape_h1_t13_L6.fcache -- region preset_shape_h1, levels 6 N=8 res 512, t_max 13; tolerance policy, stationary true, eps 1e-2 k_frac 0.25, live_stride 4; class arm event_class
+  config: production + 2 override(s): refine_flagged=false (production true), keep_live_series=true (production false)
+  live descent: 3565 quads (2674 leaves, depth 6) in 499.3s, 8.529e9 substeps, catch-up 8.138e9 substeps (95.4% of the total), stop [keep:452 screen_floor:2187 stationary:35]
+    j       t  computed  leaves  split   keep stationary deferred
+    0   1.625        37      28      4      0          0       12
+    1   3.250        65      49      7      2          0       19
+    2   4.875       109      82     11      6          0       32
+    3   6.500       185     139     19      6          0       57
+    4   8.125       321     241     34      6          0       99
+    5   9.750       481     361     40      6          2      119
+    6  11.375       693     520     53      8          3      159
+    7  13.000       949     712     64      8          3      192
+    8  13.000      1185     889     59      8          3      177
+    9  13.000      1385    1039     50      8          3      147
+   10  13.000      1545    1159     40      9          4      118
+   11  13.000      1693    1270     37     10          6      108
+   12  13.000      1805    1354     28     14         18       84
+   13  13.000      1933    1450     32     14         23       94
+   14  13.000      2057    1543     31     15         26       92
+   15  13.000      2153    1615     24     19         35       72
+   16  13.000      2253    1690     25     38         35       75
+   17  13.000      2357    1768     26     59         35       78
+   18  13.000      2465    1849     27     74         35       78
+   19  13.000      2589    1942     31     88         35       91
+   20  13.000      2701    2026     28     96         35       83
+   21  13.000      2809    2107     27    138         35       79
+   22  13.000      2901    2176     23    161         35       68
+   23  13.000      2981    2236     20    197         35       59
+   24  13.000      3069    2302     22    225         35       64
+   25  13.000      3141    2356     18    235         35       52
+   26  13.000      3217    2413     19    264         35       56
+   27  13.000      3273    2455     14    272         35       42
+   28  13.000      3321    2491     12    308         35       33
+   29  13.000      3357    2518      9    334         35       26
+   30  13.000      3393    2545      9    351         35       25
+   31  13.000      3421    2566      7    363         35       19
+   32  13.000      3445    2584      6    383         35       16
+   33  13.000      3461    2596      4    396         35       12
+   34  13.000      3477    2608      4    405         35       10
+   35  13.000      3493    2620      4    413         35       11
+   36  13.000      3509    2632      4    418         35       10
+   37  13.000      3521    2641      3    422         35        7
+   38  13.000      3533    2650      3    428         35        8
+   39  13.000      3541    2656      2    432         35        6
+   40  13.000      3549    2662      2    436         35        4
+   41  13.000      3553    2665      1    442         35        3
+   42  13.000      3557    2668      1    444         35        2
+   43  13.000      3561    2671      1    446         35        1
+   44  13.000      3565    2674      1    449         35        0
+   45  13.000      3565    2674      0    452         35        0
+  leaves by level: 3:12 4:26 5:92 6:2544
+  payload/event_class/indicator/eps=1e-2: final error 0.00315; dp needs B=3273 (ratio 1.09x); uniform needs B=5441 (ratio 0.66x); sea_fraction 0.3415
+  payload/event_class/resolvable/eps=1e-2: final error 0.00187; dp needs B=2801 (ratio 1.27x); uniform needs B=5329 (ratio 0.67x); sea_fraction 0.3415

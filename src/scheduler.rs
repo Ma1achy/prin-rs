@@ -24,12 +24,28 @@ use crate::spatial::{self, HotRule, Layout};
 use crate::render::Precision;
 use crate::rng::SplitMix64;
 
-/// Which signal the floor decision reads.
+/// How a quad that passed every guard is decided.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Policy {
-    /// Threshold on `alpha`'s **value**. Separation between region types is 0.9862 against a
-    /// chaotic scatter of 1.1–1.3 — marginal.
+    /// **The tolerance policy, the default from Phase 2 of the refinement rebuild.** A quad is
+    /// `Keep` when every footprint is resolved at `tau_display` — its copies, which span the
+    /// whole cell, agree on the shape sphere to within the tolerance and on the event class
+    /// exactly — and `Split` otherwise. No exponent, no aggregate: a count in the tail, so a
+    /// filament crossing one footprint column of a quad refines it where a median reads it
+    /// resolved. A quad outranked by `k_frac` is `Deferred` and re-decided next round, never
+    /// dropped as `Keep`.
+    ///
+    /// The legacy policies split only where `alpha >= alpha_hi`, i.e. where halving the cell had
+    /// *already* halved the spread — smooth, converging regions — and floored or kept exactly the
+    /// quads whose spread does not fall: discontinuities and fractal mixing at every scale coarser
+    /// than their filaments. Measured on `preset_shape_h1`: the refinement went into the smooth
+    /// regular island and floored the fractal core at level 2, Spearman(depth, terminated) −0.68.
+    /// That is the inverse of "refine the filaments", and it was the design.
     #[default]
+    Tolerance,
+    /// Threshold on `alpha`'s **value**. Separation between region types is 0.9862 against a
+    /// chaotic scatter of 1.1–1.3 — marginal. **Legacy**: every `.prnq` committed before Phase 2
+    /// was cut with it, and `tests/live_decision.rs` pins that it still reproduces them.
     Alpha,
     /// Threshold on `alpha_sibling_spread`, the range of the four children's exponents.
     /// Separation in `alpha`'s **reliability** is 0.001 against 1.2 — three orders. Where the four
@@ -40,12 +56,14 @@ pub enum Policy {
 impl Policy {
     pub fn name(self) -> &'static str {
         match self {
+            Policy::Tolerance => "tolerance",
             Policy::Alpha => "alpha",
             Policy::Sibling => "sibling",
         }
     }
     pub fn parse(s: &str) -> Option<Policy> {
         Some(match s {
+            "tolerance" => Policy::Tolerance,
             "alpha" => Policy::Alpha,
             "sibling" => Policy::Sibling,
             _ => return None,
@@ -163,6 +181,66 @@ pub fn assert_not_uniform_in_disguise(cfg: &SchedCfg, path: &str, allow: bool) {
     );
 }
 
+/// **Refuse to write a tree under `results/` from any integration kernel but the production one.**
+///
+/// The structural answer to "is the refinement mechanism running on the fixed integrator". The
+/// scheduler integrates through whatever `EnsembleCfg` it is handed, and twelve harnesses took
+/// the integrator from the default while two pinned `Az` deliberately; a setting correct where
+/// it was born and copied into a tree-writing harness would produce a corpus of the wrong
+/// physics wearing the right filenames, which is what `refine_flagged: false` did for six days.
+/// This checks the five kernel knobs that moved between the superseded corpus and the current
+/// one — `integrator`, `step_limit`, `dtau_mode`, `clamp_final_step`, `max_steps` — and nothing
+/// else: `refine_flagged` is a legitimate named argument, `t_max` and `eta` are experiment axes.
+///
+/// Same shape as [`assert_not_uniform_in_disguise`]: a configuration that silently reproduces
+/// the old behaviour needs a guard, not a convention. Call it from every harness that writes a
+/// `.prnq` or a tree render under `results/`.
+pub fn assert_production_kernel(ens: &EnsembleCfg, path: &str) {
+    if !path.replace('\\', "/").split('/').any(|c| c == "results") {
+        return;
+    }
+    let p = EnsembleCfg::production();
+    let mut bad: Vec<String> = Vec::new();
+    if ens.integrator != p.integrator {
+        bad.push(format!("integrator={:?} (production {:?})", ens.integrator, p.integrator));
+    }
+    if format!("{:?}", ens.step_limit) != format!("{:?}", p.step_limit)
+        || ens.step_limit_f != p.step_limit_f
+    {
+        bad.push(format!(
+            "step_limit={:?} f={} (production {:?} f={})",
+            ens.step_limit, ens.step_limit_f, p.step_limit, p.step_limit_f
+        ));
+    }
+    if format!("{:?}", ens.dtau_mode) != format!("{:?}", p.dtau_mode) {
+        bad.push(format!("dtau_mode={:?} (production {:?})", ens.dtau_mode, p.dtau_mode));
+    }
+    if ens.clamp_final_step != p.clamp_final_step {
+        bad.push(format!(
+            "clamp_final_step={} (production {})",
+            ens.clamp_final_step, p.clamp_final_step
+        ));
+    }
+    // **`max_steps` belongs here and was missing until 2026-09-06.** The step budget moved
+    // 30_000 -> 480_000 with the integrator default, and this guard -- whose whole panic message
+    // is *"a tree built on another kernel is the superseded corpus over again"* -- would have
+    // passed a 30_000 tree straight into `results/`. It is a kernel field in exactly the sense the
+    // other four are: it decides which trajectories complete, a truncated footprint reads
+    // undetermined, and its quad splits. Measured across the gallery: 15 of 26 trees moved on the
+    // budget alone.
+    if ens.max_steps != p.max_steps {
+        bad.push(format!("max_steps={} (production {})", ens.max_steps, p.max_steps));
+    }
+    if !bad.is_empty() {
+        panic!(
+            "refusing to write `{path}`: the integration kernel is not production's -- {}. A \
+             tree built on another kernel is the superseded corpus over again; write it to a \
+             scratch root, or fix the config.",
+            bad.join("; ")
+        );
+    }
+}
+
 #[derive(Clone, Copy, Debug)]
 pub struct SchedCfg {
     /// `N`, samples per quad axis. The quality/compute driver: `N²(E+1)` trajectories per quad.
@@ -185,6 +263,52 @@ pub struct SchedCfg {
     /// `Decision::Split`. Complexity stays the sole trigger.
     pub camera: Option<Camera>,
     pub tau_display: f64,
+    /// **The stationarity stop** (Phase 2b), `Policy::Tolerance` only. An unresolved quad that is
+    /// white at the footprint scale, whose class mixture matches its parent's and whose quadrants
+    /// agree, and whose shape spread did not fall from the parent, is a homogeneous sea: going
+    /// deeper re-samples it and resolves nothing. Such a quad is `Decision::Stationary` -- a keep
+    /// for now, re-tested at every playhead. Off, it refines to the floor.
+    ///
+    /// **Off by default, by measurement.** It passes its analytic tests (a white sea stops at the
+    /// bootstrap, a filament through it refines), and on the real fields at `eps = 0.01` it fires
+    /// 0, 1 and 34 times on `near-field`, `deep interior` and `preset_shape_h1` -- and on the sea
+    /// chart the 34 saved 5.5% of the quads while leaving 0.94% of *resolvable* pixels
+    /// unresolved (resolvable-form error 0.0094 against 0.0002 with the stop off, 1.60x the
+    /// optimum against 1.11x). The real mixing region is a coherent sponge at the footprint
+    /// scale, not white noise, and coherence reads it as structure, which it is. The arms are
+    /// computed and dumped on every quad regardless, for the `c_stat`/`delta_mix`/`eps` sweep.
+    pub stationary: bool,
+    /// Coherence below which a quad reads as white: lag-1 neighbour correlation of the nominal
+    /// shape and class fields, `max` of the two arms. The white-noise floor at `N = 8` has sd
+    /// about 0.09 over 112 neighbour pairs, so 0.3 is about three sigma.
+    pub c_stat: f64,
+    /// Total-variation distance below which two class mixtures read as the same mixture -- the
+    /// quad against its parent, and each quadrant against the quad. Sixteen footprints per
+    /// quadrant at `N = 8` put the sampling noise near 0.15 for a three-class mixture.
+    pub delta_mix: f64,
+    /// The ranked-frontier fraction used by the **post-horizon rounds** of a live descent. The
+    /// `k_frac` throttle exists to spend a budget well while the playhead moves; once it has
+    /// stopped there is nothing to defer for, and at `k_frac = 0.25` near-field took seventeen
+    /// rounds at the horizon where four would do. `1.0` takes the whole want-list per round.
+    pub k_frac_post: f64,
+    /// **Merging, in the live descent.** A parent whose four children are all leaves that did not
+    /// split this boundary is merged back when it has become resolved or its split shows no gain
+    /// (`alpha_area < alpha_lo`): the children are released and the parent is the leaf again.
+    /// Off is the running-union control -- the tree only grows.
+    pub merge: bool,
+    /// **The agreement arm**: the area exponent and the noise stop read the unresolved area that
+    /// is structure (`QuadReduction::structured_weight`) rather than all of it, so a sea is
+    /// uninteresting and a filament through it is not. Off, every unresolved footprint counts.
+    pub agreement: bool,
+    /// **The dimension floor.** Whether the no-gain test (`no_gain`: `alpha_area` and
+    /// `alpha_spread_set` both under `alpha_lo`) floors a quad and merges its parent. Off, only
+    /// the noise stop floors -- an unresolved quad with no structured footprint at all -- so a
+    /// sea is stopped by its lack of neighbour agreement and a fat fractal, whose footprints
+    /// agree with their neighbours at every scale, is refined like any other structure.
+    /// Measured on `config_stability`, whose mixing region has box dimension about 1.94 over
+    /// the measurable levels: the dimension floor at any `alpha_lo` in 0.05-0.3 stops 200-260
+    /// boxes there and the tree lands above uniform. `alpha_lo = 0` disables both floors.
+    pub dim_floor: bool,
     /// How a footprint is called hot for the **shape** statistics.
     ///
     /// Separate from `tau_display`, which still drives the split gate and the absolute mask.
@@ -194,7 +318,38 @@ pub struct SchedCfg {
     pub hot_rule: HotRule,
     /// Split above this exponent, floor below `alpha_lo`. Between them: keep.
     pub alpha_hi: f64,
+    /// Under `Policy::Tolerance`: **the floor on the area exponent**. A split whose children hold
+    /// no less structured unresolved area than the coarse end did, to within `2^-alpha_lo`, did
+    /// not pay, and its children are `Floor` (re-tested every boundary). `alpha_area = 2 - d` for
+    /// an unresolved set of box dimension `d`, so `0.2` refines where the set is thinner than
+    /// `d = 1.8` and floors where it is fatter. **The default is `0.005`, a noise margin**: a split
+    /// is floored only where it resolved nothing. Measured on six charts, the dimension rung 0.2
+    /// floors a fat fractal (`config_stability`, `d ~ 1.94`, 16% of whose area resolves at level
+    /// 6) exactly as it floors a sea, costs 12% of that chart's resolvable pixels and lands the
+    /// tree above uniform; 0.005 keeps the sea chart's saving (39% against 44%), halves the
+    /// other costs and puts every chart at or under uniform. No rung separates a sea from a
+    /// sponge that thins only below the sampled levels -- that is a bet on depth not bought, by
+    /// construction. `0.0` allows full depth everywhere, the configuration the user must opt
+    /// into, because the alternative is uniform depth on every sea; `dim_floor = false` keeps
+    /// the noise stop alone. Under the legacy policies it thresholds the spread exponent, as
+    /// before, and their pins carry `0.2` explicitly.
     pub alpha_lo: f64,
+
+    /// **Boundaries a no-gain merge memory survives, or `None` for the weight-keyed expiry alone.**
+    ///
+    /// A parent merged back for no gain remembers its own exponents so it is not re-split into the
+    /// same four children every boundary. The shipped expiry is keyed on the **structured weight**
+    /// staying within a factor of two of where the split was judged — a *state* rule. A
+    /// time-to-live is the other live-compatible form the record names as unbuilt, and it is a
+    /// *clock* rule: the memory simply lapses, and the quad is re-judged on whatever the region has
+    /// become.
+    ///
+    /// They fail in opposite directions. The weight rule holds forever on a region whose weight
+    /// does not move — a sea, where structure can appear inside an unchanged unresolved area — and
+    /// the clock rule cannot hold at all past `ttl`, so it pays re-splits on a genuinely static
+    /// region. `None` is the default and is the shipped behaviour; the two compose when both are
+    /// on, because a memory must satisfy **both** to stand.
+    pub no_gain_ttl: Option<u32>,
     /// Floor above this sibling range, under [`Policy::Sibling`].
     pub sib_tau: f64,
     pub policy: Policy,
@@ -229,6 +384,19 @@ pub struct SchedCfg {
     /// itself. **The camera enters `priority` here and `veto` never; a `Quad` gains no camera
     /// field.**
     pub camera_bias: Option<f64>,
+
+    /// **Where the pointer is (§18), or `None` — and `None` is the shipped default.**
+    ///
+    /// Foveation modulates camera relevance and never adds a term, so with no cursor the priority
+    /// is exactly §4.3's product. It stays off until it beats uniform on time-to-resolve *at the
+    /// cursor* by a clear margin: it costs a factor on the hot path and a mode in the telemetry,
+    /// and "it might be cool" is not a measurement.
+    pub cursor: Option<crate::camera::Cursor>,
+
+    /// How much the fovea may demote the periphery. `4.0` leaves the frame edge a quarter of its
+    /// priority: **slower, never starved.** Attention bias, not acuity exploitation — the viewer
+    /// can look away without moving the mouse.
+    pub fovea_cap: f64,
     /// Enforce the **2:1 balance constraint** — no two adjacent leaves more than one level
     /// apart, or the adaptive render has cracks.
     ///
@@ -254,11 +422,22 @@ impl Default for SchedCfg {
             max_level: None,
             camera: None,
             tau_display: 1e-2,
+            stationary: false,
+            k_frac_post: 1.0,
+            merge: true,
+            agreement: true,
+            dim_floor: true,
+            c_stat: 0.3,
+            delta_mix: 0.25,
             hot_rule: HotRule::Quantile(0.5),
             alpha_hi: 0.5,
-            alpha_lo: 0.2,
+            alpha_lo: 0.005,
+            no_gain_ttl: None,
             sib_tau: 0.5,
-            policy: Policy::Alpha,
+            // The enum's `#[default]`, so the struct and the enum cannot disagree on it again:
+            // they did, and every harness built on `..Default::default()` ran the legacy policy
+            // while the enum said `Tolerance`.
+            policy: Policy::default(),
             order: Order::Spread,
             agg: Agg::Median,
             criterion: Criterion::Within,
@@ -266,6 +445,8 @@ impl Default for SchedCfg {
             mode: Mode::Balanced,
             k_frac: K_FRAC_RANKED,
             camera_bias: None,
+            cursor: None,
+            fovea_cap: 4.0,
             balance: false,
             chart: Chart::BodyPlane,
             keep_pixels: false,
@@ -295,28 +476,68 @@ pub struct SchedStats {
     /// is a large share of `quads_computed`, the budget went on geometry rather than physics,
     /// and that is a fact about the run rather than a detail of it.
     pub balance_forced: usize,
+    /// The growth curve of a **live** descent, one point per recorded boundary. Empty for a
+    /// static descent.
+    pub live: Vec<LivePoint>,
+    /// The leaf set at each recorded boundary of a live descent, so a test can assert the tree
+    /// only grows. Empty for a static descent.
+    pub live_leaves: Vec<Vec<usize>>,
+    /// **What a late split costs.** Substeps the children of every split requested at boundary
+    /// `j > 0` would have spent bringing themselves from `t = 0` to `t_j` — estimated as their
+    /// total substeps scaled by `t_j / t_max`, because the march does not record per-boundary
+    /// step counts. Zero for a static descent, whose every quad is requested at the start.
+    pub catchup_substeps: u64,
+    /// Children released by merges over a live descent.
+    pub merged: usize,
+    /// The most quads resident at once over a live descent, and the count at the end.
+    pub resident_peak: usize,
+    pub resident_final: usize,
 }
 
-/// Compute one quad: `N²` footprints, each an `E+1` ensemble, reduced to one `QuadReduction`.
-///
-/// **Never pooled from children.** This is the quad's own ensemble at its own cell width.
-fn compute_quad<T: crate::Real>(
+/// One boundary of a live descent.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct LivePoint {
+    pub j: usize,
+    pub t: f64,
+    pub computed: usize,
+    pub leaves: usize,
+    pub split: usize,
+    pub keep: usize,
+    pub stationary: usize,
+    pub deferred: usize,
+    pub merged: usize,
+    pub resident: usize,
+    /// Splits the 2:1 pass forced this boundary, which the criterion did not ask for.
+    ///
+    /// Separate from `split` on purpose: §4.4 wants the geometry share of the budget countable,
+    /// and it cannot be read off the stop-reason breakdown — [`Decision::BalanceForced`] is set on
+    /// the quad being *split*, which immediately gains children, so it is never a leaf and
+    /// `QuadTree::stop_breakdown` (which walks leaves) can never report it.
+    pub balance_forced: usize,
+}
+
+/// A footprint sampler: what fills one footprint of a slice. The integrator in production;
+/// an analytic field under test (`crate::testing`), so a policy can be checked against a tree
+/// whose right shape is known in advance.
+pub type Sampler<'a> = &'a (dyn Fn(&crate::grid::Slice, usize) -> PixelOut + Sync);
+
+/// [`compute_quad`] with the sampler injected. **The one place footprints are produced for the
+/// tree**; `descend` and `descend_with` both come through here.
+fn compute_quad_with(
     tree: &QuadTree,
     i: usize,
-    ens: &EnsembleCfg,
     n: usize,
     tau: f64,
     hot_rule: HotRule,
+    t_max: f64,
+    sampler: Sampler<'_>,
 ) -> (QuadReduction, Vec<PixelOut>) {
     let slice = tree.nodes[i].slice(n, tree.body, tree.chart);
-    let px: Vec<PixelOut> = (0..slice.npix())
-        .into_par_iter()
-        .map(|k| evaluate::<T>(&slice, k, ens))
-        .collect();
+    let px: Vec<PixelOut> = (0..slice.npix()).into_par_iter().map(|k| sampler(&slice, k)).collect();
     // Distinctness before divergence: N^2 decodes, no integration, and it is the only test
     // that separates a collapsed decode from a genuinely uniform region.
     let ics: Vec<crate::physics::Cart<f64>> = (0..slice.npix()).map(|k| slice.nominal::<f64>(k)).collect();
-    let mut red = reduce(&px, n, tau, hot_rule, ens.t_max);
+    let mut red = reduce(&px, n, tau, hot_rule, t_max);
     red.n_distinct_ic = crate::decode::distinct(&ics) as u32;
     (red, px)
 }
@@ -420,6 +641,101 @@ pub fn reduce(px: &[PixelOut], n: usize, tau: f64, hot_rule: HotRule, t_max: f64
     // the filter, rather than recomputed downstream from a second pass that could drift out of
     // agreement with it.
     let n_undetermined = px.iter().filter(|p| footprint_undetermined(p)).count() as u32;
+    // The tolerance arm. `ensemble_spread > tau` fires on any class disagreement as well as on
+    // a shape spread past the tolerance (one dissenting copy of eight reads 0.143), and an
+    // unreadable footprint is unresolved by definition. Counts, never quantiles.
+    let unresolved = |p: &PixelOut| footprint_undetermined(p) || p.ensemble_spread > tau;
+    let n_unresolved = px.iter().filter(|p| unresolved(p)).count() as u32;
+    let unresolved_weight: f64 = px
+        .iter()
+        .enumerate()
+        .filter(|(_, p)| unresolved(p))
+        .map(|(i, _)| {
+            let (ix, iy) = (i % n, i / n);
+            let wx = if ix == 0 || ix + 1 == n { 0.5 } else { 1.0 };
+            let wy = if iy == 0 || iy + 1 == n { 0.5 } else { 1.0 };
+            wx * wy
+        })
+        .sum();
+    let n_unresolved_event_only = px
+        .iter()
+        .filter(|p| !footprint_undetermined(p) && !(p.spread_shape > tau) && p.spread_event > 0.0)
+        .count() as u32;
+    let spread_max = max_no_discard(px.iter().map(|p| p.ensemble_spread));
+    let (coh_shape, coh_class, class_hist, mix_tv_quadrants) = stationarity_arms(px, n);
+    // **Structure per footprint**: unresolved, with a 4-neighbour of the same class whose
+    // nominal shape agrees to within `STRUCTURE_AGREE`. Then the weights, whole and per
+    // quadrant; a sample on the midline of an odd grid straddles two quadrants and gives each a
+    // half.
+    let idx = |jx: usize, jy: usize| jy * n + jx;
+    let agrees = |a: &PixelOut, b: &PixelOut| -> bool {
+        if a.event_class != b.event_class {
+            return false;
+        }
+        let d = (0..3).map(|c| (a.shape_vec[c] - b.shape_vec[c]).powi(2)).sum::<f64>().sqrt() * 0.5;
+        d.is_finite() && d <= STRUCTURE_AGREE
+    };
+    let mut structured_weight = 0.0;
+    let mut unresolved_quadrant = [0f32; 4];
+    let mut structured_quadrant = [0f32; 4];
+    let mut unresolved_edge = [0f32; 4];
+    let mut structured_edge = [0f32; 4];
+    for (i, p) in px.iter().enumerate() {
+        if !unresolved(p) {
+            continue;
+        }
+        let (ix, iy) = (i % n, i / n);
+        // Two agreeing neighbours of eight. One of four let a sea footprint through on the
+        // chance cap of a random neighbour, a few percent per quad, and those diluted the
+        // edge share below; two of eight is a few in ten thousand, and a filament's interior
+        // footprints still have the two along it.
+        let mut agreeing = 0usize;
+        for dy in -1i64..=1 {
+            for dx in -1i64..=1 {
+                if dx == 0 && dy == 0 {
+                    continue;
+                }
+                let (jx, jy) = (ix as i64 + dx, iy as i64 + dy);
+                if jx < 0 || jy < 0 || jx >= n as i64 || jy >= n as i64 {
+                    continue;
+                }
+                if agrees(p, &px[idx(jx as usize, jy as usize)]) {
+                    agreeing += 1;
+                }
+            }
+        }
+        let structured = agreeing >= 2;
+        let wx = if ix == 0 || ix + 1 == n { 0.5 } else { 1.0 };
+        let wy = if iy == 0 || iy + 1 == n { 0.5 } else { 1.0 };
+        if structured {
+            structured_weight += wx * wy;
+        }
+        for (e, on) in [(0, ix == 0), (1, ix + 1 == n), (2, iy == 0), (3, iy + 1 == n)] {
+            if on {
+                unresolved_edge[e] += (wx * wy) as f32;
+                if structured {
+                    structured_edge[e] += (wx * wy) as f32;
+                }
+            }
+        }
+        let side = |j: usize| -> Vec<(usize, f64)> {
+            if n % 2 == 1 && j == n / 2 {
+                vec![(0, 0.5), (1, 0.5)]
+            } else if 2 * j < n {
+                vec![(0, if j == 0 { 0.5 } else { 1.0 })]
+            } else {
+                vec![(1, if j + 1 == n { 0.5 } else { 1.0 })]
+            }
+        };
+        for (qx, sx) in side(ix) {
+            for (qy, sy) in side(iy) {
+                unresolved_quadrant[qx + 2 * qy] += (sx * sy) as f32;
+                if structured {
+                    structured_quadrant[qx + 2 * qy] += (sx * sy) as f32;
+                }
+            }
+        }
+    }
     let nfin = sp.len().max(1) as f64;
     let mean = sp.iter().sum::<f64>() / nfin;
     let Between {
@@ -444,6 +760,12 @@ pub fn reduce(px: &[PixelOut], n: usize, tau: f64, hot_rule: HotRule, t_max: f64
         error_ratio_max: max_no_discard(px.iter().map(|p| p.error_ratio)),
         worst_energy_drift: max_no_discard(px.iter().map(|p| p.energy_drift_max)),
         n_nonfinite: px.iter().map(|p| p.n_nonfinite as u32).sum(),
+        // **`false`, and that is the truthful value here.** `n_distinct_ic` is measured on
+        // `Slice::nominal::<f64>` — the full f64 decode — and f64 is the ceiling in this build, so
+        // a collapse detected here has nothing above it to switch to. It becomes `true` only for
+        // an f32 consumer, and setting it from a config that did not measure the distinctness
+        // would be a field that lies about which decoder collapsed.
+        decode_can_switch: false,
         n_footprints: px.len() as u32,
         n_undetermined,
 
@@ -492,7 +814,195 @@ pub fn reduce(px: &[PixelOut], n: usize, tau: f64, hot_rule: HotRule, t_max: f64
             &mut px.iter().map(|p| p.first_divergence_t).filter(finite).collect(),
             0.5,
         ),
+
+        n_unresolved,
+        n_unresolved_undetermined: n_undetermined,
+        n_unresolved_event_only,
+        unresolved_weight,
+        spread_max,
+        max_excess: spread_max - tau,
+
+        coh_shape,
+        coh_class,
+        class_hist,
+        mix_tv_quadrants,
+        structured_weight,
+        unresolved_quadrant,
+        structured_quadrant,
+        unresolved_edge,
+        structured_edge,
+        mix_tv_parent: f64::NAN,
     }
+}
+
+/// Pearson correlation of `(a, b)` pairs; `NaN` when either side does not vary.
+fn pearson(pairs: &[(f64, f64)]) -> f64 {
+    let n = pairs.len() as f64;
+    if pairs.len() < 3 {
+        return f64::NAN;
+    }
+    let (ma, mb) = (
+        pairs.iter().map(|p| p.0).sum::<f64>() / n,
+        pairs.iter().map(|p| p.1).sum::<f64>() / n,
+    );
+    let (mut sab, mut saa, mut sbb) = (0.0, 0.0, 0.0);
+    for (a, b) in pairs {
+        sab += (a - ma) * (b - mb);
+        saa += (a - ma) * (a - ma);
+        sbb += (b - mb) * (b - mb);
+    }
+    if saa <= 0.0 || sbb <= 0.0 {
+        f64::NAN
+    } else {
+        sab / (saa * sbb).sqrt()
+    }
+}
+
+/// The two coherence arms, the class histogram and the quadrant mixture distance of one quad.
+///
+/// Coherence is read on the **nominal** fields, copy 0, so it is a statement about the field at
+/// the footprint scale and not about the jitter. The class arm is agreement between neighbours
+/// above what a random permutation of the same histogram would give: `(agree - expect) /
+/// (1 - expect)`, `NaN` on a single class, where `expect = sum p_i^2`.
+fn stationarity_arms(px: &[PixelOut], n: usize) -> (f64, f64, [u16; 27], f64) {
+    let idx = |jx: usize, jy: usize| jy * n + jx;
+    // Shape: lag-1 Pearson per component over horizontal and vertical neighbour pairs, meaned
+    // over the components that vary.
+    let mut comp = Vec::new();
+    for c in 0..3 {
+        let mut pairs = Vec::with_capacity(2 * n * n);
+        for jy in 0..n {
+            for jx in 0..n {
+                let a = px[idx(jx, jy)].shape_vec[c];
+                if jx + 1 < n {
+                    let b = px[idx(jx + 1, jy)].shape_vec[c];
+                    if a.is_finite() && b.is_finite() {
+                        pairs.push((a, b));
+                    }
+                }
+                if jy + 1 < n {
+                    let b = px[idx(jx, jy + 1)].shape_vec[c];
+                    if a.is_finite() && b.is_finite() {
+                        pairs.push((a, b));
+                    }
+                }
+            }
+        }
+        let r = pearson(&pairs);
+        if r.is_finite() {
+            comp.push(r);
+        }
+    }
+    let coh_shape = if comp.is_empty() { f64::NAN } else { comp.iter().sum::<f64>() / comp.len() as f64 };
+
+    // Class: histogram, then neighbour agreement above chance.
+    let mut hist = [0u16; 27];
+    for p in px {
+        let k = crate::output::png::event_class_ordinal(p.event_class).unwrap_or(26);
+        hist[k.min(26)] = hist[k.min(26)].saturating_add(1);
+    }
+    let total: f64 = hist.iter().map(|&c| c as f64).sum::<f64>().max(1.0);
+    // **Class-conditional**, and the max over classes: for each class present at least twice,
+    // the fraction of its footprints' neighbours that are the same class, above the class's own
+    // base rate, normalised to 1. A global agreement-above-chance statistic is nearly blind to
+    // a thin filament -- one coherent column of eight moves agreement over a hundred pairs by a
+    // few percent -- while the filament's own class clusters at 0.6 against a base rate of an
+    // eighth. A sea reads near zero on every class; the max over classes is what a filament
+    // violates and a sea does not.
+    let mut coh_class = f64::NAN;
+    for c in 0..27usize {
+        if hist[c] < 2 {
+            continue;
+        }
+        let p_c = hist[c] as f64 / total;
+        if p_c >= 1.0 - 1e-12 {
+            continue;
+        }
+        let (mut adj, mut same) = (0usize, 0usize);
+        for jy in 0..n {
+            for jx in 0..n {
+                let a = crate::output::png::event_class_ordinal(px[idx(jx, jy)].event_class).unwrap_or(26).min(26);
+                if a != c {
+                    continue;
+                }
+                let mut nb = Vec::with_capacity(4);
+                if jx > 0 { nb.push(idx(jx - 1, jy)); }
+                if jx + 1 < n { nb.push(idx(jx + 1, jy)); }
+                if jy > 0 { nb.push(idx(jx, jy - 1)); }
+                if jy + 1 < n { nb.push(idx(jx, jy + 1)); }
+                for k in nb {
+                    adj += 1;
+                    let b = crate::output::png::event_class_ordinal(px[k].event_class).unwrap_or(26).min(26);
+                    same += (b == c) as usize;
+                }
+            }
+        }
+        if adj == 0 {
+            continue;
+        }
+        let v = (same as f64 / adj as f64 - p_c) / (1.0 - p_c);
+        coh_class = if coh_class.is_nan() { v } else { coh_class.max(v) };
+    }
+
+    // Quadrants: the MEAN TV distance between a quadrant's mixture and the whole quad's. Not
+    // the max: at `N = 8` a quadrant holds sixteen footprints, and the largest of four
+    // multinomial deviations on a three-class sea reaches 0.33 by sampling alone -- measured on
+    // the synthetic sea, where a pure sea split on its own noise. The mean sits near 0.14
+    // there, and a filament that touches one quadrant still lifts it.
+    let whole = {
+        let mut m = [0.0f64; 27];
+        for (k, &c) in hist.iter().enumerate() {
+            m[k] = c as f64 / total;
+        }
+        m
+    };
+    let half = n / 2;
+    let (mut acc, mut nq) = (0.0f64, 0usize);
+    if half >= 1 {
+        for qy in 0..2 {
+            for qx in 0..2 {
+                let mut h = [0.0f64; 27];
+                let mut cnt = 0.0;
+                for jy in qy * half..((qy + 1) * half).min(n) {
+                    for jx in qx * half..((qx + 1) * half).min(n) {
+                        let k = crate::output::png::event_class_ordinal(px[idx(jx, jy)].event_class).unwrap_or(26);
+                        h[k.min(26)] += 1.0;
+                        cnt += 1.0;
+                    }
+                }
+                if cnt > 0.0 {
+                    for v in h.iter_mut() {
+                        *v /= cnt;
+                    }
+                    acc += QuadReduction::mix_tv(&h, &whole);
+                    nq += 1;
+                }
+            }
+        }
+    }
+    let mean_tv = if nq == 0 { f64::NAN } else { acc / nq as f64 };
+    (coh_shape, coh_class, hist, mean_tv)
+}
+
+/// **The stationarity test**, `Policy::Tolerance` only, on an unresolved quad above the bootstrap.
+///
+/// Three arms, all required: white at the footprint scale, the same class mixture at two scales
+/// and across its quadrants, and a shape spread that did not fall from the parent. A filament
+/// fails the first two (organised, and its quadrants differ); a regular island's ribbon fails the
+/// third (`alpha ~ 1`); a fat mixing cross at level 2 fails the first (its arms are coherent at
+/// that scale). Only a region white at the footprint scale with the same mixture at two scales
+/// passes -- and it says "nothing resolvable at this sampling", not "nothing". A `NaN` arm never
+/// passes: an unmeasured arm is not evidence of a sea.
+pub fn stationary(q: &crate::quad::Quad, cfg: &SchedCfg) -> bool {
+    let r = &q.red;
+    let coh = r.coherence();
+    let white = coh.is_finite() && coh < cfg.c_stat;
+    let same_mix = r.mix_tv_parent.is_finite()
+        && r.mix_tv_parent < cfg.delta_mix
+        && r.mix_tv_quadrants.is_finite()
+        && r.mix_tv_quadrants < cfg.delta_mix;
+    let flat = matches!(q.alpha, Some(a) if a.is_finite() && a < cfg.alpha_lo);
+    white && same_mix && flat
 }
 
 /// The between-footprint arm, the matched-count controls, and the layout fields.
@@ -690,7 +1200,7 @@ fn balance_pass(tree: &mut QuadTree, iteration: u32, room: usize) -> Vec<usize> 
     made
 }
 
-/// Run the descent. Returns the tree and what it did.
+/// Run the descent with the integrator. Returns the tree and what it did.
 pub fn descend(
     cx: f64,
     cy: f64,
@@ -700,13 +1210,139 @@ pub fn descend(
     ens: &EnsembleCfg,
     precision: Precision,
 ) -> (QuadTree, SchedStats) {
-    let t0 = std::time::Instant::now();
-    let mut tree = QuadTree::with_chart(cx, cy, half, cfg.n, body, cfg.chart);
-    let mut st = SchedStats::default();
-    let mut pending = vec![0usize];
-    let mut iteration = 0u32;
+    match precision {
+        Precision::F32 => {
+            let sampler = |sl: &crate::grid::Slice, k: usize| evaluate::<f32>(sl, k, ens);
+            descend_with(cx, cy, half, body, cfg, ens.t_max, &sampler)
+        }
+        Precision::F64 => {
+            let sampler = |sl: &crate::grid::Slice, k: usize| evaluate::<f64>(sl, k, ens);
+            descend_with(cx, cy, half, body, cfg, ens.t_max, &sampler)
+        }
+    }
+}
 
-    while !pending.is_empty() {
+/// Set a quad's three `alpha` values and its parent-mixture distance, against a **given** parent
+/// reduction.
+///
+/// The one genuinely repeated block between the batch descent and the live one. The two loops are
+/// otherwise **not** duplicates — the batch loop advances a *frontier* and reads stored reductions,
+/// the live loop advances a *playhead* and re-reduces from `project_at` at each boundary — but this
+/// four-line pattern appears in both, and the `mix_tv` argument order is exactly the kind of thing
+/// that is easy to write backwards in one of two copies and never notice.
+///
+/// The parent reduction is passed rather than read from the tree because the live descent's parent
+/// is a **projection at the current boundary**, not the stored one: the exponent must compare
+/// parent and children at the same playhead.
+pub fn set_alpha_against(tree: &mut QuadTree, i: usize, pr: &QuadReduction, cfg: &SchedCfg) {
+    let cr = tree.nodes[i].red;
+    tree.nodes[i].alpha = ratio_log2(pr.spread(cfg.agg), cr.spread(cfg.agg));
+    tree.nodes[i].alpha_mean = ratio_log2(pr.spread_mean, cr.spread_mean);
+    tree.nodes[i].alpha_p90 = ratio_log2(pr.spread_p90, cr.spread_p90);
+    // Child first, parent second — the distance of this quad's mixture FROM its parent's.
+    tree.nodes[i].red.mix_tv_parent = QuadReduction::mix_tv(&cr.class_mix(), &pr.class_mix());
+}
+
+/// Run [`decide`] on a hand-built reduction, for tests that are about the decision and not about
+/// the field that produced it.
+///
+/// Builds a one-node tree at `level` and hangs the reduction on it. Exposed rather than duplicated
+/// in each test file, because a test that reimplements the guard order is testing its own copy.
+#[doc(hidden)]
+pub fn decide_reduction_for_test(red: &QuadReduction, level: u32, cfg: &SchedCfg) -> Decision {
+    let mut tree = QuadTree::with_chart(0.0, 0.0, 1.0, cfg.n, 0, cfg.chart);
+    tree.nodes[0].red = *red;
+    tree.nodes[0].level = level;
+    decide(&tree, 0, cfg)
+}
+
+/// Everything a descent round mutates, so the one-shot descent and a per-frame step are **one**
+/// implementation rather than two that agree today.
+///
+/// Extracted from `descend_with`'s loop body as a **move**: the same statements in the same order,
+/// with the two budget expressions kept character for character.
+pub struct DescentState {
+    pub tree: QuadTree,
+    pub stats: SchedStats,
+    /// Computed at the top of the next round.
+    pub pending: Vec<usize>,
+    /// Wanted to split and was outranked; re-decided next round. `Policy::Tolerance` only.
+    pub deferred: Vec<usize>,
+    pub iteration: u32,
+    /// Payloads with residency. **`Retain::Never` is today's `keep_pixels = false`** and records
+    /// nothing, so the batch descent's memory does not move; `into_dense` reproduces the sparse
+    /// `resize(i + 1, Vec::new())` shape exactly, which is what keeps `SchedStats::pixels` the
+    /// same object every consumer already indexes.
+    pub px: crate::store::PixelStore,
+}
+
+impl DescentState {
+    pub fn new(cx: f64, cy: f64, half: f64, body: usize, cfg: &SchedCfg) -> DescentState {
+        DescentState {
+            tree: QuadTree::with_chart(cx, cy, half, cfg.n, body, cfg.chart),
+            stats: SchedStats::default(),
+            pending: vec![0usize],
+            deferred: Vec::new(),
+            iteration: 0,
+            px: crate::store::PixelStore::new(if cfg.keep_pixels {
+                crate::store::Retain::All
+            } else {
+                crate::store::Retain::Never
+            }),
+        }
+    }
+}
+
+/// What stops a round spending. **A count, never a deadline** — a wall-clock cut would make the
+/// tree a function of machine load, which is the one thing every result in `results/` is not.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Stop {
+    /// The one-shot descent: `cfg.budget` alone, evaluated exactly as it always has been.
+    Total,
+    /// A session frame: the total cap **and** this frame's quota, whichever binds first. Reported
+    /// separately, because a frame that stopped on its quota is not a run that exhausted its
+    /// budget and must not write `Decision::BudgetExhausted`.
+    Frame { quads: usize, substeps: Option<u64> },
+}
+
+/// What a frame has spent so far. Reset per frame; [`Stop::Total`] never reads it.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Spend {
+    pub quads: usize,
+    pub substeps: u64,
+    pub rounds: u32,
+}
+
+/// What one round did.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct RoundOut {
+    pub computed: usize,
+    pub substeps: u64,
+    pub balance_forced: usize,
+    /// Truncated by the **frame** quota and left `Decision::Pending`. Distinct from
+    /// `BudgetExhausted`, which is terminal for the run.
+    pub held: usize,
+}
+
+/// One round: compute, alpha, exponents, decide, order, truncate, split, balance.
+/// **The only place those eight steps exist.**
+pub fn round(
+    ds: &mut DescentState,
+    cfg: &SchedCfg,
+    t_max: f64,
+    sampler: Sampler<'_>,
+    stop: Stop,
+    spend: &mut Spend,
+) -> RoundOut {
+    let DescentState { tree, stats: st, pending, deferred, iteration, px: store } = ds;
+    let mut out = RoundOut::default();
+    let mut held_over: Vec<usize> = Vec::new();
+    spend.rounds += 1;
+    if pending.is_empty() {
+        return out;
+    }
+    loop {
+
         // ---- compute ------------------------------------------------------------------
         if st.quads_computed + pending.len() > cfg.budget {
             let room = cfg.budget.saturating_sub(st.quads_computed);
@@ -716,41 +1352,55 @@ pub fn descend(
             pending.truncate(room);
             st.budget_exhausted = true;
         }
+        // **The frame quota, applied AFTER the total cap and never instead of it.** The two
+        // expressions above are the one-shot descent's, character for character: `saturating_sub`
+        // and the `> budget` form disagree nowhere today, and rewriting one into the other is
+        // exactly the class of change that survives review and moves a corpus. A quad held back by
+        // the frame keeps `Decision::Pending` -- it is NOT `BudgetExhausted`, which is a statement
+        // about the run and not about this frame.
+        // **Held over, not dropped.** The first cut truncated `pending` and counted the overflow,
+        // which *discarded* those children: the descent drained early with 58 leaves against the
+        // one-shot's 100. A frame quota bounds what a frame computes, not what the run computes,
+        // so the overflow is carried to the next round. They keep `Decision::Pending` throughout,
+        // which is the whole reason a held quad is not `BudgetExhausted`.
+        if let Stop::Frame { quads, .. } = stop {
+            let room = quads.saturating_sub(spend.quads);
+            if pending.len() > room {
+                held_over = pending.split_off(room);
+                out.held += held_over.len();
+            }
+        }
         if pending.is_empty() {
             break;
         }
 
         let reds: Vec<(QuadReduction, Vec<PixelOut>)> = pending
             .iter()
-            .map(|&i| match precision {
-                Precision::F32 => {
-                    compute_quad::<f32>(&tree, i, ens, cfg.n, cfg.tau_display, cfg.hot_rule)
-                }
-                Precision::F64 => {
-                    compute_quad::<f64>(&tree, i, ens, cfg.n, cfg.tau_display, cfg.hot_rule)
-                }
-            })
+            .map(|&i| compute_quad_with(&tree, i, cfg.n, cfg.tau_display, cfg.hot_rule, t_max, sampler))
             .collect();
         for (&i, (r, px)) in pending.iter().zip(reds) {
             tree.nodes[i].red = r;
-            tree.nodes[i].iteration = iteration;
+            tree.nodes[i].iteration = *iteration;
             st.footprints += r.n_footprints as usize;
-            if cfg.keep_pixels {
-                if st.pixels.len() <= i {
-                    st.pixels.resize(i + 1, Vec::new());
-                }
-                st.pixels[i] = px;
-            }
+            // Through the store, so residency is recorded and a session can release it. Under
+            // `Retain::Never` this is a no-op that allocates nothing.
+            store.put(i, px, *iteration as u64);
         }
         st.quads_computed += pending.len();
+        out.computed += pending.len();
+        spend.quads += pending.len();
+        let round_substeps: u64 =
+            pending.iter().map(|&i| tree.nodes[i].red.total_substeps as u64).sum();
+        out.substeps += round_substeps;
+        spend.substeps += round_substeps;
 
         // ---- alpha, against the quad's OWN parent -------------------------------------
-        for &i in &pending {
+        for &i in pending.iter() {
             if let Some(p) = tree.nodes[i].parent {
-                let (pr, cr) = (tree.nodes[p].red, tree.nodes[i].red);
-                tree.nodes[i].alpha = ratio_log2(pr.spread(cfg.agg), cr.spread(cfg.agg));
-                tree.nodes[i].alpha_mean = ratio_log2(pr.spread_mean, cr.spread_mean);
-                tree.nodes[i].alpha_p90 = ratio_log2(pr.spread_p90, cr.spread_p90);
+                // The two-scale mixture arm rides along: this quad's class mixture against its
+                // parent's, at the same playhead -- the reason the parent is kept marching.
+                let pr = tree.nodes[p].red;
+                set_alpha_against(tree, i, &pr, cfg);
             }
         }
 
@@ -761,7 +1411,7 @@ pub fn descend(
             v.dedup();
             v
         };
-        for p in parents {
+        for &p in &parents {
             if let Some(kids) = tree.nodes[p].children {
                 let a: Vec<f64> = kids
                     .iter()
@@ -777,8 +1427,26 @@ pub fn descend(
         }
 
         // ---- decide -------------------------------------------------------------------
+        //
+        // The frontier is this round's computed quads plus everything deferred by the ranking
+        // in earlier rounds. `decide` is pure on the reduction, so re-deciding costs nothing and
+        // nothing is recomputed.
+        // ---- the gain of each split, once its four children are computed ----------------
+        for &p in &parents {
+            tree.nodes[p].alpha_area = area_exponent(&tree, p, cfg);
+            tree.nodes[p].alpha_spread_set = spread_exponent(&tree, p, cfg);
+        }
+
         let mut want: Vec<usize> = Vec::new();
-        for &i in &pending {
+        // A deferred quad can have been split by the balance pass since it was deferred; it is
+        // no longer a leaf and is not re-decided -- `split` on it would be a second split.
+        let frontier: Vec<usize> = pending
+            .iter()
+            .cloned()
+            .chain(deferred.drain(..))
+            .filter(|&i| tree.nodes[i].is_leaf())
+            .collect();
+        for &i in &frontier {
             let d = decide(&tree, i, cfg);
             tree.nodes[i].decision = d;
             if d == Decision::Split {
@@ -787,7 +1455,7 @@ pub fn descend(
         }
 
         st.leaves_per_iteration.push(tree.leaves().count());
-        iteration += 1;
+        *iteration += 1;
 
         // ---- order, then split ---------------------------------------------------------
         order_queue(&mut want, &tree, cfg);
@@ -830,7 +1498,12 @@ pub fn descend(
             // `min`, not `clamp(1, ..)`: with an empty `rest` there is nothing to take, and
             // forcing one would reintroduce a split the ranking declined.
             for &i in rest.iter().skip(k) {
-                tree.nodes[i].decision = Decision::Keep;
+                if cfg.policy == Policy::Tolerance {
+                    tree.nodes[i].decision = Decision::Deferred;
+                    deferred.push(i);
+                } else {
+                    tree.nodes[i].decision = Decision::Keep;
+                }
             }
             want = boot.into_iter().chain(rest.into_iter().take(k)).collect();
         }
@@ -844,24 +1517,54 @@ pub fn descend(
             st.budget_exhausted = true;
         }
 
-        pending = Vec::new();
+        *pending = held_over;
         for i in want {
-            pending.extend_from_slice(&tree.split(i, iteration));
+            tree.nodes[i].alpha_area = None;
+            tree.nodes[i].alpha_spread_set = None;
+            tree.nodes[i].no_gain_weight = None;
+            tree.nodes[i].no_gain_at = None;
+            tree.nodes[i].no_gain_expired = false;
+            pending.extend_from_slice(&tree.split(i, *iteration));
         }
 
         // **After the criterion's splits, not instead of them.** Balance is a rendering
         // requirement and never a reason to refine, so it runs last and can only add.
         if cfg.balance {
             let room = cfg.budget.saturating_sub(st.quads_computed + pending.len());
-            let forced = balance_pass(&mut tree, iteration, room);
+            let forced = balance_pass(tree, *iteration, room);
             st.balance_forced += forced.len();
+            out.balance_forced += forced.len();
             pending.extend_from_slice(&forced);
         }
+    
+        break;
+    }
+    out
+}
+
+/// Run the descent with an injected footprint sampler — the integrator, or an analytic field
+/// from `crate::testing` whose right tree is known in advance.
+pub fn descend_with(
+    cx: f64,
+    cy: f64,
+    half: f64,
+    body: usize,
+    cfg: &SchedCfg,
+    t_max: f64,
+    sampler: Sampler<'_>,
+) -> (QuadTree, SchedStats) {
+    let t0 = std::time::Instant::now();
+    let mut ds = DescentState::new(cx, cy, half, body, cfg);
+    let mut spend = Spend::default();
+
+    while !ds.pending.is_empty() {
+        round(&mut ds, cfg, t_max, sampler, Stop::Total, &mut spend);
     }
 
-    st.iterations = iteration;
-    st.wall_seconds = t0.elapsed().as_secs_f64();
-    (tree, st)
+    ds.stats.iterations = ds.iteration;
+    ds.stats.wall_seconds = t0.elapsed().as_secs_f64();
+    ds.stats.pixels = ds.px.into_dense();
+    (ds.tree, ds.stats)
 }
 
 fn ratio_log2(parent: f64, child: f64) -> Option<f64> {
@@ -869,6 +1572,163 @@ fn ratio_log2(parent: f64, child: f64) -> Option<f64> {
         Some((parent / child).log2())
     } else {
         None
+    }
+}
+
+/// **The area exponent of a quad's split**: `log2(unresolved_area(parent) / sum
+/// unresolved_area(children))`, from the reductions as they stand, the edge footprints weighed by
+/// the share of their cell inside the quad (`QuadReduction::unresolved_weight`). `None` when the
+/// parent has no children or nothing unresolved (there is no gain to measure); `+inf` when the
+/// children resolved everything. Judged over two levels, from the grandparent's quadrant to the
+/// children, per level. A line reads 1, a sea 0, a boundary of box dimension `d` reads `2 - d`
+/// -- its unresolved area scales as `cell^(2-d)`.
+///
+/// With the whiteness arm on (`cfg.stationary`) the area is `structured_weight`, not the whole
+/// unresolved weight: a sea is unresolved over its whole area, so by area alone a filament
+/// through it buys no gain, and it is the whiteness arm that tells the sea from the structure
+/// crossing it. Per footprint, never per child -- a child that holds a coherent column and sea
+/// around it is one eighth structure, not all of it and not none.
+pub fn area_exponent(tree: &QuadTree, parent: usize, cfg: &SchedCfg) -> Option<f64> {
+    let p = &tree.nodes[parent];
+    let kids = p.children?;
+    if p.red.n_footprints == 0 || kids.iter().any(|&k| tree.nodes[k].red.n_footprints == 0) {
+        return None;
+    }
+    // **Two levels, not one, and the coarse end is the grandparent's grid restricted to this
+    // parent's quadrant.** A footprint cell on a quad boundary is shared by both quads at half
+    // weight, and the finer grid below locates the same structure on one side at full weight:
+    // per parent that reads as no gain on one side and infinite gain on the other, and only the
+    // sum over both is right. The grandparent's cells split cleanly at its midlines, so its
+    // quadrant is an honest coarse measurement of this parent's box that skips the parent's
+    // own straddle. Measured: a shore in a level-1 edge cell floored its level-2 children.
+    // `w * half^2` is the area up to one constant shared by every level.
+    let (pa, levels, coarse_unresolved) = match p.parent {
+        Some(g) if tree.nodes[g].red.n_footprints > 0 => {
+            let gq = &tree.nodes[g];
+            let quadrant = (p.cx > gq.cx) as usize + 2 * (p.cy > gq.cy) as usize;
+            (
+                structured_weight_quadrant(&gq.red, quadrant, false, cfg) * gq.half * gq.half,
+                2.0,
+                structured_weight_quadrant(&gq.red, quadrant, true, cfg),
+            )
+        }
+        _ => (structured_weight(&p.red, cfg) * p.half * p.half, 1.0, p.red.unresolved_weight),
+    };
+    // **On the parent's boundary the exponent is not a measurement.** A structure within a
+    // quarter of a cell of the boundary is caught by the overhang of the children on both sides
+    // at half weight each, while the grandparent's cells, which split cleanly at their midline,
+    // assign it wholly to one side: the far side reads a loss and the near side a windfall, and
+    // only their sum is right. Where more than half the children's structure lies on the
+    // parent's outer edges, decline -- no floor, no merge for no gain. A sea's edge share is its
+    // perimeter over its area, well under a half.
+    let (mut ca_w, mut edge_w) = (0.0, 0.0);
+    for &k in &kids {
+        let c = &tree.nodes[k];
+        let (e, w) = if cfg.agreement {
+            (&c.red.structured_edge, above_chance(c.red.structured_weight))
+        } else {
+            (&c.red.unresolved_edge, c.red.unresolved_weight)
+        };
+        if w <= 0.0 {
+            continue;
+        }
+        ca_w += w;
+        edge_w += (if c.cx > p.cx { e[1] } else { e[0] }) as f64 + (if c.cy > p.cy { e[3] } else { e[2] }) as f64;
+    }
+    if ca_w > 0.0 && edge_w > 0.5 * ca_w {
+        return None;
+    }
+    if !(pa > 0.0) {
+        // Nothing structured at the coarse end. With the whiteness arm off that means nothing
+        // unresolved and there is no gain to judge; with it on, an unresolved region with no
+        // coherent population is noise by the arm's own reading, and a split of noise shows no
+        // gain by definition -- a sea quad that slips past the stationarity stop on the mixture
+        // arm's sampling noise would otherwise run to the cap.
+        return if coarse_unresolved > 0.0 { Some(0.0) } else { None };
+    }
+    let ca: f64 = kids
+        .iter()
+        .map(|&k| {
+            let c = &tree.nodes[k];
+            structured_weight(&c.red, cfg) * c.half * c.half
+        })
+        .sum();
+    if !(ca > 0.0) {
+        Some(f64::INFINITY)
+    } else {
+        Some((pa / ca).log2() / levels)
+    }
+}
+
+/// **Agreement between neighbouring footprints, in chord/2 units of the nominal shape** -- what
+/// makes an unresolved footprint structure rather than noise (`QuadReduction::structured_weight`,
+/// two agreeing neighbours of eight). 0.1 is about eleven degrees on the shape sphere: the cap a
+/// random neighbour lands in by chance is a percent of the sphere, so two of eight is a few in
+/// ten thousand. A smooth field reads structured once its neighbours are within it; a steeper
+/// one is carried by its spread arm.
+pub const STRUCTURE_AGREE: f64 = 0.1;
+
+/// **Below this, a structured weight is chance.** Under the one-of-four rule a 64-footprint sea
+/// quad carried about one chance-structured footprint (Poisson, sd about one) and a ratio of two
+/// such counts floored a sea at random; under two-of-eight the chance count is far below this
+/// and the floor is a guard. A one-column filament weighs 6 interior (its two end rows have one
+/// neighbour along it) and 3 on an edge.
+pub const STRUCTURE_MIN_WEIGHT: f64 = 2.5;
+
+fn above_chance(w: f64) -> f64 {
+    if w >= STRUCTURE_MIN_WEIGHT { w } else { 0.0 }
+}
+
+/// The unresolved area that is structure: `structured_weight` under the agreement arm (zero
+/// below `STRUCTURE_MIN_WEIGHT`), the whole unresolved weight without it.
+pub fn structured_weight(r: &QuadReduction, cfg: &SchedCfg) -> f64 {
+    if cfg.agreement { above_chance(r.structured_weight) } else { r.unresolved_weight }
+}
+
+/// The same over one quadrant; `all` counts every unresolved footprint, which is the
+/// quadrant's unresolved weight.
+pub fn structured_weight_quadrant(r: &QuadReduction, quadrant: usize, all: bool, cfg: &SchedCfg) -> f64 {
+    if all || !cfg.agreement {
+        r.unresolved_quadrant[quadrant] as f64
+    } else {
+        above_chance(r.structured_quadrant[quadrant] as f64)
+    }
+}
+
+/// **The spread exponent of a quad's split**: `log2(spread(parent) / mean spread(children))`
+/// under `cfg.agg`, one number for the sibling set where `Quad::alpha` is one per child. A
+/// smooth field under a tolerance below its cell spread is unresolved over its whole area at
+/// every level until the level at which it resolves everywhere at once -- no area is gained,
+/// but the spread halves per level and the split is paying. A sea's spread does not fall.
+/// `None` unless both spreads are finite and positive.
+pub fn spread_exponent(tree: &QuadTree, parent: usize, cfg: &SchedCfg) -> Option<f64> {
+    let p = &tree.nodes[parent];
+    let kids = p.children?;
+    if p.red.n_footprints == 0 || kids.iter().any(|&k| tree.nodes[k].red.n_footprints == 0) {
+        return None;
+    }
+    let ps = p.red.spread(cfg.agg);
+    let cs = kids.iter().map(|&k| tree.nodes[k].red.spread(cfg.agg)).sum::<f64>() / 4.0;
+    if ps.is_finite() && cs.is_finite() && ps > 0.0 && cs > 0.0 {
+        Some((ps / cs).log2())
+    } else {
+        None
+    }
+}
+
+/// **A split showed no gain** when neither its unresolved area nor its spread fell by
+/// `2^alpha_lo`: noise at this scale. A split whose parent had nothing unresolved is not judged,
+/// and at `alpha_lo = 0` -- the opt-in that allows full depth -- nothing is: a structured area
+/// can grow with resolution where neighbours agree only once the cells are small enough, and
+/// a negative exponent read as no gain would floor exactly the emergence the opt-in exists to
+/// follow. Measured: 131 floors on the sea chart at `alpha_lo = 0` before this guard.
+pub fn no_gain(q: &crate::quad::Quad, cfg: &SchedCfg) -> bool {
+    if cfg.alpha_lo <= 0.0 || !cfg.dim_floor {
+        return false;
+    }
+    match q.alpha_area {
+        Some(a) => a < cfg.alpha_lo && q.alpha_spread_set.map_or(true, |s| s < cfg.alpha_lo),
+        None => false,
     }
 }
 
@@ -881,12 +1741,73 @@ pub fn decide(tree: &QuadTree, i: usize, cfg: &SchedCfg) -> Decision {
     if q.below_precision_floor(tree.n) {
         return Decision::PrecisionFloor;
     }
+    // **Under the tolerance policy a quad that does not want to split is decided before any cap
+    // or veto.** The camera floor and the depth cap are stops for a quad that *wanted* to split;
+    // a quad whose every footprint is resolved did not, and neither did a stationary sea, and
+    // reporting either as `MaxLevel` or `ScreenFloor` attributes the stop to the cap when the
+    // criterion had already decided. The stop-reason breakdown exists to say which one fired.
+    // The bootstrap, a collapsed decode and an undetermined quad are decided by their own rules
+    // below, as before. Legacy policies keep their order bitwise.
+    if cfg.policy == Policy::Tolerance
+        && cfg.mode != Mode::Uniform
+        && q.level >= cfg.bootstrap_levels
+        && !q.red.between_collapsed()
+        && !q.red.within_undetermined()
+    {
+        if q.red.n_unresolved == 0 {
+            return Decision::Keep;
+        }
+        if cfg.stationary && stationary(q, cfg) {
+            return Decision::Stationary;
+        }
+        // **Noise at this sampling.** Unresolved, under the agreement arm nothing in the quad is
+        // structure, and its spread did not fall from its parent's: a split cannot pay, whatever
+        // its parent's split did. A pure-sea quad carried past the stationarity stop by a
+        // sibling's gain would otherwise run to the cap. `alpha_lo = 0` is the opt-in that
+        // allows full depth, and it disables this stop too.
+        if cfg.alpha_lo > 0.0
+            && cfg.agreement
+            && q.red.unresolved_weight > 0.0
+            && structured_weight(&q.red, cfg) <= 0.0
+            && !q.alpha.is_some_and(|a| a >= cfg.alpha_lo)
+        {
+            return Decision::Floor;
+        }
+        // **The area floor.** The split that made this quad bought no less unresolved area than
+        // its parent held, to within `2^-alpha_lo`: the region is noise at this scale, and going
+        // deeper re-samples it. A keep for now, re-tested every boundary.
+        if let Some(p) = q.parent {
+            if no_gain(&tree.nodes[p], cfg) {
+                return Decision::Floor;
+            }
+        }
+        // A quad merged back for no gain remembers its own exponents, so it is not re-split
+        // into the same four children every boundary -- for as long as its unresolved area
+        // stands within a factor of two of where it was when the split was judged. Past that the
+        // region has changed (a band collapsing to a filament) and the memory expires.
+        // The memory is keyed on the STRUCTURED weight, the quantity the exponent judged: on a
+        // sea the unresolved weight never moves while structure can appear from nothing. A merge
+        // judged at zero structure expires the moment any appears.
+        if q.is_leaf() && no_gain(q, cfg) {
+            // **The clock rule short-circuits the state rule, and it is not `no_gain_weight =
+            // None`.** No memory means *never merged for no gain*, and the floor then stands on
+            // its own merits -- so clearing the memory to expire it floors MORE, not less.
+            let stands = !q.no_gain_expired
+                && q.no_gain_weight.map_or(true, |w0| {
+                    let w = structured_weight(&q.red, cfg);
+                    if w0 <= 0.0 { w <= 0.0 } else { w > 0.5 * w0 && w < 2.0 * w0 }
+                });
+            if stands {
+                return Decision::Floor;
+            }
+        }
+    }
     // **The veto.** Evaluated live from (quad, camera) and never stored on the quad: zoom in
     // and the same patch regrows above pixel size and refines with real new samples. It sits
     // ahead of the bootstrap too — an unconditional split past the screen floor would be the
     // same error one level up.
     if let Some(cam) = cfg.camera {
-        if let Some(d) = cam.veto(q, tree.n, tree.nodes[0].half) {
+        if let Some(d) = cam.veto(q, tree.n, tree.root_node().half) {
             return d;
         }
     }
@@ -903,8 +1824,30 @@ pub fn decide(tree: &QuadTree, i: usize, cfg: &SchedCfg) -> Decision {
     // Undetermined, not resolved. Placed with the precision floor rather than among the policy
     // branches because it is a property of the samples, not of the signal read from them — a
     // collapsed quad is collapsed under every criterion at once.
+    // **The switchover, and it is the piece §14 says is easy to get backwards.**
+    //
+    // Adjacent samples collapsing to identical ICs means one of two opposite things, keyed to
+    // which decoder produced them. On a **full** decoder it means that pipeline is out of
+    // precision and the linear path should take over — refinement CONTINUES, and treating it as a
+    // stop caps the descent around depth 23 while looking exactly like a physics limit
+    // (`results/output/deep_zoom.txt`: `direct_f32` at 18/64 distinct ICs by depth 18 against
+    // `lin_split_f32` holding 64/64 through depth 40). On a **linearised** decoder it is the true
+    // `AT_F32_FLOOR`, terminal, around depth 50+.
+    //
+    // **And the spec's own framing needed correcting.** §14 keys this on *full vs linearised*,
+    // which is right for an f32 consumer and wrong for `DirectF64`: f64 is the ceiling here,
+    // `LinSplitF32` is measured tracking it rung for rung, and the linearisation buys none over
+    // f64. So the key is whether a MORE PRECISE PATH EXISTS, and at production settings the answer
+    // is no — `decode_can_switch` is false, this returns `Collapsed`, and the descent stops
+    // exactly where it always did. `AT_F32_FLOOR` IS `Collapsed`: adding a second terminal name
+    // for the same condition would rename a committed decision and put a code in the table that
+    // nothing in this build can produce.
     if q.red.between_collapsed() {
-        return Decision::Collapsed;
+        return if q.red.decode_can_switch {
+            Decision::DecodeSwitch
+        } else {
+            Decision::Collapsed
+        };
     }
 
     // **The second way to be undetermined**, and until this landed it had no decision at all.
@@ -929,6 +1872,16 @@ pub fn decide(tree: &QuadTree, i: usize, cfg: &SchedCfg) -> Decision {
         return Decision::Split;
     }
 
+    // **The tolerance policy.** Resolved means every footprint resolved; anything else splits.
+    // No aggregate runs ahead of it: a quad with one hot footprint of 64 has a median below
+    // `tau` and would read `Keep` under the gate below, which is *median under-refines thin
+    // structure* at full strength.
+    if cfg.policy == Policy::Tolerance {
+        // Resolved and stationary were returned above, ahead of the caps; what is left wants
+        // to split.
+        return Decision::Split;
+    }
+
     let spread = q.red.signal_with(cfg.criterion, cfg.agg, cfg.structure);
     if !(spread > cfg.tau_display) {
         return Decision::Keep;
@@ -945,6 +1898,8 @@ pub fn decide(tree: &QuadTree, i: usize, cfg: &SchedCfg) -> Decision {
             }
         }
         Policy::Alpha => alpha_branch(q.alpha, cfg),
+        // Returned above, before any aggregate or exponent is read.
+        Policy::Tolerance => unreachable!("the tolerance policy decides before the legacy branch"),
     }
 }
 
@@ -965,19 +1920,67 @@ fn alpha_branch(alpha: Option<f64>, cfg: &SchedCfg) -> Decision {
 /// and recorded rather than quietly corrected: it means a prior `order` result compared the
 /// *budget-truncation point* under one signal while the header named another.
 pub fn priority(tree: &QuadTree, i: usize, cfg: &SchedCfg) -> f64 {
+    stored_term(tree, i, cfg) * derived_term(tree, i, cfg)
+}
+
+/// **The position-free half of [`priority`]** — the physics, and the frontier's `stored`.
+///
+/// It reads the quad's reduction and its width, and **nothing about where the camera points**.
+/// That is what makes a pan cost nothing: the stored term cannot have moved, so no entry can have
+/// changed band. A *zoom* does invalidate it, because `Order::SpreadArea` carries `half^2` and
+/// structure is pixel-relative — which is why `CameraDelta::restored` reports the whole leaf
+/// count on a zoom and zero on a pan.
+///
+/// **A quad that has not been computed inherits its PARENT's.** A freshly-split child carries
+/// `QuadReduction::default()`, so ranking it on its own signal ranks every child of every parent
+/// at exactly zero — not a weak ordering but *no* ordering, and this project has twice been caught
+/// reading a flat `error(B)` curve off a signal with too few distinct values. The parent's signal
+/// is the only physics known about a child before it is integrated, and saying so is what keeps a
+/// frame's ranking from being the split order wearing a priority's name.
+pub fn stored_term(tree: &QuadTree, i: usize, cfg: &SchedCfg) -> f64 {
     let q = &tree.nodes[i];
-    let v = q.red.signal_with(cfg.criterion, cfg.agg, cfg.structure);
-    let v = match cfg.order {
+    // `n_footprints == 0` is the never-computed state: `compute_quad_with` always sets it to
+    // `n*n`. Checked against a real pending quad in `tests/session.rs` rather than assumed.
+    let src = if q.red.n_footprints == 0 { q.parent.unwrap_or(i) } else { i };
+    let v = tree.nodes[src].red.signal_with(cfg.criterion, cfg.agg, cfg.structure);
+    match cfg.order {
+        // The quad's OWN width, never the parent's — this factor is about the cell being ranked.
         Order::SpreadArea => v * q.half.powi(2),
         _ => v,
-    };
+    }
+}
+
+/// **The camera half of [`priority`], computed at query time and never stored.**
+///
+/// **In `[0, 1]` by construction**, and that bound is not cosmetic: it is the whole soundness
+/// argument for [`crate::frontier::Frontier::top_k_bounded`]'s early-out. A derived factor that
+/// could exceed 1 would be able to *promote* an entry past a higher band, and the banded walk
+/// would stop with a contender unseen — unsound in the silent direction, which is the same failure
+/// the analytic band bound already had. `Camera::relevance` is a clipped-box area fraction and
+/// `Camera::foveation` is `1 - dwell*(1 - floor)*(1 - w)` with `w` and `floor` both in `[0, 1]`,
+/// so both are bounded; `tests/session.rs` asserts it over a swept camera rather than by reading.
+///
+/// With no camera bias configured this is exactly `1.0`, so `priority` degenerates to the stored
+/// term and the frontier's ordering is the criterion's own.
+pub fn derived_term(tree: &QuadTree, i: usize, cfg: &SchedCfg) -> f64 {
+    let q = &tree.nodes[i];
     // **A product of two terms, never either alone** (§4.3). Structure changes only when a quad
     // is recomputed or the zoom changes; relevance changes on every frame the camera moves --
     // which is the split the persistent frontier is built around, and the reason this is
     // computed here rather than stored.
     match (cfg.camera_bias, cfg.camera) {
-        (Some(margin), Some(cam)) => v * cam.relevance(q.cx, q.cy, q.half, margin),
-        _ => v,
+        // **Cursor bias MODULATES relevance; it is not a third factor** (§18). With no cursor, or
+        // a cursor still in motion (`dwell = 0`), `foveation` returns 1.0 and this is exactly the
+        // §4.3 product — the fallback is the default path, and every non-mouse route takes it.
+        (Some(margin), Some(cam)) => {
+            let rel = cam.relevance(q.cx, q.cy, q.half, margin);
+            let fov = cfg
+                .cursor
+                .as_ref()
+                .map_or(1.0, |c| cam.foveation(q.cx, q.cy, c, cfg.fovea_cap));
+            rel * fov
+        }
+        _ => 1.0,
     }
 }
 
@@ -1003,4 +2006,416 @@ fn order_queue(want: &mut [usize], tree: &QuadTree, cfg: &SchedCfg) {
             }
         }),
     }
+}
+
+
+// -------------------------------------------------------------------------------------------
+// Phase 2c: the live descent.
+// -------------------------------------------------------------------------------------------
+
+/// **The footprint as it was known at recorded boundary `j`** — the live view.
+///
+/// Everything the tolerance policy reads is taken from the live series at `j`: the copies'
+/// shape and event spreads, the nominal shape and class. A footprint that had terminated by
+/// `t_j` keeps its terminal state; one that had not is `Bounded` at `t_j`, censored, because at
+/// `t_j` that is all that was known. Every accumulator that reads past `t_j` is masked to `NaN`
+/// rather than left at its terminal value: the running maxima, the first-divergence time, the
+/// terminal energy statistics. `n_nonfinite` is left at its terminal value, which is
+/// **conservative** — a copy that failed later than `t_j` reads as unusable earlier than it was,
+/// so the view splits sooner than a perfectly live one would, never later. `total_substeps` is
+/// scaled to `t_j / t_max` as an estimate.
+///
+/// A decision made on this view cannot read the future, which is the live-playhead contract as
+/// a function rather than a thing to remember.
+pub fn project_at(p: &PixelOut, j: usize) -> PixelOut {
+    use crate::outcome::State;
+    assert!(j < p.live_t.len(), "no live series entry {j}: keep_live_series was off, or j is past the end");
+    let t_j = p.live_t[j];
+    let mut q = p.clone();
+    q.spread_shape = p.live_spread_shape[j];
+    q.spread_event = p.live_spread_event[j];
+    q.ensemble_spread = q.spread_shape.max(q.spread_event);
+    q.shape_vec = p.live_shape[j];
+    q.event_class = p.live_class[j];
+    // `n_nonfinite` is a verdict on the whole march; the live view takes the count known **at**
+    // this boundary. Without this a copy that diverges at `t = 12` paints its footprint
+    // undetermined in the frame at `t = 0.8`, and both the render and `footprint_undetermined`
+    // read it. Empty for a series written before the field existed: fall back to the run's count
+    // rather than silently reporting zero, which would read as "nothing is wrong here".
+    q.n_nonfinite = p.live_nonfinite.get(j).copied().unwrap_or(p.n_nonfinite);
+    let terminated = !p.censored && p.t_end <= t_j * (1.0 + 1e-12);
+    if !terminated {
+        q.state = State::Bounded as u8;
+        q.detail = 0;
+        q.outcome = (State::Bounded as u8) << 2;
+        q.t_end = t_j;
+        q.censored = true;
+    }
+    q.running_max_divergence = f64::NAN;
+    q.divergence_trend = f64::NAN;
+    q.first_divergence_t = f64::NAN;
+    q.spread_event_max = f64::NAN;
+    q.spread_event_latched = f64::NAN;
+    q.t_spread_event = f64::NAN;
+    q.error_ratio = f64::NAN;
+    q.error_ratio_mad = f64::NAN;
+    q.energy_drift_max = f64::NAN;
+    q.energy_drift_nominal = f64::NAN;
+    let frac = if p.t_end > 0.0 { (t_j / p.live_t.last().cloned().unwrap_or(t_j)).clamp(0.0, 1.0) } else { 1.0 };
+    q.total_substeps = (p.total_substeps as f64 * frac).round() as u64;
+    q.total_force_evals = (p.total_force_evals as f64 * frac).round() as u64;
+    q
+}
+
+/// Run the **live** descent with the integrator: one march per footprint, the tree grown
+/// boundary by boundary from the live series. `ens.keep_live_series` must be on.
+pub fn descend_live(
+    cx: f64,
+    cy: f64,
+    half: f64,
+    body: usize,
+    cfg: &SchedCfg,
+    ens: &EnsembleCfg,
+    precision: Precision,
+) -> (QuadTree, SchedStats) {
+    assert!(ens.keep_live_series, "descend_live needs EnsembleCfg::keep_live_series");
+    match precision {
+        Precision::F32 => {
+            let sampler = |sl: &crate::grid::Slice, k: usize| evaluate::<f32>(sl, k, ens);
+            descend_live_with(cx, cy, half, body, cfg, ens.t_max, &sampler)
+        }
+        Precision::F64 => {
+            let sampler = |sl: &crate::grid::Slice, k: usize| evaluate::<f64>(sl, k, ens);
+            descend_live_with(cx, cy, half, body, cfg, ens.t_max, &sampler)
+        }
+    }
+}
+
+/// **The live descent**: the tree as a playhead would have built it.
+///
+/// Every quad is marched to `t_max` once and keeps its live series. The tree is then grown
+/// boundary by boundary: at each recorded boundary `j`, every live leaf is re-decided on its
+/// footprints **projected to `j`** ([`project_at`]), with its parent's projection beside it for
+/// `alpha` and the two-scale mixture arm; a `Split` computes the four children — which join the
+/// frontier at the *same* boundary, since they too are marched to `t_max` — and is
+/// **irreversible**; `Keep`, `Stationary` and `Deferred` are re-tested at the next boundary;
+/// the caps, the precision floor, a collapsed decode and an undetermined quad are terminal for
+/// the quad. So the tree can only grow, `Quad::iteration` records the boundary at which a quad
+/// was requested, and `SchedStats::catchup_substeps` prices what a late split costs. At the last
+/// boundary every projection equals the terminal footprint, so the finished tree's reductions
+/// are the same numbers the static descent would carry.
+///
+/// **The bootstrap is at `j = 0`**: nothing is known before the first boundary, and the
+/// unconditional splits below `bootstrap_levels` are by fiat, exactly as in the static descent.
+pub fn descend_live_with(
+    cx: f64,
+    cy: f64,
+    half: f64,
+    body: usize,
+    cfg: &SchedCfg,
+    t_max: f64,
+    sampler: Sampler<'_>,
+) -> (QuadTree, SchedStats) {
+    assert!(cfg.policy == Policy::Tolerance, "the live descent is defined for Policy::Tolerance");
+    let t0 = std::time::Instant::now();
+    let mut tree = QuadTree::with_chart(cx, cy, half, cfg.n, body, cfg.chart);
+    let mut st = SchedStats::default();
+    let mut px_of: Vec<Vec<PixelOut>> = Vec::new();
+
+    // Compute a quad at boundary `j`: march, store, record the request time.
+    let compute = |tree: &mut QuadTree, st: &mut SchedStats, px_of: &mut Vec<Vec<PixelOut>>, i: usize, j: usize| {
+        let (r, px) = compute_quad_with(tree, i, cfg.n, cfg.tau_display, cfg.hot_rule, t_max, sampler);
+        assert!(!px.is_empty() && !px[0].live_t.is_empty(), "the sampler produced no live series");
+        tree.nodes[i].red = r;
+        tree.nodes[i].iteration = j as u32;
+        st.footprints += r.n_footprints as usize;
+        st.quads_computed += 1;
+        if px_of.len() <= i {
+            px_of.resize(i + 1, Vec::new());
+        }
+        px_of[i] = px;
+    };
+
+    compute(&mut tree, &mut st, &mut px_of, 0, 0);
+    let n_b = px_of[0][0].live_t.len();
+
+    // The bootstrap, by fiat, at j = 0.
+    let mut frontier: Vec<usize> = vec![0];
+    for _ in 0..cfg.bootstrap_levels {
+        let mut next = Vec::new();
+        for &i in &frontier {
+            if st.quads_computed + 4 > cfg.budget {
+                tree.nodes[i].decision = Decision::BudgetExhausted;
+                st.budget_exhausted = true;
+                continue;
+            }
+            tree.nodes[i].decision = Decision::Split;
+            let kids = tree.split(i, 0);
+            for &k in &kids {
+                compute(&mut tree, &mut st, &mut px_of, k, 0);
+            }
+            next.extend_from_slice(&kids);
+        }
+        frontier = next;
+    }
+
+    // Terminal decisions leave the frontier; everything else is re-tested every boundary. **A
+    // cap is not terminal.** A leaf stopped by `MaxLevel`, `ScreenFloor` or `MaxRelDepth` wanted
+    // to split and could not; its region can still resolve at a later boundary, and since a
+    // resolved quad is decided ahead of the caps, re-testing it then reads `Keep` -- which is
+    // what lets its parent merge it. Measured on the pulse under `alpha_lo = 0.005`: with caps
+    // terminal, 24 parents read zero unresolved footprints at the horizon and still held 96
+    // capped children, so the live tree ended at 149 quads where the static tree at the same
+    // playhead had 69; the no-gain merges at 0.2 had hidden it by merging those parents earlier.
+    let terminal = |d: Decision| {
+        matches!(
+            d,
+            Decision::PrecisionFloor | Decision::Collapsed | Decision::Undetermined | Decision::BudgetExhausted
+        )
+    };
+
+    // Boundaries `0..n_b`, then **post-horizon rounds** at the last boundary until nothing
+    // wants to split: the playhead stops at the horizon, the tree does not. Children requested
+    // at boundary `j` can first be decided at `j + 1` (they have to catch up to the playhead),
+    // so the tree gains at most one level per boundary during the march; at the horizon it
+    // continues in the static regime, and a child requested there costs a full march.
+    let mut j = 0usize;
+    let mut post = 0usize;
+    loop {
+        let t_j = px_of[0][0].live_t[j];
+
+        // **The time-to-live, applied BEFORE anything reads the memory.** A clock rule, against
+        // the shipped weight rule's state rule -- and the two compose rather than replacing one
+        // another, because a memory has to satisfy both to stand. Expiring here rather than
+        // inside `decide` keeps `decide` a pure function of `(tree, i, cfg)`; the boundary index
+        // is a fact about the march and `decide` has no business knowing it.
+        if let Some(ttl) = cfg.no_gain_ttl {
+            for q in tree.nodes.iter_mut() {
+                if q.no_gain_at.is_some_and(|a| (j as u32).saturating_sub(a) > ttl) {
+                    q.no_gain_expired = true;
+                }
+            }
+        }
+
+        // Project every live leaf and its parent to `j`, so the decision reads the boundary.
+        for &i in &frontier {
+            let proj: Vec<PixelOut> = px_of[i].iter().map(|p| project_at(p, j)).collect();
+            let mut r = reduce(&proj, cfg.n, cfg.tau_display, cfg.hot_rule, t_max);
+            r.n_distinct_ic = tree.nodes[i].red.n_distinct_ic;
+            tree.nodes[i].red = r;
+        }
+        for &i in &frontier {
+            if let Some(pi) = tree.nodes[i].parent {
+                let pproj: Vec<PixelOut> = px_of[pi].iter().map(|p| project_at(p, j)).collect();
+                let mut pr = reduce(&pproj, cfg.n, cfg.tau_display, cfg.hot_rule, t_max);
+                pr.n_distinct_ic = tree.nodes[pi].red.n_distinct_ic;
+                set_alpha_against(&mut tree, i, &pr, cfg);
+            }
+        }
+
+        // The area exponent of every frontier quad's parent, on the projections at `j`: the
+        // parent was projected above, and so were its children -- every child of a frontier
+        // quad's parent is a leaf (it was split together) and so is in the frontier or terminal.
+        {
+            let mut parents: Vec<usize> = frontier.iter().filter_map(|&i| tree.nodes[i].parent).collect();
+            parents.sort_unstable();
+            parents.dedup();
+            for p in parents {
+                // The parent as it stands at `j` -- the loop above read it and did not keep it,
+                // and the exponent must compare parent and children at the same boundary. The
+                // grandparent too: its quadrant is the exponent's coarse end.
+                if let Some(g) = tree.nodes[p].parent {
+                    let gproj: Vec<PixelOut> = px_of[g].iter().map(|q| project_at(q, j)).collect();
+                    let mut gr = reduce(&gproj, cfg.n, cfg.tau_display, cfg.hot_rule, t_max);
+                    gr.n_distinct_ic = tree.nodes[g].red.n_distinct_ic;
+                    gr.mix_tv_parent = tree.nodes[g].red.mix_tv_parent;
+                    tree.nodes[g].red = gr;
+                }
+                let pproj: Vec<PixelOut> = px_of[p].iter().map(|q| project_at(q, j)).collect();
+                let mut pr = reduce(&pproj, cfg.n, cfg.tau_display, cfg.hot_rule, t_max);
+                pr.n_distinct_ic = tree.nodes[p].red.n_distinct_ic;
+                let pmix = pr.class_mix();
+                tree.nodes[p].red = pr;
+                if let Some(kids) = tree.nodes[p].children {
+                    for k in kids {
+                        if !frontier.contains(&k) {
+                            let proj: Vec<PixelOut> = px_of[k].iter().map(|q| project_at(q, j)).collect();
+                            let mut r = reduce(&proj, cfg.n, cfg.tau_display, cfg.hot_rule, t_max);
+                            r.n_distinct_ic = tree.nodes[k].red.n_distinct_ic;
+                            r.mix_tv_parent = QuadReduction::mix_tv(&r.class_mix(), &pmix);
+                            tree.nodes[k].red = r;
+                        }
+                    }
+                }
+                tree.nodes[p].alpha_area = area_exponent(&tree, p, cfg);
+                tree.nodes[p].alpha_spread_set = spread_exponent(&tree, p, cfg);
+            }
+        }
+
+        let mut want: Vec<usize> = Vec::new();
+        let mut point = LivePoint { j, t: t_j, ..Default::default() };
+        for &i in &frontier {
+            let d = decide(&tree, i, cfg);
+            tree.nodes[i].decision = d;
+            match d {
+                Decision::Split => want.push(i),
+                Decision::Keep => point.keep += 1,
+                Decision::Stationary => point.stationary += 1,
+                _ => {}
+            }
+        }
+        order_queue(&mut want, &tree, cfg);
+        // While the playhead moves the frontier is throttled by `k_frac`; at the horizon by
+        // `k_frac_post`, which is 1.0 by default because there is nothing left to defer for.
+        let kf = if post == 0 { cfg.k_frac } else { cfg.k_frac_post };
+        if cfg.mode != Mode::Uniform && kf < 1.0 && !want.is_empty() {
+            let k = ((want.len() as f64 * kf).ceil() as usize).min(want.len());
+            for &i in want.iter().skip(k) {
+                tree.nodes[i].decision = Decision::Deferred;
+                point.deferred += 1;
+            }
+            want.truncate(k);
+        }
+        let room = cfg.budget.saturating_sub(st.quads_computed) / 4;
+        if want.len() > room {
+            for &i in want.iter().skip(room) {
+                tree.nodes[i].decision = Decision::BudgetExhausted;
+            }
+            want.truncate(room);
+            st.budget_exhausted = true;
+        }
+        point.split = want.len();
+
+        // **The merge pass**, the reverse of the split rule at a later boundary. A parent whose
+        // four children are all leaves that did not split this round is merged when it has become
+        // resolved (uniform) or when its split has stopped paying (`alpha_area < alpha_lo`: noise).
+        // The children are released -- their trajectories go, the parent's were kept marching --
+        // and the parent is the leaf again, re-tested next boundary; it may split again later.
+        {
+            let mut parents: Vec<usize> = frontier.iter().filter_map(|&i| tree.nodes[i].parent).collect();
+            parents.sort_unstable();
+            parents.dedup();
+            let mut rejoin: Vec<usize> = Vec::new();
+            for p in parents {
+                let Some(kids) = tree.nodes[p].children else { continue };
+                // Settled: a leaf that did not split this round, whatever stopped it. A child at a
+                // cap is as settled as one that kept -- the parent's own resolution or no-gain is
+                // what the merge reads, and the static rule would never have split that parent.
+                let all_settled = kids.iter().all(|&k| {
+                    let d = tree.nodes[k].decision;
+                    tree.nodes[k].is_leaf() && !tree.nodes[k].merged
+                        && matches!(
+                            d,
+                            Decision::Keep | Decision::Floor | Decision::Stationary | Decision::Deferred
+                                | Decision::MaxLevel | Decision::ScreenFloor | Decision::MaxRelDepth
+                                | Decision::PrecisionFloor | Decision::Collapsed | Decision::Undetermined
+                        )
+                });
+                if !cfg.merge || !all_settled || tree.nodes[p].level < cfg.bootstrap_levels {
+                    continue;
+                }
+                let resolved = tree.nodes[p].red.n_unresolved == 0 && tree.nodes[p].red.n_footprints > 0;
+                let stalled = no_gain(&tree.nodes[p], cfg);
+                if resolved || stalled {
+                    for k in kids {
+                        tree.nodes[k].merged = true;
+                        tree.nodes[k].decision = Decision::Merged;
+                        st.merged += 1;
+                        point.merged += 1;
+                    }
+                    tree.nodes[p].children = None;
+                    tree.nodes[p].decision = if resolved { Decision::Keep } else { Decision::Floor };
+                    if resolved {
+                        tree.nodes[p].alpha_area = None;
+                        tree.nodes[p].alpha_spread_set = None;
+                        tree.nodes[p].no_gain_weight = None;
+                        tree.nodes[p].no_gain_at = None;
+                        tree.nodes[p].no_gain_expired = false;
+                    } else {
+                        tree.nodes[p].no_gain_weight = Some(structured_weight(&tree.nodes[p].red, cfg));
+                        tree.nodes[p].no_gain_at = Some(j as u32);
+                        tree.nodes[p].no_gain_expired = false;
+                    }
+                    rejoin.push(p);
+                }
+            }
+            frontier.retain(|&i| !tree.nodes[i].merged);
+            frontier.extend(rejoin);
+        }
+
+        let mut next: Vec<usize> = Vec::new();
+        for &i in &frontier {
+            if !terminal(tree.nodes[i].decision) && tree.nodes[i].decision != Decision::Split {
+                next.push(i);
+            }
+        }
+        for &i in &want {
+            tree.nodes[i].alpha_area = None;
+            tree.nodes[i].alpha_spread_set = None;
+            tree.nodes[i].no_gain_weight = None;
+            tree.nodes[i].no_gain_at = None;
+            tree.nodes[i].no_gain_expired = false;
+            let kids = tree.split(i, j as u32);
+            for &k in &kids {
+                compute(&mut tree, &mut st, &mut px_of, k, j);
+                if j > 0 || post > 0 {
+                    let steps: u64 = px_of[k].iter().map(|p| p.total_substeps as u64).sum();
+                    st.catchup_substeps += (steps as f64 * (t_j / t_max).clamp(0.0, 1.0)).round() as u64;
+                }
+            }
+            next.extend_from_slice(&kids);
+        }
+        frontier = next;
+
+        // **The 2:1 balance pass, live.** The static descent has run this since it was written and
+        // this one never did, so every tree the live descent produced was unbalanced -- and the
+        // live descent is the one closest to the target design. It goes *here*, after the split
+        // loop rather than beside `decide`, because a forced child has to be computed **and caught
+        // up to the playhead** exactly like a child the criterion asked for; putting it next to the
+        // decision would have created quads that no boundary ever marched.
+        //
+        // It runs after the merge pass, which matters: a merge un-splits a parent and can itself
+        // create a violation against a neighbour, and running balance afterwards repairs that in
+        // the same round rather than leaving a cracked frame until the next one.
+        if cfg.balance {
+            let room = cfg.budget.saturating_sub(st.quads_computed);
+            let forced = balance_pass(&mut tree, j as u32, room);
+            st.balance_forced += forced.len();
+            point.balance_forced += forced.len();
+            for &k in &forced {
+                compute(&mut tree, &mut st, &mut px_of, k, j);
+                if j > 0 || post > 0 {
+                    let steps: u64 = px_of[k].iter().map(|p| p.total_substeps as u64).sum();
+                    st.catchup_substeps += (steps as f64 * (t_j / t_max).clamp(0.0, 1.0)).round() as u64;
+                }
+            }
+            frontier.extend_from_slice(&forced);
+        }
+
+        point.j = j + post;
+        point.computed = st.quads_computed;
+        point.leaves = tree.leaves().count();
+        point.resident = tree.resident();
+        st.resident_peak = st.resident_peak.max(point.resident);
+        st.resident_final = point.resident;
+        st.live.push(point);
+        st.live_leaves.push(tree.leaves().collect());
+        st.leaves_per_iteration.push(point.leaves);
+        st.iterations = (j + post + 1) as u32;
+        if j + 1 < n_b {
+            j += 1;
+        } else {
+            post += 1;
+            let merged_now = st.live.last().map_or(0, |p| p.merged);
+            if (want.is_empty() && merged_now == 0) || frontier.is_empty() || post > 64 {
+                break;
+            }
+        }
+    }
+
+    if cfg.keep_pixels {
+        st.pixels = px_of;
+    }
+    st.wall_seconds = t0.elapsed().as_secs_f64();
+    (tree, st)
 }

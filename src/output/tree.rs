@@ -14,7 +14,7 @@ use crate::quad::QuadTree;
 use crate::scheduler::{SchedCfg, SchedStats};
 
 pub const MAGIC: &[u8; 4] = b"PRNQ";
-pub const VERSION: u32 = 4;
+pub const VERSION: u32 = 5;
 // v2 appends the between-footprint arm, the matched-count controls, the hot-set layout, the
 // escape-gradient pair, the cost column and the IC-distinctness count. Records are
 // self-describing by `FIELDS`, so a v1 reader that indexes by name still works; one that
@@ -64,9 +64,18 @@ pub const FIELDS: &[&str] = &[
     "grad_rms_within", "grad_rms_between",
     // --- v4: how much of the quad the within-arm quantiles are speaking for ---
     "n_undetermined",
+    // --- v5: the tolerance arm (Phase 2 of the refinement rebuild) ---
+    "n_unresolved", "n_unresolved_undetermined", "n_unresolved_event_only",
+    "spread_max", "max_excess",
+    "coh_shape", "coh_class", "mix_tv_quadrants", "mix_tv_parent",
+    "alpha_area", "alpha_spread_set", "merged",
 ];
 
-pub fn record(t: &QuadTree, i: usize) -> [f64; 59] {
+/// The record width, tied to [`FIELDS`] at compile time: `record()`'s array length used to be a
+/// hand-kept literal, which is the "argument hardcoded past" defect waiting to happen.
+pub const N_FIELDS: usize = FIELDS.len();
+
+pub fn record(t: &QuadTree, i: usize) -> [f64; N_FIELDS] {
     let q = &t.nodes[i];
     let nan = f64::NAN;
     [
@@ -129,6 +138,18 @@ pub fn record(t: &QuadTree, i: usize) -> [f64; 59] {
         q.red.grad_rms_within,
         q.red.grad_rms_between,
         q.red.n_undetermined as f64,
+        q.red.n_unresolved as f64,
+        q.red.n_unresolved_undetermined as f64,
+        q.red.n_unresolved_event_only as f64,
+        q.red.spread_max,
+        q.red.max_excess,
+        q.red.coh_shape,
+        q.red.coh_class,
+        q.red.mix_tv_quadrants,
+        q.red.mix_tv_parent,
+        q.alpha_area.unwrap_or(nan),
+        q.alpha_spread_set.unwrap_or(nan),
+        if q.merged { 1.0 } else { 0.0 },
     ]
 }
 
@@ -147,25 +168,33 @@ pub fn write<W: Write>(
 
     let header = format!(
         "region={} body={} n_samples_per_axis={} n_copies={} budget={} bootstrap_levels={}\n\
-         tau_display={} hot_rule={} structure={} mode={} k_frac={} alpha_hi={} alpha_lo={} sib_tau={} policy={} order={} agg={} criterion={} max_level={:?}\n\
+         tau_display={} hot_rule={} structure={} mode={} k_frac={} alpha_hi={} alpha_lo={} sib_tau={} policy={} order={} agg={} criterion={} max_level={:?} stationary={} c_stat={} delta_mix={} k_frac_post={} merge={} agreement={} dim_floor={} balance={}\n\
          t_max={} eta={} n_sync={} r_coll_frac={} escape_rule={:?} closure_k={} stop_on_escape={} dtau_mode={:?} clamp_final={} lc_stable={} jitter_scheme={:?} precision={}\n\
          chart={} decode_path={} camera={:?}\n\
          chart_params={}\n\
-         quads_computed={} footprints={} iterations={} budget_exhausted={} wall_seconds={:.3}\n\
+         quads_computed={} footprints={} iterations={} budget_exhausted={} wall_seconds={:.3} balance_forced={}\n\
          trajectories_per_quad={} sibling_edge_overlap_frac={:.6}\n\
+         config={}\n\
          fields={}\n",
         region, tree.body, tree.n, ens.n_extra + 1, cfg.budget, cfg.bootstrap_levels,
         cfg.tau_display, cfg.hot_rule.name(), cfg.structure.name(), cfg.mode.name(),
         cfg.k_frac, cfg.alpha_hi, cfg.alpha_lo, cfg.sib_tau,
-        cfg.policy.name(), cfg.order.name(), cfg.agg.name(), cfg.criterion.name(), cfg.max_level,
+        cfg.policy.name(), cfg.order.name(), cfg.agg.name(), cfg.criterion.name(), cfg.max_level, cfg.stationary, cfg.c_stat, cfg.delta_mix, cfg.k_frac_post, cfg.merge, cfg.agreement, cfg.dim_floor, cfg.balance,
         ens.t_max, ens.eta, ens.n_sync, ens.r_coll_frac, ens.escape_rule, ens.closure_k, ens.stop_on_escape, ens.dtau_mode, ens.clamp_final_step, ens.lc_stable, ens.jitter_scheme,
         precision,
         // The chart is the one thing that now makes two otherwise identical dumps different
         // configurations. A dump that does not name it cannot be read back with confidence.
         tree.chart.name(), ens.decode_path.name(), cfg.camera, tree.chart.params(),
-        st.quads_computed, st.footprints, st.iterations, st.budget_exhausted, st.wall_seconds,
+        st.quads_computed, st.footprints, st.iterations, st.budget_exhausted, st.wall_seconds, st.balance_forced,
         tree.n * tree.n * (ens.n_extra + 1),
         1.0 / tree.n as f64,
+        // **Derived, not enumerated.** Every line above this one is a hand-maintained list of
+        // fields, and a hand-maintained list goes stale exactly when a default moves -- which is
+        // how a corpus of dumps came to record `dtau_mode` and `clamp_final` while saying nothing
+        // about `integrator`, `refine_flagged` or `step_limit`. `provenance` diffs against
+        // `production()` and is exhaustive with no `..` arm, so a field added to `EnsembleCfg`
+        // breaks the build rather than silently vanishing from the header.
+        ens.provenance(),
         FIELDS.join(","),
     );
     w.write_all(&(header.len() as u32).to_le_bytes())?;
@@ -207,16 +236,34 @@ pub fn overlay(
     res: usize,
     base_rgb: impl Fn(&PixelOut) -> [u8; 3],
 ) -> io::Result<()> {
-    let root = &tree.nodes[0];
+    let img = overlay_buffer(tree, base, res, base_rgb);
+    save(Path::new(&format!("{stem}_{suffix}.png")), res as u32, res as u32, &img)
+}
+
+/// The overlay's pixels, without writing them.
+///
+/// Split out so the **orientation** can be pinned. This function carries its own `to_px` rather
+/// than going through [`crate::camera::Camera::to_px`] — it projects against the root box and not
+/// a camera — so it is one of the two seams §17 names as unpinned, and *a wrong flip is silent and
+/// reads as physics*. `tests/render_geometry.rs` asserts row 0 is the minimum `y` here with the
+/// mirrored image as the negative arm, which is what a bitwise check without a control lacks.
+pub fn overlay_buffer(
+    tree: &QuadTree,
+    base: &[PixelOut],
+    res: usize,
+    base_rgb: impl Fn(&PixelOut) -> [u8; 3],
+) -> Vec<u8> {
+    let root = tree.root_node();
     let (x0, y0) = (root.cx - root.half, root.cy - root.half);
     let span = 2.0 * root.half;
 
     let mut img = vec![0u8; res * res * 3];
     for (k, p) in base.iter().enumerate().take(res * res) {
-        // The dump is row-major with y increasing upward; PNG rows go downward, so flip.
+        // Row 0 is the minimum y: the image is the array, the convention every image in this
+        // crate shares (see `adaptive`'s module doc). This used to flip and the uniform panels
+        // did not.
         let (jx, jy) = (k % res, k / res);
-        let row = res - 1 - jy;
-        let o = (row * res + jx) * 3;
+        let o = (jy * res + jx) * 3;
         img[o..o + 3].copy_from_slice(&base_rgb(p));
     }
 
@@ -227,7 +274,7 @@ pub fn overlay(
     let to_px = |x: f64, y: f64| -> (i64, i64) {
         let fx = (x - x0) / span * res as f64;
         let fy = (y - y0) / span * res as f64;
-        (fx.round() as i64, (res as f64 - fy).round() as i64)
+        (fx.round() as i64, fy.round() as i64)
     };
     let mut put = |x: i64, y: i64, c: [u8; 3]| {
         if x >= 0 && y >= 0 && (x as usize) < res && (y as usize) < res {
@@ -257,5 +304,5 @@ pub fn overlay(
         }
     }
 
-    save(Path::new(&format!("{stem}_{suffix}.png")), res as u32, res as u32, &img)
+    img
 }

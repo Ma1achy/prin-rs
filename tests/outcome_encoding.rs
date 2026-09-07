@@ -835,3 +835,120 @@ fn the_criterion_transcribes_the_reference_including_its_body_ordering() {
                "the golden set must keep firing on half its rows -- a table that fires on none \
                 would pass under an implementation that never returns Some");
 }
+
+/// **A quiet undetermined pixel must still not be plausibly a class.**
+///
+/// `Veto::Quiet` exists because `DEBUG_NAN` is a debug flag and a gallery is a presentation
+/// render. But the standing rule for a categorical panel is that an undetermined pixel never takes
+/// a colourmap entry, so the quiet form has to be off the palette by *construction* rather than by
+/// choice of a colour that happens to look different today. The construction is **zero chroma**:
+/// every viridis entry and every `outcome_rgb` family colour carries chroma, and the neutral does
+/// not.
+///
+/// The control arm is what gives this teeth. Asserting only "the neutral is far from every entry"
+/// passes for any colour far from the ramp, including `DEBUG_NAN` itself -- so the test also
+/// asserts that a *deliberately on-palette* stand-in FAILS the same bar. Without it the test
+/// could not distinguish a well-chosen neutral from an arbitrary one.
+#[test]
+fn the_quiet_undetermined_colour_is_off_every_categorical_palette() {
+    use prin_rs::output::colour::UNDETERMINED_QUIET as Q;
+    use prin_rs::output::png::N_EVENT_CLASSES;
+    use prin_rs::output::viridis::viridis;
+
+    // Chroma as the max channel spread. A neutral is exactly 0; a palette entry is not.
+    let chroma = |c: [u8; 3]| {
+        let mx = c.iter().copied().max().unwrap() as i32;
+        let mn = c.iter().copied().min().unwrap() as i32;
+        mx - mn
+    };
+    assert_eq!(chroma(Q), 0, "the quiet neutral must have zero chroma, got {Q:?}");
+
+    // Every event-class entry, and the outcome families, carry chroma -- so chroma alone
+    // separates them. Report the minimum, because a palette that ever went neutral would break
+    // the construction and this is the number that would say so.
+    let mut min_chroma = i32::MAX;
+    for k in 0..N_EVENT_CLASSES {
+        min_chroma = min_chroma.min(chroma(viridis(k as f64 / (N_EVENT_CLASSES - 1) as f64)));
+    }
+    for base in [[220, 80, 60], [110, 190, 110], [70, 150, 220], [200, 190, 90], [40, 40, 48]] {
+        for d in 0..4 {
+            let k = 0.55 + 0.15 * d as f64;
+            let c = [
+                (base[0] as f64 * k).min(255.0) as u8,
+                (base[1] as f64 * k).min(255.0) as u8,
+                (base[2] as f64 * k).min(255.0) as u8,
+            ];
+            min_chroma = min_chroma.min(chroma(c));
+        }
+    }
+    println!("  min palette chroma {min_chroma}, quiet neutral chroma {}", chroma(Q));
+    assert!(min_chroma > 0, "a palette entry went neutral; the construction no longer separates");
+
+    // **The control.** A stand-in taken FROM the palette must fail the bar the neutral passes.
+    let on_palette = viridis(0.5);
+    assert!(
+        chroma(on_palette) > 0,
+        "the control is not on-palette, so this test cannot fail as intended"
+    );
+}
+
+/// **Under `Veto::None` a flagged footprint is coloured exactly as an unflagged one with the same
+/// values.** That is the whole claim, and it is a statement about the code rather than about any
+/// particular image, so it is asserted directly instead of counted in a render.
+///
+/// `Veto::Quiet` was the first attempt at getting the debug flag out of a presentation render and
+/// it did not do this: it paints the flagged set at the floor of the lightness ramp, so the
+/// artefact moved from a magenta speckle to a dark one **in exactly the same pixels**. A reserved
+/// colour is a reserved colour whether it is loud or quiet.
+///
+/// THE CONTROL IS WHAT GIVES THIS TEETH. Asserting only "the two agree under `None`" passes
+/// trivially for an implementation that ignores its arguments and returns a constant. So the same
+/// pair is required to DISAGREE under `Debug` -- which is the flag doing its job, and the arm that
+/// says the fixture actually carries a flagged footprint at all.
+#[test]
+fn veto_none_does_not_consult_the_flag() {
+    use prin_rs::ensemble::pixel::PixelOut;
+    use prin_rs::outcome::State;
+    use prin_rs::output::colour::{self, Scalar, Veto};
+
+    let m = [1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0];
+    let sites = colour::landmarks(&m);
+    let (lo, hi) = (1e-4, 1e-1);
+
+    // A perfectly ordinary footprint: finite nominal shape, an ordinary scalar.
+    let mut healthy = PixelOut::default();
+    healthy.shape_vec = [0.3, -0.5, 0.81];
+    healthy.spread_shape = 3.7e-3;
+    healthy.state = State::Bounded as u8;
+    healthy.n_nonfinite = 0;
+
+    // The same footprint with the driver's flag set -- which is what the flagged population
+    // actually looks like: the census reads the nominal `shape_vec` finite on 100% of it.
+    let flagged = PixelOut { n_nonfinite: 3, ..healthy.clone() };
+
+    let a = colour::rgb_veto(&healthy, Scalar::ShapeSpread, &sites, lo, hi, Veto::None);
+    let b = colour::rgb_veto(&flagged, Scalar::ShapeSpread, &sites, lo, hi, Veto::None);
+    assert_eq!(a, b, "Veto::None must not consult n_nonfinite: {a:?} against {b:?}");
+
+    // And the same for a failure state, the other route into the reserved colour.
+    let failed = PixelOut { state: State::SimFailed as u8, ..healthy.clone() };
+    let c = colour::rgb_veto(&failed, Scalar::ShapeSpread, &sites, lo, hi, Veto::None);
+    assert_eq!(a, c, "Veto::None must not consult the failure state: {a:?} against {c:?}");
+
+    // **The control.** Under `Debug` the very same pair must differ, or the fixture carries no
+    // flag and the assertions above are about nothing.
+    let da = colour::rgb_veto(&healthy, Scalar::ShapeSpread, &sites, lo, hi, Veto::Debug);
+    let db = colour::rgb_veto(&flagged, Scalar::ShapeSpread, &sites, lo, hi, Veto::Debug);
+    let dc = colour::rgb_veto(&failed, Scalar::ShapeSpread, &sites, lo, hi, Veto::Debug);
+    assert_ne!(da, db, "the fixture's flag is inert, so the None assertion proves nothing");
+    assert_ne!(da, dc, "the fixture's failure state is inert");
+    assert_eq!(db, colour::DEBUG_NAN);
+
+    // `Quiet` is the recorded intermediate: it DOES paint the pair differently, which is why it
+    // is not the answer for a presentation render. Pinned so the distinction cannot quietly
+    // collapse into `None`.
+    let qa = colour::rgb_veto(&healthy, Scalar::ShapeSpread, &sites, lo, hi, Veto::Quiet);
+    let qb = colour::rgb_veto(&flagged, Scalar::ShapeSpread, &sites, lo, hi, Veto::Quiet);
+    assert_ne!(qa, qb, "Veto::Quiet is supposed to differ; if it does not, None is redundant");
+    println!("  healthy {a:?}  none {b:?}  quiet {qb:?}  debug {db:?}");
+}

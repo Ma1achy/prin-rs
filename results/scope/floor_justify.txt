@@ -1,0 +1,60 @@
+DOES `Decision::Floor` STILL FIRE ON A CLEAN SUBSTRATE?  budget 2000 quads
+
+  pre config: production + 8 override(s): escape_rule=Reference (production Closure(0.001)), escape_confirm=false (production true), dtau_mode=FixedPerInterval (production PerStepInterval), clamp_final_step=false (production true), step_limit=None (production Predictive), land_iterate=false (production true), integrator=Az (production Heggie), refine_flagged=false (production true)
+  now config: production + 1 override(s): refine_flagged=false (production true)
+
+THE `alpha` DISTRIBUTION over quads that HAVE one. `alpha = log2(spread_parent /
+spread_child)`, so `Floor` at `alpha < alpha_lo` fires when refining did not pay.
+
+region          arm n_alpha      p10      p25      p50      p75      p90 frac<0.2
+near-field      pre      60   -0.154    0.042    0.259    0.401    0.513    0.383
+                now      84    0.884    0.943    1.011    1.058    1.118    0.000
+body2 core      pre      56   -0.117    0.093    0.451    0.627    1.078    0.321
+                now      84    0.672    0.818    1.053    1.182    1.392    0.012
+deep interior   pre      28   -0.356   -0.227    0.256    0.733    1.144    0.464
+                now      20   -0.030    0.777    1.265    1.463    2.288    0.150
+mid-field       pre      20    0.986    0.994    1.004    1.007    1.015    0.000
+                now      20    0.990    0.991    1.011    1.012    1.012    0.000
+far             pre      20    0.995    0.998    1.001    1.002    1.005    0.000
+                now      20    0.997    0.998    1.003    1.003    1.003    0.000
+preset_shape    pre      20  -11.868  -10.999    0.715    1.286    1.543    0.400
+                now      20  -12.567  -10.988    1.524    2.253    3.167    0.400
+preset_shape_h1  pre      56   -0.253    0.000    0.576    2.639    9.819    0.357
+                now      60    0.011    0.317    1.423    2.872   10.267    0.167
+
+  QUADS WITH NO `alpha` AT ALL -- no parent, or children never computed. They can
+  never reach the branch, so a Floor rate including them has the wrong denominator:
+    near-field     pre 1/61 computed, 60 with alpha   |   now 1/85 computed, 84 with alpha
+    body2 core     pre 1/57 computed, 56 with alpha   |   now 1/85 computed, 84 with alpha
+    deep interior  pre 1/29 computed, 28 with alpha   |   now 1/21 computed, 20 with alpha
+    mid-field      pre 1/21 computed, 20 with alpha   |   now 1/21 computed, 20 with alpha
+    far            pre 1/21 computed, 20 with alpha   |   now 1/21 computed, 20 with alpha
+    preset_shape   pre 1/21 computed, 20 with alpha   |   now 1/21 computed, 20 with alpha
+    preset_shape_h1 pre 1/57 computed, 56 with alpha   |   now 1/61 computed, 60 with alpha
+
+THE `alpha_lo` SWEEP. Reading one threshold cannot tell "the distribution moved"
+from "the threshold is in the wrong place". Leaf counts stopped by `Floor`:
+
+region          arm   lo=0.05    lo=0.1    lo=0.2   lo=0.35    lo=0.5    lo=0.8    leaves
+near-field      pre        13        13        17        17        17        17        46
+                now         0         0         0         0         0         0        64
+body2 core      pre         9        14        16        16        16        16        43
+                now         1         1         1         1         1         1        64
+deep interior   pre         9         9         9         9         9         9        22
+                now         1         1         1         1         1         1        16
+mid-field       pre         0         0         0         0         0         0        16
+                now         0         0         0         0         0         0        16
+far             pre         0         0         0         0         0         0        16
+                now         0         0         0         0         0         0        16
+preset_shape    pre         8         8         8         8         8         8        16
+                now         8         8         8         8         8         8        16
+preset_shape_h1  pre        15        15        16        16        16        16        43
+                now         9         9         9         9         9         9        46
+
+HOW TO READ IT
+  If `alpha` ROSE between the arms, the old Floor firings were the integration bug:
+  refinement really does reduce the spread on a clean substrate, and a predicate that
+  only ever fired on broken data has no subject. If `alpha` is UNCHANGED and only the
+  count moved, Floor still measures something and `alpha_lo` is merely mis-placed.
+  The sweep is what separates them: a distribution that moved shows Floor firing again
+  at a HIGHER `alpha_lo` under `now`; one that did not shows the same curve shifted.

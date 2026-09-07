@@ -1,0 +1,24 @@
+tilt_plambda — the first slice with a non-zero tilt.
+config: production [kernel: integrator=Heggie max_steps=480000 step_limit=Predictive f=0.02 dtau=PerStepInterval clamp=true]
+reproduce: cargo run --release --example tilt_slice_render results 1024 13 1 1024,512,256,64
+window: cx 0.03393198791320939 cy 0.07664534070066464 half 0.16779844723178242   (pan is the window CENTRE: cx = 2*pan-1, half = zoom)
+masses: 0.35333 0.27523 0.37144   <- UNEQUAL. 1/3 each here means the decode is being overridden.
+q1: [0.0, 0.0, 0.0, 0.0, 0.5360093550145876, -0.8442120416914496, 0.0, 0.0]
+q2: [0.0, 0.0, 0.0, 0.0, 0.8442120416914496, 0.5360093550145875, 0.0, 0.0]
+component outside span(e4,e5): 0.000e0  -> the tilt is IN-PLANE: preset_plambda's plane, frame turned by -57.5876 deg.
+
+ 1024^2 uniform: 1048576 footprints in 2092.9s
+shared ramp window from the 1024^2 pass (the finest): (2.0505e-6, 4.8662e-1)
+ 1024^2 panels written; 1/1048576 (0.0001%) flagged undetermined, drawn normally
+  512^2 uniform: 262144 footprints in 715.0s
+  512^2 panels written; 0/262144 (0.0000%) flagged undetermined, drawn normally
+  256^2 uniform: 65536 footprints in 244.5s
+  256^2 panels written; 0/65536 (0.0000%) flagged undetermined, drawn normally
+   64^2 uniform: 4096 footprints in 13.8s
+   64^2 panels written; 0/4096 (0.0000%) flagged undetermined, drawn normally
+
+uniform-over-time animation at 1024^2, live_stride 1:
+  1048576 footprints in 2922.1s, 32 boundaries recorded
+  fixed ramp window over all 32 frames: (2.0514e-6, 4.5387e-1)
+  32 frames, 0 adjacent duplicates, 1 flagged footprint-frames
+  wrote results/tilt/tilt_plambda_uniform_time.png

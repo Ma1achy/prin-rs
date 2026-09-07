@@ -1,0 +1,7 @@
+payload_metric live: /private/tmp/claude-501/-Users-malachy-src-principia-rs-test/260ec0e2-d203-4f2d-85ff-f64a85497918/scratchpad/payload/payload/preset_shape_h1_t13_L6.fcache -- PRQF v2, region preset_shape_h1, levels 6 N=8 res 512, t_max 13; policy tolerance stationary true eps 1e-2 k_frac 0.25; class arm event_class
+  config: production + 1 override(s): refine_flagged=false (production true)
+  descent: 3397 quads (2548 leaves, depth 6) in 585.4s, 8.243e9 substeps, stop [keep:450 screen_floor:2064 stationary:34]
+  mem_all = 3397 quads x 512 trajectories; mem_leaf = 2548 quads
+  leaves by level: 3:14 4:26 5:92 6:2416
+  payload/event_class/indicator/eps=1e-2: error 0.02720; dp needs B=2805 (ratio 1.21x); uniform needs B=5077 (ratio 0.67x); sea_fraction 0.3415
+  payload/event_class/resolvable/eps=1e-2: error 0.00940; dp needs B=2125 (ratio 1.60x); uniform needs B=4925 (ratio 0.69x); sea_fraction 0.3415

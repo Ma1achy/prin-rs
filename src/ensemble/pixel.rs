@@ -132,6 +132,12 @@ pub struct EnsembleCfg {
     /// footprints give a spread of exactly zero, which the criterion reads as
     /// "perfectly resolved" rather than as "no data".
     pub decode_path: Path,
+    /// Which space the ensemble's sample coordinates are formed in — §12.
+    ///
+    /// `Global` is every committed number and is the default. `QuadLocal` never builds the global
+    /// offset, which is free at f64 on an O(1) chart coordinate and is the whole difference at f32
+    /// or at depth 40. Measured in `results/uv/`.
+    pub sample_space: crate::uv::SampleSpace,
     /// Keep each copy's packed outcome, for the SSAA resolve. Off by default: it is only
     /// wanted at render time, and it makes `PixelOut` allocate.
     pub keep_copy_outcomes: bool,
@@ -147,6 +153,15 @@ pub struct EnsembleCfg {
     /// Record each copy's `shape_vec` at every sync boundary, for the §5 temporal
     /// accumulators. Off by default; reduced and dropped inside one footprint's evaluation.
     pub keep_boundary_shapes: bool,
+    /// **The live series** (Phase 2c of the refinement rebuild): at every `live_stride`th sync
+    /// boundary, and always at the last, record the copies' shape spread, their event-class
+    /// spread, the nominal shape and the nominal class — everything the tolerance policy reads
+    /// — so a decision can be replayed at every playhead from ONE march. Implies
+    /// `keep_boundary_shapes`. Off by default: about `40 * n_sync / live_stride` bytes per
+    /// footprint.
+    pub keep_live_series: bool,
+    /// Boundaries between recorded live samples. `1` records every boundary.
+    pub live_stride: usize,
     /// Record the nominal copy's energy drift at every sync boundary, so the switch statistics
     /// below can be formed. Off by default; it is a diagnostic and costs an energy evaluation
     /// per boundary.
@@ -219,7 +234,31 @@ impl EnsembleCfg {
             eta: 0.01,
             land_iterate: true,
             land_max_iters: 4,
-            max_steps: 30_000,
+            // **Sized for AZ, and the default integrator has been Heggie since `84830a1`
+            // (2026-09-02).** `30_000` is the value the whole corpus was taken at and it does not
+            // bind on any of the eight Burrau regions -- bitwise zero flagged at every rung --
+            // which is exactly why it survived: it binds on the LATENT charts, where the gallery
+            // lives. Measured over 35 targets on a fixed grid (`results/step_budget/`):
+            // **every target reaches `flagged = 0` at 480_000**, `flagged == budget` in every row
+            // so budget exhaustion is the only mechanism present, and the cost is **1.000x
+            // bitwise wherever the budget never bound** and at worst **1.351x** (`burrau_nu_k`)
+            // where it did.
+            //
+            // **A too-small budget MANUFACTURES work.** A truncated footprint reads as
+            // undetermined, its quad can never resolve, and it splits: `burrau_nu_k` 415 static
+            // leaves at 30k against 373 from 60k up, `latent_mixed_h3` 214 against 142 and the
+            // whole chart 2.5x faster at the larger budget. So this is not a cost/quality trade
+            // in the direction it looks.
+            //
+            // **The committed corpus does not reproduce under this default** on the 12 of 35
+            // targets where the old value bound. Stated rather than discovered, the same way
+            // `StepLimit::Predictive` was; `provenance` names it in every header. The 30_000
+            // arm is reachable and is what every committed number before this was taken at.
+            //
+            // Not settled by the sweep and recorded there: `burrau_nu_k`'s `error_ratio` p99
+            // reads `1.24e2` at every rung INCLUDING 480_000, so something on that chart is not
+            // data whatever the budget -- an `eta` question, not a budget one.
+            max_steps: 480_000,
             ref_policy: RefPolicy::PerCopy,
             lc_stable: true,
             integrator: Integrator::default(),
@@ -232,11 +271,14 @@ impl EnsembleCfg {
             keep_copy_outcomes: false,
             keep_copy_shapes: false,
             keep_boundary_shapes: false,
+            keep_live_series: false,
+            live_stride: 4,
             keep_drift_hist: false,
             keep_ref_path: false,
             ftle: None,
             ftle_dt: 1e-4,
             decode_path: Path::DirectF64,
+            sample_space: crate::uv::SampleSpace::Global,
         }
     }
 }
@@ -502,6 +544,29 @@ pub struct PixelOut {
     /// small-sample bias standing in for a scale effect.
     pub copy_shapes: Vec<[f64; 3]>,
 
+    /// **The live series**, empty unless [`EnsembleCfg::keep_live_series`]: one entry per
+    /// recorded sync boundary. `live_t[j]` is the boundary time; the other four are the
+    /// footprint's `spread_shape`, `spread_event`, nominal `shape_vec` and nominal event class
+    /// **as they stood at that boundary** — a copy that had terminated carries its last shape
+    /// forward and its terminal class, which is what was known then. `scheduler::project_at`
+    /// turns entry `j` into the live view of the footprint.
+    pub live_t: Vec<f64>,
+    pub live_spread_shape: Vec<f64>,
+    pub live_spread_event: Vec<f64>,
+    pub live_shape: Vec<[f64; 3]>,
+    pub live_class: Vec<u8>,
+    /// **Copies known unusable by boundary `j`**, the live analogue of [`Self::n_nonfinite`].
+    ///
+    /// `n_nonfinite` is a verdict on the whole march to `t_max`, so cloning it into a live view
+    /// paints a footprint undetermined in a frame at `t = 0.8` because a copy diverges at
+    /// `t = 12` -- the future, painted into the past. A copy counts here from the first boundary
+    /// at which it stopped recording or recorded a non-finite shape, and from the horizon at the
+    /// latest if it is flagged unusable and neither happened. **Monotone by construction**: a
+    /// live view only ever learns. Measured on `preset_shape_h1` at 64^2, `n_nonfinite` painted
+    /// 19 footprints magenta at every one of 16 boundaries where this reads 0 until the copies
+    /// actually go.
+    pub live_nonfinite: Vec<u8>,
+
     // -----------------------------------------------------------------------------------
     // §5 — the temporal accumulators, shape arm.
     //
@@ -587,8 +652,9 @@ pub fn evaluate<T: Real>(slice: &Slice, idx: usize, cfg: &EnsembleCfg) -> PixelO
 
 /// The single pass. `eta` is explicit so the refinement pass can differ from `cfg.eta`.
 pub fn evaluate_at<T: Real>(slice: &Slice, idx: usize, cfg: &EnsembleCfg, eta_v: f64) -> PixelOut {
-    let copies = jitter::copies_with_path::<T>(
+    let copies = jitter::copies_in_space::<T>(
         slice, idx, cfg.n_extra, cfg.jitter_frac, cfg.seed, cfg.jitter_scheme, cfg.decode_path,
+        cfg.sample_space,
     );
     let n = copies.len();
 
@@ -605,7 +671,7 @@ pub fn evaluate_at<T: Real>(slice: &Slice, idx: usize, cfg: &EnsembleCfg, eta_v:
         // Named, never inherited: `AzOpts` and `HgOpts` have disagreed on a default twice.
         land_iterate: cfg.land_iterate,
         land_max_iters: cfg.land_max_iters,
-        keep_boundary_shapes: cfg.keep_boundary_shapes,
+        keep_boundary_shapes: cfg.keep_boundary_shapes || cfg.keep_live_series,
         keep_drift_hist: cfg.keep_drift_hist,
         forced_refs: None,
         lc_stable: cfg.lc_stable,
@@ -659,7 +725,7 @@ pub fn evaluate_at<T: Real>(slice: &Slice, idx: usize, cfg: &EnsembleCfg, eta_v:
         closure_k: cfg.closure_k,
         escape_every: cfg.escape_every,
         escape_confirm: cfg.escape_confirm,
-        keep_boundary_shapes: cfg.keep_boundary_shapes,
+        keep_boundary_shapes: cfg.keep_boundary_shapes || cfg.keep_live_series,
         keep_drift_hist: cfg.keep_drift_hist,
         refresh_h_at_boundary: false,
         lc_stable: cfg.lc_stable,
@@ -698,7 +764,7 @@ pub fn evaluate_at<T: Real>(slice: &Slice, idx: usize, cfg: &EnsembleCfg, eta_v:
         stop_on_escape: cfg.stop_on_escape,
         escape_rule: cfg.escape_rule.lift(),
         closure_k: cfg.closure_k,
-        keep_boundary_shapes: cfg.keep_boundary_shapes,
+        keep_boundary_shapes: cfg.keep_boundary_shapes || cfg.keep_live_series,
         keep_drift_hist: cfg.keep_drift_hist,
         // GBS is not reachable from any existing `EnsembleCfg` knob, so these take the driver's
         // defaults. They are named here rather than left to `..Default::default()` because a
@@ -856,6 +922,67 @@ pub fn evaluate_at<T: Real>(slice: &Slice, idx: usize, cfg: &EnsembleCfg, eta_v:
             &crate::physics::ftle::unit_perturbation::<T>(cfg.seed),
         )
     });
+
+    // ---- the live series, at stride ----
+    let (live_t, live_spread_shape, live_spread_event, live_shape, live_class, live_nonfinite) =
+        if cfg.keep_live_series {
+            let bs: Vec<&[[T; 3]]> = outs.iter().map(|o| o.boundary_shapes.as_slice()).collect();
+            // **When each copy became unusable**, so the live view does not inherit a verdict on
+            // the whole march. A copy that blows up stops recording boundaries, and the ragged
+            // rule below then carries its last *finite* shape forward -- right for a copy that
+            // terminated (it holds its terminal shape) and wrong for one that diverged, which is
+            // why divergence is invisible in the series itself and has to be counted here. The
+            // driver's `finite` is a verdict at `t_max`, so a copy flagged unusable that recorded
+            // every boundary finitely is known unusable at the horizon and not before.
+            let first_unusable: Vec<usize> = outs
+                .iter()
+                .map(|o| {
+                    if o.finite {
+                        return usize::MAX;
+                    }
+                    let b = o.boundary_shapes.as_slice();
+                    let bad = b.iter().position(|v| !v.iter().all(|x| x.to_f64().is_some_and(f64::is_finite)));
+                    bad.unwrap_or_else(|| b.len().min(cfg.n_sync.saturating_sub(1)))
+                })
+                .collect();
+            let stride = cfg.live_stride.max(1);
+            let mut lt = Vec::new();
+            let mut lss = Vec::new();
+            let mut lse = Vec::new();
+            let mut lsh = Vec::new();
+            let mut lcl = Vec::new();
+            let mut lnf = Vec::new();
+            for k in 0..cfg.n_sync {
+                if (k + 1) % stride != 0 && k + 1 != cfg.n_sync {
+                    continue;
+                }
+                // Ragged: a copy that terminated earlier carries its last recorded shape.
+                let at: Vec<[T; 3]> = bs
+                    .iter()
+                    .filter_map(|b| if b.is_empty() { None } else { Some(b[k.min(b.len() - 1)]) })
+                    .collect();
+                let ss = if at.len() >= 2 {
+                    shape::spread_shape(&at).to_f64().unwrap()
+                } else {
+                    f64::NAN
+                };
+                let nom = if bs[0].is_empty() {
+                    [f64::NAN; 3]
+                } else {
+                    let v = bs[0][k.min(bs[0].len() - 1)];
+                    [v[0].to_f64().unwrap(), v[1].to_f64().unwrap(), v[2].to_f64().unwrap()]
+                };
+                lt.push((k + 1) as f64 * cfg.t_max / cfg.n_sync as f64);
+                lss.push(ss);
+                lse.push(per_boundary[k]);
+                lsh.push(nom);
+                lcl.push(ev_at(k)[0]);
+                lnf.push(first_unusable.iter().filter(|&&f| k >= f).count() as u8);
+            }
+            (lt, lss, lse, lsh, lcl, lnf)
+        } else {
+            (Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new())
+        };
 
     let sp_event = per_boundary[cfg.n_sync - 1];
     let sp_event_max = per_boundary.iter().cloned().fold(0.0f64, f64::max);
@@ -1136,11 +1263,76 @@ pub fn evaluate_at<T: Real>(slice: &Slice, idx: usize, cfg: &EnsembleCfg, eta_v:
         } else {
             Vec::new()
         },
+        live_t,
+        live_spread_shape,
+        live_spread_event,
+        live_shape,
+        live_class,
+        live_nonfinite,
         running_max_divergence: t_run_max,
         divergence_trend: t_trend,
         first_divergence_t: t_first_div,
         ftle: ftle_out.map(|o| o.ftle.to_f64().unwrap()).unwrap_or(f64::NAN),
         diffusion: ftle_out.map(|o| o.diffusion.to_f64().unwrap()).unwrap_or(f64::NAN),
         ftle_renorm: ftle_out.map(|o| o.n_renorm).unwrap_or(0),
+    }
+}
+
+/// **The five fields a presentation panel actually reads, so a full-resolution uniform grid
+/// need not be held as `PixelOut`.**
+///
+/// A `PixelOut` is 656 bytes. At `1024^2` a uniform pass is **688 MB in one `Vec`**, and with
+/// rayon's per-thread collect the peak is over a gigabyte -- which is why the committed
+/// `results/charts/*_uniform*.png` panels sat unregenerated at 25 August with *"could not be
+/// regenerated on this machine"* beside them. A `PixelSlim` is 40 bytes: **42 MB** for the same
+/// grid, so the pass can be evaluated in strips and the strip's `PixelOut`s dropped.
+///
+/// The three panels the gallery draws -- the `spread_shape` ramp, the outcome class and the event
+/// class -- read exactly `spread_shape`, `shape_vec`, `n_nonfinite`, `state`, `detail` and
+/// `event_class` between them, and nothing else. `detail` is the one that is easy to miss and
+/// `tests/pixel_slim.rs` found it: the outcome panel shades its base colour by
+/// `0.55 + 0.15 * detail`, so a five-field record reproduced the class and not the shade. [`PixelSlim::fat`] rebuilds a `PixelOut` carrying those and
+/// `Default` elsewhere, so every existing colour function applies unchanged rather than being
+/// reimplemented against a second type.
+///
+/// **It is lossless only for those panels.** `fat()` writes the value into `spread_shape`, so it
+/// is a [`crate::output::colour::Scalar::ShapeSpread`] record and nothing else -- a `Drift` or
+/// `TEnd` panel built from one would read `0.0` everywhere and look like a converged field.
+/// `tests/pixel_slim.rs` asserts the round trip is **byte-identical on all three panels** over
+/// real pixels, with an arm that says the fixture contains flagged and unflagged footprints.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct PixelSlim {
+    pub spread_shape: f64,
+    pub shape_vec: [f64; 3],
+    pub n_nonfinite: u8,
+    pub state: u8,
+    pub detail: u8,
+    pub event_class: u8,
+}
+
+impl PixelSlim {
+    pub fn thin(p: &PixelOut) -> Self {
+        Self {
+            spread_shape: p.spread_shape,
+            shape_vec: p.shape_vec,
+            n_nonfinite: p.n_nonfinite,
+            state: p.state,
+            detail: p.detail,
+            event_class: p.event_class,
+        }
+    }
+
+    /// A `PixelOut` carrying the five fields and `Default` elsewhere. See the type note: this is
+    /// a `ShapeSpread` record, not a general one.
+    pub fn fat(&self) -> PixelOut {
+        PixelOut {
+            spread_shape: self.spread_shape,
+            shape_vec: self.shape_vec,
+            n_nonfinite: self.n_nonfinite,
+            state: self.state,
+            detail: self.detail,
+            event_class: self.event_class,
+            ..PixelOut::default()
+        }
     }
 }

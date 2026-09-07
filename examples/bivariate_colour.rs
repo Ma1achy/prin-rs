@@ -62,6 +62,9 @@ fn main() {
         ftle_dt,
         ..Default::default()
     };
+    // **The column, not the instance.** Nine harnesses feeding the refinement work printed no
+    // provenance at all -- the `refine_flagged` failure exactly.
+    println!("  config: {}", ens.provenance());
 
     println!(
         "level {levels}, N={n}, res {res}^2, t={t_max} n_sync={n_sync}, FTLE dt={ftle_dt:e} \

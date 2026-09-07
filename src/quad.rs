@@ -69,6 +69,19 @@ pub struct QuadReduction {
     /// treats non-finite as *hot* by design.
     pub n_undetermined: u32,
 
+    /// **Whether a collapse here has a more precise decoder to hand off to.**
+    ///
+    /// Recorded on the reduction rather than read from a config, because `decide` is pure on the
+    /// reduction. `false` is the honest default and the production value: `n_distinct_ic` is
+    /// measured on `Slice::nominal::<f64>`, the **full f64 decode**, and f64 is the ceiling in this
+    /// build — so a collapse detected here is the floor, exactly as `Decision::Collapsed` has
+    /// always treated it.
+    ///
+    /// It becomes `true` only for an f32 consumer, where `LinSplitF32` sits above the collapsing
+    /// path. See [`crate::decode::Path::has_more_precise_path`] for why the key is the *ladder*
+    /// and not the linearised/full distinction the spec names.
+    pub decode_can_switch: bool,
+
     // ---------------------------------------------------------------------------------
     // The between-footprint arm.
     //
@@ -180,9 +193,129 @@ pub struct QuadReduction {
     pub frac_diverged: f64,
     /// Median first-divergence time over the footprints that crossed. `NaN` if none did.
     pub first_divergence_median: f64,
+
+    // ---------------------------------------------------------------------------------
+    // The tolerance arm (Phase 2 of the refinement rebuild).
+    //
+    // A footprint is UNRESOLVED when its copies, which span the whole cell, disagree beyond the
+    // tolerance: `ensemble_spread > tau` -- which fires on any class disagreement, since one
+    // dissenting copy of eight reads 0.143 -- or when the footprint cannot be read at all
+    // (`scheduler::footprint_undetermined`). Counts, never quantiles: a quad with one hot
+    // footprint of 64 has a median below `tau` and reads resolved under `Agg::Median`, which is
+    // "median under-refines thin structure" at full strength.
+    // ---------------------------------------------------------------------------------
+    /// Footprints unresolved at the tolerance, both causes.
+    pub n_unresolved: u32,
+    /// Of those, the ones unresolved because they could not be read (non-finite copy or spread).
+    /// Carried beside the total so a triple-collision singularity and a filament are never
+    /// pooled.
+    pub n_unresolved_undetermined: u32,
+    /// Of those, the ones unresolved by the **event arm alone** (`spread_shape <= tau` and
+    /// `spread_event > 0`). The tightest-pair switching surface lives here; read it per chart
+    /// before believing a leaf count.
+    pub n_unresolved_event_only: u32,
+    /// **`n_unresolved` with the edge footprints weighed by how much of their cell lies inside
+    /// the quad**: a half at an edge, a quarter at a corner, so a fully unresolved quad reads
+    /// `(N-1)^2` and the cells tile the quad exactly. A structure on a quad edge is otherwise
+    /// counted by both neighbours, which reads as no gain at exactly one level. What
+    /// `scheduler::area_exponent` compares between a parent and its children.
+    pub unresolved_weight: f64,
+    /// `max` of `ensemble_spread` over the quad, no discard (`NaN` when nothing finite).
+    pub spread_max: f64,
+    /// `spread_max - tau`: how far the worst footprint sits past the tolerance.
+    pub max_excess: f64,
+
+    // ---------------------------------------------------------------------------------
+    // The stationarity arms (Phase 2b). What separates a homogeneous sea -- unresolved at every
+    // scale, and re-sampled rather than resolved by going deeper -- from a filament, which is
+    // unresolved because the cell is still wider than the structure. Amplitude cannot tell
+    // them apart; coherence can.
+    // ---------------------------------------------------------------------------------
+    /// Lag-1 neighbour correlation of the nominal `shape_vec` across the `N x N` grid, the mean
+    /// over the components that vary. A sea is white at the footprint scale (`~0`, sd `~0.09`
+    /// at `N = 8`); a boundary organises the field (`> 0`). `NaN` when nothing varies.
+    pub coh_shape: f64,
+    /// **Class-conditional** neighbour coherence of the nominal event class, the max over the
+    /// classes present at least twice: the fraction of a class's footprints' neighbours that are
+    /// the same class, above the class's base rate, normalised to 1. `~0` on a sea for every
+    /// class; a thin filament's class clusters near 0.6. `NaN` when the quad has one class or
+    /// nothing varies. The max rather than a global agreement statistic, because one coherent
+    /// column of eight moves the global figure by a few percent and the max by half.
+    pub coh_class: f64,
+    /// The nominal event-class histogram over the quad, one slot per class of the 27-slot
+    /// alphabet (3 tightest-pair identities, then `TERMINAL_TAG + terminal`).
+    pub class_hist: [u16; 27],
+    /// Mean total-variation distance between a quadrant's class mixture and the quad's, over
+    /// the four quadrants. A sea's quadrants agree up to sampling noise (about 0.14 at `N = 8`
+    /// on three classes; the *max* of the four reaches 0.33 by noise alone, which is why this
+    /// is the mean); a quad with a boundary through it does not.
+    pub mix_tv_quadrants: f64,
+    /// Total-variation distance between this quad's class mixture and its **parent's**, at the
+    /// same playhead. Set by the descent once the parent is known; `NaN` at the root.
+    pub mix_tv_parent: f64,
+    /// **The unresolved weight that is structure**: the unresolved footprints with at least two
+    /// of their eight neighbours of the same class and with a nominal shape within
+    /// `scheduler::STRUCTURE_AGREE` (chord/2) of theirs. A sea footprint's neighbours are
+    /// independent draws on the sphere and two of them agree by chance a few times in ten
+    /// thousand; a filament's neighbours along it agree exactly. What the exponent
+    /// and the noise stop read under `SchedCfg::agreement`. Per footprint and free of any base
+    /// rate -- class-conditional coherence read a one-column filament between sea and basin at
+    /// 0.27 against a bar of 0.3, and a sea class confined to a mixed quad's unresolved third at
+    /// 0.4, and each repair moved that artefact rather than removing it.
+    pub structured_weight: f64,
+    /// `unresolved_weight` and `structured_weight` per quadrant (index `qx + 2 qy`, the child
+    /// order), weighed relative to the quadrant's box: a half on the quad's outer edges, a
+    /// quarter at its corners, one on the midlines, whose cell edges the midlines are. What
+    /// `scheduler::area_exponent` reads from a grandparent: one quadrant at its own resolution,
+    /// two levels above the children it is compared with.
+    pub unresolved_quadrant: [f32; 4],
+    pub structured_quadrant: [f32; 4],
+    /// The unresolved and structured weight on each **outer edge** of the quad -- the `ix = 0`
+    /// column, the `ix = N-1` column, the `iy = 0` row, the `iy = N-1` row, in that order. What
+    /// says whether a sibling set's structure sits on its parent's boundary, where the coarse
+    /// grid above assigns it wholly to one side and the fine grid half to each, and the exponent
+    /// is not a measurement.
+    pub unresolved_edge: [f32; 4],
+    pub structured_edge: [f32; 4],
 }
 
 impl QuadReduction {
+    /// The class mixture as fractions, over the 27 slots.
+    pub fn class_mix(&self) -> [f64; 27] {
+        let n: u32 = self.class_hist.iter().map(|&c| c as u32).sum();
+        let mut m = [0.0f64; 27];
+        if n > 0 {
+            for (k, &c) in self.class_hist.iter().enumerate() {
+                m[k] = c as f64 / n as f64;
+            }
+        }
+        m
+    }
+
+    /// Total-variation distance between two class mixtures, in `[0, 1]`.
+    pub fn mix_tv(a: &[f64; 27], b: &[f64; 27]) -> f64 {
+        0.5 * a.iter().zip(b.iter()).map(|(x, y)| (x - y).abs()).sum::<f64>()
+    }
+
+    /// The larger of the two coherence arms; `NaN` only when both are.
+    pub fn coherence(&self) -> f64 {
+        match (self.coh_shape.is_finite(), self.coh_class.is_finite()) {
+            (true, true) => self.coh_shape.max(self.coh_class),
+            (true, false) => self.coh_shape,
+            (false, true) => self.coh_class,
+            (false, false) => f64::NAN,
+        }
+    }
+
+    /// Fraction of footprints unresolved at the tolerance; `NaN` on an empty quad.
+    pub fn frac_unresolved(&self) -> f64 {
+        if self.n_footprints == 0 {
+            f64::NAN
+        } else {
+            self.n_unresolved as f64 / self.n_footprints as f64
+        }
+    }
+
     /// The aggregate a decision reads, by policy.
     pub fn spread(&self, agg: Agg) -> f64 {
         match agg {
@@ -236,6 +369,10 @@ impl QuadReduction {
                 }
             }
             Criterion::GradRms => self.grad_rms_within,
+            Criterion::PerimeterWithin => self.layout_within.perimeter_ratio,
+            Criterion::PerimeterBetween => self.layout_between.perimeter_ratio,
+            Criterion::FracUnresolved => self.frac_unresolved(),
+            Criterion::MaxExcess => self.max_excess,
         }
     }
 
@@ -470,6 +607,39 @@ pub enum Criterion {
     /// whole hot-mask family: if a masked signal cannot beat it, the mask is not earning its
     /// parameter.
     GradRms,
+    /// **`perimeter_ratio` of the within-arm hot mask, alone.** `signal_audit` has scored it as
+    /// `lay_w_perimeter` since the audit was written and it was **never in the `Rank` list**, so
+    /// it has never been through an `error(B)` curve — the only measurement that decides a
+    /// criterion here.
+    ///
+    /// It is not a component of [`Criterion::Layout`], which is `frac_hot x connectedness` and
+    /// carries no perimeter term at all. `QuadReduction::structure` multiplies thinness in as one
+    /// of three factors, and *structure neither replaces nor multiplies* — measured, multiplying
+    /// took `frac_hot_between` on `preset_shape` from 0.07038 to 0.13133. This is the third
+    /// possibility that neither of those tested: the perimeter term **on its own, as the ranking**.
+    ///
+    /// Thin is high: a one-cell filament reads exactly `2.0` under the internal-edges convention,
+    /// a compact blob `~4/sqrt(A)`, and a fully-hot quad exactly `0`.
+    ///
+    /// **`NaN` on an empty mask**, following `perimeter_ratio`'s own convention rather than
+    /// coercing to zero — and `far`'s absolute mask is empty on every leaf, so this criterion is
+    /// `NaN` across that whole region. `band_of` sends `NaN` to the bottom, which is the right
+    /// standing for "not measured"; it is stated here because a criterion that is undefined over
+    /// an entire region is a property to read, not a defect to hide. *`term_grad` is `NaN` on
+    /// 97.1% of near-field and still reaches the oracle's zero by `B = 383`.*
+    PerimeterWithin,
+    /// The between-arm twin, as the control on which arm the perimeter term wants.
+    ///
+    /// Required rather than decorative: `frac_hot_between` beats `frac_hot_within` decisively and
+    /// is the best criterion measured on this project, so the arm is known to matter for a
+    /// mask-derived signal. Testing the within arm alone would leave that unasked.
+    PerimeterBetween,
+    /// **The tolerance policy's priority**: the fraction of footprints unresolved at `tau`. A
+    /// count in the tail, so a filament crossing a quad reads on it where every quantile
+    /// conflates it with a blurred quad.
+    FracUnresolved,
+    /// `spread_max - tau`: the worst footprint's excess over the tolerance. The magnitude twin.
+    MaxExcess,
 }
 
 impl Criterion {
@@ -486,6 +656,10 @@ impl Criterion {
             Criterion::TerminationGradient => "term_grad",
             Criterion::LayoutRel => "layout_rel",
             Criterion::GradRms => "grad_rms",
+            Criterion::PerimeterWithin => "perim_within",
+            Criterion::PerimeterBetween => "perim_between",
+            Criterion::FracUnresolved => "frac_unresolved",
+            Criterion::MaxExcess => "max_excess",
         }
     }
     pub fn parse(s: &str) -> Option<Criterion> {
@@ -501,11 +675,15 @@ impl Criterion {
             "term_grad" => Criterion::TerminationGradient,
             "layout_rel" => Criterion::LayoutRel,
             "grad_rms" => Criterion::GradRms,
+            "perim_within" => Criterion::PerimeterWithin,
+            "perim_between" => Criterion::PerimeterBetween,
+            "frac_unresolved" => Criterion::FracUnresolved,
+            "max_excess" => Criterion::MaxExcess,
             _ => return None,
         })
     }
     /// Every variant, for sweeps that must not silently omit one.
-    pub const ALL: [Criterion; 11] = [
+    pub const ALL: [Criterion; 15] = [
         Criterion::Within,
         Criterion::Between,
         Criterion::MaxOfBoth,
@@ -517,6 +695,10 @@ impl Criterion {
         Criterion::TerminationGradient,
         Criterion::LayoutRel,
         Criterion::GradRms,
+        Criterion::PerimeterWithin,
+        Criterion::PerimeterBetween,
+        Criterion::FracUnresolved,
+        Criterion::MaxExcess,
     ];
 }
 
@@ -602,6 +784,43 @@ pub enum Decision {
     ///
     /// Appended rather than inserted, so codes 0-10 in every committed `.prnq` still decode.
     Undetermined,
+    /// **Unresolved, and a homogeneous sea at this sampling**: the footprint field is white at
+    /// the footprint scale, its class mixture matches its parent's and its quadrants agree, and
+    /// the shape spread did not fall from the parent. Nothing finer would resolve it, only
+    /// re-sample it. A **keep for now**, re-tested at every playhead; never a terminal stop.
+    /// `Policy::Tolerance` only. Code 12.
+    Stationary,
+    /// **Merged back into its parent** by the live descent: the parent had become resolved, or
+    /// its split had stopped paying (the unresolved area of its children was no more than its
+    /// own), so the children were released and the parent is the leaf again. Never a leaf
+    /// itself: `QuadTree::leaves` skips a merged quad. Code 14.
+    Merged,
+    /// **Wanted to split and was outranked** by `k_frac` or the budget this round. Re-decided
+    /// next round rather than dropped: under `Policy::Tolerance` `Keep` means *resolved*, and a
+    /// dropped unresolved quad wearing that label was the conflation the stop-reason column
+    /// exists to prevent. `Policy::Alpha` still marks these `Keep`, bitwise as before. Code 13.
+    Deferred,
+
+    /// **The full decoder ran out of precision — switch to the linearised path and KEEP GOING.**
+    /// Code 15, and **not a stop**.
+    ///
+    /// §14 is explicit and it is easy to get backwards: adjacent samples collapsing to identical
+    /// ICs on the *full* decoder means the f32 pipeline is exhausted and the linear path should
+    /// take over, not that there is nothing left to resolve. Treating it as terminal caps the
+    /// descent around depth 23 and looks exactly like a physics limit —
+    /// `results/output/deep_zoom.txt` measures `direct_f32` collapsing to 18/64 distinct ICs by
+    /// depth 18 while `lin_split_f32` holds **64/64 through depth 40**.
+    ///
+    /// It also fires **early** in a corner the depth threshold misses: a microscope tilt can shrink
+    /// `q1, q2` to tiny magnitudes at shallow quadtree depth, so the full decode loses precision
+    /// before the pyramid is deep. Still a switch, never a stop.
+    /// **`AT_F32_FLOOR` is [`Self::Collapsed`], not a new variant.** The spec lists the terminal
+    /// decode floor separately from the switchover, and in this build `Collapsed` already *is*
+    /// that floor — same condition, same response, and it is the label every committed dump
+    /// carries. A distinct `AtF32Floor` would be a synonym that could never be produced here,
+    /// since nothing measures distinctness through a linearised path; adding it would rename a
+    /// committed decision for no gain and put a code in the table that never fires.
+    DecodeSwitch,
 }
 
 impl Decision {
@@ -619,6 +838,10 @@ impl Decision {
             Decision::Collapsed => "collapsed",
             Decision::BalanceForced => "balance",
             Decision::Undetermined => "undetermined",
+            Decision::Stationary => "stationary",
+            Decision::Deferred => "deferred",
+            Decision::Merged => "merged",
+            Decision::DecodeSwitch => "decode_switch",
         }
     }
     pub fn code(self) -> u8 {
@@ -635,7 +858,49 @@ impl Decision {
             Decision::Collapsed => 9,
             Decision::BalanceForced => 10,
             Decision::Undetermined => 11,
+            Decision::Stationary => 12,
+            Decision::Deferred => 13,
+            Decision::Merged => 14,
+            Decision::DecodeSwitch => 15,
         }
+    }
+
+    /// **Every variant, in code order**, so a reader derives the code -> name table rather than
+    /// hand-maintaining one.
+    ///
+    /// Two `.prnq` decoders wrote that table by hand and stopped at code 9, which was correct
+    /// when they were written. `BalanceForced`, `Undetermined`, `Stationary`, `Deferred` and
+    /// `Merged` were appended afterwards, and one of the two silently *dropped* them from its
+    /// leaf-decision histogram — a breakdown summing to less than the leaf count with nothing
+    /// saying so. The fix for that class is never the instance; it is the table.
+    pub const ALL: [Decision; 16] = [
+        Decision::Pending,
+        Decision::Split,
+        Decision::Floor,
+        Decision::Keep,
+        Decision::PrecisionFloor,
+        Decision::MaxLevel,
+        Decision::BudgetExhausted,
+        Decision::ScreenFloor,
+        Decision::MaxRelDepth,
+        Decision::Collapsed,
+        Decision::BalanceForced,
+        Decision::Undetermined,
+        Decision::Stationary,
+        Decision::Deferred,
+        Decision::Merged,
+        Decision::DecodeSwitch,
+    ];
+
+    /// The inverse of [`Self::code`], reading a dump's decision column back.
+    ///
+    /// `None` for an unknown code — a dump written by a *later* build than this one, which is a
+    /// real state and must not decode as some existing variant. `code()` is an exhaustive match
+    /// over the variants, so a new variant compiles only after it is given a code; the guard that
+    /// it also reaches [`Self::ALL`] is `a_new_decision_variant_reaches_the_table`, which fires
+    /// because a new variant takes the next code and `from_code(ALL.len())` must be `None`.
+    pub fn from_code(c: u8) -> Option<Decision> {
+        Decision::ALL.get(c as usize).copied()
     }
 }
 
@@ -670,6 +935,45 @@ pub struct Quad {
     /// trust.
     pub alpha_sibling_spread: Option<f64>,
     pub decision: Decision,
+    /// **The area exponent of this quad's own split**, once its four children are computed:
+    /// `log2(unresolved_area(self) / sum unresolved_area(children))`. A line reads 1, a sea 0, a
+    /// boundary of box dimension `d` reads `2 - d`; `+inf` when the children resolved everything,
+    /// `None` when the quad had nothing unresolved or has no children. What `Policy::Tolerance`'s
+    /// `Floor` reads, on the children: refining bought no less unresolved area.
+    pub alpha_area: Option<f64>,
+    /// **The spread exponent of this quad's own split**: `log2(spread(self) / mean spread(children))`
+    /// under the descent's aggregation. The second way a split can pay; see `scheduler::no_gain`.
+    pub alpha_spread_set: Option<f64>,
+    /// **The structured weight at which a no-gain merge was judged.** The merged parent stays
+    /// floored while its own structured area stands within a factor of two of this (or at zero,
+    /// if it was zero); past that the region has changed -- a band collapsing to a filament,
+    /// structure appearing in what was noise -- the memory expires and the quad may split
+    /// again. `None` on a quad that was never merged for no gain. Keyed on the structured weight
+    /// because on a sea the unresolved weight never moves: the first form, keyed on it, left the
+    /// live sea-chart tree at 2.0x the optimum's budget for its error against the static 1.4x.
+    pub no_gain_weight: Option<f64>,
+
+    /// The boundary at which the no-gain memory above was recorded.
+    ///
+    /// The memory's expiry is keyed on the **structured weight** — the quantity the exponent
+    /// judged — and that is one of two live-compatible forms; a **time-to-live** is the other, and
+    /// it needs to know how old the memory is. `None` when there is no memory. Written together
+    /// with `no_gain_weight` and cleared together with it, so the two cannot disagree about
+    /// whether a memory exists.
+    pub no_gain_at: Option<u32>,
+
+    /// **The no-gain memory has lapsed and must NOT stand this boundary.**
+    ///
+    /// Separate from clearing `no_gain_weight`, and the distinction is the whole mechanism.
+    /// `scheduler::decide` reads `no_gain_weight.map_or(true, ...)` — *no memory* means **this quad
+    /// has never been merged for no gain**, and the floor stands on its own merits. So clearing the
+    /// memory to expire it reverts to first-time behaviour, which is to floor: the exact opposite
+    /// of expiry. Measured on the pulse, that inversion computed **421 quads against 645** — fewer,
+    /// by flooring more — and an assertion that merely required the tree to *differ* could not tell
+    /// it from a working expiry.
+    pub no_gain_expired: bool,
+    /// Released by a merge. Stays in the arena (indices are stable) but is not a leaf.
+    pub merged: bool,
 }
 
 impl Quad {
@@ -699,6 +1003,33 @@ impl Quad {
     }
 
     /// The four child boxes, in `(jy, jx)` order: lower-left, lower-right, upper-left, upper-right.
+    /// A fresh, uncomputed quad. `Quad` deliberately does not derive `Default` — a quad with no
+    /// box is not a meaningful value — so this is the one place the field list is repeated.
+    pub fn fresh(level: u32, cx: f64, cy: f64, half: f64, parent: Option<usize>, sib_index: u8, iteration: u32) -> Quad {
+        Quad {
+            level,
+            cx,
+            cy,
+            half,
+            parent,
+            children: None,
+            sib_index,
+            iteration,
+            red: QuadReduction::default(),
+            alpha: None,
+            alpha_mean: None,
+            alpha_p90: None,
+            alpha_sibling_spread: None,
+            decision: Decision::Pending,
+            alpha_area: None,
+            alpha_spread_set: None,
+            no_gain_weight: None,
+            no_gain_at: None,
+            no_gain_expired: false,
+            merged: false,
+        }
+    }
+
     pub fn child_boxes(&self) -> [(f64, f64, f64); 4] {
         let q = self.half / 2.0;
         [
@@ -718,6 +1049,14 @@ impl Quad {
 #[derive(Clone, Debug, Default)]
 pub struct QuadTree {
     pub nodes: Vec<Quad>,
+    /// **The root's index.** `0` for every tree `with_chart` builds, so every existing tree, every
+    /// committed dump and `neighbour`'s descent are unchanged — it exists so [`Self::grow_root`]
+    /// has somewhere to say the answer.
+    ///
+    /// Making it a field is what removes the index churn the obvious re-rooting design needs: a
+    /// new root is **pushed at the end** and `root` repointed, so no existing index moves and no
+    /// remap has to be threaded through the frontier, the store and the pending lists.
+    pub root: usize,
     /// Samples per quad axis, `N`.
     pub n: usize,
     pub body: usize,
@@ -747,8 +1086,14 @@ impl QuadTree {
             alpha_p90: None,
             alpha_sibling_spread: None,
             decision: Decision::Pending,
+                alpha_area: None,
+                alpha_spread_set: None,
+                no_gain_weight: None,
+                no_gain_at: None,
+                no_gain_expired: false,
+                merged: false,
         };
-        QuadTree { nodes: vec![root], n, body, chart }
+        QuadTree { nodes: vec![root], root: 0, n, body, chart }
     }
 
     /// Create four children of `i`. Returns their indices. Does **not** compute them.
@@ -772,6 +1117,12 @@ impl QuadTree {
                 alpha_p90: None,
                 alpha_sibling_spread: None,
                 decision: Decision::Pending,
+                alpha_area: None,
+                alpha_spread_set: None,
+                no_gain_weight: None,
+                no_gain_at: None,
+                no_gain_expired: false,
+                merged: false,
             });
         }
         let kids = [base, base + 1, base + 2, base + 3];
@@ -779,8 +1130,117 @@ impl QuadTree {
         kids
     }
 
+    /// The root quad.
+    pub fn root_node(&self) -> &Quad {
+        &self.nodes[self.root]
+    }
+
+    /// **Grow a new root one level above, with the current root as child `quadrant`.**
+    ///
+    /// A zoom-out that leaves the root box needs area the tree does not contain. The alternative —
+    /// re-root and discard — throws away exactly the quads the zoom-out is about to display, which
+    /// turns the one gesture the caching contract calls *nearly free* into the most expensive in
+    /// the system: a session that discarded would report "persists across pan and zoom" while
+    /// being the configuration that recomputes most.
+    ///
+    /// **No index moves.** The new root and its three new siblings are **pushed at the end** and
+    /// `self.root` is repointed, so the frontier, the payload store and the pending lists need no
+    /// remap. That is what `root` being a field buys.
+    ///
+    /// **The old subtree's boxes are not touched at all.** Re-deriving them from the new root
+    /// would shift the whole tree by an ulp — `old_cx + old_half - old_half` is not `old_cx` in
+    /// f64 — which is the half-cell class of defect `Cache::key_of` already carries a paragraph
+    /// about. Only the three new siblings are built from `child_boxes()`, and the constructor
+    /// **asserts** that `child_boxes()[quadrant]` reproduces the old root's box exactly, refusing
+    /// rather than shifting.
+    ///
+    /// **Every level rises by one**, which is a real semantic change and not bookkeeping: a leaf
+    /// that was inside `bootstrap_levels` may no longer be. Recorded rather than absorbed.
+    /// `Camera::veto` is invariant under it — both `q.level` and `floor(camera_depth)` rise
+    /// together, since the root box doubles — and that is asserted rather than assumed.
+    ///
+    /// Returns the three new sibling indices; the new root is [`Self::root`].
+    pub fn grow_root(&mut self, quadrant: usize, iteration: u32) -> Vec<usize> {
+        assert!(quadrant < 4, "quadrant {quadrant} is not one of four");
+        let old = self.root;
+        let (ocx, ocy, oh) = (self.nodes[old].cx, self.nodes[old].cy, self.nodes[old].half);
+
+        // The new root: twice the half-width, centred so the old root lands in `quadrant`.
+        let q = oh; // the new root's half is 2*oh, so its children's half is oh
+        let (dx, dy) = match quadrant {
+            0 => (q, q),
+            1 => (-q, q),
+            2 => (q, -q),
+            _ => (-q, -q),
+        };
+        let mut root = Quad::fresh(0, ocx + dx, ocy + dy, oh * 2.0, None, 0, iteration);
+
+        // Refuse rather than shift: the old root's box must be reproduced EXACTLY.
+        let boxes = root.child_boxes();
+        let (bx, by, bh) = boxes[quadrant];
+        assert!(
+            bx == ocx && by == ocy && bh == oh,
+            "grow_root would shift the old root: child_boxes[{quadrant}] = ({bx}, {by}, {bh}) \
+             against ({ocx}, {ocy}, {oh})"
+        );
+
+        let new_root = self.nodes.len();
+        let mut kids = [0usize; 4];
+        kids[quadrant] = old;
+        let mut idx = new_root + 1;
+        let mut made = Vec::with_capacity(3);
+        for j in 0..4 {
+            if j == quadrant {
+                continue;
+            }
+            kids[j] = idx;
+            made.push(idx);
+            idx += 1;
+        }
+        root.children = Some(kids);
+        root.iteration = iteration;
+        self.nodes.push(root);
+
+        for (j, &(cx, cy, half)) in boxes.iter().enumerate() {
+            if j == quadrant {
+                continue;
+            }
+            self.nodes.push(Quad::fresh(1, cx, cy, half, Some(new_root), j as u8, iteration));
+        }
+
+        // Every existing node is now one level deeper. Done before repointing so the new nodes,
+        // already at their final levels, are untouched.
+        for i in 0..new_root {
+            self.nodes[i].level += 1;
+        }
+        self.nodes[old].parent = Some(new_root);
+        self.nodes[old].sib_index = quadrant as u8;
+        self.root = new_root;
+        made
+    }
+
     pub fn leaves(&self) -> impl Iterator<Item = usize> + '_ {
-        (0..self.nodes.len()).filter(|&i| self.nodes[i].is_leaf())
+        (0..self.nodes.len()).filter(|&i| self.nodes[i].is_leaf() && !self.nodes[i].merged)
+    }
+
+    /// Quads currently resident: every node that is not merged. What a live design holds in
+    /// memory at this playhead, against `quads_computed`, which counts every quad ever built.
+    pub fn resident(&self) -> usize {
+        self.nodes.iter().filter(|q| !q.merged).count()
+    }
+
+    /// The stop-reason breakdown over the leaves, as `keep:48 max_rel_depth:16`, sorted by name.
+    ///
+    /// **Never quote a leaf count without this.** It was rebuilt by hand in `chart_gallery` and
+    /// omitted by every other harness; one method means no harness can leave it out, and the
+    /// string is the one that goes in the sidecar, the log and the table.
+    pub fn stop_breakdown(&self) -> String {
+        let mut m: std::collections::BTreeMap<&'static str, usize> =
+            std::collections::BTreeMap::new();
+        for i in self.leaves() {
+            *m.entry(self.nodes[i].decision.name()).or_insert(0) += 1;
+        }
+        m.into_iter().map(|(k, n)| format!("{k}:{n}")).collect::<Vec<_>>().join(" ")
     }
 
     /// The same-or-coarser neighbour across one edge, or `None` at the root box's border.
@@ -806,12 +1266,12 @@ impl QuadTree {
             Dir::PosY => (q.cx, q.cy + q.half + e),
         };
 
-        let root = &self.nodes[0];
+        let root = &self.nodes[self.root];
         if (px - root.cx).abs() > root.half || (py - root.cy).abs() > root.half {
             return None;
         }
 
-        let mut cur = 0usize;
+        let mut cur = self.root;
         while self.nodes[cur].level < q.level {
             let Some(kids) = self.nodes[cur].children else { break };
             let node = &self.nodes[cur];

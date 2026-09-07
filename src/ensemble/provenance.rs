@@ -79,9 +79,12 @@ pub enum Override {
     RefineEtaFactor(f64),
     RefineMaxPasses(u8),
     DecodePath(Path),
+    SampleSpace(crate::uv::SampleSpace),
     KeepCopyOutcomes(bool),
     KeepCopyShapes(bool),
     KeepBoundaryShapes(bool),
+    KeepLiveSeries(bool),
+    LiveStride(usize),
     KeepDriftHist(bool),
     KeepRefPath(bool),
     Ftle(Option<FtleOpts>),
@@ -122,9 +125,12 @@ impl Override {
             Override::RefineEtaFactor(v) => c.refine_eta_factor = v,
             Override::RefineMaxPasses(v) => c.refine_max_passes = v,
             Override::DecodePath(v) => c.decode_path = v,
+            Override::SampleSpace(v) => c.sample_space = v,
             Override::KeepCopyOutcomes(v) => c.keep_copy_outcomes = v,
             Override::KeepCopyShapes(v) => c.keep_copy_shapes = v,
             Override::KeepBoundaryShapes(v) => c.keep_boundary_shapes = v,
+            Override::KeepLiveSeries(v) => c.keep_live_series = v,
+            Override::LiveStride(v) => c.live_stride = v,
             Override::KeepDriftHist(v) => c.keep_drift_hist = v,
             Override::KeepRefPath(v) => c.keep_ref_path = v,
             Override::Ftle(v) => c.ftle = v,
@@ -160,8 +166,9 @@ impl EnsembleCfg {
             step_limit, step_limit_f, ref_hysteresis, step_blend, blend_p, eta,
             land_iterate, land_max_iters,
             max_steps, ref_policy, lc_stable, integrator, r_coll_frac, stop_on_event, refine_flagged,
-            refine_threshold, refine_eta_factor, refine_max_passes, decode_path,
-            keep_copy_outcomes, keep_copy_shapes, keep_boundary_shapes, keep_drift_hist,
+            refine_threshold, refine_eta_factor, refine_max_passes, decode_path, sample_space,
+            keep_copy_outcomes, keep_copy_shapes, keep_boundary_shapes, keep_live_series,
+            live_stride, keep_drift_hist,
             keep_ref_path, ftle,
             ftle_dt,
         } = self;
@@ -207,9 +214,12 @@ impl EnsembleCfg {
         cmp!("refine_eta_factor", refine_eta_factor, p.refine_eta_factor);
         cmp!("refine_max_passes", refine_max_passes, p.refine_max_passes);
         cmp!("decode_path", decode_path, p.decode_path);
+        cmp!("sample_space", sample_space, p.sample_space);
         cmp!("keep_copy_outcomes", keep_copy_outcomes, p.keep_copy_outcomes);
         cmp!("keep_copy_shapes", keep_copy_shapes, p.keep_copy_shapes);
         cmp!("keep_boundary_shapes", keep_boundary_shapes, p.keep_boundary_shapes);
+        cmp!("keep_live_series", keep_live_series, p.keep_live_series);
+        cmp!("live_stride", live_stride, p.live_stride);
         cmp!("keep_drift_hist", keep_drift_hist, p.keep_drift_hist);
         cmp!("keep_ref_path", keep_ref_path, p.keep_ref_path);
         cmp!("ftle", ftle, p.ftle);
@@ -217,19 +227,60 @@ impl EnsembleCfg {
         out
     }
 
-    /// One line naming every departure from production, for an output header.
+    /// The **absolute** integration kernel: the fields that decide which trajectory is computed,
+    /// written as values rather than as a diff.
     ///
-    /// Reads `production` when there are none — an explicit statement rather than an empty
-    /// string, because a blank field and an absent field look the same in a log and the whole
-    /// point is that the choice is recorded either way.
+    /// **A diff against a baseline is not a record, because the baseline moves.** Until
+    /// 2026-09-06 every header carried only [`provenance`], which emits departures from
+    /// `production()` and therefore emits *nothing at all* for a run that inherits it. When
+    /// `max_steps` moved `30_000 -> 480_000` (`297ae8e`) this line stayed byte-identical:
+    ///
+    /// ```text
+    /// config: production + 2 override(s): refine_flagged=false (production true), ...
+    /// ```
+    ///
+    /// — the same text for a 3 September artefact and a 6 September one, on two different kernels,
+    /// with no version column to tell them apart. That is *the corpus was mixed-version and a
+    /// corpus-wide statistic silently ran on a subset*, at the one place built to prevent it.
+    ///
+    /// These five are the fields [`crate::scheduler::assert_production_kernel`] refuses a
+    /// `results/` write over, and they are the same five for the same reason: each decides what
+    /// the integrator does, not how the result is reported. Everything else stays in the diff,
+    /// where a departure is the interesting thing and a match is not.
+    pub fn kernel_stamp(&self) -> String {
+        format!(
+            "integrator={:?} max_steps={} step_limit={:?} f={} dtau={:?} clamp={}",
+            self.integrator,
+            self.max_steps,
+            self.step_limit,
+            self.step_limit_f,
+            self.dtau_mode,
+            self.clamp_final_step
+        )
+    }
+
+    /// One line naming every departure from production, **and the absolute kernel**, for an
+    /// output header.
+    ///
+    /// Reads `production` when there are no departures — an explicit statement rather than an
+    /// empty string, because a blank field and an absent field look the same in a log and the
+    /// whole point is that the choice is recorded either way. The `[kernel: ...]` suffix is
+    /// [`kernel_stamp`] and is present unconditionally: see its note for why the diff alone was
+    /// not a record.
+    ///
+    /// Artefacts committed **before** 2026-09-06 carry the diff only, so date those by commit.
+    /// `tools/verify_prnq_regen.sh` strips this suffix for the same reason it strips
+    /// `wall_seconds`: it is header metadata, and a kernel that genuinely changed moves the
+    /// record block, which is what that check reads.
     pub fn provenance(&self) -> String {
         let ov = self.overrides_vs_production();
+        let k = self.kernel_stamp();
         if ov.is_empty() {
-            return "production".into();
+            return format!("production [kernel: {k}]");
         }
         let body: Vec<String> =
             ov.iter().map(|(k, a, b)| format!("{k}={a} (production {b})")).collect();
-        format!("production + {} override(s): {}", ov.len(), body.join(", "))
+        format!("production + {} override(s): {} [kernel: {k}]", ov.len(), body.join(", "))
     }
 
     /// Whether this config departs from production at all.

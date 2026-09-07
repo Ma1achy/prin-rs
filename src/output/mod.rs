@@ -9,6 +9,7 @@ pub mod apng;
 pub mod ckpt;
 pub mod colour;
 pub mod fcache;
+pub mod frame;
 pub mod gifout;
 pub mod oklab;
 pub mod compose;
@@ -44,4 +45,59 @@ pub fn provenance_sidecar(
         if extra.ends_with('\n') || extra.is_empty() { "" } else { "\n" }
     );
     std::fs::write(format!("{stem}.cfg.txt"), body)
+}
+
+/// A line sink that writes to stdout **and** to a log file, so a run's table is committed
+/// beside the panels it describes.
+///
+/// `results/output/chart_gallery.txt` was the 25 August run while the panels beside it were
+/// from 3 September: the regeneration committed pictures and sidecars but not its stdout,
+/// and the txt kept describing a corpus that no longer existed. A harness that tees its own
+/// log cannot leave the log behind. Interior mutability so the handle can be shared into the
+/// closures a harness builds its rows in.
+pub struct Log {
+    file: std::cell::RefCell<Option<std::io::BufWriter<std::fs::File>>>,
+}
+
+impl Log {
+    /// Tee to `path`, creating its parent. A path that cannot be opened logs to stdout only,
+    /// and says so once, rather than silently writing nothing.
+    pub fn tee(path: &str) -> Log {
+        if let Some(dir) = std::path::Path::new(path).parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        let file = match std::fs::File::create(path) {
+            Ok(f) => Some(std::io::BufWriter::new(f)),
+            Err(e) => {
+                println!("  (log file `{path}` could not be opened: {e}; stdout only)");
+                None
+            }
+        };
+        Log { file: std::cell::RefCell::new(file) }
+    }
+
+    /// stdout only.
+    pub fn stdout() -> Log {
+        Log { file: std::cell::RefCell::new(None) }
+    }
+
+    pub fn line(&self, s: &str) {
+        use std::io::Write;
+        println!("{s}");
+        if let Some(f) = self.file.borrow_mut().as_mut() {
+            let _ = writeln!(f, "{s}");
+            let _ = f.flush();
+        }
+    }
+}
+
+/// `println!` that also lands in a [`Log`]: `logln!(log, "...", args)`.
+#[macro_export]
+macro_rules! logln {
+    ($log:expr) => {
+        $log.line("")
+    };
+    ($log:expr, $($arg:tt)*) => {
+        $log.line(&format!($($arg)*))
+    };
 }

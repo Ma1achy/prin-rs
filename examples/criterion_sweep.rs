@@ -84,6 +84,23 @@ fn targets() -> Vec<Target> {
     v
 }
 
+/// The output root, argument **seven**, set once by `main`.
+///
+/// *An output root is an argument, not a constant* -- and this harness had the literal in three
+/// places, one of them the path handed to `assert_production_kernel`, so the guard asserted about
+/// a path the caller could not change. Arguments five and six are stage-dependent here, which is
+/// why the root sits at seven.
+///
+/// It is a `OnceLock` rather than a threaded parameter because `run` is called from four stage
+/// functions and already carries eight arguments. The accessor **panics when unset** rather than
+/// defaulting: a caller that forgot must not silently fall through to `results`, which is the
+/// exact failure the argument exists to prevent.
+static OUT_ROOT: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+
+fn out_root() -> &'static str {
+    OUT_ROOT.get().expect("OUT_ROOT unset: main must set it from argv before any write").as_str()
+}
+
 /// A filename that carries its own settings, so a directory listing is a settings table.
 ///
 /// **`alpha_hi` was missing and stages 1 and 3 were overwriting each other.** Stage 3 sweeps
@@ -94,8 +111,8 @@ fn targets() -> Vec<Target> {
 /// swept**, or it describes a run that no longer exists.
 fn stem(t: &Target, tau: f64, k: f64, st: StructureMode, cr: Criterion, alpha_hi: f64) -> String {
     format!(
-        "results/sweep/{}__tau{:.0e}__k{:.2}__a{:.2}__struct-{}__crit-{}",
-        t.name, tau, k, alpha_hi, st.name(), cr.name()
+        "{}/sweep/{}__tau{:.0e}__k{:.2}__a{:.2}__struct-{}__crit-{}",
+        out_root(), t.name, tau, k, alpha_hi, st.name(), cr.name()
     )
 }
 
@@ -197,7 +214,9 @@ fn run(
         tree.nodes.iter().filter(|q| q.decision == Decision::Split).count();
 
     if write {
-        let _ = std::fs::create_dir_all("results/sweep");
+        let dir = format!("{}/sweep", out_root());
+        prin_rs::scheduler::assert_production_kernel(ens, &dir);
+        let _ = std::fs::create_dir_all(&dir);
         if let Ok(f) = std::fs::File::create(format!("{}.prnq", stem(t, tau, k, st, cr, alpha_hi))) {
             let mut w = BufWriter::new(f);
             let _ = treeout::write(&mut w, &tree, &cfg, ens, &sst, t.name, "f64");
@@ -270,6 +289,8 @@ fn main() {
     let budget: usize = arg(2, 40000);
     let alpha_hi: f64 = arg(3, 0.2);
     let res: usize = arg(4, 1024);
+    // Arguments five and six are stage-dependent (`tau`, `k`), so the root is seven.
+    OUT_ROOT.set(arg(7, "results".to_string())).expect("OUT_ROOT set twice");
     let ens = EnsembleCfg { refine_flagged: false, ..Default::default() };
     let tg = targets();
 

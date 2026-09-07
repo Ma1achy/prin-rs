@@ -112,7 +112,7 @@ pub fn write<W: Write>(w: &mut W, c: &Cache, ens: &crate::ensemble::pixel::Ensem
     let header = format!(
         "region={} chart={} body={} cx={:?} cy={:?} half={:?} levels={} n={} res={}\n\
          chart_params={}\n\
-         colouring={} ramp_lo={:?} ramp_hi={:?} tau={:?}\n\
+         colouring={} metric={} ramp_lo={:?} ramp_hi={:?} tau={:?}\n\
          t_max={} n_sync={} eta={} n_copies={} jitter_frac={} r_coll_frac={} escape_rule={:?} closure_k={} stop_on_escape={} dtau_mode={:?} clamp_final={} \
          jitter_scheme={:?} precision=f64\n\
          quads={} trajectories={}\n\
@@ -124,7 +124,7 @@ fully-refined tree at one sample per pixel, and at the screen floor sub-pixel st
 sampled arbitrarily.\n\
          fields={}\n",
         c.region, c.chart.name(), c.body, c.cx, c.cy, c.half, c.levels, c.n, c.res, c.chart.params(),
-        c.colouring.name(), c.ramp.0, c.ramp.1, tau,
+        c.colouring.name(), c.metric.name(), c.ramp.0, c.ramp.1, tau,
         ens.t_max, ens.n_sync, ens.eta, ens.n_extra + 1, ens.jitter_frac, ens.r_coll_frac, ens.escape_rule, ens.closure_k, ens.stop_on_escape, ens.dtau_mode, ens.clamp_final_step,
         ens.jitter_scheme,
         c.quads.len(), c.trajectories,
@@ -146,4 +146,145 @@ sampled arbitrarily.\n\
         }
     }
     Ok(())
+}
+
+// ---------------------------------------------------------------------------------------------
+// The reader.
+//
+// The module doc has said "a reader never guesses" since the writer was written, and until now
+// there was no reader at all: the committed `.qcache` files could be produced and not consumed,
+// so `total_substeps` -- the one machine-independent cost column in this project -- sat on disk
+// for a fortnight unreadable. That is the gap this closes, and the cost ledger is what needed it.
+//
+// It does NOT reconstruct a `Cache`: `err_sum`, `rgb`, `payload`, `reference` and
+// `reference_spread` are not in the file, so a returned `Cache` would be a `Cache` with holes and
+// every consumer would have to know which. What comes back is the table as written -- the header
+// verbatim, the field names, and one `f64` row per quad -- and the caller reads columns by name.
+
+/// The `PRQC` table as written: the header verbatim, the field names, one row of `f64` per quad.
+///
+/// Deliberately **not** a [`Cache`]. Half of `Cache`'s fields are not in the file, and a struct
+/// with silent holes in it is how a consumer ends up reading a default as a measurement.
+pub struct QuadRows {
+    /// The header, verbatim. Everything the run recorded about itself; parse what you need.
+    pub header: String,
+    pub region: String,
+    pub levels: u32,
+    /// Footprint grid edge, so a quad holds `n * n` footprints.
+    pub n: usize,
+    /// `E + 1`, so a quad holds `n * n * n_copies` trajectories.
+    pub n_copies: usize,
+    pub fields: Vec<String>,
+    pub rows: Vec<Vec<f64>>,
+}
+
+impl QuadRows {
+    /// Column index by name, or `None` if this file's version does not carry it.
+    ///
+    /// By **name**, never by position: `FIELDS` has been appended to once already (v2 added the
+    /// relative mask and the gradient), and a positional read of a v1 file under v2's indices
+    /// would return a different column silently.
+    pub fn col(&self, name: &str) -> Option<usize> {
+        self.fields.iter().position(|f| f == name)
+    }
+
+    /// One cell, `NaN` if the column is absent — an absent field is not a zero, and a sum over
+    /// `NaN` is loud where a sum over zero is a plausible wrong answer.
+    pub fn get(&self, row: usize, name: &str) -> f64 {
+        self.col(name).map_or(f64::NAN, |c| self.rows[row][c])
+    }
+
+    /// `(level, ix, iy)` — the same [`crate::metric::Key`] the cache is indexed by.
+    pub fn key(&self, row: usize) -> crate::metric::Key {
+        (
+            self.get(row, "level") as u32,
+            self.get(row, "ix") as u32,
+            self.get(row, "iy") as u32,
+        )
+    }
+
+    /// Trajectories per quad: `n * n * n_copies`. The memory unit the plan's `mem_all` counts.
+    pub fn trajectories_per_quad(&self) -> u64 {
+        (self.n * self.n * self.n_copies) as u64
+    }
+}
+
+pub fn read<R: std::io::Read>(r: &mut R) -> io::Result<QuadRows> {
+    let bad = |m: String| io::Error::new(io::ErrorKind::InvalidData, m);
+
+    let mut magic = [0u8; 4];
+    r.read_exact(&mut magic)?;
+    if &magic != MAGIC {
+        return Err(bad("not a PRQC file".into()));
+    }
+    let mut u32b = [0u8; 4];
+    r.read_exact(&mut u32b)?;
+    let v = u32::from_le_bytes(u32b);
+    if v > VERSION {
+        return Err(bad(format!("PRQC version {v}, this build reads up to {VERSION}")));
+    }
+    r.read_exact(&mut u32b)?;
+    let hlen = u32::from_le_bytes(u32b) as usize;
+    let mut hb = vec![0u8; hlen];
+    r.read_exact(&mut hb)?;
+    let header = String::from_utf8_lossy(&hb).into_owned();
+
+    let tok = |name: &str| -> Option<String> {
+        header
+            .split_whitespace()
+            .find_map(|t| t.strip_prefix(&format!("{name}=")).map(str::to_string))
+    };
+    // `fields=` is the last line and its value contains no spaces, but `chart_params` and the
+    // notes do, so it is taken line-wise rather than by whitespace token.
+    let fields: Vec<String> = header
+        .lines()
+        .find_map(|l| l.strip_prefix("fields="))
+        .ok_or_else(|| bad("PRQC header carries no fields= line".into()))?
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .collect();
+
+    let mut u64b = [0u8; 8];
+    r.read_exact(&mut u64b)?;
+    let n_rows = u64::from_le_bytes(u64b) as usize;
+    r.read_exact(&mut u32b)?;
+    let n_fields = u32::from_le_bytes(u32b) as usize;
+    // The header's `fields=` and the record's field count are written from the same `FIELDS`, so
+    // a disagreement means the file is truncated or from a build whose header and body diverged.
+    // Refuse rather than read the shorter of the two, which would shift every column.
+    if n_fields != fields.len() {
+        return Err(bad(format!(
+            "PRQC field count {n_fields} but the header names {} fields",
+            fields.len()
+        )));
+    }
+
+    let mut buf = vec![0u8; n_rows * n_fields * 8];
+    r.read_exact(&mut buf)?;
+    let rows: Vec<Vec<f64>> = buf
+        .chunks_exact(n_fields * 8)
+        .map(|c| c.chunks_exact(8).map(|b| f64::from_le_bytes(b.try_into().unwrap())).collect())
+        .collect();
+
+    // **`region` is not a whitespace token.** The header writes `region={} chart={} ...` on one
+    // shared line and three region names carry a space -- `deep interior`, `body2 core`,
+    // `mid-field` does not -- so a whitespace read returns `deep` and the header stops being
+    // self-describing. Exactly the truncation `fcache`'s `line_field` was written to avoid, at a
+    // site that had no reader to notice. Taken as the text between `region=` and the ` chart=`
+    // that follows it, which is exact for every file already written.
+    let region = header
+        .split_once("region=")
+        .and_then(|(_, rest)| rest.split_once(" chart=").map(|(r, _)| r.to_string()))
+        .or_else(|| tok("region"))
+        .unwrap_or_default();
+
+    Ok(QuadRows {
+        region,
+        levels: tok("levels").and_then(|s| s.parse().ok()).unwrap_or(0),
+        n: tok("n").and_then(|s| s.parse().ok()).unwrap_or(0),
+        n_copies: tok("n_copies").and_then(|s| s.parse().ok()).unwrap_or(0),
+        header,
+        fields,
+        rows,
+    })
 }

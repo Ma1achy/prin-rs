@@ -22,11 +22,18 @@ needs a different answer.*
   away by `t = 50`.** `near-field` collapses to a 21-quad bootstrap tree with 93% of its frame
   resolvable, because `alpha_area` returns **exactly 0.0000** on a near-empty mask. With
   `alpha_lo = 0` the same cell reaches **error 0.00000 at 1.03x of the exact optimum**.
+- **And the tolerance is not the lever that recovers it.** Over the full 4 x 3 x 3 grid of
+  region x horizon x `eps`, `near-field` at `t = 50` returns a **bitwise identical 21-quad tree at
+  every tolerance across two decades** — same leaves, same stop breakdown, same substep count —
+  while `sea_fraction` and the error both move underneath it. `eps` is not an input to the stop
+  that fires there. At `t = 23` the same region moves 2.89x -> 13.72x on `eps` alone, so the ratio
+  is a `(t, eps)` cell and not a horizon curve. §8.
 
 Two of the four targets — the two that most resemble what the product would open — sit under the
 2x line. The prediction's other half, *"the saving falls with horizon"*, is **a property of the
 defaults and not of the field**: measured at a fixed error target the available saving does not
-fall with horizon, and on Burrau it rises. §8.
+fall with horizon, and on Burrau it rises (§9); and `deep interior` rises with horizon at every
+tolerance in the grid, reading 16.3-16.9x at `t = 50` where `near-field` is at the bootstrap.
 
 ---
 
@@ -264,7 +271,7 @@ the same `eps`.** No fixed factor between the two thresholds is right on both ch
 what the harness comment means by "a calibration to measure, not a constant to assume", and is the
 standing *a fixed threshold fails on BOTH sides* result at a new pair of quantities.
 
-### The sea charts: the tolerance is nearly inert, and the calibration with it
+### The sea charts: the tolerance barely moves the RATIO, and the calibration with it
 
 | region | eps | tau | quads | uni | dp | **tol/u** | dp/u | tol/dp | error | sea |
 |---|---|---|---|---|---|---|---|---|---|---|
@@ -288,6 +295,12 @@ across the 2x line.
 `eps` two decades takes `config_stability` from 5% sea to 78% and its *ceiling* from 2.23x to
 1.11x. The policy is not being outperformed there — `tol/dp` is 1.10-1.45x on eight of these ten
 rows, so it is close to the exact optimum. **The optimum is close to breadth-first.**
+
+**"Inert" here means the ratio, not the tree.** `tol/u` spans 0.75-1.16x on `config_stability` and
+the calibration moves it 8%; the **tree** underneath moves by up to 2.07x in quad count over the
+same tolerance range, and `sea_fraction` by 15.9x. §8 reads that second quantity and finds these
+the most tolerance-sensitive cells in the grid. Both are true of the same rows: `eps` moves a great
+deal of the frame across the resolved line here and buys almost nothing for it.
 
 **Consequence for anything downstream: `eps` is not a single quality knob.** It sets the metric,
 and a second threshold has to be placed inside each chart's own spread distribution for the descent
@@ -478,7 +491,227 @@ the whole tree turned on three numbers.
 
 ---
 
-## 8. The confound-free version: the ceiling at a FIXED target
+## 8. The horizon x eps grid: the tolerance is inert exactly where the policy works
+
+§7 read the horizon at one tolerance and §4 read the tolerance at one horizon. Neither can say
+whether the two are separable. The full 4 x 3 x 3 grid — four regions, `t` in {13, 23, 50},
+`eps` in {1e-1, 1e-2, 1e-3} — says they are not, and that the two axes fail by different
+mechanisms.
+
+**Everything here is at `tau = eps` and `alpha_lo = 0.005`, the shipped defaults**, the same
+setting §2, §4 and §7 used. So this is a map of where the *defaults* degenerate, not of what
+per-cell tuning could recover. §3 and §4 already show that a calibrated `tau` moves several of
+these cells by an order; the calibrated grid is not measured.
+
+### Written before the cells landed
+
+The prediction is in `prediction_grid.md`, written to the scratchpad before the 14 unmeasured
+cells landed and copied in unedited; it is scored honestly here. Two of four claims
+held, one was refuted by the grid, and **one was already contradicted by a row I had measured
+three sections earlier and failed to read**.
+
+| claim | outcome |
+|---|---|
+| the grid is diagonal — `eps` trades against `t` | **refuted**, and the falsifier was the cell named in advance |
+| no sea-chart cell exceeds ~1.5x | **refuted by data already in hand** — `tilt_plambda` t13 eps=1e-1 reads 2.30x, measured in §4 |
+| `Undetermined` is exactly 0.0000 in every cell | **held**, 36 of 36 |
+| degenerate cells read floored-child `alpha_area` of exactly +0.0000 | **held** — and the grid added a sign I did not predict, below |
+
+### The grid
+
+![the horizon x eps grid](grid_horizon_eps.png)
+
+*`grid_horizon_eps.png` — the same 36 cells. Left panel `tol/u`, right panel `dp/u`. Blue is below
+breadth-first, i.e. a loss. The right panel is the one to read: where it is pale there is nothing
+for any scheduler to find, and the left panel's number is then a fact about the field.*
+
+`tol/u` = uniform's budget to reach this tree's error, over this tree's quads. `dp/u` = the same
+against the exact optimum: **the field's ceiling, and the only column that separates "nothing to
+find" from "the policy is not finding it"**. Read `dp/u` first.
+
+| region | t | eps | quads | uni | dp | tol/u | dp/u | tol/dp | err | sea | depth | undet | floor a p50 | stop |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| `near-field` | 13 | 0.1 | 125 | 4689 | 77 | **37.51x** | 60.90x | 1.62x | 0.00028 | 0.0005 | 6 | 0.0000 | +0.0000 (n 1) | floor:3 keep:68 screen_floor:23 |
+| `deep_interior` | 13 | 0.1 | 225 | 1317 | 89 | **5.85x** | 14.80x | 2.53x | 0.00189 | 0.0022 | 6 | 0.0000 | +0.0000 (n 4) | floor:8 keep:93 screen_floor:68 |
+| `config_stability` | 13 | 0.1 | 2285 | 1709 | 765 | **0.75x** | 2.23x | 2.99x | 0.06086 | 0.0494 | 6 | 0.0000 | +0.0000 (n 127) | floor:254 keep:663 screen_floor:797 |
+| `tilt_plambda` | 13 | 0.1 | 1845 | 4237 | 1017 | **2.30x** | 4.17x | 1.81x | 0.08406 | 0.1694 | 6 | 0.0000 | +0.0000 (n 119) | floor:297 keep:262 screen_floor:825 |
+| `near-field` | 23 | 0.1 | 313 | 4293 | 233 | **13.72x** | 18.42x | 1.34x | 0.00040 | 0.0017 | 6 | 0.0000 | +0.0000 (n 7) | floor:15 keep:146 screen_floor:74 |
+| `deep_interior` | 23 | 0.1 | 313 | 5109 | 201 | **16.32x** | 25.42x | 1.56x | 0.00055 | 0.0079 | 6 | 0.0000 | +0.0000 (n 5) | floor:11 keep:118 screen_floor:106 |
+| `config_stability` | 23 | 0.1 | 1977 | 1225 | 601 | **0.62x** | 2.04x | 3.29x | 0.14365 | 0.1381 | 6 | 0.0000 | +0.0000 (n 126) | floor:269 keep:430 screen_floor:784 |
+| `tilt_plambda` | 23 | 0.1 | 1241 | 1205 | 677 | **0.97x** | 1.78x | 1.83x | 0.18593 | 0.2190 | 6 | 0.0000 | +0.0000 (n 51) | floor:160 keep:157 screen_floor:614 |
+| `near-field` | 50 | 0.1 | 21 | 21 | 13 | **1.00x** | 1.62x | 1.62x | 0.07993 | 0.0479 | 2 | 0.0000 | +0.0000 (n 2) | floor:4 keep:12 |
+| `deep_interior` | 50 | 0.1 | 309 | 5109 | 201 | **16.53x** | 25.42x | 1.54x | 0.00054 | 0.0078 | 6 | 0.0000 | +0.0000 (n 6) | floor:15 keep:117 screen_floor:100 |
+| `config_stability` | 50 | 0.1 | 1705 | 1225 | 617 | **0.72x** | 1.99x | 2.76x | 0.22219 | 0.2981 | 6 | 0.0000 | +0.0000 (n 136) | floor:317 keep:326 screen_floor:636 |
+| `tilt_plambda` | 50 | 0.1 | 1477 | 1041 | 689 | **0.70x** | 1.51x | 2.14x | 0.26367 | 0.2800 | 6 | 0.0000 | +0.0000 (n 52) | floor:160 keep:164 screen_floor:784 |
+| `near-field` | 13 | 0.01 | 125 | 4689 | 77 | **37.51x** | 60.90x | 1.62x | 0.00028 | 0.0005 | 6 | 0.0000 | +0.0000 (n 1) | floor:3 keep:68 screen_floor:23 |
+| `deep_interior` | 13 | 0.01 | 225 | 1189 | 65 | **5.28x** | 18.29x | 3.46x | 0.00286 | 0.0025 | 6 | 0.0000 | +0.0000 (n 4) | floor:8 keep:93 screen_floor:68 |
+| `config_stability` | 13 | 0.01 | 4729 | 4741 | 3885 | **1.00x** | 1.22x | 1.22x | 0.05819 | 0.2377 | 6 | 0.0000 | +0.0000 (n 71) | floor:211 keep:1062 screen_floor:2274 |
+| `tilt_plambda` | 13 | 0.01 | 3545 | 4121 | 2609 | **1.16x** | 1.58x | 1.36x | 0.15773 | 0.2847 | 6 | 0.0000 | +0.0000 (n 70) | floor:224 keep:1347 screen_floor:1088 |
+| `near-field` | 23 | 0.01 | 313 | 905 | 89 | **2.89x** | 10.17x | 3.52x | 0.00253 | 0.0017 | 6 | 0.0000 | +0.0000 (n 7) | floor:15 keep:146 screen_floor:74 |
+| `deep_interior` | 23 | 0.01 | 313 | 5109 | 197 | **16.32x** | 25.93x | 1.59x | 0.00056 | 0.0079 | 6 | 0.0000 | +0.0000 (n 5) | floor:11 keep:118 screen_floor:106 |
+| `config_stability` | 23 | 0.01 | 3869 | 3713 | 2725 | **0.96x** | 1.36x | 1.42x | 0.15718 | 0.3270 | 6 | 0.0000 | +0.0000 (n 104) | floor:289 keep:711 screen_floor:1902 |
+| `tilt_plambda` | 23 | 0.01 | 2941 | 3369 | 2257 | **1.15x** | 1.49x | 1.30x | 0.23985 | 0.3959 | 6 | 0.0000 | -0.0437 (n 39) | floor:141 keep:397 screen_floor:1668 |
+| `near-field` | 50 | 0.01 | 21 | 21 | 13 | **1.00x** | 1.62x | 1.62x | 0.10328 | 0.0745 | 2 | 0.0000 | +0.0000 (n 2) | floor:4 keep:12 |
+| `deep_interior` | 50 | 0.01 | 309 | 5109 | 197 | **16.53x** | 25.93x | 1.57x | 0.00056 | 0.0078 | 6 | 0.0000 | +0.0000 (n 6) | floor:15 keep:117 screen_floor:100 |
+| `config_stability` | 50 | 0.01 | 2301 | 1897 | 1273 | **0.82x** | 1.49x | 1.81x | 0.30788 | 0.3897 | 6 | 0.0000 | +0.0000 (n 127) | floor:338 keep:416 screen_floor:972 |
+| `tilt_plambda` | 50 | 0.01 | 2349 | 2385 | 1693 | **1.02x** | 1.41x | 1.39x | 0.36047 | 0.5389 | 6 | 0.0000 | +0.0000 (n 45) | floor:149 keep:84 screen_floor:1529 |
+| `near-field` | 13 | 0.001 | 137 | 41 | 37 | **0.30x** | 1.11x | 3.70x | 0.30436 | 0.0005 | 6 | 0.0000 | +0.0000 (n 1) | floor:3 keep:77 screen_floor:23 |
+| `deep_interior` | 13 | 0.001 | 225 | 4185 | 93 | **18.60x** | 45.00x | 2.42x | 0.00644 | 0.0041 | 6 | 0.0000 | +0.0000 (n 3) | floor:7 keep:93 screen_floor:69 |
+| `config_stability` | 13 | 0.001 | 4021 | 3885 | 3505 | **0.97x** | 1.11x | 1.15x | 0.24201 | 0.7840 | 6 | 0.0000 | -0.0609 (n 50) | floor:194 keep:148 screen_floor:2674 |
+| `tilt_plambda` | 13 | 0.001 | 3765 | 4213 | 3437 | **1.12x** | 1.23x | 1.10x | 0.17437 | 0.7251 | 6 | 0.0000 | -0.0245 (n 78) | floor:277 keep:168 screen_floor:2379 |
+| `near-field` | 23 | 0.001 | 509 | 1589 | 309 | **3.12x** | 5.14x | 1.65x | 0.03985 | 0.0033 | 6 | 0.0000 | +0.0000 (n 3) | floor:6 keep:277 screen_floor:99 |
+| `deep_interior` | 23 | 0.001 | 313 | 5225 | 205 | **16.69x** | 25.49x | 1.53x | 0.00064 | 0.0085 | 6 | 0.0000 | +0.0000 (n 5) | floor:11 keep:118 screen_floor:106 |
+| `config_stability` | 23 | 0.001 | 2421 | 2077 | 1893 | **0.86x** | 1.10x | 1.28x | 0.51729 | 0.7921 | 6 | 0.0000 | -0.0253 (n 58) | floor:214 keep:88 screen_floor:1514 |
+| `tilt_plambda` | 23 | 0.001 | 2937 | 3349 | 2729 | **1.14x** | 1.23x | 1.08x | 0.29961 | 0.7499 | 6 | 0.0000 | -0.0757 (n 50) | floor:189 keep:57 screen_floor:1957 |
+| `near-field` | 50 | 0.001 | 21 | 21 | 13 | **1.00x** | 1.62x | 1.62x | 0.11438 | 0.1011 | 2 | 0.0000 | +0.0000 (n 2) | floor:4 keep:12 |
+| `deep_interior` | 50 | 0.001 | 309 | 5229 | 205 | **16.92x** | 25.51x | 1.51x | 0.00064 | 0.0084 | 6 | 0.0000 | +0.0000 (n 5) | floor:11 keep:117 screen_floor:104 |
+| `config_stability` | 50 | 0.001 | 2373 | 2085 | 1857 | **0.88x** | 1.12x | 1.28x | 0.49861 | 0.7890 | 6 | 0.0000 | -0.0203 (n 98) | floor:352 keep:104 screen_floor:1324 |
+| `tilt_plambda` | 50 | 0.001 | 2253 | 2489 | 2021 | **1.10x** | 1.23x | 1.11x | 0.42192 | 0.7597 | 6 | 0.0000 | -0.0655 (n 48) | floor:180 keep:69 screen_floor:1441 |
+
+missing: 0
+
+### The tolerance is inert on most of the grid — and where it is inert, the policy WINS
+
+This is the grid's main result and it is not what the prediction was about. Quad count against
+`eps`, per (region, horizon), with `sea_fraction` beside it because
+**`sea_fraction(eps)` is the CDF of the footprint-spread distribution** — it says directly whether
+the tolerance is landing inside the field's bulk or in a gap.
+
+| region | t | quads @ eps 1e-3 / 1e-2 / 1e-1 | **quad span** | sea @ eps 1e-3 / 1e-2 / 1e-1 | **sea span** |
+|---|---|---|---|---|---|
+| `near-field` | 13 | 137 / 125 / 125 | **1.10x** | 0.0005 / 0.0005 / 0.0005 | **1.0x** |
+| `near-field` | 23 | 509 / 313 / 313 | **1.63x** | 0.0033 / 0.0017 / 0.0017 | **1.9x** |
+| `near-field` | 50 | 21 / 21 / 21 | **1.00x** | 0.1011 / 0.0745 / 0.0479 | **2.1x** |
+| `deep interior` | 13 | 225 / 225 / 225 | **1.00x** | 0.0041 / 0.0025 / 0.0022 | **1.9x** |
+| `deep interior` | 23 | 313 / 313 / 313 | **1.00x** | 0.0085 / 0.0079 / 0.0079 | **1.1x** |
+| `deep interior` | 50 | 309 / 309 / 309 | **1.00x** | 0.0084 / 0.0078 / 0.0078 | **1.1x** |
+| `config_stability` | 13 | 4021 / 4729 / 2285 | **2.07x** | 0.7840 / 0.2377 / 0.0494 | **15.9x** |
+| `config_stability` | 23 | 2421 / 3869 / 1977 | **1.96x** | 0.7921 / 0.3270 / 0.1381 | **5.7x** |
+| `config_stability` | 50 | 2373 / 2301 / 1705 | **1.39x** | 0.7890 / 0.3897 / 0.2981 | **2.6x** |
+| `tilt_plambda` | 13 | 3765 / 3545 / 1845 | **2.04x** | 0.7251 / 0.2847 / 0.1694 | **4.3x** |
+| `tilt_plambda` | 23 | 2937 / 2941 / 1241 | **2.37x** | 0.7499 / 0.3959 / 0.2190 | **3.4x** |
+| `tilt_plambda` | 50 | 2253 / 2349 / 1477 | **1.59x** | 0.7597 / 0.5389 / 0.2800 | **2.7x** |
+
+**`deep interior` returns the same quad count at all three tolerances at every horizon** —
+225/225/225, 313/313/313, 309/309/309, with the stop breakdown identical too at `t = 23`. Two
+decades of the knob, no change in the tree, at any horizon. And it is the region with the *best*
+saving in the whole grid, 16.3-18.6x. Its `sea_fraction` barely moves either (1.1-1.9x), so the
+tolerance is sitting in a **gap** in the spread distribution: a small set of genuinely chaotic
+footprints far above every rung of the ladder, everything else far below, and nothing in between
+for the threshold to cut.
+
+**The sea charts are the most tolerance-sensitive cells in the grid, by tree size** — §4 calls the
+tolerance "nearly inert" on the same rows and is reading the *ratio*, which spans only 0.75-1.16x
+there; these two statements are about different quantities and both hold. Quad span 1.39-2.37x,
+`sea_fraction` span up to **15.9x**, and they are the cells where the policy delivers least
+(0.62-2.30x). `eps` there lands in the middle of the bulk and moves a large fraction of the frame
+across the resolved/unresolved line.
+
+**So the knob has the least purchase exactly where the policy works, and the most where it does
+not.** That is the standing project result — *selectivity requires the threshold to cut through the
+bulk* — appearing with its sign reversed: a threshold that fails to cut the bulk is a *bad*
+selector and a *robust* one, and on `deep interior` the field's own bimodality is what makes the
+policy work and the tuning irrelevant.
+
+**Two different causes of an inert `eps`, and the sea span separates them.** A frozen tree with a
+frozen `sea_fraction` is the gap above. A frozen tree with a *moving* `sea_fraction` is a different
+thing: the tolerance is doing its job on the field and some other stop is overriding it. That is
+exactly `near-field` at `t = 50` — quad span **1.00x** against a sea span of **2.1x** — and it is
+the cell the falsifier named.
+
+### `near-field` at `t = 50` is bitwise the same tree at every tolerance
+
+The falsifier named in advance was: *if `eps = 1e-1` at `t = 50` reads ~1x like its `eps = 1e-2`
+sibling, then loosening the tolerance does not buy the horizon back.* It reads 1.00x, and the
+agreement is far stronger than the ratio:
+
+```
+eps=1e-1   21 quads (16 leaves, depth 2) in 2.9s, 9.237e7 substeps, stop [floor:4 keep:12]
+eps=1e-2   21 quads (16 leaves, depth 2) in 4.6s, 9.237e7 substeps, stop [floor:4 keep:12]
+eps=1e-3   21 quads (16 leaves, depth 2) in 3.6s, 9.237e7 substeps, stop [floor:4 keep:12]
+```
+
+**Identical over two decades of `eps`** — same quads, same leaves, same stop breakdown, same
+substep count — while the field underneath is demonstrably different: `sea_fraction` runs
+0.0479 -> 0.0745 -> 0.1011 and the error 0.07993 -> 0.10328 -> 0.11438 across the same three rows.
+So the arm is live and the tolerance is doing nothing, which is the two-sided form this project
+requires before reading a null: *a difference can be small because both sides are right or because
+one side is dead*, and here the **field** moved while the **tree** did not.
+
+The mechanism is already on record and this is its cleanest demonstration. The stop is
+`floor:4 keep:12` at the bootstrap: `alpha_area` returns **exactly 0.0000** on a near-empty
+unresolved mask, any positive `alpha_lo` floors on it, and **`eps` is not an input to that
+comparison at all**. Turning the floor off at this same cell reaches error 0.00000 at 1.03x of the
+exact optimum (§7). No tolerance setting can reach a stop that is not keyed on the tolerance.
+
+### At `t = 23` the tolerance is worth an order, and the ratio is a cell rather than a curve
+
+The same region one horizon earlier is strongly `eps`-sensitive:
+
+| region | t | eps=1e-3 | eps=1e-2 | eps=1e-1 |
+|---|---|---|---|---|
+| `near-field` | 13 | 0.30x | **37.51x** | **37.51x** |
+| `near-field` | 23 | 3.12x | 2.89x | **13.72x** |
+| `near-field` | 50 | 1.00x | 1.00x | 1.00x |
+| `deep interior` | 13 | **18.60x** | 5.28x | 5.85x |
+| `deep interior` | 23 | **16.69x** | **16.32x** | **16.32x** |
+| `deep interior` | 50 | **16.92x** | **16.53x** | **16.53x** |
+
+`near-field` at `t = 23` moves 2.89x -> 13.72x on the tolerance alone, same cache and same horizon.
+**So §7's ladder is a slice through a surface, not a horizon curve**, and the warning there — read
+`tol/u` with the error column visible — extends: read it with the `eps` column visible too.
+
+**`deep interior` is the control that refutes "the horizon kills it".** It *rises* with horizon at
+every tolerance and sits at 16.3-16.9x at `t = 50`, where `near-field` is at the bootstrap. A single
+horizon trend does not exist across regions.
+
+### The sea charts do not lift, in any of eighteen cells
+
+`config_stability` spans **0.62x to 1.00x** over its nine cells and is at or below breadth-first in
+every one. `tilt_plambda` spans 0.70x to 2.30x, with **one** cell above 1.16x. Their `dp/u` ceiling
+runs 1.10x to 4.17x, so on most cells there is close to nothing for any scheduler to find, and the
+policy sits at 1.08-3.29x of an optimum that is itself near-uniform.
+
+The `dp/u` ceiling is **not** monotone in `sea_fraction` across charts — `config_stability` at
+sea 0.0494 has a 2.23x ceiling where `tilt_plambda` at sea 0.1694 has 4.17x — which is the same
+limit §5 records. Within a chart it is monotone: `config_stability`'s ceiling falls 2.23 -> 1.22 ->
+1.11 as the sea grows 0.05 -> 0.24 -> 0.78 with tightening `eps`.
+
+### New, and not predicted: at `eps = 1e-3` the floor fires on a NEGATIVE exponent
+
+The floored-child `alpha_area` median is +0.0000 on every Burrau cell and on the sea charts at
+`eps = 1e-1`. At `eps = 1e-3` it goes **negative on all six sea-chart cells** — `config_stability`
+-0.0609, -0.0253, -0.0203 and `tilt_plambda` -0.0245, -0.0757, -0.0655 — and `tilt_plambda` at
+`t = 23, eps = 1e-2` reads -0.0437.
+
+`alpha_area = log2(unresolved_area(coarse) / unresolved_area(children))`, so a negative value means
+**the children found more unresolved area than the parent did**. Under the documented reading
+`d = 2 - alpha` that is a box dimension of 2.02 to 2.08, which is impossible for a set in the plane
+— the exponent has left the regime where its dimension interpretation holds. What it is measuring
+instead is the finer grid *discovering* structure the coarse grid's `N^2` footprints missed.
+
+**And `alpha_lo = 0.005` floors on it**, because negative is below any positive threshold. So on a
+tight tolerance the area floor stops hardest exactly where refinement is finding new structure
+rather than failing to reduce it. That is a third failure mode of the floor, distinct from the two
+on record — distinct from the empty-mask degeneracy (`alpha_area` exactly 0.0000 on a near-empty
+mask, §7) and from the saturation account (a sponge that thins only below the coarse sampling
+scale). The record's existing measurement of the floored population reads *"exponent under 0.05,
+box dimension ~1.94"* — positive. Tightening `eps` drives it through zero.
+
+Not diagnosed here: whether the discovered area is real structure or the edge-weighting the
+two-level exponent exists to correct for. The exponent is judged grandparent-to-children precisely
+because a one-level form is off by a factor of two at a quad boundary, and whether that repair is
+complete at `N = 8` on a 78%-sea field is unmeasured.
+
+### `Decision::Undetermined` is 0.0000 in all 36 cells
+
+The second budget line — footprints needing finer `eta` rather than finer cells, named as the thing
+most likely to break the saving — does not appear anywhere in the grid, including at `t = 50`,
+where the step budget has the most room to run out. `collapsed` is 0 in all 36 as well. This is a
+property of the shipped step control, not of the policy: a chart that still integrates badly
+reintroduces it.
+
+## 9. The confound-free version: the ceiling at a FIXED target
 
 Every `tol/u` above is scored at its own tree's error, so it cannot answer "does the horizon reduce
 the available saving". `payload_metric replay` can: it runs **zero trajectories** and scores the
@@ -505,9 +738,9 @@ in the middle, and the horizon does not move a chart between regimes.
 
 ---
 
-## 9. The answer
+## 10. The answer
 
-**The saving does not generalise, and there are two separate reasons that a single ratio hides.**
+**The saving does not generalise, and there are three separate reasons that a single ratio hides.**
 
 **On the sea charts there is nothing to find, at any horizon, any tolerance, and for any
 scheduler.** `config_stability` and `tilt_plambda` have a ceiling of 1.08-1.44x over breadth-first
@@ -523,6 +756,14 @@ of its frame is resolvable, because `alpha_area` returns **exactly 0.0000** on a
 any positive `alpha_lo` floors on it. With `alpha_lo = 0` the same cell reaches **error 0.00000 at
 1.03x of the exact optimum**.
 
+**And the tolerance cannot buy either of them back, because the stop that fires is not keyed on
+it.** Across the 4 x 3 x 3 grid (§8), `near-field` at `t = 50` returns a **bitwise identical tree
+at `eps` = 1e-1, 1e-2 and 1e-3** — 21 quads, `floor:4 keep:12`, `9.237e7` substeps — while the
+field beneath it moves (`sea_fraction` 0.0479 -> 0.1011, error 0.07993 -> 0.11438). Two decades of
+the knob, no change in the tree, on a demonstrably live arm. `eps` *is* the lever one horizon
+earlier — the same region runs 2.89x -> 13.72x at `t = 23` — so the two axes are not separable and
+neither is a curve on its own.
+
 ### What follows
 
 1. **Do not key a cost model on a single saving factor.** It ranges 0.75x to 37.5x across four
@@ -535,8 +776,21 @@ any positive `alpha_lo` floors on it. With `alpha_lo = 0` the same cell reaches 
    step.
 3. **`alpha_area` needs to separate an empty mask from a full one.** Both read exactly 0.0000 today.
    That is a bug in the floor, not a tuning question, and it is what costs `near-field` its `t = 50`
-   descent.
-4. **`tau` is a second threshold and cannot be derived from `eps` by a constant.** The working value
+   descent. **And the grid found a third failure mode of the same floor:** at `eps = 1e-3` the
+   floored-child exponent goes *negative* on all six sea-chart cells (-0.020 to -0.076), meaning the
+   children found **more** unresolved area than the parent. `d = 2 - alpha` then reads above 2,
+   impossible in the plane, so the dimension interpretation has lapsed — and `alpha_lo = 0.005`
+   floors on it anyway, stopping hardest where refinement is discovering structure. Whether that
+   discovered area is real or the two-level exponent's residual edge-weighting is **unmeasured**.
+4. **`eps` is not a tuning knob on the regions where the policy works, and the field says so in
+   advance.** `deep interior` gives the *same quad count at all three tolerances at all three
+   horizons* while delivering the grid's best saving. Tuning `eps` there is wasted effort;
+   `sea_fraction(eps)` — already computable before any descent — is what says whether a chart is in
+   that regime, because it *is* the spread distribution's CDF. A chart whose `sea_fraction` moves
+   little across two decades of `eps` has a bimodal field, and the tolerance's exact value does not
+   matter. A chart whose `sea_fraction` moves 15.9x has the threshold inside its bulk, and there is
+   no good value to find.
+5. **`tau` is a second threshold and cannot be derived from `eps` by a constant.** The working value
    ran `eps`, `eps/10`, `eps/100` across `t = 13, 23, 50` on one chart, and `eps/3.3` over-refines
    `deep interior` at `t = 13` by 2.4x for no error gain.
 
@@ -547,11 +801,15 @@ any positive `alpha_lo` floors on it. With `alpha_lo = 0` the same cell reaches 
   these caches.
 - **Nothing about `Undetermined` as a cost.** It reads 0.0000 in every cell *because the
   step-control work landed*; a chart that still integrates badly reintroduces it.
+- **Nothing about a calibrated grid.** All 36 cells of §8 run `tau = eps` and `alpha_lo = 0.005`.
+  §3 and §4 show a calibrated `tau` moves several cells by an order — `near-field` at
+  `t = 13, eps = 1e-3` runs 0.30x at `tau = eps` and **15.26x at `tau = eps/3.3`** — so the grid
+  maps where the *defaults* degenerate, not the policy's reachable best.
 - **Nothing about the live playhead.** These are static descents. The march trails the static tree
   through the no-gain merges, measured elsewhere, and that cost is not in these ratios.
 
 
-## 10. Reproduction
+## 11. Reproduction
 
 Caches (one per region and horizon; ~40 MB each, 194-710 s to build, **at most two concurrently** —
 the footprint store is the memory risk, not the raster):
@@ -580,6 +838,33 @@ cell measured before it stays valid.
 `near-field` and `deep interior` read their caches from the committed `results/payload/`; the other
 ten were built under `<SCRATCH_ROOT>`. **No validation run writes into `results/`** — the panels
 and the document were copied in deliberately, as the artefacts of this measurement.
+
+### The horizon x eps grid (§8)
+
+36 cells, all at the shipped defaults, cheapest rung first so a stall shows against a partly-drawn
+table. Serial — three concurrent cells exhaust memory on an 11-core machine, and the reap takes the
+*waiter*, not the worker, which reads as a dead chain until `ps` says otherwise:
+
+```sh
+for e in 0.1 0.01 0.001; do
+  for t in 13 23 50; do
+    for r in near-field deep_interior config_stability tilt_plambda; do
+      ./target/release/examples/payload_metric live <cache:$r,$t> tolerance "$e" 0.25 \
+          <SCRATCH_ROOT> 0 "$e" 0.005 1 1 -1 1
+    done
+  done
+done
+```
+
+Wall clock 01:30 for the 24 new cells: `eps = 1e-1` is cheap (2.9-14 min per sea chart), `eps = 1e-3`
+at `t = 13` is the expensive corner (58 min for `config_stability`) and gets *cheaper* with horizon.
+
+**The prediction, written before the 14 unmeasured cells landed**, scored in §8: two of four claims
+held (`Undetermined` exactly 0.0000 in 36 of 36; degenerate cells reading floored-child `alpha_area`
+of exactly +0.0000). One was refuted by the falsifier named in advance — *"if `eps = 1e-1` at
+`t = 50` reads ~1x, the tolerance does not buy the horizon back"*. **One was refuted by a row already
+in this document**: I predicted no sea-chart cell above ~1.5x, and `tilt_plambda` at
+`t = 13, eps = 1e-1` reads 2.30x in §4's own table, measured before the prediction was written.
 
 ### Two things that will bite a re-run
 

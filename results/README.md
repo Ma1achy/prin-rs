@@ -107,12 +107,23 @@ away by `t = 50`: `near-field` stops at a 21-quad bootstrap tree with 93% of its
 because **`alpha_area` returns exactly `0.0000` on a near-empty mask** and any positive `alpha_lo`
 floors on it. With `alpha_lo = 0` that cell reaches error 0.00000 at 1.03x of the optimum.
 
+**And the full horizon x `eps` grid adds a third reason: the tolerance is not the lever.**
+`near-field` at `t = 50` returns a **bitwise identical 21-quad tree at all three tolerances** —
+same leaves, same stop breakdown, same substep count — while the field beneath it moves. More
+generally `deep interior` returns the same quad count at every tolerance at *every* horizon while
+delivering the grid's best saving (16.3-18.6x), and the sea charts, where the policy delivers
+least, are the most tolerance-sensitive of all. **The knob has the least purchase exactly where the
+policy works.**
+
 `sea_fraction` — computable before any descent — separates the two regimes by orders of magnitude,
-though it does not order charts within one.
+though it does not order charts within one. It *is* the footprint-spread distribution's CDF, so its
+sensitivity to `eps` says directly whether the threshold sits in the field's bulk or in a gap.
 
 | file | what it holds |
 |---|---|
-| `README.md` | the measurement: 40 cells, the prediction scored, and what it does not say |
+| `README.md` | the measurement: 57 descents plus 13 cache-only replays, over 11 sections, both predictions scored, and what it does not say |
+| `grid_horizon_eps.png` | the 4 x 3 x 3 grid, `tol/u` beside `dp/u`; blue is below breadth-first |
+| `prediction_grid.md` | the grid's prediction, written before the cells landed and copied in unedited |
 | `sheet_t13_eps1e-2.png` | tolerance tree / uniform at the same budget / full-depth reference, four regions |
 | `panels/` | the twelve panels the sheet is built from, zero `DEBUG_NAN` pixels in all of them |
 

@@ -619,7 +619,8 @@ unusable, monotone by construction.
 
 Full record and reproduction in `results/tolerance_scaling/`. Four targets — the two Burrau regions,
 `config_stability`, and the tilted `tilt_plambda` — across `t ∈ {13, 23, 50}` and
-`eps ∈ {1e-1, 1e-2, 1e-3}`, 40 cells, prediction recorded first.
+`eps ∈ {1e-1, 1e-2, 1e-3}` — the complete 4 × 3 × 3 grid at the shipped defaults, 57 descents plus
+13 cache-only replays, with a prediction recorded before each of the two rounds.
 
 **Read `dp/u` before `tol/u`.** A low saving has two causes — a field with nothing to find, and a
 policy failing to find it — and only the exact optimum separates them. Both occur, on the same
@@ -646,6 +647,26 @@ ceiling is 15–60×; over ~0.05 it is 1.1–4.2×; nothing lands between. It do
 within a regime — `config_stability` at sea 0.0494 has less headroom than `tilt_plambda` at 0.1694
 — so it is a regime test, not a ranking. A cheap estimator that avoids needing a full cache is
 unbuilt.
+
+**And the tolerance is inert exactly where the policy works, which inverts the tuning question.**
+`deep interior` returns the **same quad count at all three tolerances at all three horizons** —
+225/225/225, 313/313/313, 309/309/309, stop breakdown identical too at `t = 23` — while delivering
+the grid's best saving, 16.3–18.6×. The sea charts, where the policy delivers least (0.62–2.30×),
+are the most tolerance-sensitive cells in the grid: quad span 1.39–2.37×, `sea_fraction` span up to
+**15.9×**. `sea_fraction(eps)` **is** the footprint-spread distribution's CDF, so its sensitivity to
+`eps` says whether the threshold sits in the field's bulk or in a gap; `deep interior` is bimodal
+and two decades of `eps` land in the same gap. *Selectivity requires the threshold to cut through
+the bulk* with its sign reversed — failing to cut the bulk is what makes the policy both good and
+untunable there. **Do not spend effort tuning `eps` on a chart whose `sea_fraction` barely moves
+with it.**
+
+**Two causes of an inert `eps`, and the sea span separates them.** A frozen tree with a frozen
+`sea_fraction` is that gap. A frozen tree with a *moving* `sea_fraction` is another stop overriding
+the tolerance: `near-field` at `t = 50` is bitwise one tree at every tolerance (21 quads,
+`floor:4 keep:12`, `9.237e7` substeps) while `sea_fraction` runs 0.0479 → 0.1011 and the error
+0.07993 → 0.11438. **The field moved and the tree did not** — the two-sided form this project
+requires before reading a null — and the stop is the area floor, which does not take `eps` as an
+input at all.
 
 **`tau` is a second threshold and is not `eps` times a constant.** The working value ran `eps`,
 `eps/10`, `eps/100` across `t = 13, 23, 50` on `near-field`, while `eps/3.3` over-refines
@@ -772,6 +793,14 @@ and a provenance sidecar beside every panel.
   against 829 quads at error **0.00000** with `alpha_lo = 0`, on a frame that is 93% resolvable.
   This is a defect in the floor, not a threshold to retune — `alpha_lo = 0` is the *forbidden
   degeneration* on the sea charts it was built for. The fix has to separate the two cases;
-  unbuilt.
+  unbuilt. **And the grid found a third failure mode of the same floor**: at `eps = 1e-3` the
+  floored-child exponent goes *negative* on all six sea-chart cells (−0.020 to −0.076), meaning the
+  children found **more** unresolved area than the parent. `d = 2 − α` then reads above 2, which is
+  impossible for a set in the plane, so the dimension interpretation has lapsed — and `alpha_lo`
+  floors on it regardless, because negative is below any positive threshold. **The floor stops
+  hardest where refinement is discovering structure.** The existing measurement of the floored
+  population reads *"exponent under 0.05, box dimension ~1.94"* — positive; tightening `eps` drives
+  it through zero. Whether the discovered area is real structure or the two-level exponent's
+  residual edge-weighting at `N = 8` on a 78%-sea field is **unmeasured**.
 - **`far` is the only AZ win and the mechanism is a guess** — a conditioning story about `Γ*` being
   degree six in coordinates that run to 13 units. Unmeasured, and labelled as such.

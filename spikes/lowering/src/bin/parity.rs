@@ -128,6 +128,16 @@ fn main() {
     for (f, t) in &per_control {
         println!("  {:<15} {:>5} forks {}", f, t, if *t == 0 { "<- SILENT: see the notes above before reading it as clean" } else { "" });
     }
+    // The fork SET, not only its count. Metal and lavapipe forking different numbers of states says
+    // the latitude is backend-specific; whether one set nests inside the other decides whether a
+    // single strictest backend can stand in for the others, so it is printed rather than inferred.
+    if let Some(g) = &gpu {
+        let set: Vec<usize> = (0..d2s.len())
+            .filter(|&k| cpu32[k].bucket_trans != g.out[k].bucket_trans)
+            .collect();
+        println!("\nbucket_trans fork set ({} states): {:?}", set.len(), set);
+    }
+
     println!("\nclean arms:   {} forks", clean_forks);
     println!("control arms: {} forks", control_forks);
     println!(

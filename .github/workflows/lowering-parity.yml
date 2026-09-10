@@ -1,0 +1,45 @@
+# The cross-backend leg of the discrete-parity spike.
+#
+# The standing action item in principia_gpu_determinism_note.md is that the original spike's
+# bit-identity evidence is Metal-only. This job runs the same binary through naga's SPIR-V backend
+# on Mesa lavapipe -- a non-Apple compiler, no hardware needed. It narrows that item; lavapipe is a
+# software rasteriser and is not an AMD/NVIDIA/Qualcomm driver, so it does not close it.
+name: lowering-parity
+
+on:
+  push:
+    paths: ['spikes/lowering/**', '.github/workflows/lowering-parity.yml']
+  workflow_dispatch:
+
+jobs:
+  lavapipe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install Mesa lavapipe (software Vulkan)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mesa-vulkan-drivers vulkan-tools libvulkan1
+          vulkaninfo --summary || true
+      - name: Run the parity sweep
+        env:
+          WGPU_BACKEND: vulkan
+          WGPU_ADAPTER_NAME: llvmpipe
+          # lavapipe is a rasteriser; give the sweep room rather than letting a timeout read as a pass.
+          RUST_BACKTRACE: '1'
+        working-directory: spikes/lowering
+        run: cargo run --release --bin parity | tee parity.txt
+      - name: Gate on the verdict, not on the exit code
+        working-directory: spikes/lowering
+        run: |
+          # The binary prints its verdict and exits 0 either way, deliberately: a harness that cannot
+          # distinguish INCONCLUSIVE from PASS would let a silent control ship as a green tick.
+          grep -q '^verdict: PASS' parity.txt || {
+            echo "::error::parity did not PASS -- read the controls column before assuming a fork"
+            exit 1
+          }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: parity-lavapipe
+          path: spikes/lowering/parity.txt

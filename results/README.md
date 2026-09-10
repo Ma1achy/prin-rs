@@ -131,6 +131,30 @@ sensitivity to `eps` says directly whether the threshold sits in the field's bul
 policy failing to find it — and only the exact optimum separates them. Both occur here, on the same
 chart one decade of `eps` apart.
 
+## `lowering/` — does the kernel actually lower? Backend limits and the discrete-parity spike
+
+Three documents and two raw captures, from `spikes/lowering/` — a throwaway crate deliberately
+outside prin-rs, which is **not modified**.
+
+| file | what it settles |
+|---|---|
+| `README.md` | the per-backend limits table with per-row provenance, and the one answer: **the dispatch shape does NOT fit the intersection**, in four independent ways, three invisible on Metal |
+| `AUDIT.md` | the comparison-only rule against the kernel that exists — all six rules violated, and the finding that outranks them: `src/real.rs` gives f32 and f64 **different branch thresholds**, so Tier B is unachievable for this kernel by construction |
+| `SPIKE.md` | the lowering measurement — **0 forks on every comparison-only arm over 705 boundary states, with the control forking 105 times in the same run** |
+| `metal_limits.txt`, `parity_metal.txt` | raw output, adapter identity printed rather than assumed |
+
+**The propagation arm is the one to read.** `packed` and `packed_ctl` are the same shift-and-mask
+expression fed by different buckets: 0 forks against 83. A packed descriptor is exactly as
+deterministic as the branches feeding it, and `roundtrip_ctl` round-trips **perfectly on a
+contaminated value** — so a parity check placed at the decode passes on a wrong answer.
+
+**There is no single binding backend.** WebGPU binds on invocations (256 against the 512 the natural
+mapping wants) and on capability (no 64-bit integers, no float atomics, no push constants); Metal
+binds on workgroup storage. Quoting either alone would be wrong.
+
+Cross-backend evidence is **Metal-only** until `.github/workflows/lowering-parity.yml` reports —
+the same limitation the earlier spike had, which is why this one exists.
+
 ## `scope/` — what the integrator fixes did to the criterion's input, and the three prerequisites
 
 Four files, and they are the reason the scheduler corpus above is superseded rather than merely

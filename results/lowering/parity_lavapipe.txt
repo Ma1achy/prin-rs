@@ -1,0 +1,29 @@
+sweep: 705 states, +/-4 ulp around each of the 64 ceil boundaries
+gpu adapter: backend=Vulkan name="llvmpipe (LLVM 20.1.2, 256 bits)" driver="llvmpipe Mesa 25.2.8-0ubuntu0.24.04.2 (LLVM 20.1.2)"
+
+field           rule       f32-vs-f64   gpu-vs-f32
+bucket_frozen   clean               0            0
+bucket_trans    CONTROL            22           60
+coll_sq         clean               0            0
+coll_sqrt       CONTROL             0            0
+packed          clean               0            0
+roundtrip       clean               0            0
+pairsum_flag    clean               0            0
+pairsum_brk     CONTROL             0            0
+packed_ctl      propagate           22           60
+roundtrip_ctl   propagate            0            0
+
+loop shapes against the closed form, on the GPU: flag-tested 0 wrong, break-form 0 wrong of 705
+coll_sqrt sensitivity: 3 of 705 states put sqrt(d2) within 1 ULP of r_coll (nearest 0 ULP)
+
+controls, individually:
+  bucket_trans       82 forks 
+  coll_sqrt           0 forks <- SILENT: see the notes above before reading it as clean
+  pairsum_brk         0 forks <- SILENT: see the notes above before reading it as clean
+
+bucket_trans fork set (60 states): [22, 59, 76, 94, 103, 130, 131, 138, 165, 166, 184, 194, 195, 203, 204, 219, 220, 228, 229, 235, 236, 237, 248, 249, 265, 266, 274, 275, 282, 292, 293, 301, 302, 318, 337, 354, 355, 364, 383, 392, 400, 409, 418, 435, 436, 444, 452, 453, 454, 463, 471, 472, 479, 480, 488, 489, 500, 509, 517, 544]
+
+clean arms:   0 forks
+control arms: 82 forks
+
+verdict: PASS -- the discrete surface survives lowering bitwise, and the controls forked, so the harness could have seen it if it had not.

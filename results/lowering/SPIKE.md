@@ -1,11 +1,15 @@
 # The spike: does the discrete surface survive lowering?
 
-**Answer: on Metal, yes — 0 forks across every comparison-only arm over 705 boundary states — and
-the measurement is worth something because the control forked 105 times in the same run.**
+**Answer: yes, on two independent backends — 0 forks across every comparison-only arm over 705
+boundary states, on Metal (naga→MSL, Apple) and on Mesa lavapipe (naga→SPIR-V, LLVM 20.1.2).** The
+measurement is worth something because the control forked in both runs: 105 on Metal, 82 on lavapipe.
 
-The cross-backend leg (Mesa lavapipe, naga→SPIR-V, a non-Apple compiler) is wired as
-`.github/workflows/lowering-parity.yml` and runs on push. Until it has run, this document reports
-**Metal only**, which is the same limitation the original spike had and the reason this one exists.
+That narrows the standing action item — *"the spike's bit-identity evidence is Metal-only"* — to two
+backends and two compilers. It does not close it: lavapipe is a software rasteriser, not an
+AMD/NVIDIA/Qualcomm driver, and D3D12 stays unreachable.
+
+**And the two backends fork on DIFFERENT STATES, which is the sharpest result here.** See §"No
+strictest backend exists" below.
 
 ---
 
@@ -46,8 +50,10 @@ packed_ctl      propagate          22           83
 roundtrip_ctl   propagate           0            0
 ```
 
-`gpu` is Metal on an Apple M3 Pro; `adapter.get_info()` is printed by the binary rather than assumed,
-because the Metal-only caveat on the earlier spike exists precisely because that was not printed.
+`gpu` is Metal on an Apple M3 Pro; the lavapipe column reads the same except `bucket_trans` 60 and
+`packed_ctl` 60 (`parity_lavapipe.txt`, adapter `llvmpipe (LLVM 20.1.2, 256 bits)`, Mesa 25.2.8).
+`adapter.get_info()` is printed by the binary rather than assumed, because the Metal-only caveat on
+the earlier spike exists precisely because that was not printed.
 
 **The clean arms read 0 in both columns.** The frozen-threshold bucket, the squared collision test,
 the packing, the round-trip and the flag-tested loop all agree bitwise across f64, f32 and Metal.
@@ -73,6 +79,32 @@ the fork lands in bits 0-1. **A decoder can round-trip perfectly on a value that
 Any parity check placed at the decode would pass here.
 
 ---
+
+## No strictest backend exists, so validating against one GPU cannot certify another
+
+The control's fork count differs between backends — 83 states on Metal, 60 on lavapipe, from the
+**identical** 705 inputs. A count alone would admit a comfortable reading: that one backend is
+simply looser and validating against it covers the other. The sets say otherwise.
+
+```
+lavapipe 60   metal 83
+intersection 26   lavapipe-only 34   metal-only 57
+lavapipe subset of metal?  False
+```
+
+**Only 26 states fork on both.** 57 fork on Metal alone and 34 on lavapipe alone — the sets cross,
+neither nests. So there is no strictest backend to test against and no single GPU whose agreement
+implies another's. **Every backend has states the others get right**, and a validation suite pinned
+to one of them would pass while a second backend disagreed on 34 inputs it never sampled.
+
+This is the same shape as the limits table one level up: *there is no single binding backend* —
+WebGPU binds on invocations, Metal on workgroup storage. Here it is the same conclusion measured on
+arithmetic rather than read off a spec, and it is the argument for the comparison-only rule as a
+**construction constraint** rather than a thing to check for after the fact. A rule you can verify
+per-backend would be a weaker rule; this one has to hold by construction because no finite set of
+backends can stand in for the rest.
+
+Fork sets are printed by the harness and are in `parity_metal.txt` and `parity_lavapipe.txt`.
 
 ## Two controls read zero, and they read zero for different reasons
 
@@ -117,10 +149,9 @@ as a green tick. The workflow greps for `^verdict: PASS`.
 
 ## What this does not answer
 
-- **Non-Apple backends.** The lavapipe job is written and has not reported. This document's evidence
-  is Metal-only, exactly as the standing action item says.
-- **Real drivers.** lavapipe is a software rasteriser. It narrows the item; it does not close it.
-  D3D12 is unreachable from macOS or Linux and remains open.
+- **Real drivers.** lavapipe is a software rasteriser. Two compilers is better than one and is not
+  a driver survey; the crossing fork sets are the direct evidence that a third would disagree with
+  both. D3D12 is unreachable from macOS or Linux and remains open.
 - **prin-rs's own integrator.** The spike lowers the *contract's* step control. prin-rs's
   `dtau`/`StepLimit::Predictive` is division-decided throughout (`AUDIT.md` §2), and `src/real.rs`
   gives f32 and f64 different branch thresholds, so **Tier B over prin-rs's kernel is unachievable by

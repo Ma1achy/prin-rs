@@ -1,0 +1,31 @@
+    Finished `release` profile [optimized] target(s) in 0.08s
+     Running `spikes/lowering/target/release/parity`
+sweep: 705 states, +/-4 ulp around each of the 64 ceil boundaries
+gpu adapter: backend=Metal name="Apple M3 Pro" driver=" "
+
+field           rule       f32-vs-f64   gpu-vs-f32
+bucket_frozen   clean               0            0
+bucket_trans    CONTROL            22           83
+coll_sq         clean               0            0
+coll_sqrt       CONTROL             0            0
+packed          clean               0            0
+roundtrip       clean               0            0
+pairsum_flag    clean               0            0
+pairsum_brk     CONTROL             0            0
+packed_ctl      propagate           22           83
+roundtrip_ctl   propagate            0            0
+
+loop shapes against the closed form, on the GPU: flag-tested 0 wrong, break-form 0 wrong of 705
+coll_sqrt sensitivity: 3 of 705 states put sqrt(d2) within 1 ULP of r_coll (nearest 0 ULP)
+
+controls, individually:
+  bucket_trans      105 forks 
+  coll_sqrt           0 forks <- SILENT: see the notes above before reading it as clean
+  pairsum_brk         0 forks <- SILENT: see the notes above before reading it as clean
+
+bucket_trans fork set (83 states): [13, 21, 40, 57, 58, 66, 76, 85, 120, 121, 138, 147, 165, 166, 172, 173, 174, 194, 195, 200, 201, 202, 210, 218, 219, 220, 229, 238, 245, 246, 247, 256, 265, 274, 281, 282, 291, 301, 309, 318, 354, 355, 373, 381, 382, 391, 406, 407, 408, 416, 417, 418, 425, 426, 433, 434, 435, 436, 442, 443, 444, 451, 452, 453, 454, 473, 486, 487, 488, 489, 497, 498, 499, 507, 508, 516, 517, 533, 534, 535, 553, 560, 561]
+
+clean arms:   0 forks
+control arms: 105 forks
+
+verdict: PASS -- the discrete surface survives lowering bitwise, and the controls forked, so the harness could have seen it if it had not.

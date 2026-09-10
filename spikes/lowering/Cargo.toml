@@ -1,0 +1,13 @@
+[package]
+name = "lowering-spike"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# Deliberately NOT a member of prin-rs. prin-rs has no [workspace] and auto-discovers only
+# src/, examples/, tests/, benches/ -- so this directory is invisible to it and nothing in
+# prin-rs is modified. Delete this whole tree once it has answered.
+
+[dependencies]
+pollster = "1.0.1"
+wgpu = { version = "30.0.1", features = ["wgsl", "metal", "vulkan"] }

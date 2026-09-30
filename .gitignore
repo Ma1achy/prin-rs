@@ -16,3 +16,6 @@ results/**/*.fcache
 
 # Stray run-sequencing markers from batch scripts.
 results/output/.queue*
+
+# The lowering spike builds outside prin-rs; the /target above is root-anchored.
+spikes/*/target/

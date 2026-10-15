@@ -1,0 +1,146 @@
+# chazy_probe n_ics=600 t_eval=1000 t_truth<=10000 eps=0.05 os_ratio=25 seed0=1000 snap=0.4
+# integrator heggie eta=1e-2, r_coll=0 (regularised through binary collisions), stop_on_event=false
+# 600 finished, 0 failed (non-finite or budget), 193.6s
+
+## truth: Chazy's definition (separation growth exponents), run continued until asymptotic or t = 10000
+  H           E>0  270
+  HE          E<0  279
+  HE          E>0  30
+  PE          E<0  8
+  unresolved  E<0  13
+  truth run end time p50 1010 p90 1490 max 10000
+
+## [E<0] correct% / wrong% at horizon T, over the 287 trajectories with a resolved truth
+method                         T=5          T=10          T=20          T=50         T=100         T=200         T=500        T=1000
+chazy h5 tau.01         1.4/0.00      1.7/0.00      4.2/0.00     13.6/0.00     31.4/0.00     53.0/0.00     74.6/0.00     87.8/0.00  
+chazy h5 tau.05         2.1/0.00      3.1/0.00     15.3/0.00     31.0/0.00     53.0/0.00     68.3/0.00     81.9/0.00     89.9/0.00  
+chazy h5 no-settle      4.5/0.00     10.5/0.00     24.7/0.00     44.3/0.00     57.1/0.00     70.0/0.00     82.2/0.00     89.9/0.00  
+chazy h3 no-settle      5.9/0.00     11.8/0.00     26.1/0.00     44.9/0.00     57.5/0.00     70.4/0.00     82.2/0.00     89.9/0.00  
+chazy h10 tau.01        1.4/0.00      1.7/0.00      4.2/0.00     13.6/0.00     31.4/0.00     53.0/0.00     74.6/0.00     87.8/0.00  
+chazy-tidal d1e-5       1.0/0.00      1.7/0.00     10.1/0.00     33.8/0.00     52.6/0.00     68.6/0.00     81.9/0.00     89.5/0.00  
+chazy-tidal d1e-3       2.8/0.00      9.1/0.00     24.0/0.00     43.9/0.00     57.1/0.00     70.4/0.00     82.2/0.00     89.9/0.00  
+fewbody d1e-5           1.0/0.00      1.7/0.00     10.1/0.00     33.8/0.00     52.6/0.00     67.9/0.00     81.5/0.00     89.5/0.00  
+fewbody d1e-3           2.8/0.00      9.1/0.00     24.0/0.00     43.9/0.00     56.4/0.00     69.7/0.00     81.9/0.00     89.9/0.00  
+naive energy            7.0/0.00     12.9/0.00     27.2/0.00     45.6/0.00     56.8/0.00     69.7/0.00     81.9/0.00     89.9/0.00  
+naive distance          8.0/0.00      8.7/0.00     23.0/0.00     50.5/0.00     68.3/0.00     85.0/0.00     94.4/0.00     97.2/0.00  
+
+## [E>0] correct% / wrong% at horizon T, over the 300 trajectories with a resolved truth
+method                         T=5          T=10          T=20          T=50         T=100         T=200         T=500        T=1000
+chazy h5 tau.01        77.0/0.00     94.3/0.00     96.3/0.00     99.0/0.00     99.7/0.00    100.0/0.00    100.0/0.00    100.0/0.00  
+chazy h5 tau.05        95.0/0.00     98.0/0.33     99.0/0.00     99.0/0.00     99.7/0.00    100.0/0.00    100.0/0.00    100.0/0.00  
+chazy h5 no-settle     95.7/0.00     98.0/0.33     99.0/0.00     99.0/0.00     99.7/0.00    100.0/0.00    100.0/0.00    100.0/0.00  
+chazy h3 no-settle     98.7/0.33     99.0/0.33     99.7/0.00    100.0/0.00    100.0/0.00    100.0/0.00    100.0/0.00    100.0/0.00  
+chazy h10 tau.01       72.3/0.00     92.3/0.00     95.3/0.00     98.7/0.00     99.0/0.00     99.7/0.00     99.7/0.00    100.0/0.00  
+chazy-tidal d1e-5      93.0/0.33     94.0/0.33     95.3/0.00     97.0/0.00     98.0/0.00     98.7/0.00     99.3/0.00     99.7/0.00  
+chazy-tidal d1e-3      96.3/0.33     97.0/0.33     98.0/0.00     99.0/0.00     99.0/0.00     99.7/0.00     99.7/0.00    100.0/0.00  
+fewbody d1e-5          93.0/0.00     94.0/0.00     95.3/0.00     97.0/0.00     98.0/0.00     98.7/0.00     99.3/0.00     99.7/0.00  
+fewbody d1e-3          96.3/0.00     97.0/0.00     98.0/0.00     99.0/0.00     99.0/0.00     99.7/0.00     99.7/0.00    100.0/0.00  
+naive energy          100.0/0.00    100.0/0.00    100.0/0.00    100.0/0.00    100.0/0.00    100.0/0.00    100.0/0.00    100.0/0.00  
+naive distance         77.3/20.33    93.7/6.33     99.7/0.33     98.0/2.00     98.0/2.00     98.3/1.67     98.0/2.00     98.3/1.67  
+
+## [all] correct% / wrong% at horizon T, over the 587 trajectories with a resolved truth
+method                         T=5          T=10          T=20          T=50         T=100         T=200         T=500        T=1000
+chazy h5 tau.01        40.0/0.00     49.1/0.00     51.3/0.00     57.2/0.00     66.3/0.00     77.0/0.00     87.6/0.00     94.0/0.00  
+chazy h5 tau.05        49.6/0.00     51.6/0.17     58.1/0.00     65.8/0.00     76.8/0.00     84.5/0.00     91.1/0.00     95.1/0.00  
+chazy h5 no-settle     51.1/0.00     55.2/0.17     62.7/0.00     72.2/0.00     78.9/0.00     85.3/0.00     91.3/0.00     95.1/0.00  
+chazy h3 no-settle     53.3/0.17     56.4/0.17     63.7/0.00     73.1/0.00     79.2/0.00     85.5/0.00     91.3/0.00     95.1/0.00  
+chazy h10 tau.01       37.6/0.00     48.0/0.00     50.8/0.00     57.1/0.00     65.9/0.00     76.8/0.00     87.4/0.00     94.0/0.00  
+chazy-tidal d1e-5      48.0/0.17     48.9/0.17     53.7/0.00     66.1/0.00     75.8/0.00     84.0/0.00     90.8/0.00     94.7/0.00  
+chazy-tidal d1e-3      50.6/0.17     54.0/0.17     61.8/0.00     72.1/0.00     78.5/0.00     85.3/0.00     91.1/0.00     95.1/0.00  
+fewbody d1e-5          48.0/0.00     48.9/0.00     53.7/0.00     66.1/0.00     75.8/0.00     83.6/0.00     90.6/0.00     94.7/0.00  
+fewbody d1e-3          50.6/0.00     54.0/0.00     61.8/0.00     72.1/0.00     78.2/0.00     85.0/0.00     91.0/0.00     95.1/0.00  
+naive energy           54.5/0.00     57.4/0.00     64.4/0.00     73.4/0.00     78.9/0.00     85.2/0.00     91.1/0.00     95.1/0.00  
+naive distance         43.4/10.39    52.1/3.24     62.2/0.17     74.8/1.02     83.5/1.02     91.8/0.85     96.3/1.02     97.8/0.85  
+
+## commits on the 13 trajectories with NO resolved truth (count; not necessarily wrong)
+method                   T=5    T=10    T=20    T=50   T=100   T=200   T=500  T=1000
+chazy h5 tau.01            0       0       0       0       0       0       0       0
+chazy h5 tau.05            0       0       0       0       0       0       0       0
+chazy h5 no-settle         0       0       0       0       0       0       0       0
+chazy h3 no-settle         0       0       0       0       0       0       0       0
+chazy h10 tau.01           0       0       0       0       0       0       0       0
+chazy-tidal d1e-5          0       0       0       0       0       0       0       0
+chazy-tidal d1e-3          0       0       0       0       0       0       0       0
+fewbody d1e-5              0       0       0       0       0       0       0       0
+fewbody d1e-3              0       0       0       0       0       0       0       0
+naive energy               0       0       0       0       0       0       0       0
+naive distance             4       4       4       4       5       5       4       6
+
+## [E<0, resolved] time to first correct commit (p50, p90), never-correct count, flips after commit
+  chazy h5 tau.01      p50    86.4  p90   485.2  never   26  wrong-first   0  flips     0 on    0 trajectories
+  chazy h5 tau.05      p50    58.8  p90   458.8  never   23  wrong-first   0  flips     1 on    1 trajectories
+  chazy h5 no-settle   p50    51.6  p90   426.0  never   16  wrong-first   0  flips     1 on    1 trajectories
+  chazy h3 no-settle   p50    50.4  p90   411.6  never   16  wrong-first   0  flips     2 on    2 trajectories
+  chazy h10 tau.01     p50    82.4  p90   472.4  never   27  wrong-first   0  flips     0 on    0 trajectories
+  chazy-tidal d1e-5    p50    72.4  p90   462.4  never   26  wrong-first   0  flips   144 on   14 trajectories
+  chazy-tidal d1e-3    p50    55.2  p90   468.0  never   20  wrong-first   0  flips   154 on   15 trajectories
+  fewbody d1e-5        p50    69.6  p90   462.4  never   30  wrong-first   0  flips     0 on    0 trajectories
+  fewbody d1e-3        p50    52.0  p90   458.4  never   29  wrong-first   0  flips     0 on    0 trajectories
+  naive energy         p50    49.6  p90   457.6  never   24  wrong-first   0  flips     6 on    6 trajectories
+  naive distance       p50    44.4  p90   235.6  never    2  wrong-first   0  flips   285 on  248 trajectories
+
+## chazy h5 tau.01 at T = 1000 (row) -> truth
+  B-so-far    -> HE          23
+  B-so-far    -> unresolved  12
+  H           -> H           270
+  HE          -> HE          276
+  HE          -> PE          4
+  OS-candidate -> HE          3
+  PE          -> HE          1
+  PE          -> PE          1
+  excursion   -> HE          6
+  excursion   -> PE          3
+  excursion   -> unresolved  1
+
+## chazy h5 no-settle at T = 1000 (row) -> truth
+  B-so-far    -> HE          14
+  B-so-far    -> unresolved  10
+  H           -> H           270
+  HE          -> HE          282
+  HE          -> PE          4
+  OS-candidate -> HE          2
+  PE          -> HE          1
+  PE          -> PE          1
+  excursion   -> HE          10
+  excursion   -> PE          3
+  excursion   -> unresolved  3
+
+## chazy-tidal d1e-5 at T = 1000 (row) -> truth
+  B-so-far    -> HE          17
+  B-so-far    -> unresolved  11
+  H           -> H           270
+  HE          -> HE          280
+  HE          -> PE          4
+  OS-candidate -> HE          3
+  PE          -> HE          1
+  PE          -> PE          1
+  excursion   -> HE          7
+  excursion   -> PE          3
+  excursion   -> unresolved  2
+  transient   -> HE          1
+
+## fewbody d1e-5 at T = 1000 (row) -> truth
+  H           -> H           270
+  HE          -> HE          281
+  HE          -> PE          5
+  unresolved  -> HE          28
+  unresolved  -> PE          3
+  unresolved  -> unresolved  13
+
+## class mix over time under 'chazy h5 no-settle', % of all finished trajectories
+   (bounded-side labels are approximations that hold up to T; see the truth census above)
+     T         H        HP         P        HE        PE  B-stable transient OS-candidate excursion  B-so-far
+     5      43.8       0.2       0.0       6.0       0.0       0.0       2.2       0.3       2.0      45.5
+    10      44.8       0.2       0.0       9.2       0.0       0.0       0.8       0.5       5.8      38.7
+    20      45.0       0.0       0.0      16.3       0.0       0.0       0.5       0.3       5.7      32.2
+    50      45.0       0.0       0.0      25.2       0.5       0.0       0.5       0.2       6.8      21.8
+   100      45.0       0.0       0.0      31.5       0.7       0.0       0.2       0.7       6.5      15.5
+   200      45.0       0.0       0.0      38.0       0.5       0.0       0.0       0.5       4.8      11.2
+   500      45.0       0.0       0.0      44.0       0.3       0.0       0.0       0.3       4.0       6.3
+  1000      45.0       0.0       0.0      47.7       0.3       0.0       0.0       0.3       2.7       4.0
+
+E > 0 with no resolved truth (Lagrange–Jacobi says 0 in the limit): 0
+
+real	3m13.596s
+user	5m56.434s
+sys	0m0.148s

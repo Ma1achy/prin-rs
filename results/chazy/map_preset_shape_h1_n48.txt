@@ -1,0 +1,19 @@
+# chazy_map case=preset_shape_h1 n=48 cfg=ChazyCfg { gate: Hierarchy, eps: 0.05, h_far: 5.0, tau: inf, os_ratio: 25.0, delta: 1e-5, mardling_aarseth: true } snap=0.4 heggie eta=1e-2 r_coll=0
+# 547.6s, 0 of 2304 trajectories failed (non-finite or budget), drawn grey
+       class     t=10     t=50    t=200    t=800
+           H    0.00%    0.00%    0.00%    0.00%
+          HP    0.00%    0.00%    0.00%    0.00%
+           P    0.00%    0.00%    0.00%    0.00%
+          HE   11.89%   32.99%   67.14%   90.49%
+          PE    0.69%    0.95%    0.52%    0.22%
+    B-stable    0.00%    0.00%    0.00%    0.00%
+    B-so-far   77.17%   46.18%   17.06%    3.39%
+   transient    0.00%    0.00%    0.00%    0.00%
+OS-candidate    2.17%    1.39%    2.26%    1.04%
+   excursion    8.07%   18.49%   13.02%    4.86%
+  unresolved    0.00%    0.00%    0.00%    0.00%
+# wrote results/chazy/chazy_map_preset_shape_h1_n48.png
+
+real	9m7.584s
+user	16m50.815s
+sys	0m1.073s

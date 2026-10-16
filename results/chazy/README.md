@@ -268,7 +268,16 @@ cargo run --release --example chazy_probe -- 600 1000 0.05 25 0 0 10000 50000
 cargo run --release --example chazy_map -- preset_shape_h1 48 results/chazy
 cargo run --release --example chazy_map -- latent_shape 48 results/chazy
 cargo test --release --test chazy
+# event outcome per pixel with its time, at the production r_coll and closure escape rule:
+cargo run --release --example outcome_map -- preset_shape_h1 48 800 results/outcome
 ```
+
+`chazy_map` also writes the per-pixel class, structure, energy and per-body dumps described in its
+module header, so the stain previews can be recoloured without re-integrating. `outcome_map` writes
+each pixel's packed `(state, detail)` and `t_end`; a playhead shows a pixel's outcome once
+`t_end <= playhead`. **Its escape `detail` is the reference rule's lowest-firing body index, not
+necessarily the body that leaves** (see CLAUDE.md, "the escaping-body label is the lowest firing
+index"): on `latent_shape` it reads body 0 where the Chazy escaper is body 2.
 
 ## References
 

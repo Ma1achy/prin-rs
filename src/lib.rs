@@ -6,6 +6,7 @@
 pub mod real;
 pub mod vec2;
 pub mod camera;
+pub mod chazy;
 pub mod config;
 pub mod decode;
 pub mod ensemble;

@@ -3227,3 +3227,17 @@ levels the render paints and their spread -- and the ramp guard's two arms. Basi
 `l dst = 184`, window span x9.5 with its **floor 1.44e6 above** the region's median energy drift;
 the control x6730 with a floor at 2.18e1. Both are physics, and a span test alone would not have
 said so -- the record's `far` failure cleared a span of x8.
+
+**CHAZY'S FINAL MOTION IS A LABEL AS OF THE PLAYHEAD, AND THE SETTLING GATE IS PURE DELAY.**
+`src/chazy.rs`, `results/chazy/README.md`. Classified every snapshot from the live state plus one
+latch (`I_max`), against Fewbody's termination test (Fregeau et al. 2004 §3.3.5) and a Chazy-
+definition truth from the same trajectory run on to `t <= 1e4`, over 1200 trajectories and two
+seeds: **zero wrong commits on E < 0 at any playhead**, median first correct label **51.6 / 40.8**
+against Fewbody's **69.6 / 69.6** at `delta = 1e-5`, and fewer left undecided at `T = 1000`
+(16 / 18 against 30 / 27). Requiring the closure chord below `0.01` bought **zero** precision for
+35 time units of median delay, so it ships off. **The pair's binding is a sign, not a band**: a
+bound pair at pericentre has `K/U = (1+e)/2`, inside any parabolic band once `e > 0.9`, and the
+first cut called those systems two-stage H. **And the first truth was wrong the same way one level
+up** -- a binary's separation exponent at two arbitrary phases reads as growth, which left 40
+genuine HE trajectories "unresolved" while every method, Fewbody included, committed on all 40.
+Agreement of every method against the truth is the tell that the truth is the odd one out.
